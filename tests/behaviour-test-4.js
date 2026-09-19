@@ -2907,6 +2907,7 @@ async function serverFieldSignIn(){
         };
 
         const ok = await phone.w.eval(`(async ()=>{
+          window.__sent = [];
           currentReportHtml = '<html><body>The pool was serviced.</body></html>';
           currentReportText = 'The pool was serviced.';
           currentReportPhotos = [];
@@ -2933,6 +2934,12 @@ async function serverFieldSignIn(){
         })()`);
         check('when the office cannot send it, the phone is told', JSON.parse(refused).ok === false, refused);
         check('and says why', JSON.parse(refused).reason === 'refused', refused);
+
+        // However it went, the phone writes down what happened, because a
+        // message on screen is gone before anyone can read it
+        phone.w.eval('fieldRenderSyncCard()');
+        const cardText = phone.d.getElementById('fieldSyncStatus').textContent;
+        check('the sync card says how the last report went', /Last report went/.test(cardText), cardText);
 
         srv.reportFails = false;
         srv.offline = true;
