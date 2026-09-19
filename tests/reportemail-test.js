@@ -244,7 +244,10 @@ const base = {
 
   const shown = [{id: 'photo-1', name: 'pool-before.jpg'}, {id: 'photo-2', name: 'pool-after.jpg'}];
   const piece = src.slice(src.indexOf('const kindOf ='), src.indexOf('const from ='));
-  const strip = code => code.replace(/\(name\s*:\s*string\)/g, '(name)').replace(/\(page\s*:\s*string\)/g, '(page)');
+  const strip = code => code
+    .replace(/\(name\s*:\s*string\)/g, '(name)')
+    .replace(/\(page\s*:\s*string\)/g, '(page)')
+    .replace(/\(p\s*:\s*\{id:\s*string,\s*name:\s*string\},\s*label\s*:\s*string\)/g, '(p, label)');
   const build = list => new Function('shown', strip(piece)
     + '; return {photoSection, withPhotos};')(list);
   const {photoSection, withPhotos} = build(shown);
@@ -262,10 +265,19 @@ const base = {
   check('with a heading that matches how many there are', /Photos from this visit/.test(section));
   check('with before and after both on, each is labelled',
         /Before/.test(section) && /After/.test(section), section.slice(0, 200));
+  check('a quarter the width they were', /max-width:130px/.test(section), section.slice(0, 200));
+  check('before and after sit side by side',
+        (section.match(/valign="top"/g) || []).length === 2, section.slice(0, 260));
+  check('the heading is nudged down from what is above it', /margin:8px 0 12px/.test(section), section.slice(0, 160));
   check('the file name is never used as the caption', section.indexOf('.jpg<') === -1);
   const onlyAfter = build([{id: 'photo-1', name: 'pool-after.jpg'}]);
   check('with only one kind, there is no caption at all',
-        onlyAfter.photoSection().indexOf('margin-top:6px') === -1, onlyAfter.photoSection().slice(0, 160));
+        onlyAfter.photoSection().indexOf('margin-top:5px') === -1, onlyAfter.photoSection().slice(0, 160));
+  check('and a single photo is the same size', /max-width:130px/.test(onlyAfter.photoSection()));
+  const three = build([{id: 'a', name: 'before.jpg'}, {id: 'b', name: 'after.jpg'}, {id: 'c', name: 'gate.jpg'}]);
+  check('more than two are stacked rather than squeezed',
+        (three.photoSection().match(/padding:0 0 14px;/g) || []).length === 3
+        && three.photoSection().indexOf('valign="top"') === -1, three.photoSection().slice(0, 120));
 
   const page = '<html><body><table><tr><td>The report</td></tr>'
     + '<tr><td style="padding:26px;">Thank you for your business.<div>Triffic Pool and Spa</div></td></tr>'
