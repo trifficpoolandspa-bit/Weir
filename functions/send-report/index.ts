@@ -13,6 +13,7 @@
 // server, not taken from the caller, so nobody can send as another company.
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
+const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const SENDING_ADDRESS = 'reports@getweir.com';
@@ -56,6 +57,34 @@ async function whoIsAsking(token: string){
   };
 }
 
+// Inline images cannot be clicked in most mail apps, so each photo is also
+// kept in the company's own folder and linked to. The link lasts a year, which
+// outlives the report itself being useful.
+async function keepFullSize(companyId: string, id: string, content: string){
+  if(!SERVICE_KEY) return '';
+  const path = companyId + '/reports/' + id + '.jpg';
+  try{
+    const bytes = Uint8Array.from(atob(content), c => c.charCodeAt(0));
+    const put = await fetch(SUPABASE_URL + '/storage/v1/object/visit-photos/' + path, {
+      method: 'POST',
+      headers: {apikey: SERVICE_KEY, Authorization: 'Bearer ' + SERVICE_KEY, 'Content-Type': 'image/jpeg'},
+      body: bytes
+    });
+    if(!put.ok && put.status !== 409){
+      const said = await put.json().catch(()=> ({}));
+      if(String(said.statusCode) !== '409') return '';
+    }
+    const signed = await fetch(SUPABASE_URL + '/storage/v1/object/sign/visit-photos/' + path, {
+      method: 'POST',
+      headers: {apikey: SERVICE_KEY, Authorization: 'Bearer ' + SERVICE_KEY, 'Content-Type': 'application/json'},
+      body: JSON.stringify({expiresIn: 60 * 60 * 24 * 365})
+    });
+    if(!signed.ok) return '';
+    const out = await signed.json();
+    return out.signedURL ? SUPABASE_URL + '/storage/v1' + out.signedURL : '';
+  }catch(e){ return ''; }
+}
+
 Deno.serve(async (req: Request)=>{
   if(req.method === 'OPTIONS') return new Response('ok', {headers: CORS});
   if(req.method !== 'POST') return reply(405, {error: 'Send it as a POST'});
@@ -82,7 +111,7 @@ Deno.serve(async (req: Request)=>{
   // page by an id, which is what "cid:" means in an email. Anything past what
   // the email service accepts is left out rather than failing the whole send.
   const attachments: Array<Record<string, string>> = [];
-  const shown: Array<{id: string, name: string}> = [];
+  const shown: Array<{id: string, name: string, link: string, content: string}> = [];
   let carried = 0;
   (Array.isArray(body.photos) ? body.photos : []).forEach((p: any, i: number)=>{
     if(!p || !p.content) return;
@@ -96,8 +125,12 @@ Deno.serve(async (req: Request)=>{
       content_type: 'image/jpeg',
       content_id: id
     });
-    shown.push({id: id, name: String(p.caption || p.filename || '')});
+    shown.push({id: id, name: String(p.caption || p.filename || ''), link: '', content: String(p.content)});
   });
+
+  for(const p of shown){
+    p.link = await keepFullSize(who.companyId, p.id + '-' + Date.now().toString(36), p.content);
+  }
 
   // A caption only earns its place when there is something to tell apart: with
   // before and after photos both on, they are labelled; with one kind, the
@@ -110,12 +143,22 @@ Deno.serve(async (req: Request)=>{
   // A quarter of the width they were: big enough to see what was done, small
   // enough that the report still reads as a report. Mail apps let the reader
   // tap one to see it full size.
-  const PHOTO_WIDTH = 130;
+  // Wide enough to see the pool, narrow enough that two sit side by side in a
+  // 520-wide report. The width is declared on the image itself as well as the
+  // cell, because mail apps ignore one or the other.
+  const PHOTO_WIDTH = 240;
 
-  function photoCard(p: {id: string, name: string}, label: string){
-    return '<img src="cid:' + p.id + '" alt="' + (label || 'Photo from this visit') + '" width="' + PHOTO_WIDTH + '" '
-      + 'style="display:block;width:100%;max-width:' + PHOTO_WIDTH + 'px;height:auto;'
-      + 'border-radius:8px;border:1px solid #E6E9E8;">'
+  function photoCard(p: {id: string, name: string, link: string}, label: string){
+    const img = '<img src="cid:' + p.id + '" alt="' + (label || 'Photo from this visit') + '" '
+      + 'width="' + PHOTO_WIDTH + '" '
+      + 'style="display:block;width:' + PHOTO_WIDTH + 'px;max-width:100%;height:auto;'
+      + 'border-radius:8px;border:1px solid #E6E9E8;">';
+    // A link to the full-size copy, since an inline image cannot be tapped in
+    // most mail apps
+    const clickable = p.link
+      ? '<a href="' + p.link + '" target="_blank" style="text-decoration:none;">' + img + '</a>'
+      : img;
+    return clickable
       + (label ? '<div style="font-size:12px;color:#6B7B79;margin-top:5px;">' + label + '</div>' : '');
   }
 
@@ -126,11 +169,10 @@ Deno.serve(async (req: Request)=>{
       // Before and after belong next to each other, so the difference is the
       // first thing anyone sees
       cards = '<tr>'
-        + '<td valign="top" style="padding:0 10px 14px 0;width:' + PHOTO_WIDTH + 'px;">'
+        + '<td valign="top" width="' + PHOTO_WIDTH + '" style="padding:0 12px 14px 0;width:' + PHOTO_WIDTH + 'px;">'
         + photoCard(shown[0], kindOf(shown[0].name)) + '</td>'
-        + '<td valign="top" style="padding:0 0 14px;width:' + PHOTO_WIDTH + 'px;">'
-        + photoCard(shown[1], kindOf(shown[1].name)) + '</td>'
-        + '<td style="width:100%;"></td></tr>';
+        + '<td valign="top" width="' + PHOTO_WIDTH + '" style="padding:0 0 14px;width:' + PHOTO_WIDTH + 'px;">'
+        + photoCard(shown[1], kindOf(shown[1].name)) + '</td></tr>';
     } else {
       cards = shown.map(p=>
         '<tr><td style="padding:0 0 14px;">' + photoCard(p, labelThem ? kindOf(p.name) : '') + '</td></tr>'
