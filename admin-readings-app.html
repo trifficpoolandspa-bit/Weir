@@ -3774,6 +3774,12 @@ function fieldSyncSummary(){
     : 'Waiting for the first sync\u2026';
   const trouble = state.lastTrouble ? ' ' + state.lastTrouble.charAt(0).toUpperCase()
     + state.lastTrouble.slice(1) + ' — it will try again.' : '';
+  const lastReport = deviceGet('lastReport');
+  const reportNote = lastReport
+    ? ' Last report ' + (lastReport.by === 'office'
+        ? 'went out from the office.'
+        : 'went the old way (' + (lastReport.why || 'the office could not send it') + ').')
+    : '';
   const unknown = Object.values(state.unknownHere || {});
   const unknownNote = unknown.length
     ? ' ' + unknown.length + (unknown.length === 1 ? ' customer on this phone is' : ' customers on this phone are')
@@ -3788,7 +3794,7 @@ function fieldSyncSummary(){
     ? 'Last synced ' + when + ' — ' + pending + (pending === 1 ? ' change' : ' changes') + ' still to send.'
     : (state.lastTrouble ? 'Last reached the office ' + when + '.'
        : 'Up to date with the office. Last synced ' + when + '.');
-  return headline + trouble + refused + unknownNote;
+  return headline + trouble + reportNote + refused + unknownNote;
 }
 
 function fieldRenderSyncCard(){
@@ -11885,12 +11891,22 @@ function buildReportEmailHtml(customer, whenText, sections, opts){
 // off, closed or out of signal no longer holds somebody's report up. It goes
 // out as "<the company> via Weir", with replies going to the company's own
 // address — both read from the server, so nobody can send as anyone else.
+function noteLastReport(by, why){
+  try{
+    deviceSet('lastReport', {at: new Date().toISOString(), by: by, why: why || ''});
+    setTimeout(fieldRenderSyncCard, 0);
+  }catch(e){}
+}
+
 async function sendReportFromOffice(customerId, type){
   const actions = document.getElementById('reportActions');
   const email = actions.dataset.email;
   const custName = actions.dataset.customerName;
   const session = deviceGet('session');
-  if(!session || !session.access_token) return {ok: false, reason: 'signed-out'};
+  if(!session || !session.access_token){
+    noteLastReport('the old way', 'this phone needs signing in again');
+    return {ok: false, reason: 'signed-out'};
+  }
 
   const photos = [];
   for(const p of (currentReportPhotos || [])){
@@ -11921,9 +11937,14 @@ async function sendReportFromOffice(customerId, type){
       return {ok: false, reason: again === true ? 'retry' : 'signed-out'};
     }
     const body = await res.json().catch(()=> ({}));
-    if(!res.ok) return {ok: false, reason: 'refused', message: body.error || ''};
+    if(!res.ok){
+      noteLastReport('the old way', (body.error || ('the office said ' + res.status)));
+      return {ok: false, reason: 'refused', message: body.error || ''};
+    }
+    noteLastReport('office', '');
     return {ok: true};
   }catch(e){
+    noteLastReport('the old way', 'no connection when it was sent');
     return {ok: false, reason: 'offline'};
   }
 }
@@ -11983,10 +12004,13 @@ async function attemptAutoSend(customerId, type, manual){
     return;
   }
 
-  // The office sends it, so it goes whether or not this phone is around
+  // The office sends it, so it goes whether or not this phone is around.
+  // What happened is written down either way: a message on screen is gone in
+  // two seconds, and "why did that go the old way" needs answering later.
   const fromOffice = await sendReportFromOffice(customerId, type);
   if(fromOffice.ok){
     showToast('Report sent to ' + email);
+    setTimeout(fieldRenderSyncCard, 0);
     return;
   }
   if(fromOffice.reason === 'retry'){
