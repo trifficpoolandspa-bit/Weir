@@ -250,6 +250,14 @@ const base = {
     + '; return {photoSection, withPhotos};');
   const {photoSection, withPhotos} = build(shown);
 
+  // The browser blocks the whole request if the app sends a header the
+  // function has not said it accepts. That looked exactly like no signal.
+  const allowed = (src.match(/'Access-Control-Allow-Headers':\s*'([^']+)'/) || [])[1] || '';
+  ['authorization', 'apikey', 'content-type'].forEach(h=>{
+    check('  the function accepts the ' + h + ' header', allowed.indexOf(h) !== -1, allowed);
+  });
+  check('  and answers the browser\'s question before the send', /OPTIONS/.test(src));
+
   const section = photoSection();
   check('each photo is shown in the page', (section.match(/<img src="cid:photo-/g) || []).length === 2, section.slice(0, 120));
   check('with a heading that matches how many there are', /Photos from this visit/.test(section));
