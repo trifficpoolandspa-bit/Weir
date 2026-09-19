@@ -662,6 +662,42 @@ input::placeholder{color:#A9BCB9;}
   </div>
 
   <div class="view" id="view-technicians">
+    <div class="card" style="padding:10px 12px;">
+      <div class="history-seg" id="techMainTabs" style="display:flex;gap:8px;">
+        <button class="history-type-btn active" data-techmain="list" type="button">Technicians</button>
+        <button class="history-type-btn" data-techmain="photos" type="button">Photo requirements</button>
+      </div>
+    </div>
+
+    <div class="card" id="photoRequireCard" style="display:none;">
+      <h2 style="margin:0 0 4px;">Photos a technician must take</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">Tick which bodies of water each photo is required for. A technician cannot move past the step without it.</p>
+
+      <div id="photoRequireRows"></div>
+
+      <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:14px;">
+        <label style="display:flex;align-items:center;gap:10px;padding:7px 0;font-size:14px;cursor:pointer;">
+          <input type="checkbox" id="chkRequireGatePhoto" style="margin:0;">
+          <span>Require a closed gate photo</span>
+        </label>
+        <p style="font-size:11.5px;color:var(--muted);margin:2px 0 0 28px;">One photo for the whole visit, taken on the last body of water serviced.</p>
+      </div>
+
+      <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <h3 style="font-size:13.5px;margin:0;">Your own photos</h3>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <select id="customPhotoBody" style="width:auto;"></select>
+            <button class="btn btn-ghost" id="btnAddCustomPhoto" style="width:auto;padding:6px 12px;font-size:12px;">+ Add a photo</button>
+          </div>
+        </div>
+        <p style="font-size:11.5px;color:var(--muted);margin:6px 0 10px;">Name a photo the technician must take &mdash; a filter gauge, a skimmer basket, whatever you need. Choose whether it comes before or after the readings.</p>
+        <div id="customPhotoList"></div>
+      </div>
+      <p id="photoRequireNote" style="display:none;font-size:11.5px;color:var(--rust);margin:10px 0 0;"></p>
+    </div>
+
+    <div id="techListPane">
     <div class="card">
       <button class="btn btn-primary" id="btnAddTech" style="width:auto;">+ Add technician</button>
     </div>
@@ -731,6 +767,7 @@ input::placeholder{color:#A9BCB9;}
         <span class="section-count" id="techCount"></span>
       </div>
       <div id="technicianList"></div>
+    </div>
     </div>
   </div>
 
@@ -860,33 +897,6 @@ input::placeholder{color:#A9BCB9;}
           <option value="5">5 stops before</option>
         </select>
         <p style="font-size:12.5px;color:var(--muted);margin:10px 0 0;" id="autoNotifyExplain"></p>
-      </div>
-    </div>
-
-    <div class="card" id="photoRequireCard">
-      <h2 style="margin:0 0 4px;">Photos for this section</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;" id="photoRequireHint">Require photos before a technician can move past each photo step.</p>
-      <label style="display:flex;align-items:center;gap:10px;padding:7px 0;font-size:14px;cursor:pointer;">
-        <input type="checkbox" id="chkRequireBeforePhoto" style="margin:0;">
-        <span>Require a before photo</span>
-      </label>
-      <label style="display:flex;align-items:center;gap:10px;padding:7px 0;font-size:14px;cursor:pointer;">
-        <input type="checkbox" id="chkRequireAfterPhoto" style="margin:0;">
-        <span>Require an after photo</span>
-      </label>
-      <label style="display:flex;align-items:center;gap:10px;padding:7px 0;font-size:14px;cursor:pointer;">
-        <input type="checkbox" id="chkRequireGatePhoto" style="margin:0;">
-        <span>Require a closed gate photo</span>
-      </label>
-      <p id="photoRequireNote" style="display:none;font-size:11.5px;color:var(--rust);margin:8px 0 0;"></p>
-
-      <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-          <h3 style="font-size:13.5px;margin:0;">Your own photos</h3>
-          <button class="btn btn-ghost" id="btnAddCustomPhoto" style="width:auto;padding:6px 12px;font-size:12px;">+ Add a photo</button>
-        </div>
-        <p style="font-size:11.5px;color:var(--muted);margin:6px 0 10px;">Name a photo the technician must take &mdash; a filter gauge, a skimmer basket, whatever you need. Choose whether it comes before or after the readings.</p>
-        <div id="customPhotoList"></div>
       </div>
     </div>
 
@@ -10680,192 +10690,165 @@ document.getElementById('btnDeleteCustomConfig').addEventListener('click', async
 });
 
 
-// Per-section photo requirements. The global before/after photo switches turn
-// the steps off entirely, so they always win over these.
-function renderPhotoRequirements(){
-  const card = document.getElementById('photoRequireCard');
-  const beforeBox = document.getElementById('chkRequireBeforePhoto');
-  const afterBox = document.getElementById('chkRequireAfterPhoto');
-  const note = document.getElementById('photoRequireNote');
-  if(!card || !beforeBox || !afterBox) return;
+// What a technician must photograph, on the Technicians page. Before and after
+// are ticked per body of water; the gate is one photo for the whole visit, so
+// it has a single tick and is kept with the pool's setup.
+const PHOTO_BODIES = [['pool', 'Pool'], ['spa', 'Spa'], ['fountain', 'Extra']];
 
-  const lists = activeConfigLists();
-  if(!lists){
-    card.style.display = 'none';
-    return;
-  }
-  card.style.display = 'block';
-
-  beforeBox.checked = lists.requireBeforePhoto === true;
-  afterBox.checked = lists.requireAfterPhoto === true;
-  // The gate belongs to the property, not to a body of water — one gate photo
-  // covers the whole visit, and it is taken on whichever body is serviced last.
-  // So the tick only makes sense on the Pool tab; showing it on Spa and Extra
-  // implied three separate gate photos.
-  const gateBox = document.getElementById('chkRequireGatePhoto');
-  const gateRow = gateBox ? gateBox.parentElement : null;
-  const onPool = selectedChemConfigType === 'pool';
-  if(gateRow) gateRow.style.display = onPool ? 'flex' : 'none';
-  if(gateBox) gateBox.checked = lists.requireGatePhoto === true;
-  renderCustomPhotoList();
-
-  // If the step itself is switched off in Settings, the requirement can't apply
-  const beforeOff = appSettings.showBeforePhotos === false;
-  const afterOff = appSettings.showAfterPhotos === false;
-  // The gate photo has a step of its own now, so it follows the same rule
-  const gateOff = appSettings.showGatePhoto === false;
-  beforeBox.disabled = beforeOff;
-  afterBox.disabled = afterOff;
-  beforeBox.parentElement.style.opacity = beforeOff ? '0.45' : '';
-  afterBox.parentElement.style.opacity = afterOff ? '0.45' : '';
-  if(gateBox){
-    gateBox.disabled = gateOff;
-    const gRow = gateBox.parentElement;
-    if(gRow){
-      gRow.style.opacity = gateOff ? '0.45' : '';
-      gRow.style.cursor = gateOff ? 'not-allowed' : 'pointer';
-    }
-  }
-
-  const off = [];
-  if(beforeOff) off.push('Before photos');
-  if(afterOff) off.push('After photos');
-  if(gateOff && onPool) off.push('Gate photo');
-  if(off.length){
-    note.textContent = off.join(' and ') + (off.length === 1 ? ' is' : ' are') +
-      ' switched off in Settings, so that requirement has no effect until it is turned back on.';
-    note.style.display = 'block';
-  } else {
-    note.style.display = 'none';
-  }
+// The requirement lives on each body's own setup, which is what the phones read
+function photoBodyConfig(key){
+  if(!chemConfig[key]) chemConfig[key] = {chemicals: [], dosages: []};
+  return chemConfig[key];
 }
 
-document.getElementById('chkRequireBeforePhoto').addEventListener('change', (e)=>{
-  const lists = activeConfigLists();
-  if(!lists) return;
-  lists.requireBeforePhoto = e.target.checked;
-  saveActiveConfig();
-  showToast(e.target.checked ? 'Before photo now required here' : 'Before photo no longer required here');
-});
+function renderPhotoRequirements(){
+  const card = document.getElementById('photoRequireCard');
+  const rows = document.getElementById('photoRequireRows');
+  if(!card || !rows) return;
 
-document.getElementById('chkRequireGatePhoto').addEventListener('change', (e)=>{
-  const lists = activeConfigLists();
-  if(!lists) return;
-  lists.requireGatePhoto = e.target.checked;
-  saveActiveConfig();
-  showToast(e.target.checked
-    ? 'Gate photo now required here, regardless of the app-wide setting'
-    : 'Gate photo no longer required here');
-});
+  const steps = [
+    ['requireBeforePhoto', 'Require a before photo', appSettings.showBeforePhotos === false,
+     'The before photo step is switched off in Settings.'],
+    ['requireAfterPhoto', 'Require an after photo', appSettings.showAfterPhotos === false,
+     'The after photo step is switched off in Settings.']
+  ];
 
-document.getElementById('chkRequireAfterPhoto').addEventListener('change', (e)=>{
-  const lists = activeConfigLists();
-  if(!lists) return;
-  lists.requireAfterPhoto = e.target.checked;
-  saveActiveConfig();
-  showToast(e.target.checked ? 'After photo now required here' : 'After photo no longer required here');
-});
+  rows.innerHTML = '';
+  steps.forEach(([field, label, stepOff, why])=>{
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:16px;'
+      + 'flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--line);'
+      + (stepOff ? 'opacity:0.45;' : '');
 
+    const name = document.createElement('div');
+    name.style.cssText = 'font-size:14px;';
+    name.textContent = label;
+    row.appendChild(name);
 
-// ---------- Photos the user defines themselves ----------
-// Stored on the list alongside the built-in requirements, so they follow the
-// same per-body and per-customer rules as everything else.
-
-document.getElementById('btnAddCustomPhoto').addEventListener('click', ()=>{
-  const lists = activeConfigLists();
-  if(!lists){ showToast('Pick a customer and body of water first'); return; }
-  lists.customPhotos = lists.customPhotos || [];
-  lists.customPhotos.push({
-    id: 'cphoto_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-    label: '', when: 'after', required: false
-  });
-  saveActiveConfig();
-  renderCustomPhotoList();
-});
-
-
-// Who a user-defined photo applies to. No technicians chosen means everyone,
-// so a photo added without touching this still works for the whole team.
-function openPhotoTechModal(item){
-  const overlay = document.createElement('div');
-  overlay.className = 'confirm-overlay';
-  overlay.innerHTML = `
-    <div class="confirm-box" style="max-width:420px;max-height:80vh;display:flex;flex-direction:column;">
-      <h3 style="font-size:15px;margin:0 0 4px;">Who takes this photo?</h3>
-      <p style="font-size:11.5px;color:var(--muted);margin:0 0 12px;">${item.label || 'This photo'}</p>
-      <div id="photoTechList" style="flex:1;overflow-y:auto;"></div>
-      <div class="btn-row" style="margin-top:12px;">
-        <button class="btn btn-primary" id="photoTechDone" style="flex:1;">Done</button>
-      </div>
-    </div>`;
-  document.body.appendChild(overlay);
-
-  const listBox = overlay.querySelector('#photoTechList');
-
-  function draw(){
-    listBox.innerHTML = '';
-    item.techIds = Array.isArray(item.techIds) ? item.techIds : [];
-
-    const allRow = document.createElement('label');
-    allRow.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 0;'
-      + 'border-bottom:1px solid var(--line);font-size:14px;font-weight:600;cursor:pointer;';
-    const allBox = document.createElement('input');
-    allBox.type = 'checkbox';
-    allBox.checked = item.techIds.length === 0;
-    allBox.style.margin = '0';
-    allBox.addEventListener('change', ()=>{
-      item.techIds = [];              // empty means everyone
-      saveActiveConfig();
-      draw();
-    });
-    allRow.appendChild(allBox);
-    allRow.appendChild(document.createTextNode('All technicians'));
-    listBox.appendChild(allRow);
-
-    const active = (technicians || []).filter(t => t.active !== false);
-    if(active.length === 0){
-      const none = document.createElement('div');
-      none.style.cssText = 'font-size:12.5px;color:var(--muted);padding:10px 0;';
-      none.textContent = 'No technicians added yet.';
-      listBox.appendChild(none);
-      return;
-    }
-
-    active.forEach(t=>{
-      const row = document.createElement('label');
-      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 0;'
-        + 'border-bottom:1px solid var(--line);font-size:14px;cursor:pointer;';
+    const ticks = document.createElement('div');
+    ticks.style.cssText = 'display:flex;align-items:center;gap:14px;flex-wrap:wrap;';
+    PHOTO_BODIES.forEach(([key, shown])=>{
+      const wrap = document.createElement('label');
+      wrap.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:12.5px;'
+        + 'color:var(--muted);cursor:' + (stepOff ? 'default' : 'pointer') + ';';
       const box = document.createElement('input');
       box.type = 'checkbox';
-      box.checked = item.techIds.indexOf(t.id) !== -1;
       box.style.margin = '0';
+      box.checked = photoBodyConfig(key)[field] === true;
+      box.disabled = stepOff;
       box.addEventListener('change', ()=>{
-        const at = item.techIds.indexOf(t.id);
-        if(box.checked && at === -1) item.techIds.push(t.id);
-        if(!box.checked && at !== -1) item.techIds.splice(at, 1);
-        saveActiveConfig();
-        draw();
+        photoBodyConfig(key)[field] = box.checked;
+        saveChemConfig();
+        showToast(box.checked
+          ? shown + ': ' + label.replace('Require a', 'now needs a').replace('Require an', 'now needs an')
+          : shown + ': no longer required');
       });
-      row.appendChild(box);
-      row.appendChild(document.createTextNode(t.name || 'Unnamed'));
-      listBox.appendChild(row);
+      wrap.appendChild(box);
+      wrap.appendChild(document.createTextNode(shown));
+      ticks.appendChild(wrap);
     });
+    row.appendChild(ticks);
+    rows.appendChild(row);
+
+    if(stepOff){
+      const note = document.createElement('p');
+      note.style.cssText = 'font-size:11.5px;color:var(--rust);margin:4px 0 0;';
+      note.textContent = why;
+      rows.appendChild(note);
+    }
+  });
+
+  // The gate: one photo for the whole visit, kept with the pool's setup
+  const gateBox = document.getElementById('chkRequireGatePhoto');
+  if(gateBox){
+    gateBox.checked = photoBodyConfig('pool').requireGatePhoto === true;
+    const gateOff = appSettings.showGatePhoto === false;
+    gateBox.disabled = gateOff;
+    if(gateBox.parentElement) gateBox.parentElement.style.opacity = gateOff ? '0.45' : '';
   }
 
-  const close = ()=>{
-    document.body.removeChild(overlay);
-    renderCustomPhotoList();
-  };
-  overlay.querySelector('#photoTechDone').addEventListener('click', close);
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) close(); });
+  const note = document.getElementById('photoRequireNote');
+  if(note){
+    const off = [appSettings.showBeforePhotos === false ? 'before' : null,
+                 appSettings.showAfterPhotos === false ? 'after' : null,
+                 appSettings.showGatePhoto === false ? 'gate' : null].filter(Boolean);
+    note.textContent = off.length
+      ? 'Switched off in Settings: ' + off.join(', ') + '. A requirement cannot apply to a step that is off.'
+      : '';
+    note.style.display = off.length ? 'block' : 'none';
+  }
 
-  draw();
+  renderCustomPhotoBodyPicker();
+  renderCustomPhotoList();
+}
+
+// Your own photos belong to one body of water at a time, so there is a picker
+let customPhotoBodyKey = 'pool';
+
+// On the Technicians page these belong to a body of water; everywhere else the
+// old behaviour stands
+function savePhotoConfig(){
+  if(document.getElementById('customPhotoBody')) saveChemConfig();
+  else saveActiveConfig();
+}
+
+// The gate is one photo for the whole visit, kept with the pool's setup
+document.addEventListener('DOMContentLoaded', ()=>{
+  const gate = document.getElementById('chkRequireGatePhoto');
+  if(gate) gate.addEventListener('change', ()=>{
+    photoBodyConfig('pool').requireGatePhoto = gate.checked;
+    saveChemConfig();
+    showToast(gate.checked ? 'A closed gate photo is now required' : 'Gate photo no longer required');
+  });
+
+  const add = document.getElementById('btnAddCustomPhoto');
+  if(add) add.addEventListener('click', ()=>{
+    const lists = photoBodyConfig(customPhotoBodyKey);
+    lists.customPhotos = lists.customPhotos || [];
+    lists.customPhotos.push({id: 'cp_' + Date.now(), label: '', when: 'after'});
+    saveChemConfig();
+    renderCustomPhotoList();
+  });
+
+  // The two tabs on the Technicians page
+  document.querySelectorAll('#techMainTabs .history-type-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('#techMainTabs .history-type-btn')
+        .forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const photos = btn.dataset.techmain === 'photos';
+      const list = document.getElementById('techListPane');
+      const card = document.getElementById('photoRequireCard');
+      if(list) list.style.display = photos ? 'none' : '';
+      if(card) card.style.display = photos ? 'block' : 'none';
+      if(photos) renderPhotoRequirements();
+    });
+  });
+});
+
+function renderCustomPhotoBodyPicker(){
+  const pick = document.getElementById('customPhotoBody');
+  if(!pick) return;
+  if(!pick.options.length){
+    PHOTO_BODIES.forEach(([key, shown])=>{
+      const o = document.createElement('option');
+      o.value = key;
+      o.textContent = shown;
+      pick.appendChild(o);
+    });
+    pick.addEventListener('change', ()=>{
+      customPhotoBodyKey = pick.value;
+      renderCustomPhotoList();
+    });
+  }
+  pick.value = customPhotoBodyKey;
 }
 
 function renderCustomPhotoList(){
   const box = document.getElementById('customPhotoList');
   if(!box) return;
-  const lists = activeConfigLists();
+  const lists = (typeof customPhotoBodyKey !== 'undefined' && document.getElementById('customPhotoBody'))
+    ? photoBodyConfig(customPhotoBodyKey) : activeConfigLists();
   box.innerHTML = '';
   if(!lists){ return; }
 
@@ -10888,7 +10871,7 @@ function renderCustomPhotoList(){
       const byId = {};
       (lists.customPhotos || []).forEach(p => { byId[p.id] = p; });
       lists.customPhotos = keys.map(k => byId[k]).filter(Boolean);
-      saveActiveConfig();
+      savePhotoConfig();
       renderCustomPhotoList();
     });
     row.appendChild(grip);
@@ -10899,7 +10882,7 @@ function renderCustomPhotoList(){
     name.style.cssText = 'flex:1 1 150px;min-width:0;font-size:13px;padding:6px 8px;';
     name.addEventListener('change', ()=>{
       item.label = name.value.trim();
-      saveActiveConfig();
+      savePhotoConfig();
       renderCustomPhotoList();
     });
     row.appendChild(name);
@@ -10928,7 +10911,7 @@ function renderCustomPhotoList(){
     when.value = item.when === 'before' ? 'before' : 'after';
     when.addEventListener('change', ()=>{
       item.when = when.value;
-      saveActiveConfig();
+      savePhotoConfig();
     });
     row.appendChild(when);
 
@@ -10940,7 +10923,7 @@ function renderCustomPhotoList(){
     reqBox.style.margin = '0';
     reqBox.addEventListener('change', ()=>{
       item.required = reqBox.checked;
-      saveActiveConfig();
+      savePhotoConfig();
     });
     req.appendChild(reqBox);
     req.appendChild(document.createTextNode('Required'));
@@ -10955,7 +10938,7 @@ function renderCustomPhotoList(){
       const ok = await confirmDialog('Remove "' + (item.label || 'this photo') + '"?', 'Remove');
       if(!ok) return;
       lists.customPhotos.splice(idx, 1);
-      saveActiveConfig();
+      savePhotoConfig();
       renderCustomPhotoList();
     });
     row.appendChild(del);
