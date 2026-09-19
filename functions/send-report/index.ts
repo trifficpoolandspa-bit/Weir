@@ -82,7 +82,7 @@ Deno.serve(async (req: Request)=>{
   // page by an id, which is what "cid:" means in an email. Anything past what
   // the email service accepts is left out rather than failing the whole send.
   const attachments: Array<Record<string, string>> = [];
-  const shown: string[] = [];
+  const shown: Array<{id: string, name: string}> = [];
   let carried = 0;
   (Array.isArray(body.photos) ? body.photos : []).forEach((p: any, i: number)=>{
     if(!p || !p.content) return;
@@ -96,17 +96,23 @@ Deno.serve(async (req: Request)=>{
       content_type: 'image/jpeg',
       content_id: id
     });
-    shown.push(id + '\u0001' + String(p.caption || p.filename || ''));
+    shown.push({id: id, name: String(p.caption || p.filename || '')});
   });
 
-  // The report's own page, with the photos added to the end of it
+  // A caption only earns its place when there is something to tell apart: with
+  // before and after photos both on, they are labelled; with one kind, the
+  // picture speaks for itself and a file name under it helps nobody.
+  const kindOf = (name: string)=>
+    /before/i.test(name) ? 'Before' : (/after/i.test(name) ? 'After' : '');
+  const kinds = new Set(shown.map(p => kindOf(p.name)).filter(k => k));
+  const labelThem = kinds.size > 1;
+
   function photoSection(){
     if(!shown.length) return '';
-    const cards = shown.map(entry=>{
-      const [id, caption] = entry.split('\u0001');
-      const label = caption.replace(/[<>&]/g, '').replace(/\.(jpe?g|png|webp)$/i, '');
+    const cards = shown.map(p=>{
+      const label = labelThem ? kindOf(p.name) : '';
       return '<tr><td style="padding:0 0 16px;">'
-        + '<img src="cid:' + id + '" alt="' + label + '" width="520" '
+        + '<img src="cid:' + p.id + '" alt="' + (label || 'Photo from this visit') + '" width="520" '
         + 'style="display:block;width:100%;max-width:520px;height:auto;border-radius:10px;border:1px solid #E6E9E8;">'
         + (label ? '<div style="font-size:12.5px;color:#6B7B79;margin-top:6px;">' + label + '</div>' : '')
         + '</td></tr>';
@@ -118,10 +124,13 @@ Deno.serve(async (req: Request)=>{
       + cards + '</table></td></tr>';
   }
 
-  // Slotted in before the report's closing table, so it sits inside the page
+  // Above the sign-off and the company name, so the report reads: what was
+  // done, the photos, then thank you.
   function withPhotos(page: string){
     const section = photoSection();
     if(!section) return page;
+    const footer = page.lastIndexOf('<tr><td style="padding:26px;">');
+    if(footer !== -1) return page.slice(0, footer) + section + page.slice(footer);
     const at = page.lastIndexOf('</table></td></tr></table>');
     if(at === -1) return page + section;
     return page.slice(0, at) + section + page.slice(at);
