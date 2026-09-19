@@ -11522,26 +11522,32 @@ const MAX_REPORT_PHOTOS = 6;
 
 function collectReportPhotos(sections){
   const out = [];
-  const add = (dataUrl, name)=>{
+  // The caption is decided here, where the body of water is known — "Pool
+  // before", "Spa after" — rather than guessed from a file name later
+  const add = (dataUrl, name, caption)=>{
     if(!dataUrl || out.length >= MAX_REPORT_PHOTOS) return;
     // Held as-is here; converted to JPEG just before sending
-    out.push({name: name, source: dataUrl});
+    out.push({name: name, source: dataUrl, caption: caption || ''});
   };
 
   (sections || []).forEach(s=>{
     const r = s.reading || {};
-    const label = String(s.label || 'photo').toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    if(r.beforePhoto) add(r.beforePhoto, label + '-before.jpg');
-    if(r.photo) add(r.photo, label + '-after.jpg');
+    const body = String(s.label || '').trim();
+    const label = (body || 'photo').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const says = what => (body ? body + ' ' + what : what.charAt(0).toUpperCase() + what.slice(1));
+    if(r.beforePhoto) add(r.beforePhoto, label + '-before.jpg', says('before'));
+    if(r.photo) add(r.photo, label + '-after.jpg', says('after'));
     // Anything the company added themselves
     Object.keys(r.customPhotos || {}).forEach(k=>{
-      add(r.customPhotos[k], label + '-' + String(k).replace(/[^a-z0-9]+/gi, '-') + '.jpg');
+      const what = String(k).replace(/[-_]+/g, ' ').trim();
+      add(r.customPhotos[k], label + '-' + String(k).replace(/[^a-z0-9]+/gi, '-') + '.jpg',
+          says(what || 'photo'));
     });
   });
 
   // The gate goes last — it is proof the property was left secure
   const gate = (sections || []).map(s => (s.reading || {}).gatePhoto).find(Boolean);
-  if(gate) add(gate, 'gate.jpg');
+  if(gate) add(gate, 'gate.jpg', 'Gate');
 
   return out;
 }
@@ -11913,7 +11919,7 @@ async function sendReportFromOffice(customerId, type){
     try{
       const jpeg = await webpToJpegDataUrl(p.source);
       const content = String(jpeg).split(',')[1];
-      if(content) photos.push({filename: p.name || 'photo.jpg', content: content});
+      if(content) photos.push({filename: p.name || 'photo.jpg', content: content, caption: p.caption || ''});
     }catch(e){}
   }
 
