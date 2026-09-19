@@ -111,7 +111,7 @@ Deno.serve(async (req: Request)=>{
   // page by an id, which is what "cid:" means in an email. Anything past what
   // the email service accepts is left out rather than failing the whole send.
   const attachments: Array<Record<string, string>> = [];
-  const shown: Array<{id: string, name: string, link: string, content: string}> = [];
+  const shown: Array<{id: string, name: string, caption: string, link: string, content: string}> = [];
   let carried = 0;
   (Array.isArray(body.photos) ? body.photos : []).forEach((p: any, i: number)=>{
     if(!p || !p.content) return;
@@ -125,20 +125,25 @@ Deno.serve(async (req: Request)=>{
       content_type: 'image/jpeg',
       content_id: id
     });
-    shown.push({id: id, name: String(p.caption || p.filename || ''), link: '', content: String(p.content)});
+    shown.push({id: id, name: String(p.filename || ''), caption: String(p.caption || ''),
+                link: '', content: String(p.content)});
   });
 
   for(const p of shown){
     p.link = await keepFullSize(who.companyId, p.id + '-' + Date.now().toString(36), p.content);
   }
 
-  // A caption only earns its place when there is something to tell apart: with
-  // before and after photos both on, they are labelled; with one kind, the
-  // picture speaks for itself and a file name under it helps nobody.
-  const kindOf = (name: string)=>
-    /before/i.test(name) ? 'Before' : (/after/i.test(name) ? 'After' : '');
-  const kinds = new Set(shown.map(p => kindOf(p.name)).filter(k => k));
-  const labelThem = kinds.size > 1;
+  // The phone says what each photo is — "Pool before", "Spa after" — because
+  // only the phone knows which body of water it came from. Older phones send
+  // nothing, so the file name is read as a fallback. A file name is never shown
+  // as a caption either way.
+  const kindOf = (p: {name: string, caption?: string})=>{
+    const said = String(p.caption || '').trim();
+    if(said) return said.charAt(0).toUpperCase() + said.slice(1);
+    const name = String(p.name || '');
+    return /before/i.test(name) ? 'Before' : (/after/i.test(name) ? 'After' : '');
+  };
+  const labelThem = shown.some(p => kindOf(p));
 
   // A quarter of the width they were: big enough to see what was done, small
   // enough that the report still reads as a report. Mail apps let the reader
@@ -148,7 +153,7 @@ Deno.serve(async (req: Request)=>{
   // cell, because mail apps ignore one or the other.
   const PHOTO_WIDTH = 240;
 
-  function photoCard(p: {id: string, name: string, link: string}, label: string){
+  function photoCard(p: {id: string, name: string, link: string, caption?: string}, label: string){
     const img = '<img src="cid:' + p.id + '" alt="' + (label || 'Photo from this visit') + '" '
       + 'width="' + PHOTO_WIDTH + '" '
       + 'style="display:block;width:' + PHOTO_WIDTH + 'px;max-width:100%;height:auto;'
@@ -170,12 +175,12 @@ Deno.serve(async (req: Request)=>{
       // first thing anyone sees
       cards = '<tr>'
         + '<td valign="top" width="' + PHOTO_WIDTH + '" style="padding:0 12px 14px 0;width:' + PHOTO_WIDTH + 'px;">'
-        + photoCard(shown[0], kindOf(shown[0].name)) + '</td>'
+        + photoCard(shown[0], kindOf(shown[0])) + '</td>'
         + '<td valign="top" width="' + PHOTO_WIDTH + '" style="padding:0 0 14px;width:' + PHOTO_WIDTH + 'px;">'
-        + photoCard(shown[1], kindOf(shown[1].name)) + '</td></tr>';
+        + photoCard(shown[1], kindOf(shown[1])) + '</td></tr>';
     } else {
       cards = shown.map(p=>
-        '<tr><td style="padding:0 0 14px;">' + photoCard(p, labelThem ? kindOf(p.name) : '') + '</td></tr>'
+        '<tr><td style="padding:0 0 14px;">' + photoCard(p, kindOf(p)) + '</td></tr>'
       ).join('');
     }
     return '<tr><td style="padding:0 26px 26px;">'
