@@ -107,20 +107,39 @@ Deno.serve(async (req: Request)=>{
   const kinds = new Set(shown.map(p => kindOf(p.name)).filter(k => k));
   const labelThem = kinds.size > 1;
 
+  // A quarter of the width they were: big enough to see what was done, small
+  // enough that the report still reads as a report. Mail apps let the reader
+  // tap one to see it full size.
+  const PHOTO_WIDTH = 130;
+
+  function photoCard(p: {id: string, name: string}, label: string){
+    return '<img src="cid:' + p.id + '" alt="' + (label || 'Photo from this visit') + '" width="' + PHOTO_WIDTH + '" '
+      + 'style="display:block;width:100%;max-width:' + PHOTO_WIDTH + 'px;height:auto;'
+      + 'border-radius:8px;border:1px solid #E6E9E8;">'
+      + (label ? '<div style="font-size:12px;color:#6B7B79;margin-top:5px;">' + label + '</div>' : '');
+  }
+
   function photoSection(){
     if(!shown.length) return '';
-    const cards = shown.map(p=>{
-      const label = labelThem ? kindOf(p.name) : '';
-      return '<tr><td style="padding:0 0 16px;">'
-        + '<img src="cid:' + p.id + '" alt="' + (label || 'Photo from this visit') + '" width="520" '
-        + 'style="display:block;width:100%;max-width:520px;height:auto;border-radius:10px;border:1px solid #E6E9E8;">'
-        + (label ? '<div style="font-size:12.5px;color:#6B7B79;margin-top:6px;">' + label + '</div>' : '')
-        + '</td></tr>';
-    }).join('');
+    let cards = '';
+    if(labelThem && shown.length === 2){
+      // Before and after belong next to each other, so the difference is the
+      // first thing anyone sees
+      cards = '<tr>'
+        + '<td valign="top" style="padding:0 10px 14px 0;width:' + PHOTO_WIDTH + 'px;">'
+        + photoCard(shown[0], kindOf(shown[0].name)) + '</td>'
+        + '<td valign="top" style="padding:0 0 14px;width:' + PHOTO_WIDTH + 'px;">'
+        + photoCard(shown[1], kindOf(shown[1].name)) + '</td>'
+        + '<td style="width:100%;"></td></tr>';
+    } else {
+      cards = shown.map(p=>
+        '<tr><td style="padding:0 0 14px;">' + photoCard(p, labelThem ? kindOf(p.name) : '') + '</td></tr>'
+      ).join('');
+    }
     return '<tr><td style="padding:0 26px 26px;">'
-      + '<div style="font-size:13.5px;font-weight:600;color:#16302E;margin:0 0 12px;">'
+      + '<div style="font-size:13.5px;font-weight:600;color:#16302E;margin:8px 0 12px;">'
       + (shown.length === 1 ? 'Photo from this visit' : 'Photos from this visit') + '</div>'
-      + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+      + '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;">'
       + cards + '</table></td></tr>';
   }
 
