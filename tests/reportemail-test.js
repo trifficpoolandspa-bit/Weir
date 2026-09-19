@@ -242,12 +242,11 @@ const base = {
   }
   const src = fs2.readFileSync(where, 'utf8');
 
-  const shown = ['photo-1\u0001before.jpg', 'photo-2\u0001after.jpg'];
-  const piece = src.slice(src.indexOf('function photoSection()'), src.indexOf('const from ='));
-  const build = new Function('shown', piece
-    .replace(/:\s*string\)/g, ')')
-    .replace(/function photoSection\(\)/, 'function photoSection()')
-    + '; return {photoSection, withPhotos};');
+  const shown = [{id: 'photo-1', name: 'pool-before.jpg'}, {id: 'photo-2', name: 'pool-after.jpg'}];
+  const piece = src.slice(src.indexOf('const kindOf ='), src.indexOf('const from ='));
+  const strip = code => code.replace(/\(name\s*:\s*string\)/g, '(name)').replace(/\(page\s*:\s*string\)/g, '(page)');
+  const build = list => new Function('shown', strip(piece)
+    + '; return {photoSection, withPhotos};')(list);
   const {photoSection, withPhotos} = build(shown);
 
   // The browser blocks the whole request if the app sends a header the
@@ -261,13 +260,21 @@ const base = {
   const section = photoSection();
   check('each photo is shown in the page', (section.match(/<img src="cid:photo-/g) || []).length === 2, section.slice(0, 120));
   check('with a heading that matches how many there are', /Photos from this visit/.test(section));
-  check('and a caption under each', /before/.test(section) && /after/.test(section));
-  check('the file extension is not used as the caption', section.indexOf('before.jpg<') === -1);
+  check('with before and after both on, each is labelled',
+        /Before/.test(section) && /After/.test(section), section.slice(0, 200));
+  check('the file name is never used as the caption', section.indexOf('.jpg<') === -1);
+  const onlyAfter = build([{id: 'photo-1', name: 'pool-after.jpg'}]);
+  check('with only one kind, there is no caption at all',
+        onlyAfter.photoSection().indexOf('margin-top:6px') === -1, onlyAfter.photoSection().slice(0, 160));
 
-  const page = '<html><body><table><tr><td>The report</td></tr></table></td></tr></table></body></html>';
+  const page = '<html><body><table><tr><td>The report</td></tr>'
+    + '<tr><td style="padding:26px;">Thank you for your business.<div>Triffic Pool and Spa</div></td></tr>'
+    + '</table></body></html>';
   const withThem = withPhotos(page);
-  check('the photos go inside the report, not after it',
-        withThem.indexOf('cid:photo-1') < withThem.lastIndexOf('</table></td></tr></table>'), 'placed at the end');
+  check('the photos sit above the thank-you and the company name',
+        withThem.indexOf('cid:photo-1') < withThem.indexOf('Thank you for your business'),
+        withThem.slice(withThem.indexOf('The report'), withThem.indexOf('The report') + 160));
+  check('and below what was done on the visit', withThem.indexOf('The report') < withThem.indexOf('cid:photo-1'));
   check('the report itself is untouched', withThem.indexOf('The report') !== -1);
 
   const none = build([]);
