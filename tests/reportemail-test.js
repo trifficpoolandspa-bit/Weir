@@ -242,12 +242,13 @@ const base = {
   }
   const src = fs2.readFileSync(where, 'utf8');
 
-  const shown = [{id: 'photo-1', name: 'pool-before.jpg'}, {id: 'photo-2', name: 'pool-after.jpg'}];
+  const shown = [{id: 'photo-1', name: 'pool-before.jpg', link: 'https://example.test/full-1'},
+                 {id: 'photo-2', name: 'pool-after.jpg', link: 'https://example.test/full-2'}];
   const piece = src.slice(src.indexOf('const kindOf ='), src.indexOf('const from ='));
   const strip = code => code
     .replace(/\(name\s*:\s*string\)/g, '(name)')
     .replace(/\(page\s*:\s*string\)/g, '(page)')
-    .replace(/\(p\s*:\s*\{id:\s*string,\s*name:\s*string\},\s*label\s*:\s*string\)/g, '(p, label)');
+    .replace(/\(p\s*:\s*\{[^}]+\},\s*label\s*:\s*string\)/g, '(p, label)');
   const build = list => new Function('shown', strip(piece)
     + '; return {photoSection, withPhotos};')(list);
   const {photoSection, withPhotos} = build(shown);
@@ -265,16 +266,22 @@ const base = {
   check('with a heading that matches how many there are', /Photos from this visit/.test(section));
   check('with before and after both on, each is labelled',
         /Before/.test(section) && /After/.test(section), section.slice(0, 200));
-  check('a quarter the width they were', /max-width:130px/.test(section), section.slice(0, 200));
+  check('each photo is 240 wide, declared where mail apps will obey it',
+        (section.match(/width="240"/g) || []).length >= 2 && /width:240px/.test(section), section.slice(0, 300));
+  check('and each one links to a full-size copy',
+        /<a href="https:\/\/example.test\/full-1"/.test(section) && /full-2/.test(section), section.slice(0, 300));
   check('before and after sit side by side',
         (section.match(/valign="top"/g) || []).length === 2, section.slice(0, 260));
   check('the heading is nudged down from what is above it', /margin:8px 0 12px/.test(section), section.slice(0, 160));
   check('the file name is never used as the caption', section.indexOf('.jpg<') === -1);
-  const onlyAfter = build([{id: 'photo-1', name: 'pool-after.jpg'}]);
+  const onlyAfter = build([{id: 'photo-1', name: 'pool-after.jpg', link: ''}]);
   check('with only one kind, there is no caption at all',
         onlyAfter.photoSection().indexOf('margin-top:5px') === -1, onlyAfter.photoSection().slice(0, 160));
-  check('and a single photo is the same size', /max-width:130px/.test(onlyAfter.photoSection()));
-  const three = build([{id: 'a', name: 'before.jpg'}, {id: 'b', name: 'after.jpg'}, {id: 'c', name: 'gate.jpg'}]);
+  check('and a single photo is the same size', /width:240px/.test(onlyAfter.photoSection()));
+  check('a photo with no full-size copy is still shown, just not a link',
+        onlyAfter.photoSection().indexOf('<a href') === -1 && /cid:photo-1/.test(onlyAfter.photoSection()));
+  const three = build([{id: 'a', name: 'before.jpg', link: ''}, {id: 'b', name: 'after.jpg', link: ''},
+                       {id: 'c', name: 'gate.jpg', link: ''}]);
   check('more than two are stacked rather than squeezed',
         (three.photoSection().match(/padding:0 0 14px;/g) || []).length === 3
         && three.photoSection().indexOf('valign="top"') === -1, three.photoSection().slice(0, 120));
