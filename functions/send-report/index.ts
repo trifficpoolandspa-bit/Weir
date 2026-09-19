@@ -17,10 +17,14 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const SENDING_ADDRESS = 'reports@getweir.com';
 
+// A browser asks first which headers it may send. Anything the app sends that
+// is missing from this list makes the browser block the request before it
+// leaves, which looks exactly like having no signal.
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS'
+  'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info, accept',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400'
 };
 
 function reply(status: number, body: Record<string, unknown>){
