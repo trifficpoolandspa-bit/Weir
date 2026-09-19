@@ -819,39 +819,41 @@ console.log('\n=== The route can be reversed ===');
 }
 
 
-console.log('\n=== A photo step switched off disables its per-body tick ===');
+console.log('\n=== A photo step switched off disables its tick ===');
 {
-  function pool(settings){
+  // The requirements moved to the Technicians page: before and after are ticked
+  // per body of water, the gate once for the whole visit.
+  function onPhotoTab(settings){
     const {dom} = load('customer-intake.html', {seed: {customers: [], settings: settings}});
     const w = dom.window, d = w.document;
     w.console.warn = ()=>{};
     w.Element.prototype.scrollIntoView = function(){};
-    w.eval("switchView('chemconfig'); selectedChemConfigType='pool'; renderPhotoRequirements();");
+    w.eval("switchView('technicians'); renderPhotoRequirements();");
+    const ticks = Array.from(d.querySelectorAll('#photoRequireRows input[type=checkbox]'));
     return {
       gate: d.getElementById('chkRequireGatePhoto'),
-      before: d.getElementById('chkRequireBeforePhoto'),
-      after: d.getElementById('chkRequireAfterPhoto'),
+      before: ticks.slice(0, 3),
+      after: ticks.slice(3, 6),
       note: d.getElementById('photoRequireNote')
     };
   }
 
   try{
-    let p = pool({showGatePhoto:true, showBeforePhotos:true, showAfterPhotos:true});
-    check('  with every step on, all three ticks are usable',
-          !p.gate.disabled && !p.before.disabled && !p.after.disabled);
+    let p = onPhotoTab({showGatePhoto:true, showBeforePhotos:true, showAfterPhotos:true});
+    check('  with every step on, every tick is usable',
+          !p.gate.disabled && p.before.every(b => !b.disabled) && p.after.every(b => !b.disabled));
 
-    p = pool({showGatePhoto:false, showBeforePhotos:true, showAfterPhotos:true});
+    p = onPhotoTab({showGatePhoto:false, showBeforePhotos:true, showAfterPhotos:true});
     check('  the gate step off disables the gate tick', p.gate.disabled === true);
     check('  and leaves the others alone',
-          !p.before.disabled && !p.after.disabled);
-    check('  with a note naming the gate photo',
-          p.note.style.display !== 'none' && /Gate photo/.test(p.note.textContent),
-          p.note.textContent);
+          p.before.every(b => !b.disabled) && p.after.every(b => !b.disabled));
+    check('  with a note saying which step is off',
+          p.note.style.display !== 'none' && /gate/i.test(p.note.textContent), p.note.textContent);
 
-    p = pool({showGatePhoto:true, showBeforePhotos:false, showAfterPhotos:true});
-    check('  the before step off disables only that one',
-          p.before.disabled === true && p.gate.disabled === false);
-  }catch(e){ check('  per-body photo ticks', false, e.message); }
+    p = onPhotoTab({showGatePhoto:true, showBeforePhotos:false, showAfterPhotos:true});
+    check('  the before step off disables all three before ticks',
+          p.before.every(b => b.disabled) && p.after.every(b => !b.disabled) && p.gate.disabled === false);
+  }catch(e){ check('  photo ticks', false, e.message); }
 }
 
 
@@ -1899,6 +1901,52 @@ async function serverTechniciansTab(){
             toasts(w) + ' | ' + JSON.stringify((await members()).map(m => m.username)));
       w.eval("switchView('technicians')"); await sleep(250);
       check('and the list shows who they sign in as', /Signs in as nolan/.test(rowText(d, 'Nolan Nosign')), rowText(d, 'Nolan Nosign'));
+    }
+
+    console.log('\n=== Photo requirements live on the Technicians page ===');
+    {
+      const tabs = Array.from(d.querySelectorAll('#techMainTabs .history-type-btn'));
+      check('there are two tabs', tabs.length === 2 && /Technicians/.test(tabs[0].textContent)
+            && /Photo requirements/.test(tabs[1].textContent), tabs.map(t => t.textContent).join(' | '));
+      check('the technician list is what shows first', d.getElementById('techListPane').style.display !== 'none');
+
+      tabs[1].click(); await sleep(250);
+      check('Photo requirements opens its own page', d.getElementById('photoRequireCard').style.display === 'block'
+            && d.getElementById('techListPane').style.display === 'none');
+
+      const rows = Array.from(d.querySelectorAll('#photoRequireRows input[type=checkbox]'));
+      check('before and after each have Pool, Spa and Extra', rows.length === 6, String(rows.length));
+      const labels = Array.from(d.querySelectorAll('#photoRequireRows > div > div:first-child')).map(x => x.textContent);
+      check('the two rows are the before and after photos',
+            /before/i.test(labels[0]) && /after/i.test(labels[1]), labels.join(' | '));
+
+      rows[1].checked = true;
+      rows[1].dispatchEvent(new w.Event('change'));
+      await sleep(150);
+      check('ticking Spa asks for a before photo on the spa only',
+            w.eval('chemConfig.spa.requireBeforePhoto') === true && w.eval('chemConfig.pool.requireBeforePhoto') !== true,
+            String(w.eval('chemConfig.spa.requireBeforePhoto')) + ' / ' + String(w.eval('chemConfig.pool.requireBeforePhoto')));
+
+      const gate = d.getElementById('chkRequireGatePhoto');
+      check('the gate photo has a single tick, not one per body', !!gate
+            && d.querySelectorAll('#photoRequireRows #chkRequireGatePhoto').length === 0);
+      gate.checked = true;
+      gate.dispatchEvent(new w.Event('change'));
+      await sleep(150);
+      check('and ticking it asks for one gate photo for the whole visit',
+            w.eval('chemConfig.pool.requireGatePhoto') === true);
+
+      check('your own photos can be set per body of water', !!d.getElementById('customPhotoBody')
+            && d.getElementById('customPhotoBody').options.length === 3);
+
+      // And it has left Readings and dosages entirely
+      w.eval("switchView('chemconfig')"); await sleep(250);
+      const stillThere = d.querySelector('#view-chemconfig #photoRequireCard');
+      check('Readings and dosages no longer carries it', !stillThere);
+      check('but still has chemicals and dosages',
+            !!d.getElementById('chemConfigChemicalsList') && !!d.getElementById('btnAddChemical'));
+      w.eval("switchView('technicians')"); await sleep(250);
+      tabs[0].click(); await sleep(150);
     }
 
     console.log('\n=== A technician\'s Customers tab ===');
