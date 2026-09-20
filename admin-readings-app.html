@@ -4085,9 +4085,25 @@ async function syncCleanUploadedPhotos(state){
 // Fetch one back from the office, for a report or to look at
 async function syncFetchPhoto(id){
   const state = loadFieldSyncState();
-  const rec = syncPhotoState(state).sent[id];
-  if(!rec || !rec.path) return null;
+  let rec = syncPhotoState(state).sent[id];
   const s = deviceGet('session');
+
+  // A photo this phone did not upload itself has no record here — one taken on
+  // another phone, or one that arrived with a reading from the office. Ask the
+  // office where the file is rather than giving up on it.
+  if(!rec || !rec.path){
+    try{
+      const look = await fetch(FIELD_SUPABASE_URL + '/rest/v1/photos?select=path&id=eq.'
+        + encodeURIComponent(id) + '&limit=1', {
+        headers: {'apikey': FIELD_SUPABASE_KEY, 'Authorization': 'Bearer ' + (s && s.access_token)}
+      });
+      if(look.ok){
+        const rows = await look.json();
+        if(Array.isArray(rows) && rows[0] && rows[0].path) rec = {path: rows[0].path};
+      }
+    }catch(e){}
+  }
+  if(!rec || !rec.path) return null;
   try{
     const r = await fetch(FIELD_SUPABASE_URL + '/storage/v1/object/' + SYNC_PHOTO_BUCKET + '/' + rec.path, {
       headers: {'apikey': FIELD_SUPABASE_KEY, 'Authorization': 'Bearer ' + (s && s.access_token)}
