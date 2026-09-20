@@ -258,6 +258,17 @@ function boot(file){
     check(file + ' sizes a photo that is already a JPEG too',
           src.indexOf("if(dataUrl.indexOf('image/jpeg') !== -1){ resolve(dataUrl); return; }") === -1);
   });
+  ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+    const src = fs.readFileSync(file, 'utf8');
+    check(file + ' sends the original when sizing a photo fails',
+          /if\(!content\)\{[\s\S]{0,160}String\(p\.source \|\| ''\)\.split\(','\)\[1\]/.test(src),
+          'no fallback to the original');
+    check(file + ' counts anything it still cannot read', /couldNotRead\+\+/.test(src));
+    check(file + ' and says how many it gathered against how many went',
+          /gathered: \(currentReportPhotos \|\| \[\]\)\.length/.test(src)
+          && /could not be read from this phone/.test(src));
+  });
+
   const fn = fs.readFileSync('functions/send-report/index.ts', 'utf8');
   check('photos past what the email can carry are kept and linked, not dropped',
         /const linkOnly/.test(fn) && /More photos from this visit/.test(fn));
