@@ -875,8 +875,10 @@ console.log('\n=== A photo requirement survives a sync ===');
   check('the tick writes to the technician and saves',
         /setTick\(t, key, box3\.checked\);\s*saveTechnicians\(\);/.test(site));
   check('and unticking writes false rather than removing the field',
-        /if\(step === 'gate'\) t\.requireGatePhoto = on;/.test(site)
+        /if\(step === 'gate'\) cur\.requireGatePhoto = on;/.test(site)
         && /tech\.photoRules\[step\]\[bodyKey\] = !!on;/.test(site));
+  check('and it writes to the technician in the list, not a stale copy',
+        /const live = t => technicians\.find\(x => x && String\(x\.id\) === String\(t\.id\)\)/.test(site));
   check('and a false value still travels to the office',
         /if\(v === undefined\) return;/.test(site));
   // The change is marked as ours straight away, so a pull cannot overwrite it
@@ -2137,6 +2139,24 @@ async function serverTechniciansTab(){
       await sleep(250);
       check('ticking one asks the gate photo of them',
             w.eval("technicians.find(t => t.id === 'tp1').requireGatePhoto") === true);
+
+      // A sync replaces the whole list with fresh objects. A tick after that
+      // must still land on the technician in the list, not on an orphan.
+      w.eval("technicians = technicians.map(t => Object.assign({}, t)); saveTechnicians();");
+      const afterSwap = Array.from(d.querySelectorAll('#photoRequireRows input[type=checkbox]'));
+      afterSwap[patGateAt].checked = false;
+      afterSwap[patGateAt].dispatchEvent(new w.Event('change', {bubbles: true}));
+      await sleep(200);
+      check('a tick still lands after the list has been replaced',
+            w.eval("technicians.find(t => t.id === 'tp1').requireGatePhoto") === false,
+            String(w.eval("technicians.find(t => t.id === 'tp1').requireGatePhoto")));
+      check('and the stored copy agrees',
+            (JSON.parse(w.localStorage.getItem('weir:technicians') || '[]')
+              .find(t => t.id === 'tp1') || {}).requireGatePhoto === false,
+            w.localStorage.getItem('weir:technicians'));
+      afterSwap[patGateAt].checked = true;
+      afterSwap[patGateAt].dispatchEvent(new w.Event('change', {bubbles: true}));
+      await sleep(200);
 
       // Clicking the label around the box, which is what a person actually hits
       const gateRow = Array.from(d.querySelectorAll('#photoRequireRows label'))
