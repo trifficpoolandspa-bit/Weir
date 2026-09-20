@@ -1926,6 +1926,17 @@ async function serverTechniciansTab(){
               el ? el.className : 'missing');
       });
       check('the technician list is what shows first', d.getElementById('techListPane').style.display !== 'none');
+      // Leaving and coming back lands on the technician list again
+      tabs[1].click(); await sleep(200);
+      w.eval("switchView('customers')"); await sleep(200);
+      w.eval("switchView('technicians')"); await sleep(250);
+      check('coming back opens the Technicians tab, not Photo requirements',
+            d.getElementById('techListPane').style.display !== 'none'
+            && d.getElementById('photoRequireCard').style.display === 'none',
+            d.getElementById('photoRequireCard').style.display);
+      check('and the Technicians tab is the one marked as chosen',
+            Array.from(d.querySelectorAll('#techMainTabs .history-type-btn'))
+              .find(b => b.classList.contains('active')).dataset.techmain === 'list');
 
       // Someone to set requirements for
       // Added alongside whoever already exists, and taken away again at the end
