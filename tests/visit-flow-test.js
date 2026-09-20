@@ -493,6 +493,23 @@ async function walkVisit(w, d, maxPresses){
   });
 }
 
+
+// ---- Every body of water starts at its before photo ----
+// Moving on from the pool used to open the next one at the chemical readings,
+// so the spa and every extra body of water never got a before photo.
+{
+  console.log('\n=== the next body of water opens at its before photo ===');
+  ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+    const src = fs.readFileSync(file, 'utf8');
+    check(file + ' opens the next section at its first step',
+          /visitStepBySection\[next\] = 1;/.test(src));
+    check(file + ' no longer jumps past it to the readings',
+          src.indexOf("const readingsAt = steps.findIndex") === -1);
+    check(file + ' and the before photo is still the first step when it is on',
+          /if\(showsBeforePhotoStep\(type\)\)\{\s*steps\.push\('visit' \+ cap \+ 'BeforePhotoSection'\)/.test(src));
+  });
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();
