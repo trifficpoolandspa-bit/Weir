@@ -754,6 +754,12 @@ input::placeholder{color:#A9BCB9;}
       </div>
       <div class="field">
         <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:14px;font-weight:500;color:var(--ink);">
+          <input type="checkbox" id="techCanReorderRoute" style=""> Can rearrange their route
+        </label>
+        <p style="font-size:11.5px;color:var(--muted);margin:6px 0 0;">They can drag customers into a different order on their route for the day. Admins can always do this.</p>
+      </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:14px;font-weight:500;color:var(--ink);">
           <input type="checkbox" id="techEquipPhotoAccess" style=""> Equipment photo access
         </label>
         <p style="font-size:11.5px;color:var(--muted);margin:6px 0 0;">Lets this technician photograph their customers' equipment. Photos save to the customer's profile.</p>
@@ -1538,26 +1544,6 @@ input::placeholder{color:#A9BCB9;}
     </div>
     
     
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-        <h2 style="margin:0;">Require a reason for skipped services</h2>
-        <label class="toggle-switch">
-          <input type="checkbox" id="settingRequireSkipReason">
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-      <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">When on, skipping a service opens a screen where the technician must explain why, with the option to attach a photo. The reason is saved with that visit.</p>
-    </div>
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-        <h2 style="margin:0;">Require a photo to skip a service</h2>
-        <label class="toggle-switch">
-          <input type="checkbox" id="settingRequireSkipPhoto">
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-      <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">When on, a technician cannot skip a service without attaching a photo showing why &mdash; a locked gate, a dog in the yard, an empty pool. Turning this on also requires a reason, since the two are asked for on the same screen.</p>
-    </div>
     
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
@@ -1568,16 +1554,6 @@ input::placeholder{color:#A9BCB9;}
         </label>
       </div>
       <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">When on, each dosage field shows quick buttons for its common amounts so a technician can tap instead of typing.</p>
-    </div>
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-        <h2 style="margin:0;">Allow technicians to rearrange routes</h2>
-        <label class="toggle-switch">
-          <input type="checkbox" id="settingRouteReorder">
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-      <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">When on, technicians can drag customers into a different order on their route for the day.</p>
     </div>
   </div>
 
@@ -3145,25 +3121,8 @@ function saveSettings(){
 }
 
 
-document.getElementById('settingRequireSkipReason').addEventListener('change', (e)=>{
-  appSettings.requireSkipReason = e.target.checked;
-  saveSettings();
-  showToast(appSettings.requireSkipReason ? 'Skip reasons are now required' : 'Skip reasons no longer required');
-});
 
-document.getElementById('settingRequireSkipPhoto').addEventListener('change', (e)=>{
-  appSettings.requireSkipPhoto = e.target.checked;
-  saveSettings();
-  showToast(appSettings.requireSkipPhoto
-    ? 'A photo is now required to skip a service'
-    : 'A photo is no longer required to skip a service');
-});
 
-document.getElementById('settingRouteReorder').addEventListener('change', (e)=>{
-  appSettings.allowRouteReorder = e.target.checked;
-  saveSettings();
-  showToast(appSettings.allowRouteReorder ? 'Technicians can rearrange routes' : 'Route order is now locked');
-});
 
 
 document.getElementById('settingShowDosageSuggestions').addEventListener('change', (e)=>{
@@ -11414,6 +11373,34 @@ function saveCustomers(){
 let technicians = lsGet('technicians') || [];
 let editingTechId = null;
 
+// Admin access carries rearranging with it, so the box follows the moment the
+// admin tick is set rather than only once the form is saved
+function wireAdminCarriesReorder(){
+  const admin = document.getElementById('techIsAdmin');
+  if(!admin || admin.dataset.carriesReorder === 'true') return;
+  admin.dataset.carriesReorder = 'true';
+  admin.addEventListener('change', ()=> applyAdminCarries());
+}
+
+// What admin access brings with it, ticked and held while it is on
+function applyAdminCarries(){
+  const admin = document.getElementById('techIsAdmin');
+  if(!admin) return;
+  [['techCanReorderRoute', 'Admin access includes rearranging the route'],
+   ['techEquipPhotoAccess', 'Admin access includes equipment photos']].forEach(([id, why])=>{
+    const box = document.getElementById(id);
+    if(!box) return;
+    if(admin.checked){
+      box.checked = true;
+      box.disabled = true;
+      box.title = why;
+    } else {
+      box.disabled = false;
+      box.title = '';
+    }
+  });
+}
+
 function saveTechnicians(){
   const ok = lsSet('technicians', technicians);
   if(!ok) showToast('Could not save — your browser storage may be full');
@@ -11553,6 +11540,9 @@ function resetTechForm(){
   document.getElementById('techUsername').value = '';
   document.getElementById('techPassword').value = '';
   document.getElementById('techIsAdmin').checked = false;
+  document.getElementById('techCanReorderRoute').checked = false;
+  wireAdminCarriesReorder();
+  applyAdminCarries();
   document.getElementById('techEquipPhotoAccess').checked = false;
   document.getElementById('techFormHeading').textContent = 'Add a technician';
   document.getElementById('btnSaveTech').textContent = 'Save technician';
@@ -11582,7 +11572,10 @@ function editTechnician(t){
     ? 'They sign in as ' + acct.username + '. Typing a new password signs them out of every phone.'
     : 'No sign-in yet. A username and password create one.';
   document.getElementById('techIsAdmin').checked = !!t.isAdmin;
-  document.getElementById('techEquipPhotoAccess').checked = !!t.canPhotoEquipment;
+  document.getElementById('techCanReorderRoute').checked = !!t.isAdmin || t.canReorderRoute === true;
+  wireAdminCarriesReorder();
+  document.getElementById('techEquipPhotoAccess').checked = !!t.isAdmin || !!t.canPhotoEquipment;
+  applyAdminCarries();
   document.getElementById('techFormHeading').textContent = 'Edit technician';
   document.getElementById('btnSaveTech').textContent = 'Save changes';
   showTechForm();
@@ -12006,6 +11999,8 @@ function renderTechProfile(techId){
   const acct = techAccounts ? techAccounts[tech.id] : null;
   row({label:'Username', value: (acct && acct.username) || tech.username, placeholder:'Add a username', editor: techSignInEditor(tech,'username')});
   row({label:'Password', value: acct ? '••••••••' : '', placeholder: acct ? '' : 'Set a password to create their sign-in', editor: techSignInEditor(tech,'password')});
+  checkRow('Can rearrange their route', 'canReorderRoute',
+    'They can drag customers into a different order on their route for the day. Admins can always do this.');
   checkRow('Admin access', 'isAdmin',
     'Clicking this will give the technician access to the admin app, allowing them to see all customers and make changes to app and customer info.');
   checkRow('Equipment photo access', 'canPhotoEquipment',
@@ -12361,7 +12356,9 @@ document.getElementById('btnSaveTech').addEventListener('click', async ()=>{
   const username = document.getElementById('techUsername').value.trim();
   const password = document.getElementById('techPassword').value;
   const isAdmin = document.getElementById('techIsAdmin').checked;
-  const canPhotoEquipment = document.getElementById('techEquipPhotoAccess').checked;
+  // An admin can always rearrange, whatever the box says
+  const canReorderRoute = isAdmin || document.getElementById('techCanReorderRoute').checked;
+  const canPhotoEquipment = isAdmin || document.getElementById('techEquipPhotoAccess').checked;
   // Kept as it was: set on the Photo requirements tab
   const requireSkipProof = editingTechId
     ? (technicians.find(t => t.id === editingTechId) || {}).requireSkipProof === true
@@ -16204,9 +16201,6 @@ document.getElementById('settingStorePhotos').checked = appSettings.storePhotos 
 document.getElementById('settingPushToTalk').checked = appSettings.pushToTalkEnabled !== false;
 renderMicSideButtons();
 document.getElementById('settingShowDosageSuggestions').checked = appSettings.showDosageSuggestions;
-document.getElementById('settingRouteReorder').checked = appSettings.allowRouteReorder !== false;
-document.getElementById('settingRequireSkipReason').checked = appSettings.requireSkipReason === true;
-document.getElementById('settingRequireSkipPhoto').checked = appSettings.requireSkipPhoto === true;
 document.getElementById('settingWaterBalance').checked = appSettings.showWaterBalance === true;
 document.getElementById('settingAutoNotifyAll').checked = appSettings.autoNotifyAll === true;
 document.getElementById('settingAutoNotifyLead').value = String(appSettings.autoNotifyAllLead || 2);

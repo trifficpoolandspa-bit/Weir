@@ -413,7 +413,11 @@ body.has-step-bar{padding-bottom:calc(var(--bottombar-height, 60px) + 108px);}
 
 select#customerSelect{font-weight:600;}
 .toast{
-  position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+  /* Clear of both bars: the tabs, and the step button above them. Both are
+     measured, so this holds whatever the text size or the phone's inset. */
+  position:fixed;
+  bottom:calc(var(--bottombar-height, 60px) + var(--stepbar-height, 0px) + 14px);
+  left:50%;transform:translateX(-50%);
   background:var(--teal-deep);color:#fff;padding:10px 20px;border-radius:20px;
   font-size:13px;font-weight:600;opacity:0;transition:opacity .25s;pointer-events:none;
   z-index:50;
@@ -1804,9 +1808,16 @@ let readingsCache = {};
 // How tall the tab bar actually is, so the step bar can sit right on it
 function measureBottomBar(){
   const bar = document.querySelector('.bottombar');
-  if(!bar) return;
-  const h = Math.round(bar.getBoundingClientRect().height);
-  if(h > 0) document.documentElement.style.setProperty('--bottombar-height', h + 'px');
+  if(bar){
+    const h = Math.round(bar.getBoundingClientRect().height);
+    if(h > 0) document.documentElement.style.setProperty('--bottombar-height', h + 'px');
+  }
+  // The step button sits on the tab bar; a message has to clear both, and the
+  // step bar is not always there
+  const step = document.getElementById('stepBar');
+  const showing = step && step.style.display !== 'none' && step.offsetParent !== null;
+  const sh = showing ? Math.round(step.getBoundingClientRect().height) : 0;
+  document.documentElement.style.setProperty('--stepbar-height', sh + 'px');
 }
 window.addEventListener('load', measureBottomBar);
 window.addEventListener('resize', measureBottomBar);
@@ -1814,6 +1825,7 @@ window.addEventListener('orientationchange', ()=> setTimeout(measureBottomBar, 2
 document.addEventListener('DOMContentLoaded', ()=> setTimeout(measureBottomBar, 0));
 
 function showToast(msg){
+  try{ measureBottomBar(); }catch(e){}
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
@@ -6186,7 +6198,9 @@ function renderHomeList(){
     return;
   }
   container.innerHTML = '';
-  const canReorder = appSettings.allowRouteReorder !== false;
+  // Rearranging is granted to a technician by name on the website, not set for
+  // everyone at once. Admin access carries it.
+  const canReorder = !!(currentUser && (currentUser.canReorderRoute === true || currentUser.isAdmin === true));
   todaysCustomers.forEach((c, idx)=>{
     const row = document.createElement('div');
     row.className = 'cust-row';

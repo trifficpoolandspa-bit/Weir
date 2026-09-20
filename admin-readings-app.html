@@ -422,7 +422,11 @@ body.has-step-bar{padding-bottom:calc(var(--bottombar-height, 60px) + 108px);}
 
 select#customerSelect{font-weight:600;}
 .toast{
-  position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+  /* Clear of both bars: the tabs, and the step button above them. Both are
+     measured, so this holds whatever the text size or the phone's inset. */
+  position:fixed;
+  bottom:calc(var(--bottombar-height, 60px) + var(--stepbar-height, 0px) + 14px);
+  left:50%;transform:translateX(-50%);
   background:var(--teal-deep);color:#fff;padding:10px 20px;border-radius:20px;
   font-size:13px;font-weight:600;opacity:0;transition:opacity .25s;pointer-events:none;
   z-index:50;
@@ -1039,30 +1043,6 @@ select#customerSelect{font-weight:600;}
       </div>
     </div>
     
-    <div class="card">
-      <div class="field">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
-          <h2 style="margin:0;">Require a reason for skipped services</h2>
-          <label class="toggle-switch">
-            <input type="checkbox" id="settingRequireSkipReason">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">When on, skipping a service opens a screen where the technician must explain why, with the option to attach a photo.</p>
-      </div>
-    </div>
-    <div class="card">
-      <div class="field">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
-          <h2 style="margin:0;">Allow technicians to rearrange routes</h2>
-          <label class="toggle-switch">
-            <input type="checkbox" id="settingRouteReorder" checked>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">When on, technicians can drag customers into a different order on their Today list. Turning this off locks the route order for everyone.</p>
-      </div>
-    </div>
     <div class="card">
       <div class="field">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
@@ -2122,9 +2102,16 @@ function statusOf(chem, value){
 // How tall the tab bar actually is, so the step bar can sit right on it
 function measureBottomBar(){
   const bar = document.querySelector('.bottombar');
-  if(!bar) return;
-  const h = Math.round(bar.getBoundingClientRect().height);
-  if(h > 0) document.documentElement.style.setProperty('--bottombar-height', h + 'px');
+  if(bar){
+    const h = Math.round(bar.getBoundingClientRect().height);
+    if(h > 0) document.documentElement.style.setProperty('--bottombar-height', h + 'px');
+  }
+  // The step button sits on the tab bar; a message has to clear both, and the
+  // step bar is not always there
+  const step = document.getElementById('stepBar');
+  const showing = step && step.style.display !== 'none' && step.offsetParent !== null;
+  const sh = showing ? Math.round(step.getBoundingClientRect().height) : 0;
+  document.documentElement.style.setProperty('--stepbar-height', sh + 'px');
 }
 window.addEventListener('load', measureBottomBar);
 window.addEventListener('resize', measureBottomBar);
@@ -2132,6 +2119,7 @@ window.addEventListener('orientationchange', ()=> setTimeout(measureBottomBar, 2
 document.addEventListener('DOMContentLoaded', ()=> setTimeout(measureBottomBar, 0));
 
 function showToast(msg){
+  try{ measureBottomBar(); }catch(e){}
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
@@ -8116,7 +8104,9 @@ function renderHomeList(){
     return;
   }
   container.innerHTML = '';
-  const canReorder = appSettings.allowRouteReorder !== false;
+  // Rearranging is granted to a technician by name on the website, not set for
+  // everyone at once. Admin access carries it.
+  const canReorder = !!(currentUser && (currentUser.canReorderRoute === true || currentUser.isAdmin === true));
   todaysCustomers.forEach((c, idx)=>{
     const row = document.createElement('div');
     row.className = 'cust-row';
@@ -9180,19 +9170,8 @@ document.getElementById('settingPushToTalk').addEventListener('change', (e)=>{
 
 
 
-document.getElementById('settingRequireSkipReason').addEventListener('change', (e)=>{
-  appSettings.requireSkipReason = e.target.checked;
-  saveSettings();
-  showToast(appSettings.requireSkipReason ? 'Skip reasons are now required' : 'Skip reasons no longer required');
-});
 
 
-document.getElementById('settingRouteReorder').addEventListener('change', (e)=>{
-  appSettings.allowRouteReorder = e.target.checked;
-  saveSettings();
-  renderHomeList();
-  showToast(appSettings.allowRouteReorder ? 'Technicians can rearrange routes' : 'Route order is now locked');
-});
 
 document.getElementById('settingTechniciansTab').addEventListener('change', (e)=>{
   appSettings.showTechniciansTab = e.target.checked;
@@ -12393,8 +12372,6 @@ async function init(){
   document.getElementById('settingWaterBalance').checked = appSettings.showWaterBalance === true;
   updateVoiceModeIndicator();
   document.getElementById('settingTechniciansTab').checked = appSettings.showTechniciansTab !== false;
-  document.getElementById('settingRouteReorder').checked = appSettings.allowRouteReorder !== false;
-    document.getElementById('settingRequireSkipReason').checked = appSettings.requireSkipReason === true;
   document.getElementById('settingPushToTalk').checked = appSettings.pushToTalkEnabled !== false;
   renderMicSideButtons();
   applyTechniciansTabVisibility();
