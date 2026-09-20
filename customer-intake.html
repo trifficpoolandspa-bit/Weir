@@ -10833,7 +10833,8 @@ function photoTechnicianList(step, bodies){
   const box = document.createElement('div');
   // Held to a comfortable width and centred, so names and ticks sit near each
   // other instead of at opposite edges of a wide screen
-  box.style.cssText = 'margin:12px auto 0;max-width:420px;';
+  box.dataset.techList = 'true';
+  box.style.cssText = 'margin:12px auto 0;max-width:420px;cursor:default;';
   if(!technicians.length){
     box.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:6px 0;">'
       + 'No technicians yet. Add one on the Technicians tab.</div>';
@@ -10987,7 +10988,8 @@ function renderPhotoRequirements(){
       + (entry.off ? 'opacity:0.45;' : '');
 
     const head = document.createElement('div');
-    head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;';
+    head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:16px;'
+      + 'flex-wrap:wrap;padding:4px 0;';
 
     const left = document.createElement('div');
     left.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;';
@@ -11037,21 +11039,22 @@ function renderPhotoRequirements(){
       + (photoStepOpen === entry.step ? '  \u25b4' : '  \u25be');
     head.appendChild(open);
 
-    // Pressing anywhere on the row opens the technicians underneath it
+    // The whole band between the lines is the press, not just where the words
+    // sit, so a thumb anywhere in the row opens that row's technicians
     if(!entry.off){
-      head.style.cursor = 'pointer';
-      // Pressing a row is a press, not somewhere to type: no blinking cursor,
-      // and no blue selection from a double press
-      head.style.userSelect = 'none';
-      head.style.webkitUserSelect = 'none';
-      head.setAttribute('tabindex', '-1');
-      head.addEventListener('mousedown', e=>{
-        if(!e.target.closest('[data-keeps-click]')) e.preventDefault();
+      block.style.cursor = 'pointer';
+      block.style.userSelect = 'none';
+      block.style.webkitUserSelect = 'none';
+      block.addEventListener('mousedown', e=>{
+        if(!e.target.closest('[data-keeps-click]') && !e.target.closest('[data-tech-list]')){
+          e.preventDefault();
+        }
       });
-      head.title = photoStepOpen === entry.step ? 'Hide the technicians' : 'Choose who this applies to';
-      head.addEventListener('click', (e)=>{
-        // Unless it was the name or the X, which have their own jobs
+      block.title = photoStepOpen === entry.step ? 'Hide the technicians' : 'Choose who this applies to';
+      block.addEventListener('click', (e)=>{
+        // Unless it was the name, the X, or the technicians underneath
         if(e.target.closest('[data-keeps-click]')) return;
+        if(e.target.closest('[data-tech-list]')) return;
         photoStepOpen = photoStepOpen === entry.step ? null : entry.step;
         renderPhotoRequirements();
       });
