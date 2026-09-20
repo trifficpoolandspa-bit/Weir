@@ -127,6 +127,57 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
         /opSel\.addEventListener\('change'[^}]*render\(\);/.test(src));
 }
 
+
+// ---- Adding a quick button is ready to type into ----
+{
+  console.log('\n=== Add button leaves you typing ===');
+  const dom = boot('customer-intake.html');
+  const w = dom.window, d = w.document;
+  await wait(1300);
+  try{
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); switchView('chemconfig');"
+      + " openQuickButtonsModal(chemConfig.pool.chemicals.find(c=>c.key==='chlorine'));");
+    await wait(250);
+    const before = d.querySelectorAll('#quickButtonsBody input[type=number]').length;
+    const add = Array.from(d.querySelectorAll('button')).find(b => /Add button/.test(b.textContent));
+    check('there is an Add button', !!add);
+    add.click();
+    await wait(200);
+    const fields = d.querySelectorAll('#quickButtonsBody input[type=number]');
+    check('it adds a button', fields.length === before + 1, String(fields.length));
+    check('and the new number is ready to type into',
+          d.activeElement === fields[fields.length - 1],
+          d.activeElement ? d.activeElement.tagName + ' ' + d.activeElement.value : 'nothing focused');
+  }catch(e){ check('adding a quick button', false, e.message); }
+  w.close();
+}
+
+
+// ---- The clear button sits level with the customer field ----
+{
+  console.log('\n=== Clearing the chosen customer ===');
+  const src = fs.readFileSync('customer-intake.html', 'utf8');
+  const btn = (src.match(/<button type="button" id="customCustClear"[^>]*>/) || [''])[0];
+  check('it is centred on the field rather than pinned to the bottom',
+        /top:50%/.test(btn) && /translateY\(-50%\)/.test(btn), btn.slice(0, 140));
+  check('and it no longer measures from the bottom of the whole block',
+        btn.indexOf('bottom:4px') === -1);
+
+  const dom = boot('customer-intake.html');
+  const w = dom.window, d = w.document;
+  await wait(1200);
+  try{
+    const input = d.getElementById('customCustSearch');
+    const clear = d.getElementById('customCustClear');
+    check('the button sits with the field, not with the label',
+          !!clear && clear.parentElement === input.parentElement
+          && clear.parentElement.tagName === 'DIV'
+          && clear.parentElement.querySelector('label') === null,
+          clear ? clear.parentElement.tagName : 'no button');
+  }catch(e){ check('the clear button', false, e.message); }
+  w.close();
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();
