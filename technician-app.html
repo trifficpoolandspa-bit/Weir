@@ -373,9 +373,10 @@ textarea{min-height:52px;resize:vertical;}
   box-shadow:0 4px 12px rgba(15,46,46,0.06);
 }
 .step-bar{
-  /* Clear of the tab bar with room to spare — a thumb on the step button used
-     to land within a few pixels of the tabs underneath. */
-  position:fixed;bottom:calc(74px + env(safe-area-inset-bottom));
+  /* Sits directly on top of the tab bar, with no strip of page showing between
+     them. The height is measured from the tab bar itself rather than guessed,
+     since it differs with text size and with the phone's own bottom inset. */
+  position:fixed;bottom:var(--bottombar-height, 60px);
   left:0;right:0;z-index:40;
   max-width:720px;margin:0 auto;
   background:#fff;border-top:1px solid var(--line);
@@ -386,7 +387,7 @@ textarea{min-height:52px;resize:vertical;}
 }
 .step-bar #stepBarNext{padding:14px 18px;font-size:15.5px;}
 .step-bar #btnPushToTalk{width:62px !important;flex:0 0 62px !important;padding:0 !important;}
-body.has-step-bar{padding-bottom:calc(168px + env(safe-area-inset-bottom));}
+body.has-step-bar{padding-bottom:calc(var(--bottombar-height, 60px) + 108px);}
 .step-back{
   flex-shrink:0;background:none;border:1px solid var(--line);
   color:var(--teal-deep);border-radius:9px;
@@ -1783,6 +1784,18 @@ function renderAllConfigFields(){
 
 let customers = [];
 let readingsCache = {};
+
+// How tall the tab bar actually is, so the step bar can sit right on it
+function measureBottomBar(){
+  const bar = document.querySelector('.bottombar');
+  if(!bar) return;
+  const h = Math.round(bar.getBoundingClientRect().height);
+  if(h > 0) document.documentElement.style.setProperty('--bottombar-height', h + 'px');
+}
+window.addEventListener('load', measureBottomBar);
+window.addEventListener('resize', measureBottomBar);
+window.addEventListener('orientationchange', ()=> setTimeout(measureBottomBar, 200));
+document.addEventListener('DOMContentLoaded', ()=> setTimeout(measureBottomBar, 0));
 
 function showToast(msg){
   const t = document.getElementById('toast');
@@ -9775,7 +9788,7 @@ function webpToJpegDataUrl(dataUrl){
   return new Promise((resolve)=>{
     if(!dataUrl){ resolve(''); return; }
     // Already a JPEG, nothing to do
-    if(dataUrl.indexOf('image/jpeg') !== -1){ resolve(dataUrl); return; }
+    // A JPEG still goes through, so it is sized for an email like the rest
     try{
       const img = new Image();
       // If the image never decodes, neither onload nor onerror may fire — and
@@ -9787,15 +9800,24 @@ function webpToJpegDataUrl(dataUrl){
 
       img.onload = ()=>{
         try{
+          // Sized for an email rather than for printing. A camera photo is
+          // several megabytes; seven of those overflow what an email can carry
+          // and the last ones were being dropped. The longest edge is capped,
+          // which is still far more detail than the report shows or than
+          // anyone needs when they open it full size.
+          const LONGEST_EDGE = 1600;
+          const wide = img.naturalWidth || img.width;
+          const tall = img.naturalHeight || img.height;
+          const shrink = Math.min(1, LONGEST_EDGE / Math.max(wide, tall));
           const canvas = document.createElement('canvas');
-          canvas.width = img.naturalWidth || img.width;
-          canvas.height = img.naturalHeight || img.height;
+          canvas.width = Math.max(1, Math.round(wide * shrink));
+          canvas.height = Math.max(1, Math.round(tall * shrink));
           const ctx = canvas.getContext('2d');
           // JPEG has no transparency, so anything see-through would go black
           ctx.fillStyle = '#FFFFFF';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0);
-          finish(canvas.toDataURL('image/jpeg', 0.82));
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          finish(canvas.toDataURL('image/jpeg', 0.78));
         }catch(e){ finish(dataUrl); }
       };
       // Conversion failed — send what we have rather than nothing
@@ -9805,7 +9827,9 @@ function webpToJpegDataUrl(dataUrl){
   });
 }
 
-const MAX_REPORT_PHOTOS = 6;
+// A visit can easily run to a before and after for pool, spa and a fountain,
+// plus a gate photo and one of the company's own
+const MAX_REPORT_PHOTOS = 14;
 
 function collectReportPhotos(sections){
   const out = [];
