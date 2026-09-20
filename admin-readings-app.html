@@ -3839,9 +3839,13 @@ function fieldSyncSummary(){
                   ? ' of ' + lastReport.gathered : '')
               + (lastReport.sent === 1 ? ' photo' : ' photos')
               + (lastReport.linked ? ' (' + lastReport.linked + ' as links)' : '')
+              + (lastReport.taken && lastReport.taken !== lastReport.gathered
+                  ? ' \u2014 the visit had ' + lastReport.taken : '')
               + (lastReport.unreadable ? ' \u2014 ' + lastReport.unreadable
                   + ' could not be read from this phone' : '') : '')
           + '.'
+          + ((lastReport.missing && lastReport.missing.length)
+              ? ' Missing: ' + lastReport.missing.join(', ') + '.' : '')
         : 'went the old way (' + (lastReport.why || 'the office could not send it') + ').')
     : '';
   const unknown = Object.values(state.unknownHere || {});
@@ -11642,12 +11646,20 @@ function webpToJpegDataUrl(dataUrl){
 // the email itself, and says so when something does not.
 const MAX_REPORT_PHOTOS = 60;
 
+// What the visit had, against what could be read back off this phone. A photo
+// whose stored copy will not come back is skipped in silence otherwise, which
+// is how a seven-photo visit turned into a four-photo report.
+let lastPhotoTally = {taken: 0, missing: []};
+
 function collectReportPhotos(sections){
   const out = [];
+  const tally = {taken: 0, missing: []};
   // The caption is decided here, where the body of water is known — "Pool
   // before", "Spa after" — rather than guessed from a file name later
   const add = (dataUrl, name, caption)=>{
-    if(!dataUrl || out.length >= MAX_REPORT_PHOTOS) return;
+    tally.taken++;
+    if(!dataUrl){ tally.missing.push(caption || name); return; }
+    if(out.length >= MAX_REPORT_PHOTOS){ tally.missing.push((caption || name) + ' (over the limit)'); return; }
     // Held as-is here; converted to JPEG just before sending
     out.push({name: name, source: dataUrl, caption: caption || ''});
   };
@@ -11657,8 +11669,10 @@ function collectReportPhotos(sections){
     const body = String(s.label || '').trim();
     const label = (body || 'photo').toLowerCase().replace(/[^a-z0-9]+/g, '-');
     const says = what => (body ? body + ' ' + what : what.charAt(0).toUpperCase() + what.slice(1));
-    if(r.beforePhoto) add(r.beforePhoto, label + '-before.jpg', says('before'));
-    if(r.photo) add(r.photo, label + '-after.jpg', says('after'));
+    // Counted even when it comes back empty, so a photo that was taken and
+    // cannot be read is visible rather than invisible
+    if('beforePhoto' in r) add(r.beforePhoto, label + '-before.jpg', says('before'));
+    if('photo' in r) add(r.photo, label + '-after.jpg', says('after'));
     // Anything the company added themselves
     Object.keys(r.customPhotos || {}).forEach(k=>{
       const what = String(k).replace(/[-_]+/g, ' ').trim();
@@ -11668,9 +11682,10 @@ function collectReportPhotos(sections){
   });
 
   // The gate goes last — it is proof the property was left secure
-  const gate = (sections || []).map(s => (s.reading || {}).gatePhoto).find(Boolean);
-  if(gate) add(gate, 'gate.jpg', 'Gate');
+  const gateSection = (sections || []).find(s => 'gatePhoto' in ((s || {}).reading || {}));
+  if(gateSection) add(gateSection.reading.gatePhoto, 'gate.jpg', 'Gate');
 
+  lastPhotoTally = tally;
   return out;
 }
 
@@ -12088,7 +12103,9 @@ async function sendReportFromOffice(customerId, type){
     noteLastReport('office', '', {sent: photos.length, shown: body.photos,
                                   linked: body.linked,
                                   gathered: (currentReportPhotos || []).length,
-                                  unreadable: couldNotRead});
+                                  unreadable: couldNotRead,
+                                  taken: lastPhotoTally.taken,
+                                  missing: (lastPhotoTally.missing || []).slice(0, 6)});
     return {ok: true};
   }catch(e){
     noteLastReport('the old way', 'no connection when it was sent');
