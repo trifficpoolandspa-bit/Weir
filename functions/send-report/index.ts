@@ -113,14 +113,18 @@ Deno.serve(async (req: Request)=>{
   const attachments: Array<Record<string, string>> = [];
   const shown: Array<{id: string, name: string, caption: string, link: string, content: string}> = [];
   let carried = 0;
-  let leftOut = 0;
+  // However many were taken, all of them travel. Ones that fit are shown in
+  // the report; past that, a photo is still kept and linked to, so nothing is
+  // ever lost just because the email was full.
+  const linkOnly: Array<{id: string, name: string, caption: string, link: string, content: string}> = [];
   (Array.isArray(body.photos) ? body.photos : []).forEach((p: any, i: number)=>{
     if(!p || !p.content) return;
     const size = String(p.content).length * 0.75;
-    // What is left out is counted and said in the report, rather than quietly
-    // disappearing: a report that is missing photos with no explanation is
-    // worse than one that says so.
-    if(carried + size > 28 * 1024 * 1024){ leftOut++; return; }
+    if(carried + size > 28 * 1024 * 1024){
+      linkOnly.push({id: 'extra-' + (i + 1), name: String(p.filename || ''),
+                     caption: String(p.caption || ''), link: '', content: String(p.content)});
+      return;
+    }
     carried += size;
     const id = 'photo-' + (i + 1);
     attachments.push({
@@ -134,6 +138,9 @@ Deno.serve(async (req: Request)=>{
   });
 
   for(const p of shown){
+    p.link = await keepFullSize(who.companyId, p.id + '-' + Date.now().toString(36), p.content);
+  }
+  for(const p of linkOnly){
     p.link = await keepFullSize(who.companyId, p.id + '-' + Date.now().toString(36), p.content);
   }
 
@@ -213,10 +220,16 @@ Deno.serve(async (req: Request)=>{
       const filler = pair.length === 1 ? '<td style="width:' + PHOTO_WIDTH + 'px;"></td>' : '';
       return '<tr>' + cells + filler + '</tr>';
     }).join('');
-    const note = leftOut
-      ? '<div style="font-size:11.5px;color:#6B7B79;margin-top:4px;">'
-        + leftOut + (leftOut === 1 ? ' more photo was' : ' more photos were')
-        + ' taken on this visit but would not fit in this email.</div>'
+    // The rest, as links: the photo is there, it just did not fit inside
+    const spare = linkOnly.filter(p => p.link);
+    const note = spare.length
+      ? '<div style="font-size:12px;color:#6B7B79;margin-top:10px;">'
+        + (spare.length === 1 ? 'One more photo from this visit: ' : 'More photos from this visit: ')
+        + spare.map((p, i)=>{
+            const said = String(kindOf(p)) || ('Photo ' + (i + 1));
+            return '<a href="' + p.link + '" target="_blank" style="color:#16585C;">' + said + '</a>';
+          }).join(' \u00b7 ')
+        + '</div>'
       : '';
     return '<tr><td style="padding:0 26px 26px;">'
       + '<div style="font-size:13.5px;font-weight:600;color:#16302E;margin:8px 0 12px;">'
@@ -257,5 +270,5 @@ Deno.serve(async (req: Request)=>{
     return reply(sent.status, {error: result.message || 'The email service refused it', detail: result});
   }
   return reply(200, {sent: true, id: result.id, from: from, replyTo: who.replyTo,
-                     photos: attachments.length, leftOut: leftOut});
+                     photos: attachments.length, linked: linkOnly.length});
 });
