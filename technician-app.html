@@ -2909,7 +2909,16 @@ function syncApplyRecord(kind, id, data, deleted, agreed){
   }
   if(kind === 'setup'){
     if(deleted || !('value' in data)) return true;
-    return lsSet(id, data.value);
+    const saved = lsSet(id, data.value);
+    // The app holds its own copy of the setup from when it started. Writing to
+    // storage alone changed nothing on screen until the app was restarted,
+    // which is why quick buttons set at the office never appeared out here.
+    if(saved && id === 'chemConfig'){
+      // Only the copy in memory is refreshed. Redrawing the route here would
+      // close a customer panel the technician had open.
+      try{ chemConfig = loadChemConfig(); }catch(e){}
+    }
+    return saved;
   }
   if(kind === 'setting'){
     if(deleted) return true;
