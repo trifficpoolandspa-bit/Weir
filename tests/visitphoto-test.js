@@ -305,10 +305,10 @@ function boot(file){
           /const tally = \{taken: 0, missing: \[\]\}/.test(src) && /tally\.taken\+\+/.test(src));
     check(file + ' counts one that comes back empty as missing',
           /if\(!dataUrl\)\{ tally\.missing\.push/.test(src));
-    check(file + ' looks for the field rather than its contents',
-          /if\('beforePhoto' in r\)/.test(src) && /if\('photo' in r\)/.test(src));
-    check(file + ' and a gate photo that will not come back counts too',
-          /'gatePhoto' in \(\(s \|\| \{\}\)\.reading \|\| \{\}\)/.test(src));
+    check(file + ' counts a photo the reading holds but the phone cannot produce',
+          /photosNotOnThisPhone\.push/.test(src) && /const back = await resolvePhoto/.test(src));
+    check(file + ' saves the gate photo on whichever body of water was last',
+          (src.match(/gatePhoto: appSettings\.storePhotos === false/g) || []).length === 3);
     check(file + ' names them on the sync card', /' Missing: ' \+ lastReport\.missing\.join/.test(src));
   });
 }
