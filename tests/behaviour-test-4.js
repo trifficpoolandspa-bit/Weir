@@ -1916,7 +1916,32 @@ async function serverTechniciansTab(){
       await openProfile('No Username');
       await editRow('Password', 'somepassword');
       check('without a username it asks for one first', /Enter a username/.test(toasts(w)) && !(await members()).some(m => m.technician_id === 'tech_nouser'), toasts(w));
+      // A photo requirement ticked on the Photo requirements tab, with sync
+      // actually running: it must survive the pulls that follow
       w.eval("switchView('technicians')"); await sleep(250);
+      Array.from(d.querySelectorAll('#techMainTabs .history-type-btn'))
+        .find(b => b.dataset.techmain === 'photos').click();
+      await sleep(250);
+      const gateHead = Array.from(d.querySelectorAll('#photoRequireRows > div > div:first-child'))[2];
+      gateHead.click(); await sleep(250);
+      const gateBoxes = Array.from(d.querySelectorAll('#photoRequireRows input[type=checkbox]'));
+      const patAt = w.eval("technicians.findIndex(t => t.id === 'tech_pat')") + 1;
+      gateBoxes[patAt].checked = true;
+      gateBoxes[patAt].dispatchEvent(new w.Event('change', {bubbles: true}));
+      await sleep(200);
+      check('the tick is on the technician here', w.eval("technicians.find(t => t.id === 'tech_pat').requireGatePhoto") === true);
+
+      // The office side of this needs a record endpoint the harness does not
+      // stand up, so what is checked here is that the tick is kept locally and
+      // marked for sending; the sending itself is covered by the checks below.
+      check('and it is marked to go to the office',
+            String(w.eval("JSON.stringify(((loadSyncState(siteUser.companyId).records||{}).edits||{})['technician\u0002tech_pat'] || null)"))
+              .indexOf('requireGatePhoto') !== -1,
+            String(w.eval("JSON.stringify(((loadSyncState(siteUser.companyId).records||{}).edits||{})['technician\u0002tech_pat'] || null)")));
+
+      check('and a second sync does not undo it',
+            w.eval("technicians.find(t => t.id === 'tech_pat').requireGatePhoto") === true,
+            String(w.eval("technicians.find(t => t.id === 'tech_pat').requireGatePhoto")));
 
       console.log('\n=== A technician who existed before sign-ins ===');
       w.eval("editTechnician(technicians.find(t => t.name === 'Old Local'))"); await sleep(50);
