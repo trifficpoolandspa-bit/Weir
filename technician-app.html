@@ -5404,7 +5404,9 @@ document.getElementById('btnSaveSpaReading').addEventListener('click', async ()=
     date: new Date().toISOString(),
     notes: document.getElementById('inSpaNotes').value.trim(),
     photo: appSettings.storePhotos === false ? null : (spaPhotoController.getData() || null),
-    beforePhoto: appSettings.storePhotos === false ? null : (beforeControllerFor('spa').getData() || null)
+    beforePhoto: appSettings.storePhotos === false ? null : (beforeControllerFor('spa').getData() || null),
+    // The gate photo belongs to whichever body of water was serviced last
+    gatePhoto: appSettings.storePhotos === false ? null : (gatePhotoController.getData() || null)
   };
   const spaLists = listsForBody(customerId, 'spa', 'spa');
   spaLists.chemicals.forEach(item=>{
@@ -5443,7 +5445,9 @@ document.getElementById('btnSaveFountainReading').addEventListener('click', asyn
     date: new Date().toISOString(),
     notes: document.getElementById('inFountainNotes').value.trim(),
     photo: appSettings.storePhotos === false ? null : (fountainPhotoController.getData() || null),
-    beforePhoto: appSettings.storePhotos === false ? null : (beforeControllerFor('fountain').getData() || null)
+    beforePhoto: appSettings.storePhotos === false ? null : (beforeControllerFor('fountain').getData() || null),
+    // The gate photo belongs to whichever body of water was serviced last
+    gatePhoto: appSettings.storePhotos === false ? null : (gatePhotoController.getData() || null)
   };
   const fountLists = listsForBody(customerId, fountainId, 'fountain');
   fountLists.chemicals.forEach(item=>{
@@ -9895,6 +9899,8 @@ const MAX_REPORT_PHOTOS = 60;
 // whose stored copy will not come back is skipped in silence otherwise, which
 // is how a seven-photo visit turned into a four-photo report.
 let lastPhotoTally = {taken: 0, missing: []};
+// Photos a reading holds that this phone can no longer produce
+let photosNotOnThisPhone = [];
 
 function collectReportPhotos(sections){
   const out = [];
@@ -9914,10 +9920,8 @@ function collectReportPhotos(sections){
     const body = String(s.label || '').trim();
     const label = (body || 'photo').toLowerCase().replace(/[^a-z0-9]+/g, '-');
     const says = what => (body ? body + ' ' + what : what.charAt(0).toUpperCase() + what.slice(1));
-    // Counted even when it comes back empty, so a photo that was taken and
-    // cannot be read is visible rather than invisible
-    if('beforePhoto' in r) add(r.beforePhoto, label + '-before.jpg', says('before'));
-    if('photo' in r) add(r.photo, label + '-after.jpg', says('after'));
+    if(r.beforePhoto) add(r.beforePhoto, label + '-before.jpg', says('before'));
+    if(r.photo) add(r.photo, label + '-after.jpg', says('after'));
     // Anything the company added themselves
     Object.keys(r.customPhotos || {}).forEach(k=>{
       const what = String(k).replace(/[-_]+/g, ' ').trim();
@@ -9927,8 +9931,8 @@ function collectReportPhotos(sections){
   });
 
   // The gate goes last — it is proof the property was left secure
-  const gateSection = (sections || []).find(s => 'gatePhoto' in ((s || {}).reading || {}));
-  if(gateSection) add(gateSection.reading.gatePhoto, 'gate.jpg', 'Gate');
+  const gate = (sections || []).map(s => (s.reading || {}).gatePhoto).find(Boolean);
+  if(gate) add(gate, 'gate.jpg', 'Gate');
 
   lastPhotoTally = tally;
   return out;
@@ -9971,9 +9975,19 @@ async function renderFullCombinedReport(customerId, poolReadingId, spaReadingId,
 
   // Pull the images back out of the database for display. Only the photos on
   // this one report are loaded, not the whole library.
+  // A reading can hold a photo whose stored copy will not come back. That is
+  // the real loss, and it is counted here where both are visible at once.
+  photosNotOnThisPhone = [];
   for(const s of sections){
     for(const field of ['photo','beforePhoto','gatePhoto']){
-      if(s.reading[field]) s.reading[field] = await resolvePhoto(s.reading[field]);
+      if(s.reading[field]){
+        const back = await resolvePhoto(s.reading[field]);
+        if(!back){
+          photosNotOnThisPhone.push(s.label + ' '
+            + (field === 'photo' ? 'after' : field === 'beforePhoto' ? 'before' : 'gate'));
+        }
+        s.reading[field] = back;
+      }
     }
     if(s.reading.customPhotos){
       for(const id of Object.keys(s.reading.customPhotos)){
@@ -10352,7 +10366,7 @@ async function sendReportFromOffice(customerId, type){
                                   gathered: (currentReportPhotos || []).length,
                                   unreadable: couldNotRead,
                                   taken: lastPhotoTally.taken,
-                                  missing: (lastPhotoTally.missing || []).slice(0, 6)});
+                                  missing: (photosNotOnThisPhone || []).slice(0, 8)});
     return {ok: true};
   }catch(e){
     noteLastReport('the old way', 'no connection when it was sent');
