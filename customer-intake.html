@@ -317,6 +317,7 @@ input::placeholder{color:#A9BCB9;}
 .confirm-box .btn-row{gap:8px;}
 .confirm-box .btn{flex:1;width:auto;}
 
+/* One tab strip style across the site, the Technicians tabs included */
 .seg-control{display:flex;background:var(--surface-alt);border-radius:9px;padding:3px;gap:2px;margin-bottom:14px;}
 
 .toggle-switch{
@@ -684,8 +685,10 @@ input::placeholder{color:#A9BCB9;}
   </div>
 
   <div class="view" id="view-technicians">
-    <div class="card" style="padding:10px 12px;">
-      <div class="history-seg" id="techMainTabs" style="display:flex;gap:8px;">
+    <!-- In a card like every other tab strip: the same grey reads lighter on
+         the page background than it does on white -->
+    <div class="card" style="padding:12px;">
+      <div class="seg-control" id="techMainTabs" style="margin-bottom:0;">
         <button class="history-type-btn active" data-techmain="list" type="button">Technicians</button>
         <button class="history-type-btn" data-techmain="photos" type="button">Photo requirements</button>
       </div>
@@ -14804,6 +14807,15 @@ function switchView(view){
     hideTechForm();
     renderCompanySignIn();
     loadTechAccounts();
+    // Always arrives on the technician list, whichever tab was open last time
+    photoStepOpen = null;
+    document.querySelectorAll('#techMainTabs .history-type-btn').forEach(b=>{
+      b.classList.toggle('active', b.dataset.techmain === 'list');
+    });
+    const listPane = document.getElementById('techListPane');
+    const photoCard = document.getElementById('photoRequireCard');
+    if(listPane) listPane.style.display = '';
+    if(photoCard) photoCard.style.display = 'none';
   }
   if(view === 'map'){
     selectedMapDay = DAYS_OF_WEEK[new Date().getDay()];
