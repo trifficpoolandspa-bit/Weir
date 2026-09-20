@@ -539,7 +539,7 @@ console.log('\n=== Photo requirements are not set per technician ===');
     w.eval("openTechEditor(adminTechnicians[0])");
     check('  the before photo tick is gone', !d.getElementById('tcRequireBefore'));
     check('  the after photo tick is gone', !d.getElementById('tcRequireAfter'));
-    check('  the gate photo tick remains', !!d.getElementById('tcRequireGate'));
+    check('  the gate photo tick is gone too, it is set on the website now', !d.getElementById('tcRequireGate'));
 
     ['technician-app.html','admin-readings-app.html'].forEach(file=>{
       const src = fs.readFileSync(file, 'utf8');
@@ -819,41 +819,38 @@ console.log('\n=== The route can be reversed ===');
 }
 
 
-console.log('\n=== A photo step switched off disables its tick ===');
+console.log('\n=== A photo step switched off disables its row ===');
 {
-  // The requirements moved to the Technicians page: before and after are ticked
-  // per body of water, the gate once for the whole visit.
+  // Each requirement is a row that opens its technicians when pressed. A step
+  // switched off in Settings greys its row out and says why.
   function onPhotoTab(settings){
     const {dom} = load('customer-intake.html', {seed: {customers: [], settings: settings}});
     const w = dom.window, d = w.document;
     w.console.warn = ()=>{};
     w.Element.prototype.scrollIntoView = function(){};
     w.eval("switchView('technicians'); renderPhotoRequirements();");
-    const ticks = Array.from(d.querySelectorAll('#photoRequireRows input[type=checkbox]'));
-    return {
-      gate: d.getElementById('chkRequireGatePhoto'),
-      before: ticks.slice(0, 3),
-      after: ticks.slice(3, 6),
-      note: d.getElementById('photoRequireNote')
-    };
+    const rows = Array.from(d.querySelectorAll('#photoRequireRows > div'))
+      .filter(r => r.querySelector('div'));
+    const dim = r => (r.style.opacity || '') === '0.45';
+    return {rows: rows, dim: dim, note: d.getElementById('photoRequireNote')};
   }
 
   try{
     let p = onPhotoTab({showGatePhoto:true, showBeforePhotos:true, showAfterPhotos:true});
-    check('  with every step on, every tick is usable',
-          !p.gate.disabled && p.before.every(b => !b.disabled) && p.after.every(b => !b.disabled));
+    check('  the four built-in requirements each have a row', p.rows.length === 4, String(p.rows.length));
+    check('  with every step on, none are greyed out', p.rows.every(r => !p.dim(r)));
 
     p = onPhotoTab({showGatePhoto:false, showBeforePhotos:true, showAfterPhotos:true});
-    check('  the gate step off disables the gate tick', p.gate.disabled === true);
-    check('  and leaves the others alone',
-          p.before.every(b => !b.disabled) && p.after.every(b => !b.disabled));
+    check('  the gate step off greys its row', p.dim(p.rows[2]));
+    check('  and leaves the others alone', !p.dim(p.rows[0]) && !p.dim(p.rows[1]) && !p.dim(p.rows[3]));
     check('  with a note saying which step is off',
           p.note.style.display !== 'none' && /gate/i.test(p.note.textContent), p.note.textContent);
 
     p = onPhotoTab({showGatePhoto:true, showBeforePhotos:false, showAfterPhotos:true});
-    check('  the before step off disables all three before ticks',
-          p.before.every(b => b.disabled) && p.after.every(b => !b.disabled) && p.gate.disabled === false);
-  }catch(e){ check('  photo ticks', false, e.message); }
+    check('  the before step off greys the before row',
+          p.dim(p.rows[0]) && !p.dim(p.rows[1]) && !p.dim(p.rows[2]));
+    check('  the skip rule is never greyed out, it is not a photo step', !p.dim(p.rows[3]));
+  }catch(e){ check('  photo rows', false, e.message); }
 }
 
 
@@ -1663,27 +1660,29 @@ async function serverTechniciansTab(){
       check('the list shows who they sign in as', /Signs in as alex/.test(rowText(d, 'Alex Rivera')), rowText(d, 'Alex Rivera'));
       check('the toast says so', /sign in as alex/.test(toasts(w)), toasts(w));
 
-      console.log('\n=== The form has the skip and gate requirements ===');
+      console.log('\n=== The form carries no photo requirements ===');
       d.getElementById('btnAddTech').click(); await sleep(50);
-      const skipBox = d.getElementById('techRequireSkipProof'), gateBox = d.getElementById('techRequireGatePhoto');
-      check('Add technician has "Require a photo and note to skip a body of water"', !!skipBox && /Require a photo and note to skip a body of water/.test(skipBox.closest('label').textContent));
-      check('and "Require closed gate photo"', !!gateBox && /Require closed gate photo/.test(gateBox.closest('label').textContent));
-      check('both start unticked, as on the profile page', skipBox && gateBox && !skipBox.checked && !gateBox.checked);
-      fill(d, w, {techName: 'Rule Follower', techRequireSkipProof: true, techRequireGatePhoto: true});
+      check('Add technician has no skip tick', !d.getElementById('techRequireSkipProof'));
+      check('and no gate photo tick', !d.getElementById('techRequireGatePhoto'));
+      fill(d, w, {techName: 'Rule Follower'});
       await saveForm(d);
       const rf = () => w.eval("technicians.find(t => t.name === 'Rule Follower')");
-      check('ticking them saves both requirements on the technician', rf() && rf().requireSkipProof === true && rf().requireGatePhoto === true, JSON.stringify(rf()));
-      w.eval("openTechDetail(technicians.find(t => t.name === 'Rule Follower'))"); await sleep(100);
-      const profileBox = label => { const row = Array.from(d.querySelectorAll('#techProfileMeta .access-row')).find(r => r.textContent.indexOf(label) !== -1); return row && row.querySelector('input'); };
-      check('the profile page shows them ticked', profileBox('Require a photo and note to skip') && profileBox('Require a photo and note to skip').checked && profileBox('Require closed gate photo').checked);
-      w.eval("switchView('technicians')"); await sleep(250);
+      check('a technician can still be added', !!rf(), toasts(w));
+
+      // Requirements set on the Photo requirements tab survive an edit here
+      w.eval("const t = technicians.find(x => x.name === 'Rule Follower');"
+             + " t.requireGatePhoto = true; t.requireSkipProof = true; saveTechnicians();");
       w.eval("editTechnician(technicians.find(t => t.name === 'Rule Follower'))"); await sleep(50);
-      check('Edit shows them ticked', d.getElementById('techRequireSkipProof').checked && d.getElementById('techRequireGatePhoto').checked);
-      fill(d, w, {techRequireGatePhoto: false});
+      fill(d, w, {techName: 'Rule Follower'});
       await saveForm(d);
-      check('unticking one in Edit turns just that one off', rf().requireGatePhoto === false && rf().requireSkipProof === true, JSON.stringify(rf()));
-      d.getElementById('btnAddTech').click(); await sleep(50);
-      check('the next new technician starts unticked again', !d.getElementById('techRequireSkipProof').checked && !d.getElementById('techRequireGatePhoto').checked);
+      check('editing them leaves the gate requirement alone', rf().requireGatePhoto === true, JSON.stringify(rf()));
+      check('and the skip requirement too', rf().requireSkipProof === true, JSON.stringify(rf()));
+      check('the profile page carries neither', (()=>{
+        w.eval("openTechDetail(technicians.find(t => t.name === 'Rule Follower'))");
+        const rows = Array.from(d.querySelectorAll('#techProfileMeta .access-row')).map(r => r.textContent);
+        return !rows.some(r => /closed gate/i.test(r) || /photo and note to skip/i.test(r));
+      })());
+      w.eval("switchView('technicians')"); await sleep(250);
       w.eval('resetTechForm(); hideTechForm();');
 
       console.log('\n=== Mistakes are caught before anything is saved ===');
@@ -1908,45 +1907,176 @@ async function serverTechniciansTab(){
       const tabs = Array.from(d.querySelectorAll('#techMainTabs .history-type-btn'));
       check('there are two tabs', tabs.length === 2 && /Technicians/.test(tabs[0].textContent)
             && /Photo requirements/.test(tabs[1].textContent), tabs.map(t => t.textContent).join(' | '));
+      const css = fs.readFileSync('customer-intake.html', 'utf8');
+      const activeStyle = (css.match(/\.history-type-btn\.active\{[^}]*\}/) || [''])[0];
+      check('the chosen tab has a shadow you can see', /box-shadow:0 2px 5px/.test(activeStyle), activeStyle);
       check('the technician list is what shows first', d.getElementById('techListPane').style.display !== 'none');
 
+      // Someone to set requirements for
+      // Added alongside whoever already exists, and taken away again at the end
+      w.eval("technicians.push({id:'tp1', name:'Pat Tech'}, {id:'tp2', name:'Sal Tech'}); saveTechnicians();");
       tabs[1].click(); await sleep(250);
       check('Photo requirements opens its own page', d.getElementById('photoRequireCard').style.display === 'block'
             && d.getElementById('techListPane').style.display === 'none');
 
-      const rows = Array.from(d.querySelectorAll('#photoRequireRows input[type=checkbox]'));
-      check('before and after each have Pool, Spa and Extra', rows.length === 6, String(rows.length));
-      const labels = Array.from(d.querySelectorAll('#photoRequireRows > div > div:first-child')).map(x => x.textContent);
-      check('the two rows are the before and after photos',
-            /before/i.test(labels[0]) && /after/i.test(labels[1]), labels.join(' | '));
+      const rowHeads = () => Array.from(d.querySelectorAll('#photoRequireRows > div > div:first-child'));
+      check('there is a row for each requirement', rowHeads().length === 4,
+            rowHeads().map(r => r.textContent.slice(0, 22)).join(' | '));
+      check('and no Technicians buttons any more',
+            Array.from(d.querySelectorAll('#photoRequireRows button'))
+              .filter(b => /Technicians/.test(b.textContent)).length === 0);
+      check('each row says how many technicians it applies to',
+            /Nobody yet|technician/.test(rowHeads()[0].textContent), rowHeads()[0].textContent);
+      const firstName = rowHeads()[0].querySelector('div').firstElementChild;
+      const src2 = fs.readFileSync('customer-intake.html', 'utf8');
+      check('a line separates the heading from the first requirement',
+            /border-top:1px solid var\(--line\);"><\/div>\s*<div id="photoRequireRows"/.test(src2));
+      check('and the gap sits above that line, so every line is the same distance from its row',
+            /margin:0 0 22px;">Press a row/.test(src2) && /id="photoRequireRows"><\/div>/.test(src2));
+      check('each row has room to be pressed comfortably',
+            Array.from(d.querySelectorAll('#photoRequireRows > div'))
+              .filter(r => r.querySelector('div'))
+              .every(r => r.style.padding === '13px 0px'),
+            (d.querySelector('#photoRequireRows > div') || {}).style.padding);
+      check('the requirement reads as the heading of its row',
+            firstName && firstName.style.fontWeight === '600', firstName && firstName.style.cssText);
+      check('and pressing a row leaves no text cursor in it',
+            rowHeads()[0].style.userSelect === 'none', rowHeads()[0].style.userSelect);
+      // Nowhere that is pressed rather than typed into should show one
+      ['customer-intake.html', 'technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+        const css = fs.readFileSync(file, 'utf8');
+        const rule = (css.match(/label, button[^{]*\{[^}]*\}/) || [''])[0];
+        check(file + ' turns off text selection on things that are pressed',
+              /user-select:none/.test(rule), rule.slice(0, 80));
+        check(file + ' leaves real fields alone',
+              /input, textarea, select\{[^}]*user-select:auto/.test(css));
+      });
+      rowHeads()[0].click(); await sleep(250);
+      const listBox = rowHeads()[0].parentElement.querySelector('div:not([style*="flex-wrap"])');
+      const opened = Array.from(rowHeads()[0].parentElement.children)
+        .find(el => el.style && el.style.maxWidth === '420px');
+      check('the technicians are held to a middle column rather than stretched',
+            !!opened && opened.style.margin.indexOf('auto') !== -1,
+            opened ? opened.style.cssText : 'no list');
+      rowHeads()[0].click(); await sleep(200);
+      check('nobody is listed until it is opened', d.querySelectorAll('#photoRequireRows input[type=checkbox]').length === 0);
 
-      rows[1].checked = true;
-      rows[1].dispatchEvent(new w.Event('change'));
-      await sleep(150);
-      check('ticking Spa asks for a before photo on the spa only',
-            w.eval('chemConfig.spa.requireBeforePhoto') === true && w.eval('chemConfig.pool.requireBeforePhoto') !== true,
-            String(w.eval('chemConfig.spa.requireBeforePhoto')) + ' / ' + String(w.eval('chemConfig.pool.requireBeforePhoto')));
+      rowHeads()[0].click(); await sleep(250);
+      const ticks = Array.from(d.querySelectorAll('#photoRequireRows input[type=checkbox]'));
+      check('opening it lists every technician with Pool, Spa and Extra, plus an Everyone row',
+            ticks.length === (w.eval('technicians.length') + 1) * 3, String(ticks.length));
+      const heads = Array.from(d.querySelectorAll('#photoRequireRows span')).map(x => x.textContent);
+      check('there is no gate column on the before and after rows', heads.indexOf('Gate') === -1, heads.join(' | '));
+      const widths = Array.from(d.querySelectorAll('#photoRequireRows label'))
+        .map(l => l.style.width).filter(Boolean);
+      check('every tick is spaced the same', widths.length > 0 && widths.every(x => x === '52px'), widths.join(','));
+      check('and names them', /Pat Tech/.test(d.getElementById('photoRequireRows').textContent)
+            && /Sal Tech/.test(d.getElementById('photoRequireRows').textContent));
 
-      const gate = d.getElementById('chkRequireGatePhoto');
-      check('the gate photo has a single tick, not one per body', !!gate
-            && d.querySelectorAll('#photoRequireRows #chkRequireGatePhoto').length === 0);
-      gate.checked = true;
-      gate.dispatchEvent(new w.Event('change'));
-      await sleep(150);
-      check('and ticking it asks for one gate photo for the whole visit',
-            w.eval('chemConfig.pool.requireGatePhoto') === true);
+      // The three ticks belonging to Pat Tech, whoever else is in the list
+      const rowsNow = Array.from(d.querySelectorAll('#photoRequireRows > div > div'));
+      // Past the Everyone row to Pat Tech's own three ticks: Pool, Spa, Extra
+      const patTicks = Array.from(d.querySelectorAll('#photoRequireRows input[type=checkbox]'))
+        .slice((w.eval("technicians.findIndex(t => t.id === 'tp1')") + 1) * 3);
+      patTicks[1].checked = true;
+      patTicks[1].dispatchEvent(new w.Event('change'));
+      await sleep(200);
+      check('ticking Spa for one technician asks it of them only',
+            w.eval("technicians.find(t => t.id === 'tp1').photoRules.before.spa") === true
+            && !w.eval("technicians.find(t => t.id === 'tp2').photoRules"),
+            JSON.stringify(w.eval("JSON.stringify(technicians.map(t => t.photoRules || null))")));
+      check('and not for the pool', w.eval("technicians.find(t => t.id === 'tp1').photoRules.before.pool") !== true);
+      check('the row says how many technicians it applies to',
+            /1 technician/.test(rowHeads()[0].textContent), rowHeads()[0].textContent);
 
-      check('your own photos can be set per body of water', !!d.getElementById('customPhotoBody')
-            && d.getElementById('customPhotoBody').options.length === 3);
+      // The gate has a row of its own, under the two built-in photos
+      const rowsNow2 = Array.from(d.querySelectorAll('#photoRequireRows > div'));
+      check('the gate is a row under before and after',
+            /closed gate/i.test(rowsNow2[2].textContent), rowsNow2.map(r => r.textContent.slice(0, 26)).join(' | '));
+      check('there is no separate tick for everyone any more', !d.getElementById('chkRequireGatePhoto'));
+      rowHeads()[2].click(); await sleep(250);
+      const gateTicks = Array.from(d.querySelectorAll('#photoRequireRows input[type=checkbox]'));
+      check('its list is one tick per technician, plus Everyone',
+            gateTicks.length === w.eval('technicians.length') + 1, String(gateTicks.length));
+      const patGateAt = w.eval("technicians.findIndex(t => t.id === 'tp1')") + 1;
+      gateTicks[patGateAt].checked = true;
+      gateTicks[patGateAt].dispatchEvent(new w.Event('change'));
+      await sleep(250);
+      check('ticking one asks the gate photo of them',
+            w.eval("technicians.find(t => t.id === 'tp1').requireGatePhoto") === true);
+      check('and of nobody else',
+            w.eval("technicians.find(t => t.id === 'tp2').requireGatePhoto") !== true);
+      rowHeads()[2].click(); await sleep(200);
 
-      // And it has left Readings and dosages entirely
+      // Your own photos: added in a window, listed with the built-in rows
+      d.getElementById('btnAddCustomPhoto').click(); await sleep(200);
+      check('adding your own photo opens a window', d.getElementById('photoTaskOverlay').style.display === 'flex');
+      d.getElementById('photoTaskLabel').value = '';
+      d.getElementById('btnSavePhotoTask').click(); await sleep(150);
+      check('it will not save without a name', d.getElementById('photoTaskOverlay').style.display === 'flex'
+            && d.getElementById('photoTaskError').style.display === 'block');
+
+      d.getElementById('photoTaskLabel').value = 'Filter gauge';
+      d.getElementById('photoTaskBefore').checked = true;
+      d.getElementById('photoTaskSpa').checked = true;
+      // Enter saves, the same as the button
+      d.getElementById('photoTaskLabel').dispatchEvent(new w.KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+      await sleep(250);
+      check('pressing Enter saves it', d.getElementById('photoTaskOverlay').style.display === 'none');
+
+      const allRows = Array.from(d.querySelectorAll('#photoRequireRows > div'));
+      check('it is listed under the four built-in rows', allRows.length === 5
+            && /Filter gauge/.test(allRows[4].textContent), allRows.map(r => r.textContent.slice(0, 24)).join(' | '));
+      const crosses = Array.from(d.querySelectorAll('#photoRequireRows button')).filter(b => b.textContent === '\u00d7');
+      check('only your own photo has an X beside it', crosses.length === 1);
+      check('and the X sits right after its name',
+            crosses[0].previousElementSibling && /Filter gauge/.test(crosses[0].previousElementSibling.textContent));
+      check('it says when it is taken and where', /before readings and after readings/.test(allRows[4].textContent)
+            && /Pool, Spa/.test(allRows[4].textContent), allRows[4].textContent.slice(0, 120));
+
+      // Its own technician list, with only the bodies it was given
+      rowHeads()[4].click(); await sleep(250);
+      const ownTicks = Array.from(d.querySelectorAll('#photoRequireRows input[type=checkbox]'));
+      const techCount = w.eval('technicians.length');
+      check('its list has a column per body it was given, and no gate',
+            ownTicks.length === (techCount + 1) * 2, String(ownTicks.length) + ' for ' + techCount + ' technicians');
+      check('with an Everyone row at the top', /Everyone/.test(d.getElementById('photoRequireRows').textContent));
+
+      // Everyone at once
+      ownTicks[0].checked = true;
+      ownTicks[0].dispatchEvent(new w.Event('change'));
+      await sleep(250);
+      const taskId = w.eval("Object.keys(technicians[0].photoRules || {}).find(k => k.indexOf('cp_') === 0)");
+      check('ticking Everyone asks it of every technician',
+            w.eval("technicians.every(t => t.photoRules && t.photoRules['" + taskId + "'] && t.photoRules['" + taskId + "'].pool === true)"),
+            String(taskId));
+
+      // Changing it
+      // The name itself, which carries the hint that it can be changed
+      Array.from(d.querySelectorAll('#photoRequireRows [title="Change this photo"]'))[0].click();
+      await sleep(200);
+      check('pressing its name opens the window again to change it',
+            d.getElementById('photoTaskOverlay').style.display === 'flex'
+            && d.getElementById('photoTaskLabel').value === 'Filter gauge');
+      d.getElementById('btnCancelPhotoTask').click(); await sleep(150);
+
+      // Removing it
+      w.__answer = 'ok';
+      Array.from(d.querySelectorAll('#photoRequireRows button')).filter(b => b.textContent === '\u00d7')[0].click();
+      await sleep(400);
+      check('the X removes it', Array.from(d.querySelectorAll('#photoRequireRows > div')).length === 4,
+            String(d.querySelectorAll('#photoRequireRows > div').length));
+      check('and takes its requirements with it',
+            !w.eval("technicians.some(t => t.photoRules && t.photoRules['" + taskId + "'])"));
+
       w.eval("switchView('chemconfig')"); await sleep(250);
-      const stillThere = d.querySelector('#view-chemconfig #photoRequireCard');
-      check('Readings and dosages no longer carries it', !stillThere);
+      check('Readings and dosages no longer carries any of it', !d.querySelector('#view-chemconfig #photoRequireCard'));
       check('but still has chemicals and dosages',
             !!d.getElementById('chemConfigChemicalsList') && !!d.getElementById('btnAddChemical'));
       w.eval("switchView('technicians')"); await sleep(250);
       tabs[0].click(); await sleep(150);
+      w.eval("technicians = technicians.filter(t => t.id !== 'tp1' && t.id !== 'tp2'); saveTechnicians();");
+      await sleep(150);
     }
 
     console.log('\n=== A technician\'s Customers tab ===');
