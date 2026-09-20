@@ -191,6 +191,79 @@ function boot(file){
   }
   
   
-  console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
+  
+// ---- Photos asked of one technician by name ----
+// Set on the website's Photo requirements tab, they travel with the technician
+// profile and the phone must hold them to it.
+{
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const today = DAYS[new Date().getDay()];
+  for(const file of ['technician-app.html','admin-readings-app.html']){
+    console.log('\n=== ' + file + ': photos asked of this technician ===');
+    const dom = new JSDOM(fs.readFileSync(file,'utf8'), {
+      runScripts:'dangerously', pretendToBeVisual:true, url:'https://example.com/',
+      beforeParse(w){
+        w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
+        w.scrollTo=()=>{}; w.scrollBy=()=>{}; w.alert=()=>{};
+        w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){},fillRect(){}});
+        w.Element.prototype.scrollIntoView=function(){};
+        w.console.warn=()=>{}; w.console.error=()=>{};
+        w.fetch = async ()=> { throw new TypeError('offline'); };
+        w.indexedDB = global.indexedDB; w.IDBKeyRange = global.IDBKeyRange;
+        const seed = {
+          technicians: [{id:'t1', name:'Pat Tech',
+                         photoRules: {after: {spa: true}, before: {pool: true}}}],
+          customers: [{id:'a', name:'Alpha One', active:true, hasPool:true, hasSpa:true,
+                       day: today, technicianId:'t1'}],
+          settings: {showBeforePhotos:true, showAfterPhotos:true}
+        };
+        Object.keys(seed).forEach(k=> w.localStorage.setItem('weir:'+k, JSON.stringify(seed[k])));
+        w.localStorage.setItem('weirdevice:session', JSON.stringify({access_token:'t', refresh_token:'r'}));
+        // The admin app admits admins only, so this one signs in as one there
+        w.localStorage.setItem('weirdevice:membership', JSON.stringify({
+          technician_id:'t1', name:'Pat Tech', username:'pat',
+          full_access: file === 'admin-readings-app.html', removed:false, company_id:'co'}));
+        w.localStorage.setItem('weirdevice:company', JSON.stringify({id:'co', name:'Triffic'}));
+      }
+    });
+    const w = dom.window;
+    await new Promise(r => setTimeout(r, 1500));
+    try{
+      check('  the phone knows who is signed in', w.eval("currentUser && currentUser.id") === 't1',
+            String(w.eval("currentUser && currentUser.id")));
+      check('  an after photo is asked of them on the spa', w.eval("techWantsPhoto('after','spa')") === true);
+      check('  but not on the pool', w.eval("techWantsPhoto('after','pool')") === false);
+      check('  a before photo is asked of them on the pool', w.eval("techWantsPhoto('before','pool')") === true);
+      await w.eval("openVisit('a')");
+      await new Promise(r => setTimeout(r, 600));
+      check('  so the spa will not submit without an after photo',
+            w.eval("afterPhotoRequiredFor('spa')") === true);
+      check('  while the pool is free to submit without one',
+            w.eval("afterPhotoRequiredFor('pool')") === false);
+    }catch(e){ check('  photos asked of a technician', false, e.message); }
+    w.close();
+  }
+}
+
+
+// ---- Every photo from a visit reaches the report ----
+{
+  console.log('\n=== all a visit\u2019s photos are sent ===');
+  ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+    const src = fs.readFileSync(file, 'utf8');
+    const max = (src.match(/const MAX_REPORT_PHOTOS = (\d+)/) || [])[1];
+    check(file + ' carries enough photos for a full visit', Number(max) >= 12, String(max));
+    check(file + ' sizes them for an email rather than for printing',
+          /LONGEST_EDGE = 1600/.test(src) && /toDataURL\('image\/jpeg', 0\.78\)/.test(src));
+    check(file + ' sizes a photo that is already a JPEG too',
+          src.indexOf("if(dataUrl.indexOf('image/jpeg') !== -1){ resolve(dataUrl); return; }") === -1);
+  });
+  const fn = fs.readFileSync('functions/send-report/index.ts', 'utf8');
+  check('the office says so when a photo will not fit, rather than dropping it',
+        /leftOut\+\+/.test(fn) && /would not fit in this email/.test(fn));
+  check('and reports how many went out', /photos: attachments\.length, leftOut: leftOut/.test(fn));
+}
+
+console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();

@@ -445,18 +445,36 @@ async function walkVisit(w, d, maxPresses){
     }catch(e){ check('  skip with proof', false, e.message); }
   }
 
-  // The setting is offered in both editors
+  // It is set on the website's Photo requirements tab, as a row of its own
   {
     const site = fs.readFileSync('customer-intake.html', 'utf8');
-    check('the website offers the setting', site.indexOf("'requireSkipProof'") !== -1);
+    check('the website sets it on the Photo requirements tab',
+          site.indexOf("{step: 'skip', label: 'Require a photo and note to skip") !== -1);
+    check('with one tick per technician', site.indexOf("step === 'skip' ? t.requireSkipProof === true") !== -1);
     const admin = fs.readFileSync('admin-readings-app.html', 'utf8');
-    check('the admin app offers it too', admin.indexOf('tcRequireSkipProof') !== -1);
-    check('the admin app loads the saved value',
-          admin.indexOf("document.getElementById('tcRequireSkipProof').checked = t.requireSkipProof === true;") !== -1);
-    check('and saves it',
-          admin.indexOf("t.requireSkipProof = document.getElementById('tcRequireSkipProof').checked;") !== -1);
+    check('the app no longer offers its own tick for it', admin.indexOf('tcRequireSkipProof') === -1);
+    check('but still holds a technician to it', admin.indexOf("techRequires('requireSkipProof')") !== -1);
   }
 
-  console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
+  
+// ---- The step bar sits on the tab bar, with no gap ----
+{
+  console.log('\n=== The step bar meets the tabs ===');
+  ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+    const src = fs.readFileSync(file, 'utf8');
+    const rule = (src.match(/\.step-bar\{[^}]*\}/) || [''])[0];
+    check(file + ' places the step bar by the tab bar\u2019s real height',
+          /bottom:var\(--bottombar-height/.test(rule), rule.slice(0, 120));
+    check(file + ' no longer guesses at 74px', rule.indexOf('74px') === -1);
+    check(file + ' measures that height from the bar itself',
+          /function measureBottomBar\(\)/.test(src) && /getBoundingClientRect\(\)\.height/.test(src));
+    check(file + ' measures again when the window changes size',
+          /addEventListener\('resize', measureBottomBar\)/.test(src));
+    check(file + ' and leaves room under the page for both bars',
+          /body\.has-step-bar\{padding-bottom:calc\(var\(--bottombar-height/.test(src));
+  });
+}
+
+console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();

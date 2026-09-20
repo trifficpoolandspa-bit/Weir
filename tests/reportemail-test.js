@@ -252,9 +252,16 @@ const base = {
     .replace(/\(p\s*:\s*\{[^}]*\}\)/g, '(p)')
     .replace(/const rows\s*:\s*Array<[^=]+>\s*=/g, 'const rows =')
     .replace(/ as any/g, '');
-  const build = list => new Function('shown', strip(piece)
-    + '; return {photoSection, withPhotos};')(list);
-  const {photoSection, withPhotos} = build(shown);
+  // leftOut is counted while the photos are gathered, which is above the piece
+  // being lifted out, so it is passed in
+  const build = (list, leftOut) => new Function('shown', 'leftOut', strip(piece)
+    + '; return {photoSection, withPhotos};')(list, leftOut || 0);
+  const {photoSection, withPhotos} = build(shown, 0);
+
+  // A photo too big to carry is named, not silently dropped
+  const crowded = build([{id: 'p1', name: 'pool-after.jpg', caption: 'Pool after', link: ''}], 2).photoSection();
+  check('a photo that will not fit is mentioned rather than dropped',
+        /2 more photos were/.test(crowded), crowded.slice(-160));
 
   // The browser blocks the whole request if the app sends a header the
   // function has not said it accepts. That looked exactly like no signal.
