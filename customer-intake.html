@@ -886,8 +886,12 @@ input::placeholder{color:#A9BCB9;}
 
       <div class="field" style="position:relative;">
         <label>Customer</label>
-        <input id="customCustSearch" placeholder="Start typing a name&hellip;" autocomplete="off" style="padding-right:38px;">
-        <button type="button" id="customCustClear" style="display:none;position:absolute;right:8px;bottom:4px;height:30px;width:30px;padding:0;border:1px solid #EFC9BC;border-radius:8px;background:#fff;color:var(--rust);font-size:18px;line-height:1;cursor:pointer;align-items:center;justify-content:center;">&times;</button>
+        <!-- The button is measured against the field itself rather than the
+             whole block, so it sits level with the text rather than low -->
+        <div style="position:relative;">
+          <input id="customCustSearch" placeholder="Start typing a name&hellip;" autocomplete="off" style="padding-right:38px;">
+          <button type="button" id="customCustClear" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);height:30px;width:30px;padding:0;border:1px solid #EFC9BC;border-radius:8px;background:#fff;color:var(--rust);font-size:18px;line-height:1;cursor:pointer;align-items:center;justify-content:center;">&times;</button>
+        </div>
         <div id="customCustSuggest" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:200;background:#fff;border:1px solid var(--line);border-radius:10px;margin-top:4px;box-shadow:0 8px 24px rgba(15,46,46,0.22);max-height:240px;overflow-y:auto;"></div>
       </div>
 
@@ -10040,6 +10044,11 @@ function openQuickButtonsModal(item){
       item.buttons.push(0);
       saveActiveConfig();
       renderBody();
+      // Ready to type straight away: the new button's number is waiting with
+      // its 0 selected, so typing replaces it
+      const fields = body.querySelectorAll('input[type="number"]');
+      const last = fields[fields.length - 1];
+      if(last){ last.focus(); last.select(); }
     });
     body.appendChild(addBtn);
   }
