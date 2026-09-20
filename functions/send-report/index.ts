@@ -113,10 +113,14 @@ Deno.serve(async (req: Request)=>{
   const attachments: Array<Record<string, string>> = [];
   const shown: Array<{id: string, name: string, caption: string, link: string, content: string}> = [];
   let carried = 0;
+  let leftOut = 0;
   (Array.isArray(body.photos) ? body.photos : []).forEach((p: any, i: number)=>{
     if(!p || !p.content) return;
     const size = String(p.content).length * 0.75;
-    if(carried + size > 20 * 1024 * 1024) return;
+    // What is left out is counted and said in the report, rather than quietly
+    // disappearing: a report that is missing photos with no explanation is
+    // worse than one that says so.
+    if(carried + size > 28 * 1024 * 1024){ leftOut++; return; }
     carried += size;
     const id = 'photo-' + (i + 1);
     attachments.push({
@@ -209,11 +213,16 @@ Deno.serve(async (req: Request)=>{
       const filler = pair.length === 1 ? '<td style="width:' + PHOTO_WIDTH + 'px;"></td>' : '';
       return '<tr>' + cells + filler + '</tr>';
     }).join('');
+    const note = leftOut
+      ? '<div style="font-size:11.5px;color:#6B7B79;margin-top:4px;">'
+        + leftOut + (leftOut === 1 ? ' more photo was' : ' more photos were')
+        + ' taken on this visit but would not fit in this email.</div>'
+      : '';
     return '<tr><td style="padding:0 26px 26px;">'
       + '<div style="font-size:13.5px;font-weight:600;color:#16302E;margin:8px 0 12px;">'
       + (shown.length === 1 ? 'Photo from this visit' : 'Photos from this visit') + '</div>'
       + '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;">'
-      + cards + '</table></td></tr>';
+      + cards + '</table>' + note + '</td></tr>';
   }
 
   // Above the sign-off and the company name, so the report reads: what was
@@ -247,5 +256,6 @@ Deno.serve(async (req: Request)=>{
   if(!sent.ok){
     return reply(sent.status, {error: result.message || 'The email service refused it', detail: result});
   }
-  return reply(200, {sent: true, id: result.id, from: from, replyTo: who.replyTo});
+  return reply(200, {sent: true, id: result.id, from: from, replyTo: who.replyTo,
+                     photos: attachments.length, leftOut: leftOut});
 });
