@@ -708,32 +708,9 @@ console.log('\n=== Turning a photo step on does NOT force the requirement ===');
   // The app-wide requirement is inherited by every body of water whose own tick
   // is not set. Forcing it on when the step is enabled made spa and fountain
   // demand a photo while their boxes looked unticked.
-  [['admin-readings-app.html','options'], ['customer-intake.html','settings']].forEach(([file, view])=>{
-    const {dom} = load(file, {seed: {
-      customers: [],
-      settings: {showBeforePhotos:false, showAfterPhotos:false, showGatePhoto:false,
-                 requireBeforePhotos:false, requireAfterPhotos:false, requireGatePhoto:false}
-    }});
-    const w = dom.window, d = w.document;
-    w.console.warn = ()=>{};
-    w.Element.prototype.scrollIntoView = function(){};
-    try{
-      w.eval("switchView('" + view + "');");
-      [['settingBeforePhotos','showBeforePhotos','requireBeforePhotos'],
-       ['settingAfterPhotos','showAfterPhotos','requireAfterPhotos'],
-       ['settingGatePhoto','showGatePhoto','requireGatePhoto']].forEach(([toggleId, showKey, reqKey])=>{
-        const step = d.getElementById(toggleId);
-        if(!step){ check(file + ' has ' + toggleId, false); return; }
-        step.checked = true;
-        step.dispatchEvent(new w.Event('change', {bubbles:true}));
-        check(file + ' the step turns on', w.eval('appSettings.' + showKey) === true);
-        check(file + ' without forcing ' + reqKey,
-              w.eval('appSettings.' + reqKey) !== true,
-              String(w.eval('appSettings.' + reqKey)));
-      });
-    }catch(e){ check(file + ' photo step toggles', false, e.message); }
-  });
-
+  // The steps themselves are no longer switched on and off in Settings: the
+  // photo steps always exist, and the Photo requirements tab decides who has
+  // to take which photo.
   ['admin-readings-app.html','customer-intake.html'].forEach(file=>{
     const src = fs.readFileSync(file, 'utf8');
     check(file + ' has no app-wide requireAfterPhotos default at all',
@@ -742,10 +719,11 @@ console.log('\n=== Turning a photo step on does NOT force the requirement ===');
 }
 
 
-console.log('\n=== Photo settings point at Readings and Dosages ===');
+console.log('\n=== Photo steps are not switched on and off in Settings ===');
 {
-  // Required is set per body of water, in one place. Having it in Settings too
-  // meant an app-wide value every unset body silently inherited.
+  // Who must take which photo is set in one place: the Photo requirements tab.
+  // Settings used to carry app-wide switches for the steps themselves, which
+  // every unset body of water silently inherited.
   [['admin-readings-app.html','options'], ['customer-intake.html','settings']].forEach(([file, view])=>{
     const {dom} = load(file, {seed: {customers: []}});
     const w = dom.window, d = w.document;
@@ -753,19 +731,12 @@ console.log('\n=== Photo settings point at Readings and Dosages ===');
     w.Element.prototype.scrollIntoView = function(){};
     try{
       w.eval("switchView('" + view + "');");
-      ['settingRequireBeforePhotos','settingRequireAfterPhotos','settingRequireGatePhoto']
-        .forEach(id => check(file + ' no ' + id + ' in Settings', !d.getElementById(id)));
-
-      ['settingBeforePhotos','settingAfterPhotos','settingGatePhoto']
-        .forEach(id => check(file + ' but ' + id + ' is still there', !!d.getElementById(id)));
-
+      ['settingRequireBeforePhotos','settingRequireAfterPhotos','settingRequireGatePhoto',
+       'settingBeforePhotos','settingAfterPhotos','settingGatePhoto']
+        .forEach(id => check(file + ' has no ' + id + ' in Settings', !d.getElementById(id)));
       const src = fs.readFileSync(file, 'utf8');
-      check(file + ' before photos points at Readings and Dosages',
-            src.indexOf('tick Required next to that body of water on Readings and Dosages') !== -1);
-      check(file + ' the gate points at the Pool tab specifically',
-            src.indexOf('tick Required on the Pool tab of Readings and Dosages') !== -1);
-      check(file + ' and explains why the gate has no Spa tick',
-            src.indexOf('no separate tick on Spa or Extra') !== -1);
+      check(file + ' and nothing left pointing at the old place',
+            src.indexOf('tick Required next to that body of water on Readings and Dosages') === -1);
     }catch(e){ check(file + ' photo settings', false, e.message); }
   });
 }
