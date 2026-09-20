@@ -249,7 +249,9 @@ const base = {
     .replace(/\(name\s*:\s*string\)/g, '(name)')
     .replace(/\(page\s*:\s*string\)/g, '(page)')
     .replace(/\(p\s*:\s*\{[^}]*\},\s*label\s*:\s*string\)/g, '(p, label)')
-    .replace(/\(p\s*:\s*\{[^}]*\}\)/g, '(p)');
+    .replace(/\(p\s*:\s*\{[^}]*\}\)/g, '(p)')
+    .replace(/const rows\s*:\s*Array<[^=]+>\s*=/g, 'const rows =')
+    .replace(/ as any/g, '');
   const build = list => new Function('shown', strip(piece)
     + '; return {photoSection, withPhotos};')(list);
   const {photoSection, withPhotos} = build(shown);
@@ -277,8 +279,30 @@ const base = {
         (section.match(/width="240"/g) || []).length >= 2 && /width:240px/.test(section), section.slice(0, 300));
   check('and each one links to a full-size copy',
         /<a href="https:\/\/example.test\/full-1"/.test(section) && /full-2/.test(section), section.slice(0, 300));
+  const photoRowsIn = html => (html.slice(html.indexOf('<table')).match(/<tr>/g) || []).length;
   check('before and after sit side by side',
-        (section.match(/valign="top"/g) || []).length === 2, section.slice(0, 260));
+        photoRowsIn(section) === 1
+        && (section.match(/valign="top"/g) || []).length === 2, section.slice(0, 260));
+
+  // A body's own before and after always pair, whatever else came along
+  const mixed = build([
+    {id: 'a', name: 'spa-before.jpg', caption: 'Spa before', link: ''},
+    {id: 'b', name: 'gate.jpg', caption: 'Gate', link: ''},
+    {id: 'c', name: 'spa-after.jpg', caption: 'Spa after', link: ''},
+    {id: 'd', name: 'pool-after.jpg', caption: 'Pool after', link: ''}
+  ]).photoSection();
+  const firstRow = mixed.slice(mixed.indexOf('<tr>'), mixed.indexOf('</tr>'));
+  check('the spa before and after pair up, even with other photos between them',
+        /Spa before/.test(firstRow) && /Spa after/.test(firstRow), firstRow.slice(0, 200));
+  check('and the leftovers pair up two to a row', photoRowsIn(mixed) === 2, String(photoRowsIn(mixed)));
+  const secondRow = mixed.slice(mixed.lastIndexOf('<tr>'));
+  check('so the gate and the lone pool photo share a row',
+        /Gate/.test(secondRow) && /Pool after/.test(secondRow), secondRow.slice(0, 200));
+
+  const lone = build([{id: 'z', name: 'gate.jpg', caption: 'Gate', link: ''}]).photoSection();
+  check('a single photo keeps its place rather than stretching',
+        (lone.match(/valign="top"/g) || []).length === 1 && /<td style="width:240px;"><\/td>/.test(lone),
+        lone.slice(0, 200));
   check('the heading is nudged down from what is above it', /margin:8px 0 12px/.test(section), section.slice(0, 160));
   check('the file name is never used as the caption', section.indexOf('.jpg<') === -1);
   const onlyAfter = build([{id: 'photo-1', name: 'pool-after.jpg', caption: '', link: ''}]);
@@ -290,9 +314,8 @@ const base = {
   const three = build([{id: 'a', name: 'before.jpg', caption: 'Pool before', link: ''},
                        {id: 'b', name: 'after.jpg', caption: 'Pool after', link: ''},
                        {id: 'c', name: 'gate.jpg', caption: 'Gate', link: ''}]);
-  check('more than two are stacked rather than squeezed',
-        (three.photoSection().match(/padding:0 0 14px;/g) || []).length === 3
-        && three.photoSection().indexOf('valign="top"') === -1, three.photoSection().slice(0, 120));
+  check('three photos make two rows, not three',
+        photoRowsIn(three.photoSection()) === 2, three.photoSection().slice(0, 160));
 
   const page = '<html><body><table><tr><td>The report</td></tr>'
     + '<tr><td style="padding:26px;">Thank you for your business.<div>Triffic Pool and Spa</div></td></tr>'
