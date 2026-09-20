@@ -1910,6 +1910,21 @@ async function serverTechniciansTab(){
       const css = fs.readFileSync('customer-intake.html', 'utf8');
       const activeStyle = (css.match(/\.history-type-btn\.active\{[^}]*\}/) || [''])[0];
       check('the chosen tab has a shadow you can see', /box-shadow:0 2px 5px/.test(activeStyle), activeStyle);
+      // One strip style everywhere, the Technicians tabs included
+      const strip = (css.match(/\.seg-control\{[^}]*\}/) || [''])[0];
+      check('the tab strips keep their own background',
+            /background:var\(--surface-alt\)/.test(strip) && /gap:2px/.test(strip), strip);
+      check('and the Technicians tabs use that same strip',
+            d.getElementById('techMainTabs').classList.contains('seg-control'),
+            d.getElementById('techMainTabs').className);
+      check('sitting in a card like the others, so the grey matches',
+            d.getElementById('techMainTabs').closest('.card') !== null);
+      ['profileTabControl', 'chemConfigTypeControl', 'workCenterTypeControl',
+       'accountTabControl', 'psCategoryControl'].forEach(id=>{
+        const el = d.getElementById(id);
+        check('  ' + id + ' is the same strip', !!el && el.classList.contains('seg-control'),
+              el ? el.className : 'missing');
+      });
       check('the technician list is what shows first', d.getElementById('techListPane').style.display !== 'none');
 
       // Someone to set requirements for
@@ -3095,6 +3110,21 @@ async function serverFieldSignIn(){
         } else {
           check('there is a customer to tap for this', false, 'no rows on the route');
         }
+      }
+
+      console.log('\n=== setup changed at the office reaches the phone ===');
+      {
+        // Quick buttons set on the website used to sit in storage unread until
+        // the app was restarted
+        const before = phone.w.eval("JSON.stringify((chemConfig.pool.chemicals.find(c=>c.key==='chlorine')||{}).buttons||[])");
+        phone.w.eval(`syncApplyRecord('setup', 'chemConfig', {value: {
+          pool: {chemicals: [{key:'chlorine', label:'Free chlorine', unit:'ppm', buttons:[1,4,9]}], dosages: []},
+          spa: {chemicals: [], dosages: []}, fountain: {chemicals: [], dosages: []}
+        }}, false)`);
+        await sleep(200);
+        const after = phone.w.eval("JSON.stringify((chemConfig.pool.chemicals.find(c=>c.key==='chlorine')||{}).buttons||[])");
+        check('the app picks up the new quick buttons without restarting',
+              JSON.parse(after).join() === '1,4,9', before + ' then ' + after);
       }
 
       console.log('\n=== reports are sent by the office ===');
