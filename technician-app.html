@@ -9827,9 +9827,10 @@ function webpToJpegDataUrl(dataUrl){
   });
 }
 
-// A visit can easily run to a before and after for pool, spa and a fountain,
-// plus a gate photo and one of the company's own
-const MAX_REPORT_PHOTOS = 14;
+// Whatever the technician took, the report carries. The only ceiling is a
+// guard against something having gone wrong; the office decides what fits in
+// the email itself, and says so when something does not.
+const MAX_REPORT_PHOTOS = 60;
 
 function collectReportPhotos(sections){
   const out = [];
