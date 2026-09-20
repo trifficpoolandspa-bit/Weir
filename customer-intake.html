@@ -708,7 +708,6 @@ input::placeholder{color:#A9BCB9;}
         <p style="font-size:11.5px;color:var(--muted);margin:8px 0 0;">Name something else a technician must photograph &mdash; a filter gauge, a skimmer basket &mdash; and choose who has to take it.</p>
       </div>
 
-      <p id="photoRequireNote" style="display:none;font-size:11.5px;color:var(--rust);margin:10px 0 0;"></p>
     </div>
 
     <div id="techListPane">
@@ -10846,14 +10845,16 @@ function renderPhotoRequirements(){
   const rows = document.getElementById('photoRequireRows');
   if(!card || !rows) return;
 
+  // Nothing here depends on Settings any more: the photo steps always exist,
+  // and this tab is the only thing that decides who must take what.
   const built = [
-    {step: 'before', label: 'Require a before photo', off: appSettings.showBeforePhotos === false,
-     why: 'The before photo step is switched off in Settings.', bodies: {pool: true, spa: true, fountain: true}},
-    {step: 'after', label: 'Require an after photo', off: appSettings.showAfterPhotos === false,
-     why: 'The after photo step is switched off in Settings.', bodies: {pool: true, spa: true, fountain: true}},
+    {step: 'before', label: 'Require a before photo', off: false, why: '',
+     bodies: {pool: true, spa: true, fountain: true}},
+    {step: 'after', label: 'Require an after photo', off: false, why: '',
+     bodies: {pool: true, spa: true, fountain: true}},
     // One photo for the whole visit, so its list is a single tick per person
-    {step: 'gate', label: 'Require a closed gate photo', off: appSettings.showGatePhoto === false,
-     why: 'The gate photo step is switched off in Settings.', bodies: {}, oneTick: true},
+    {step: 'gate', label: 'Require a closed gate photo', off: false, why: '',
+     bodies: {}, oneTick: true},
     // Not a photo step of its own: what a technician must do before skipping
     {step: 'skip', label: 'Require a photo and note to skip a body of water', off: false,
      why: '', bodies: {}, oneTick: true}
@@ -10970,16 +10971,7 @@ function renderPhotoRequirements(){
     }
   });
 
-  const note = document.getElementById('photoRequireNote');
-  if(note){
-    const off = [appSettings.showBeforePhotos === false ? 'before' : null,
-                 appSettings.showAfterPhotos === false ? 'after' : null,
-                 appSettings.showGatePhoto === false ? 'gate' : null].filter(Boolean);
-    note.textContent = off.length
-      ? 'Switched off in Settings: ' + off.join(', ') + '. A requirement cannot apply to a step that is off.'
-      : '';
-    note.style.display = off.length ? 'block' : 'none';
-  }
+
 }
 
 // The window for adding one, or changing one that exists
@@ -11999,10 +11991,10 @@ function renderTechProfile(techId){
   const acct = techAccounts ? techAccounts[tech.id] : null;
   row({label:'Username', value: (acct && acct.username) || tech.username, placeholder:'Add a username', editor: techSignInEditor(tech,'username')});
   row({label:'Password', value: acct ? '••••••••' : '', placeholder: acct ? '' : 'Set a password to create their sign-in', editor: techSignInEditor(tech,'password')});
-  checkRow('Can rearrange their route', 'canReorderRoute',
-    'They can drag customers into a different order on their route for the day. Admins can always do this.');
   checkRow('Admin access', 'isAdmin',
     'Clicking this will give the technician access to the admin app, allowing them to see all customers and make changes to app and customer info.');
+  checkRow('Can rearrange their route', 'canReorderRoute',
+    'They can drag customers into a different order on their route for the day. Admins can always do this.');
   checkRow('Equipment photo access', 'canPhotoEquipment',
     'Lets this technician photograph their customers\' equipment from the field app. Photos save to the customer\'s profile.');
 
@@ -12049,9 +12041,29 @@ function renderTechProfile(techId){
         if(!r.ok){ cb.checked = !want; showToast(r.message); return; }
       }
       tech[field] = cb.checked;
+
+      // Admin access carries rearranging the route and equipment photos with
+      // it. Ticking it here has to tick those as well, and hold them, the same
+      // as it does on the Add technician form.
+      if(field === 'isAdmin'){
+        ['canReorderRoute', 'canPhotoEquipment'].forEach(carried=>{
+          if(cb.checked) tech[carried] = true;
+        });
+      }
       saveTechField();
+      if(field === 'isAdmin') renderTechProfile(tech.id);
     });
     el.appendChild(cb);
+
+    // While admin access is on, the two it carries cannot be unticked
+    if(field === 'canReorderRoute' || field === 'canPhotoEquipment'){
+      if(tech.isAdmin === true){
+        cb.checked = true;
+        cb.disabled = true;
+        el.title = 'Admin access includes this';
+        el.style.opacity = '0.75';
+      }
+    }
 
     const lbl = document.createElement('span');
     lbl.className = 'profile-meta-label';
