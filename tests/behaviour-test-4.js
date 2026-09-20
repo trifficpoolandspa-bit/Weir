@@ -1966,8 +1966,12 @@ async function serverTechniciansTab(){
             (d.querySelector('#photoRequireRows > div') || {}).style.padding);
       check('the requirement reads as the heading of its row',
             firstName && firstName.style.fontWeight === '600', firstName && firstName.style.cssText);
+      const rowBlocks = () => Array.from(d.querySelectorAll('#photoRequireRows > div'))
+        .filter(r => r.querySelector('div'));
       check('and pressing a row leaves no text cursor in it',
-            rowHeads()[0].style.userSelect === 'none', rowHeads()[0].style.userSelect);
+            rowBlocks()[0].style.userSelect === 'none', rowBlocks()[0].style.userSelect);
+      check('the whole row is what opens it, not just the words',
+            rowBlocks()[0].style.cursor === 'pointer', rowBlocks()[0].style.cursor);
       // Nowhere but a field shows a text cursor, as a whole-page rule, so
       // anything built later inherits it
       ['customer-intake.html', 'technician-app.html', 'admin-readings-app.html', 'index.html'].forEach(file=>{
