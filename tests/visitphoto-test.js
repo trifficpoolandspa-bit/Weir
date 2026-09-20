@@ -252,16 +252,19 @@ function boot(file){
   ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
     const src = fs.readFileSync(file, 'utf8');
     const max = (src.match(/const MAX_REPORT_PHOTOS = (\d+)/) || [])[1];
-    check(file + ' carries enough photos for a full visit', Number(max) >= 12, String(max));
+    check(file + ' carries as many photos as a technician takes', Number(max) >= 60, String(max));
     check(file + ' sizes them for an email rather than for printing',
           /LONGEST_EDGE = 1600/.test(src) && /toDataURL\('image\/jpeg', 0\.78\)/.test(src));
     check(file + ' sizes a photo that is already a JPEG too',
           src.indexOf("if(dataUrl.indexOf('image/jpeg') !== -1){ resolve(dataUrl); return; }") === -1);
   });
   const fn = fs.readFileSync('functions/send-report/index.ts', 'utf8');
-  check('the office says so when a photo will not fit, rather than dropping it',
-        /leftOut\+\+/.test(fn) && /would not fit in this email/.test(fn));
-  check('and reports how many went out', /photos: attachments\.length, leftOut: leftOut/.test(fn));
+  check('photos past what the email can carry are kept and linked, not dropped',
+        /const linkOnly/.test(fn) && /More photos from this visit/.test(fn));
+  check('and those are stored at full size like the rest',
+        /for\(const p of linkOnly\)[\s\S]{0,120}keepFullSize/.test(fn));
+  check('the office reports how many were shown and how many linked',
+        /photos: attachments\.length, linked: linkOnly\.length/.test(fn));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');

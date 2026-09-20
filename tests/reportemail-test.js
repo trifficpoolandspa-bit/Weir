@@ -254,14 +254,24 @@ const base = {
     .replace(/ as any/g, '');
   // leftOut is counted while the photos are gathered, which is above the piece
   // being lifted out, so it is passed in
-  const build = (list, leftOut) => new Function('shown', 'leftOut', strip(piece)
-    + '; return {photoSection, withPhotos};')(list, leftOut || 0);
-  const {photoSection, withPhotos} = build(shown, 0);
+  // linkOnly is gathered above the piece being lifted out, so it is passed in
+  const build = (list, spare) => new Function('shown', 'linkOnly', strip(piece)
+    + '; return {photoSection, withPhotos};')(list, spare || []);
+  const {photoSection, withPhotos} = build(shown, []);
 
-  // A photo too big to carry is named, not silently dropped
-  const crowded = build([{id: 'p1', name: 'pool-after.jpg', caption: 'Pool after', link: ''}], 2).photoSection();
-  check('a photo that will not fit is mentioned rather than dropped',
-        /2 more photos were/.test(crowded), crowded.slice(-160));
+  // Photos past what the email can carry are linked, not lost
+  const crowded = build(
+    [{id: 'p1', name: 'pool-after.jpg', caption: 'Pool after', link: ''}],
+    [{id: 'x1', caption: 'Spa before', link: 'https://example.test/extra-1'},
+     {id: 'x2', caption: 'Gate', link: 'https://example.test/extra-2'}]
+  ).photoSection();
+  check('photos that will not fit are linked rather than dropped',
+        /More photos from this visit/.test(crowded)
+        && /extra-1/.test(crowded) && /extra-2/.test(crowded), crowded.slice(-220));
+  check('and each link says what it is',
+        /Spa before<\/a>/.test(crowded) && /Gate<\/a>/.test(crowded), crowded.slice(-220));
+  check('with none of that when everything fits',
+        !/More photos from this visit/.test(photoSection()));
 
   // The browser blocks the whole request if the app sends a header the
   // function has not said it accepts. That looked exactly like no signal.
