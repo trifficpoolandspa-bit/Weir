@@ -295,6 +295,24 @@ function boot(file){
   });
 }
 
+
+// ---- A photo that cannot be read is named, not silently skipped ----
+{
+  console.log('\n=== the phone says which photos it could not gather ===');
+  ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+    const src = fs.readFileSync(file, 'utf8');
+    check(file + ' counts every photo the visit had',
+          /const tally = \{taken: 0, missing: \[\]\}/.test(src) && /tally\.taken\+\+/.test(src));
+    check(file + ' counts one that comes back empty as missing',
+          /if\(!dataUrl\)\{ tally\.missing\.push/.test(src));
+    check(file + ' looks for the field rather than its contents',
+          /if\('beforePhoto' in r\)/.test(src) && /if\('photo' in r\)/.test(src));
+    check(file + ' and a gate photo that will not come back counts too',
+          /'gatePhoto' in \(\(s \|\| \{\}\)\.reading \|\| \{\}\)/.test(src));
+    check(file + ' names them on the sync card', /' Missing: ' \+ lastReport\.missing\.join/.test(src));
+  });
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();
