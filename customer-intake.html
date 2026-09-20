@@ -10779,13 +10779,22 @@ function photoTechnicianList(step, bodies){
   });
   box.appendChild(header);
 
-  const tickFor = (t, key)=> step === 'gate' ? t.requireGatePhoto === true
-    : step === 'skip' ? t.requireSkipProof === true
-    : photoRuleFor(t, step, key) === true;
+  // Always the technician as they are in the list right now. A sync replaces
+  // the whole list with fresh objects, so the one captured when this was drawn
+  // can be an orphan: writing to it changed nothing that gets saved.
+  const live = t => technicians.find(x => x && String(x.id) === String(t.id)) || t;
+
+  const tickFor = (t, key)=>{
+    const cur = live(t);
+    return step === 'gate' ? cur.requireGatePhoto === true
+      : step === 'skip' ? cur.requireSkipProof === true
+      : photoRuleFor(cur, step, key) === true;
+  };
   const setTick = (t, key, on)=>{
-    if(step === 'gate') t.requireGatePhoto = on;
-    else if(step === 'skip') t.requireSkipProof = on;
-    else setPhotoRule(t, step, key, on);
+    const cur = live(t);
+    if(step === 'gate') cur.requireGatePhoto = on;
+    else if(step === 'skip') cur.requireSkipProof = on;
+    else setPhotoRule(cur, step, key, on);
   };
 
   // Kept so a tick can update what changed without rebuilding the list
