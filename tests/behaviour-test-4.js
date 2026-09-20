@@ -865,6 +865,30 @@ console.log('\n=== The route can be reversed ===');
 }
 
 
+console.log('\n=== A photo requirement survives a sync ===');
+{
+  // Unticking one and leaving the tab used to come back ticked
+  const site = fs.readFileSync('customer-intake.html', 'utf8');
+  check('a technician record carries every field, false included',
+        /const copy = Object\.assign\(\{\}, t\);/.test(site));
+  check('and only the password is held back', /delete copy\.password;/.test(site));
+  check('the tick writes to the technician and saves',
+        /setTick\(t, key, box3\.checked\);\s*saveTechnicians\(\);/.test(site));
+  check('and unticking writes false rather than removing the field',
+        /if\(step === 'gate'\) t\.requireGatePhoto = on;/.test(site)
+        && /tech\.photoRules\[step\]\[bodyKey\] = !!on;/.test(site));
+  check('and a false value still travels to the office',
+        /if\(v === undefined\) return;/.test(site));
+  // The change is marked as ours straight away, so a pull cannot overwrite it
+  check('saving a technician tells sync at once',
+        site.indexOf("function saveTechnicians(){") !== -1
+        && site.slice(site.indexOf("function saveTechnicians(){"),
+                      site.indexOf("function saveTechnicians(){") + 500)
+               .indexOf('syncNoteLocalChange()') !== -1);
+  check('and that marks records, not only customers',
+        /function syncNoteLocalChange\(\)\{[\s\S]{0,400}syncScanRecords\(state\);/.test(site));
+}
+
 console.log('\n=== Photo requirements do not depend on Settings ===');
 {
   // The old Settings switches are gone. A saved setting left over from before
@@ -2088,8 +2112,43 @@ async function serverTechniciansTab(){
       await sleep(250);
       check('ticking one asks the gate photo of them',
             w.eval("technicians.find(t => t.id === 'tp1').requireGatePhoto") === true);
+
+      // Clicking the label around the box, which is what a person actually hits
+      const gateRow = Array.from(d.querySelectorAll('#photoRequireRows label'))
+        .filter(l => l.querySelector('input[type=checkbox]'));
+      const patLabel = gateRow[patGateAt];
+      patLabel.querySelector('input').checked = false;
+      patLabel.querySelector('input').dispatchEvent(new w.Event('change', {bubbles: true}));
+      await sleep(200);
+      patLabel.click();
+      await sleep(250);
+      check('clicking the label ticks it and it stays ticked',
+            w.eval("technicians.find(t => t.id === 'tp1').requireGatePhoto") === true,
+            String(w.eval("technicians.find(t => t.id === 'tp1').requireGatePhoto")));
+      check('and the stored copy agrees',
+            (JSON.parse(w.localStorage.getItem('weir:technicians') || '[]')
+              .find(t => t.id === 'tp1') || {}).requireGatePhoto === true,
+            w.localStorage.getItem('weir:technicians'));
       check('and of nobody else',
             w.eval("technicians.find(t => t.id === 'tp2').requireGatePhoto") !== true);
+
+      // Unticking has to stick, including after leaving the tab and coming back
+      gateTicks[patGateAt].checked = false;
+      gateTicks[patGateAt].dispatchEvent(new w.Event('change'));
+      await sleep(250);
+      check('unticking it takes the requirement away',
+            w.eval("technicians.find(t => t.id === 'tp1').requireGatePhoto") !== true,
+            String(w.eval("technicians.find(t => t.id === 'tp1').requireGatePhoto")));
+      w.eval("switchView('customers')"); await sleep(250);
+      w.eval("switchView('technicians')"); await sleep(300);
+      check('and it is still off after leaving the tab and coming back',
+            w.eval("technicians.find(t => t.id === 'tp1').requireGatePhoto") !== true,
+            String(w.eval("technicians.find(t => t.id === 'tp1').requireGatePhoto")));
+      check('with the stored copy agreeing',
+            (JSON.parse(w.localStorage.getItem('weir:technicians') || '[]')
+              .find(t => t.id === 'tp1') || {}).requireGatePhoto !== true,
+            w.localStorage.getItem('weir:technicians'));
+      tabs[1].click(); await sleep(250);
       rowHeads()[2].click(); await sleep(200);
 
       // Your own photos: added in a window, listed with the built-in rows
