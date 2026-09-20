@@ -1923,6 +1923,12 @@ document.addEventListener('visibilitychange', ()=>{
   if(!document.hidden) refreshFromStorage();
 });
 
+// Shuts any customer briefing open on the route
+function closeRouteBriefs(){
+  document.querySelectorAll('.route-brief').forEach(p => p.remove());
+  document.querySelectorAll('.chev').forEach(x => { x.textContent = '\u203A'; });
+}
+
 function switchView(view, opts){
   opts = opts || {};
 
@@ -1952,7 +1958,13 @@ function switchView(view, opts){
   }
   if(view === 'report' && !opts.skipRefresh) refreshReportSelectors();
   if(view === 'options') renderOfflineStatus();
-  if(view === 'home') renderHomeList();
+  if(view === 'home'){
+    // Coming back to Today starts clean: a briefing left open on a customer
+    // is closed. The route itself is only redrawn when something changed, so
+    // the panel has to be closed here rather than waiting for a redraw.
+    closeRouteBriefs();
+    renderHomeList();
+  }
   if(view === 'serviced') renderServicedList();
 }
 
@@ -3439,7 +3451,11 @@ function fieldSyncSummary(){
   const lastReport = deviceGet('lastReport');
   const reportNote = lastReport
     ? ' Last report ' + (lastReport.by === 'office'
-        ? 'went out from the office.'
+        ? 'went out from the office'
+          + (lastReport.sent !== undefined ? ' with ' + lastReport.sent
+              + (lastReport.sent === 1 ? ' photo' : ' photos')
+              + (lastReport.linked ? ' (' + lastReport.linked + ' as links)' : '') : '')
+          + '.'
         : 'went the old way (' + (lastReport.why || 'the office could not send it') + ').')
     : '';
   const unknown = Object.values(state.unknownHere || {});
@@ -6990,10 +7006,6 @@ async function renderPoolServiceChecks(customer){
     return 'Last done ' + when + ' · ' + days + ' days ago';
   }
 
-  const eyebrow = document.createElement('div');
-  eyebrow.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:8px;";
-  eyebrow.textContent = 'Service performed';
-  box.appendChild(eyebrow);
 
   // Both sit on one line, each button above its own "last done" note, so two
   // of them cost about the height of one.
@@ -8251,16 +8263,36 @@ function syncStepChrome(){
   });
 
   // Sit the heading and the button on one line
+  let head;
   if(h.parentElement && h.parentElement.dataset.stepHead === 'true'){
-    h.parentElement.appendChild(back);
+    head = h.parentElement;
+    head.appendChild(back);
   } else {
-    const wrap = document.createElement('div');
-    wrap.dataset.stepHead = 'true';
-    wrap.style.cssText = 'display:flex;align-items:center;justify-content:space-between;'
+    head = document.createElement('div');
+    head.dataset.stepHead = 'true';
+    head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;'
       + 'gap:12px;margin-bottom:18px;';
-    h.parentNode.insertBefore(wrap, h);
-    wrap.appendChild(h);
-    wrap.appendChild(back);
+    h.parentNode.insertBefore(head, h);
+    head.appendChild(h);
+    head.appendChild(back);
+  }
+
+  // Skipping this body of water belongs on the same line, between the heading
+  // and Back, rather than taking a whole row to itself
+  const skipRow = card.querySelector('[id$="SkipRow"]');
+  if(skipRow){
+    const skipBtn = skipRow.querySelector('button');
+    if(skipBtn && skipBtn.parentElement !== head){
+      skipBtn.style.width = 'auto';
+      skipBtn.style.flexShrink = '0';
+      skipBtn.style.padding = '6px 12px';
+      skipBtn.style.fontSize = '12.5px';
+      head.insertBefore(skipBtn, back);
+      skipRow.style.display = 'none';
+    }
+    // The heading takes the slack, so the two buttons sit together on the right
+    h.style.flex = '1 1 auto';
+    h.style.minWidth = '0';
   }
 }
 
@@ -8733,7 +8765,10 @@ function restoreFinishedSection(type){
   if(after && reading.photo) after.setData(reading.photo);
   const before = beforeControllerFor(type);
   if(before && reading.beforePhoto) before.setData(reading.beforePhoto);
-  if(type === 'pool' && reading.gatePhoto && typeof gatePhotoController !== 'undefined'){
+  // The gate photo belongs to whichever body of water was serviced last, not
+  // to the pool. Restoring it only on the pool meant one taken on a spa or a
+  // fountain vanished as soon as the technician looked at another section.
+  if(reading.gatePhoto && typeof gatePhotoController !== 'undefined'){
     gatePhotoController.setData(reading.gatePhoto);
   }
 
@@ -10227,9 +10262,11 @@ function buildReportEmailHtml(customer, whenText, sections, opts){
 // off, closed or out of signal no longer holds somebody's report up. It goes
 // out as "<the company> via Weir", with replies going to the company's own
 // address — both read from the server, so nobody can send as anyone else.
-function noteLastReport(by, why){
+function noteLastReport(by, why, counts){
   try{
-    deviceSet('lastReport', {at: new Date().toISOString(), by: by, why: why || ''});
+    const note = {at: new Date().toISOString(), by: by, why: why || ''};
+    if(counts) Object.assign(note, counts);
+    deviceSet('lastReport', note);
     setTimeout(fieldRenderSyncCard, 0);
   }catch(e){}
 }
@@ -10277,7 +10314,7 @@ async function sendReportFromOffice(customerId, type){
       noteLastReport('the old way', (body.error || ('the office said ' + res.status)));
       return {ok: false, reason: 'refused', message: body.error || ''};
     }
-    noteLastReport('office', '');
+    noteLastReport('office', '', {sent: photos.length, shown: body.photos, linked: body.linked});
     return {ok: true};
   }catch(e){
     noteLastReport('the old way', 'no connection when it was sent');
