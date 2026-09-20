@@ -11312,15 +11312,10 @@ function markSectionDone(sectionId, readingId){
     pendingVisit.doneSections[id] === undefined);
   if(!next) return;
 
-  // Open at the chemical readings, which is not step 1 when the before photo
-  // step is switched on
-  const nextType = (next === 'pool' || next === 'spa') ? next : 'fountain';
-  const cap = nextType.charAt(0).toUpperCase() + nextType.slice(1);
-  const steps = visitStepCardsFor(nextType);
-  // A step entry can be a single card or a pair, so read the first either way
-  const firstCardOf = s => Array.isArray(s) ? s[0] : s;
-  const readingsAt = steps.findIndex(s => firstCardOf(s) === 'visit' + cap + 'Section');
-  visitStepBySection[next] = readingsAt >= 0 ? readingsAt + 1 : 1;
+  // Open at the first step, which is the before photo when that step is on.
+  // Jumping straight to the readings meant the spa and every extra body of
+  // water never got a before photo taken.
+  visitStepBySection[next] = 1;
 
   showVisitSection(next);
 
