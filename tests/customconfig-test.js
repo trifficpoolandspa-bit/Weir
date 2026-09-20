@@ -62,6 +62,71 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
           spaStored.spa_br === '4.0' && spaStored.spa_ph === '7.6',
           JSON.stringify(spaStored.spa_br) + ',' + JSON.stringify(spaStored.spa_ph));
   }
-  console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
+  
+// ---- Restoring the defaults keeps the quick buttons ----
+// The shipped lists carry no buttons of their own; they are filled in when a
+// setup loads. Restoring once skipped that, leaving every field type-only.
+{
+  console.log('\n=== Restore defaults brings the quick buttons back ===');
+  const src = fs.readFileSync('customer-intake.html', 'utf8');
+  const set = (src.match(/chlorine: \[([^\]]*)\]/) || [])[1] || '';
+  check('Free chlorine ships with 0, 1, 2, 3, 5, 7.5 and 10',
+        set.replace(/\s/g, '') === '0,1,2,3,5,7.5,10', set);
+  check('and a restore seeds the buttons before saving',
+        /DEFAULT_CHEM_CONFIG\[selectedChemConfigType\]\)\);[\s\S]{0,400}seedButtonSets\(chemConfig\);[\s\S]{0,80}saveChemConfig\(\);/.test(src));
+
+  // A setup saved before the 2 existed gets it back on its own, with no
+  // Restore needed
+  seed.chemConfig = {pool: {chemicals: [{key:'chlorine', label:'Free chlorine', unit:'ppm',
+                                         buttons: [0, 1, 3, 5, 7.5, 10]}], dosages: []},
+                     spa: {chemicals: [], dosages: []}, fountain: {chemicals: [], dosages: []}};
+  const older = boot('customer-intake.html');
+  await wait(1200);
+  const gotTwo = older.window.eval(
+    "JSON.stringify((chemConfig.pool.chemicals.find(c=>c.key==='chlorine')||{}).buttons)");
+  check('an older setup gains the 2 when the page opens',
+        JSON.parse(gotTwo).map(b => (b && b.v !== undefined) ? b.v : b).join() === '0,1,2,3,5,7.5,10', gotTwo);
+  older.window.close();
+
+  // Somebody who arranged their own buttons keeps exactly what they chose
+  seed.chemConfig.pool.chemicals[0].buttons = [1, 4, 9];
+  const mine = boot('customer-intake.html');
+  await wait(1200);
+  const kept = mine.window.eval(
+    "JSON.stringify((chemConfig.pool.chemicals.find(c=>c.key==='chlorine')||{}).buttons)");
+  check('but a set someone arranged themselves is left alone', JSON.parse(kept).join() === '1,4,9', kept);
+  mine.window.close();
+  delete seed.chemConfig;
+
+  const dom = boot('customer-intake.html');
+  const w = dom.window;
+  await wait(1200);
+  const chlorine = () => w.eval("JSON.stringify((chemConfig.pool.chemicals.find(c=>c.key==='chlorine')||{}).buttons)");
+  check('a fresh setup has them', JSON.parse(chlorine()).join() === '0,1,2,3,5,7.5,10', chlorine());
+  w.eval("chemConfig.pool.chemicals.find(c=>c.key==='chlorine').buttons = [9]; saveChemConfig();");
+  w.eval("chemConfig.pool = JSON.parse(JSON.stringify(DEFAULT_CHEM_CONFIG.pool)); seedButtonSets(chemConfig); saveChemConfig();");
+  check('and they are back after a restore, not left empty',
+        JSON.parse(chlorine()).join() === '0,1,2,3,5,7.5,10', chlorine());
+  const ph = w.eval("JSON.stringify((chemConfig.pool.chemicals.find(c=>c.key==='ph')||{}).buttons)");
+  check('every other field gets its own back too', JSON.parse(ph).length === 8, ph);
+}
+
+
+// ---- Typing in a dosage rule does not redraw the rules ----
+// Saving on every change used to rebuild every row, so moving to the next
+// field destroyed the one being clicked and the press was swallowed.
+{
+  console.log('\n=== Dosage rule fields take one press ===');
+  const src = fs.readFileSync('customer-intake.html', 'utf8');
+  const handlers = src.match(/\w+\.addEventListener\('change', \(\)=>\{\s*\w+\.value = padLeadingZero[\s\S]{0,140}?\}\);/g) || [];
+  check('there are rule value fields to check', handlers.length >= 3, String(handlers.length));
+  check('none of them redraw the rules while being used',
+        handlers.every(h => h.indexOf('render()') === -1),
+        (handlers.find(h => h.indexOf('render()') !== -1) || '').slice(0, 90));
+  check('but changing the operator still does, since it adds a field',
+        /opSel\.addEventListener\('change'[^}]*render\(\);/.test(src));
+}
+
+console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();

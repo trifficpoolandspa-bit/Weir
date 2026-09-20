@@ -1942,14 +1942,14 @@ async function serverTechniciansTab(){
             firstName && firstName.style.fontWeight === '600', firstName && firstName.style.cssText);
       check('and pressing a row leaves no text cursor in it',
             rowHeads()[0].style.userSelect === 'none', rowHeads()[0].style.userSelect);
-      // Nowhere that is pressed rather than typed into should show one
-      ['customer-intake.html', 'technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+      // Nowhere but a field shows a text cursor, as a whole-page rule, so
+      // anything built later inherits it
+      ['customer-intake.html', 'technician-app.html', 'admin-readings-app.html', 'index.html'].forEach(file=>{
         const css = fs.readFileSync(file, 'utf8');
-        const rule = (css.match(/label, button[^{]*\{[^}]*\}/) || [''])[0];
-        check(file + ' turns off text selection on things that are pressed',
-              /user-select:none/.test(rule), rule.slice(0, 80));
-        check(file + ' leaves real fields alone',
-              /input, textarea, select\{[^}]*user-select:auto/.test(css));
+        const everything = (css.match(/\*\{[^}]*user-select:none[^}]*\}/) || [''])[0];
+        check(file + ' turns off text selection for the whole page', !!everything, 'no whole-page rule');
+        const fields = (css.match(/input, textarea, select, \[contenteditable\][^{]*\{[^}]*user-select:text[^}]*\}/) || [''])[0];
+        check(file + ' turns it back on for anything you type into', !!fields, 'fields not re-enabled');
       });
       rowHeads()[0].click(); await sleep(250);
       const listBox = rowHeads()[0].parentElement.querySelector('div:not([style*="flex-wrap"])');
@@ -1978,8 +1978,15 @@ async function serverTechniciansTab(){
       // Past the Everyone row to Pat Tech's own three ticks: Pool, Spa, Extra
       const patTicks = Array.from(d.querySelectorAll('#photoRequireRows input[type=checkbox]'))
         .slice((w.eval("technicians.findIndex(t => t.id === 'tp1')") + 1) * 3);
+      // One press, not two: the list must not be rebuilt underneath the click
+      const beforeCount = d.querySelectorAll('#photoRequireRows input[type=checkbox]').length;
       patTicks[1].checked = true;
       patTicks[1].dispatchEvent(new w.Event('change'));
+      await sleep(200);
+      check('ticking one leaves the list in place, so a single press is enough',
+            d.querySelectorAll('#photoRequireRows input[type=checkbox]').length === beforeCount
+            && d.contains(patTicks[1]), 'list was rebuilt under the press');
+      check('and the tick stays ticked', patTicks[1].checked === true);
       await sleep(200);
       check('ticking Spa for one technician asks it of them only',
             w.eval("technicians.find(t => t.id === 'tp1').photoRules.before.spa") === true
