@@ -167,22 +167,48 @@ Deno.serve(async (req: Request)=>{
       + (label ? '<div style="font-size:12px;color:#6B7B79;margin-top:5px;">' + label + '</div>' : '');
   }
 
+  // How the photos are laid out: a body of water's before and after belong
+  // side by side, and whatever is left over pairs up two to a row rather than
+  // running down the page one at a time.
+  function photoRows(){
+    const left = shown.slice();
+    const rows: Array<Array<{id: string, name: string, link: string, caption?: string}>> = [];
+    const bodyOf = (p: {caption?: string, name?: string})=>
+      String(kindOf(p)).replace(/\s+(before|after)$/i, '').trim().toLowerCase();
+    const kindWord = (p: {caption?: string, name?: string})=>{
+      const said = String(kindOf(p));
+      return /before$/i.test(said) ? 'before' : (/after$/i.test(said) ? 'after' : '');
+    };
+
+    // First the pairs: the same body of water, before and after
+    for(let i = 0; i < left.length; i++){
+      const p = left[i];
+      if(!p || kindWord(p) !== 'before') continue;
+      const j = left.findIndex((q, k) => k !== i && q && kindWord(q) === 'after' && bodyOf(q) === bodyOf(p));
+      if(j === -1) continue;
+      rows.push([p, left[j]]);
+      left[i] = null as any;
+      left[j] = null as any;
+    }
+
+    // Then everything else, two to a row
+    const rest = left.filter(Boolean);
+    for(let i = 0; i < rest.length; i += 2){
+      rows.push(rest.slice(i, i + 2));
+    }
+    return rows;
+  }
+
   function photoSection(){
     if(!shown.length) return '';
-    let cards = '';
-    if(labelThem && shown.length === 2){
-      // Before and after belong next to each other, so the difference is the
-      // first thing anyone sees
-      cards = '<tr>'
-        + '<td valign="top" width="' + PHOTO_WIDTH + '" style="padding:0 12px 14px 0;width:' + PHOTO_WIDTH + 'px;">'
-        + photoCard(shown[0], kindOf(shown[0])) + '</td>'
-        + '<td valign="top" width="' + PHOTO_WIDTH + '" style="padding:0 0 14px;width:' + PHOTO_WIDTH + 'px;">'
-        + photoCard(shown[1], kindOf(shown[1])) + '</td></tr>';
-    } else {
-      cards = shown.map(p=>
-        '<tr><td style="padding:0 0 14px;">' + photoCard(p, kindOf(p)) + '</td></tr>'
-      ).join('');
-    }
+    const cards = photoRows().map(pair=>{
+      const cells = pair.map(p=>
+        '<td valign="top" width="' + PHOTO_WIDTH + '" style="padding:0 12px 14px 0;width:'
+        + PHOTO_WIDTH + 'px;">' + photoCard(p, kindOf(p)) + '</td>').join('');
+      // A lone photo keeps its place on the left rather than stretching across
+      const filler = pair.length === 1 ? '<td style="width:' + PHOTO_WIDTH + 'px;"></td>' : '';
+      return '<tr>' + cells + filler + '</tr>';
+    }).join('');
     return '<tr><td style="padding:0 26px 26px;">'
       + '<div style="font-size:13.5px;font-weight:600;color:#16302E;margin:8px 0 12px;">'
       + (shown.length === 1 ? 'Photo from this visit' : 'Photos from this visit') + '</div>'
