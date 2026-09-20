@@ -766,6 +766,30 @@ console.log('\n=== Rearranging the route is granted per technician ===');
       admin.dispatchEvent(new w.Event('change', {bubbles: true}));
       check('taking admin away hands both choices back',
             reorder.disabled === false && equip.disabled === false);
+
+    // The same on the technician's own profile page, which is where these are
+    // usually ticked
+    w.eval("technicians.push({id:'tp9', name:'Profile Tech'}); saveTechnicians();"
+      + " openTechDetail(technicians.find(t=>t.id==='tp9'));");
+    const profileRow = label => Array.from(d.querySelectorAll('#techProfileMeta .access-row'))
+      .find(r => r.textContent.indexOf(label) !== -1);
+    const order = Array.from(d.querySelectorAll('#techProfileMeta .access-row')).map(r => r.textContent);
+    check('the profile lists Admin access above rearranging',
+          order.findIndex(t => t.indexOf('Admin access') !== -1)
+          < order.findIndex(t => t.indexOf('rearrange') !== -1), order.join(' | ').slice(0, 120));
+
+    // Ticking admin here goes to the server first, so the carrying is checked
+    // in the code rather than by faking a server
+    const site = fs.readFileSync('customer-intake.html', 'utf8');
+    check('ticking admin on the profile grants rearranging and equipment photos',
+          /if\(field === 'isAdmin'\)\{\s*\['canReorderRoute', 'canPhotoEquipment'\]/.test(site));
+    check('and the profile redraws so both show ticked',
+          /if\(field === 'isAdmin'\) renderTechProfile\(tech\.id\);/.test(site));
+    check('while admin is on, neither can be unticked',
+          /if\(tech\.isAdmin === true\)\{[\s\S]{0,200}cb\.disabled = true;/.test(site));
+    w.eval("technicians = technicians.filter(t => t.id !== 'tp9'); saveTechnicians();");
+
+
     }catch(e){ check('the rearrange box', false, e.message); }
   }
 }
@@ -841,38 +865,39 @@ console.log('\n=== The route can be reversed ===');
 }
 
 
-console.log('\n=== A photo step switched off disables its row ===');
+console.log('\n=== Photo requirements do not depend on Settings ===');
 {
-  // Each requirement is a row that opens its technicians when pressed. A step
-  // switched off in Settings greys its row out and says why.
+  // The old Settings switches are gone. A saved setting left over from before
+  // must not grey a requirement out or there is no way to turn it back on.
   function onPhotoTab(settings){
     const {dom} = load('customer-intake.html', {seed: {customers: [], settings: settings}});
     const w = dom.window, d = w.document;
     w.console.warn = ()=>{};
     w.Element.prototype.scrollIntoView = function(){};
     w.eval("switchView('technicians'); renderPhotoRequirements();");
-    const rows = Array.from(d.querySelectorAll('#photoRequireRows > div'))
-      .filter(r => r.querySelector('div'));
-    const dim = r => (r.style.opacity || '') === '0.45';
-    return {rows: rows, dim: dim, note: d.getElementById('photoRequireNote')};
+    const rows = Array.from(d.querySelectorAll('#photoRequireRows > div')).filter(r => r.querySelector('div'));
+    return {rows: rows, dim: r => (r.style.opacity || '') === '0.45', text: d.getElementById('photoRequireRows').textContent};
   }
 
   try{
-    let p = onPhotoTab({showGatePhoto:true, showBeforePhotos:true, showAfterPhotos:true});
-    check('  the four built-in requirements each have a row', p.rows.length === 4, String(p.rows.length));
-    check('  with every step on, none are greyed out', p.rows.every(r => !p.dim(r)));
+    const off = onPhotoTab({showBeforePhotos: false, showAfterPhotos: false, showGatePhoto: false});
+    check('  all four requirements are there', off.rows.length === 4, String(off.rows.length));
+    check('  none are greyed out by an old setting', off.rows.every(r => !off.dim(r)));
+    check('  and nothing says a step is switched off',
+          off.text.indexOf('switched off in Settings') === -1, off.text.slice(0, 120));
+  }catch(e){ check('  photo requirements', false, e.message); }
 
-    p = onPhotoTab({showGatePhoto:false, showBeforePhotos:true, showAfterPhotos:true});
-    check('  the gate step off greys its row', p.dim(p.rows[2]));
-    check('  and leaves the others alone', !p.dim(p.rows[0]) && !p.dim(p.rows[1]) && !p.dim(p.rows[3]));
-    check('  with a note saying which step is off',
-          p.note.style.display !== 'none' && /gate/i.test(p.note.textContent), p.note.textContent);
-
-    p = onPhotoTab({showGatePhoto:true, showBeforePhotos:false, showAfterPhotos:true});
-    check('  the before step off greys the before row',
-          p.dim(p.rows[0]) && !p.dim(p.rows[1]) && !p.dim(p.rows[2]));
-    check('  the skip rule is never greyed out, it is not a photo step', !p.dim(p.rows[3]));
-  }catch(e){ check('  photo rows', false, e.message); }
+  ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+    const src = fs.readFileSync(file, 'utf8');
+    check(file + ' always offers the before photo step',
+          /function showsBeforePhotoStep\(type\)\{\s*return true;/.test(src));
+    check(file + ' always offers the after photo step',
+          /function showsAfterPhotoStep\(type\)\{\s*return true;/.test(src));
+    check(file + ' and the gate step', /const stepOn = true;/.test(src));
+    check(file + ' with nothing left reading the old switches',
+          !/appSettings\.show(Before|After)Photos !== false/.test(src)
+          && !/appSettings\.showGatePhoto !== false/.test(src));
+  });
 }
 
 
