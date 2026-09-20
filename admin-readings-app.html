@@ -3835,8 +3835,12 @@ function fieldSyncSummary(){
     ? ' Last report ' + (lastReport.by === 'office'
         ? 'went out from the office'
           + (lastReport.sent !== undefined ? ' with ' + lastReport.sent
+              + (lastReport.gathered && lastReport.gathered !== lastReport.sent
+                  ? ' of ' + lastReport.gathered : '')
               + (lastReport.sent === 1 ? ' photo' : ' photos')
-              + (lastReport.linked ? ' (' + lastReport.linked + ' as links)' : '') : '')
+              + (lastReport.linked ? ' (' + lastReport.linked + ' as links)' : '')
+              + (lastReport.unreadable ? ' \u2014 ' + lastReport.unreadable
+                  + ' could not be read from this phone' : '') : '')
           + '.'
         : 'went the old way (' + (lastReport.why || 'the office could not send it') + ').')
     : '';
@@ -12035,12 +12039,26 @@ async function sendReportFromOffice(customerId, type){
   }
 
   const photos = [];
+  // Every photo gathered has to leave the phone. Sizing one down can fail —
+  // a phone runs out of room converting several camera photos in a row — and
+  // that used to drop the photo without a word. Now the original goes instead,
+  // and anything that still cannot be read is counted and reported.
+  let couldNotRead = 0;
   for(const p of (currentReportPhotos || [])){
+    let content = '';
     try{
       const jpeg = await webpToJpegDataUrl(p.source);
-      const content = String(jpeg).split(',')[1];
-      if(content) photos.push({filename: p.name || 'photo.jpg', content: content, caption: p.caption || ''});
+      content = String(jpeg || '').split(',')[1] || '';
     }catch(e){}
+    if(!content){
+      // Send it as it was rather than not at all
+      try{ content = String(p.source || '').split(',')[1] || ''; }catch(e){}
+    }
+    if(content){
+      photos.push({filename: p.name || 'photo.jpg', content: content, caption: p.caption || ''});
+    } else {
+      couldNotRead++;
+    }
   }
 
   try{
@@ -12067,7 +12085,10 @@ async function sendReportFromOffice(customerId, type){
       noteLastReport('the old way', (body.error || ('the office said ' + res.status)));
       return {ok: false, reason: 'refused', message: body.error || ''};
     }
-    noteLastReport('office', '', {sent: photos.length, shown: body.photos, linked: body.linked});
+    noteLastReport('office', '', {sent: photos.length, shown: body.photos,
+                                  linked: body.linked,
+                                  gathered: (currentReportPhotos || []).length,
+                                  unreadable: couldNotRead});
     return {ok: true};
   }catch(e){
     noteLastReport('the old way', 'no connection when it was sent');
