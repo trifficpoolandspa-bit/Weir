@@ -84,6 +84,18 @@ main{max-width:720px;margin:0 auto;padding:12px 14px 20px;}
 .view{display:none;}
 .view.active{display:block;}
 
+/* Anything pressed rather than typed into shows no text cursor and no blue
+   highlight. Real text stays selectable so it can still be copied. */
+label, button, .history-type-btn, .cust-row, .section-head, .seg-btn, .day-btn, .chip{
+  -webkit-user-select:none;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+}
+input, textarea, select{
+  -webkit-user-select:auto;
+  user-select:auto;
+}
+
 .card{
   background:var(--card);
   border:1px solid var(--line);
@@ -754,12 +766,6 @@ select#customerSelect{font-weight:600;}
       <div class="field">
         <label>Gate photo for this technician</label>
         <p style="font-size:11.5px;color:var(--muted);margin:0 0 8px;">Before and after photo requirements are set per body of water on Readings and Dosages, not here. Leaving this off means the technician follows whatever Settings says.</p>
-        <label style="display:flex;align-items:center;gap:10px;padding:7px 0;font-size:14px;cursor:pointer;">
-          <input type="checkbox" id="tcRequireSkipProof" style="margin:0;"> Require a photo and note to skip a body of water
-        </label>
-        <label style="display:flex;align-items:center;gap:10px;padding:7px 0;font-size:14px;cursor:pointer;">
-          <input type="checkbox" id="tcRequireGate" style="margin:0;"> Require gate photo
-        </label>
         <p id="tcPhotoRequireNote" style="display:none;font-size:11.5px;color:var(--rust);margin:8px 0 0;"></p>
       </div>
 
@@ -1875,8 +1881,17 @@ function renderCustomPhotoBlocks(type, when){
 
 // Any user-defined photo still owing for this section
 function missingCustomPhoto(type, when){
-  const wanted = customPhotosFor(type).filter(p =>
-    p.required === true && (p.when === 'before' ? 'before' : 'after') === when);
+  const wanted = customPhotosFor(type).filter(p =>{
+    if(p.required !== true) return false;
+    // "When" can be either or both now
+    const at = p.when && typeof p.when === 'object'
+      ? !!p.when[when]
+      : (p.when === 'before' ? 'before' : 'after') === when;
+    if(!at) return false;
+    // Asked of this technician by name on the website, for this body of water.
+    // Nobody ticked means nobody is asked.
+    return techWantsPhoto(p.id, type);
+  });
   const missing = wanted.find(p => !customPhotoData[p.id]);
   return missing ? missing.label : '';
 }
@@ -4705,6 +4720,26 @@ function techRequires(flag){
   return !!(currentUser && currentUser[flag] === true);
 }
 
+// Set for this technician on the website: before or after photos, for each
+// body of water. The body of water is 'pool', 'spa' or 'fountain'.
+function techWantsPhoto(step, type){
+  const rules = currentUser && currentUser.photoRules;
+  if(!rules || !rules[step]) return false;
+  const key = type === 'spa' ? 'spa' : (type === 'pool' ? 'pool' : 'fountain');
+  return rules[step][key] === true;
+}
+
+// Which of the company's own photos this technician must take here
+function customPhotosRequiredOf(type, when){
+  return customPhotosFor(type).filter(p =>{
+    if(p.required !== true) return false;
+    const at = p.when && typeof p.when === 'object'
+      ? !!p.when[when]
+      : (p.when === 'before' ? 'before' : 'after') === when;
+    return at && techWantsPhoto(p.id, type);
+  });
+}
+
 // A customer configured to need a gate photo still needs one when the
 // app-wide setting is switched off.
 function customerWantsGatePhoto(){
@@ -4796,6 +4831,10 @@ function afterPhotoRequiredFor(type){
   const lists = cid
     ? listsForBody(cid, type === 'fountain' ? currentVisitFountainId : type, type)
     : chemConfig[type];
+  // Asked of this technician on the website: that stands whatever the body of
+  // water says, because it was set for them by name
+  if(techWantsPhoto('after', type)) return true;
+
   if(lists && typeof lists.requireAfterPhoto === 'boolean') return lists.requireAfterPhoto;
 
   // Not set for this body of water means not required. There is no app-wide
@@ -7243,8 +7282,6 @@ function openTechEditor(t){
   document.getElementById('tcName').value = t.name || '';
   document.getElementById('tcEmail').value = t.email || '';
   document.getElementById('tcPhone').value = t.phone || '';
-  document.getElementById('tcRequireGate').checked = t.requireGatePhoto === true;
-  document.getElementById('tcRequireSkipProof').checked = t.requireSkipProof === true;
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
@@ -7257,8 +7294,8 @@ document.getElementById('btnSaveTech').addEventListener('click', ()=>{
     t.name = name;
     t.email = document.getElementById('tcEmail').value.trim();
     t.phone = document.getElementById('tcPhone').value.trim();
-    t.requireGatePhoto = document.getElementById('tcRequireGate').checked;
-    t.requireSkipProof = document.getElementById('tcRequireSkipProof').checked;
+    // The gate requirement is set on the website, on the Photo requirements tab
+    // Set on the website, on the Photo requirements tab
     saveAdminTechnicians();
     showToast('Technician updated');
   }
@@ -9558,6 +9595,11 @@ function missingRequiredPhoto(){
   if(typeof lists.requireAfterPhoto === 'boolean'){
     afterWhy = lists.requireAfterPhoto ? 'this list\u2019s own setting' : '';
   }
+
+  // Asked of this technician by name on the website. It is the stricter rule,
+  // so it wins, and the message says where it came from.
+  if(showsBeforePhotoStep(type) && techWantsPhoto('before', type)) beforeWhy = 'asked of you by the office';
+  if(showsAfterPhotoStep(type) && techWantsPhoto('after', type)) afterWhy = 'asked of you by the office';
 
   const beforeNeeded = !!beforeWhy;
   const afterNeeded = !!afterWhy;

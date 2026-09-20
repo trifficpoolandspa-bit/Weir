@@ -84,6 +84,18 @@ main{max-width:720px;margin:0 auto;padding:12px 14px 20px;}
 .view{display:none;}
 .view.active{display:block;}
 
+/* Anything pressed rather than typed into shows no text cursor and no blue
+   highlight. Real text stays selectable so it can still be copied. */
+label, button, .history-type-btn, .cust-row, .section-head, .seg-btn, .day-btn, .chip{
+  -webkit-user-select:none;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+}
+input, textarea, select{
+  -webkit-user-select:auto;
+  user-select:auto;
+}
+
 .card{
   background:var(--card);
   border:1px solid var(--line);
@@ -1571,8 +1583,17 @@ function renderCustomPhotoBlocks(type, when){
 
 // Any user-defined photo still owing for this section
 function missingCustomPhoto(type, when){
-  const wanted = customPhotosFor(type).filter(p =>
-    p.required === true && (p.when === 'before' ? 'before' : 'after') === when);
+  const wanted = customPhotosFor(type).filter(p =>{
+    if(p.required !== true) return false;
+    // "When" can be either or both now
+    const at = p.when && typeof p.when === 'object'
+      ? !!p.when[when]
+      : (p.when === 'before' ? 'before' : 'after') === when;
+    if(!at) return false;
+    // Asked of this technician by name on the website, for this body of water.
+    // Nobody ticked means nobody is asked.
+    return techWantsPhoto(p.id, type);
+  });
   const missing = wanted.find(p => !customPhotoData[p.id]);
   return missing ? missing.label : '';
 }
@@ -4312,6 +4333,26 @@ function techRequires(flag){
   return !!(currentUser && currentUser[flag] === true);
 }
 
+// Set for this technician on the website: before or after photos, for each
+// body of water. The body of water is 'pool', 'spa' or 'fountain'.
+function techWantsPhoto(step, type){
+  const rules = currentUser && currentUser.photoRules;
+  if(!rules || !rules[step]) return false;
+  const key = type === 'spa' ? 'spa' : (type === 'pool' ? 'pool' : 'fountain');
+  return rules[step][key] === true;
+}
+
+// Which of the company's own photos this technician must take here
+function customPhotosRequiredOf(type, when){
+  return customPhotosFor(type).filter(p =>{
+    if(p.required !== true) return false;
+    const at = p.when && typeof p.when === 'object'
+      ? !!p.when[when]
+      : (p.when === 'before' ? 'before' : 'after') === when;
+    return at && techWantsPhoto(p.id, type);
+  });
+}
+
 // A customer configured to need a gate photo still needs one when the
 // app-wide setting is switched off.
 function customerWantsGatePhoto(){
@@ -4403,6 +4444,10 @@ function afterPhotoRequiredFor(type){
   const lists = cid
     ? listsForBody(cid, type === 'fountain' ? currentVisitFountainId : type, type)
     : chemConfig[type];
+  // Asked of this technician on the website: that stands whatever the body of
+  // water says, because it was set for them by name
+  if(techWantsPhoto('after', type)) return true;
+
   if(lists && typeof lists.requireAfterPhoto === 'boolean') return lists.requireAfterPhoto;
 
   // Not set for this body of water means not required. There is no app-wide
@@ -7849,6 +7894,11 @@ function missingRequiredPhoto(){
   if(typeof lists.requireAfterPhoto === 'boolean'){
     afterWhy = lists.requireAfterPhoto ? 'this list\u2019s own setting' : '';
   }
+
+  // Asked of this technician by name on the website. It is the stricter rule,
+  // so it wins, and the message says where it came from.
+  if(showsBeforePhotoStep(type) && techWantsPhoto('before', type)) beforeWhy = 'asked of you by the office';
+  if(showsAfterPhotoStep(type) && techWantsPhoto('after', type)) afterWhy = 'asked of you by the office';
 
   const beforeNeeded = !!beforeWhy;
   const afterNeeded = !!afterWhy;
