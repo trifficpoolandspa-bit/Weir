@@ -6581,10 +6581,25 @@ async function syncCustomers(){
     result.recordsPulled = records.pulled;
     result.recordsPushed = records.pushed;
     if(records.failed) result.failed += records.failed;
+    // Kept so the reason can be shown rather than guessed at: a technician
+    // change that will not go up is invisible otherwise.
+    lastRecordTrouble = records.failed
+      ? {at: new Date().toISOString(), failed: records.failed,
+         pullFailed: !!records.pullFailed, why: records.why || ''}
+      : null;
 
     const waiting = Object.keys(state.edits).length;
     state.lastSyncedAt = new Date().toISOString();
     saveSyncState(companyId, state);
+    if(lastRecordTrouble){
+      syncStatus('Last synced ' + new Date(state.lastSyncedAt).toLocaleTimeString()
+        + ' \u2014 ' + (lastRecordTrouble.pullFailed
+            ? 'could not read the office copy'
+            : lastRecordTrouble.failed + (lastRecordTrouble.failed === 1 ? ' change' : ' changes')
+              + ' could not be sent')
+        + (lastRecordTrouble.why ? ': ' + lastRecordTrouble.why : '') + '.');
+      return result;
+    }
     syncStatus(waiting
       ? 'Last synced ' + new Date(state.lastSyncedAt).toLocaleTimeString() + ' \u2014 ' + waiting
         + (waiting === 1 ? ' customer' : ' customers') + ' still waiting to send.'
@@ -6997,6 +7012,9 @@ function syncScanRecords(state, now){
   Object.keys(r.edits).forEach(key=>{ if(!local[key] && !r.known[key]) delete r.edits[key]; });
 }
 
+// The last thing that went wrong sending technicians, setup or settings
+let lastRecordTrouble = null;
+
 async function syncRecords(state, companyId){
   const r = syncRecordState(state);
   const result = {pulled: 0, pushed: 0, failed: 0};
@@ -7010,12 +7028,19 @@ async function syncRecords(state, companyId){
       + '&order=updated_at.asc,kind.asc,id.asc&limit=' + SYNC_PAGE + '&offset=' + offset;
     if(since) path += '&updated_at=gte.' + encodeURIComponent(since);
     const res = await syncCall(path);
-    if(!res.ok || !Array.isArray(res.body)){ result.failed++; return result; }
+    if(!res.ok || !Array.isArray(res.body)){
+      // A pull that fails must not stop the push. Returning here meant one bad
+      // read kept every local change on this machine for good, and the office
+      // copy won every time it came back down.
+      result.failed++;
+      result.pullFailed = true;
+      break;
+    }
     rows.push(...res.body);
     if(res.body.length < SYNC_PAGE) break;
   }
 
-  const firstPull = !r.cursor && !Object.keys(r.known).length;
+  const firstPull = !result.pullFailed && !r.cursor && !Object.keys(r.known).length;
   rows.forEach(row=>{
     const key = syncRecordKey(row.kind, row.id);
     if(firstPull) delete r.edits[key];
@@ -7078,7 +7103,18 @@ async function syncRecords(state, companyId){
       method: 'POST',
       body: JSON.stringify({p_kind: kind, p_id: id, p_changes: changes, p_base: k && k.u ? k.u : null})
     });
-    if(!res.ok || !res.body || !res.body.result){ result.failed++; break; }   // per record, as with customers
+    if(!res.ok || !res.body || !res.body.result){
+      // One record the office will not take must not block the rest. It used
+      // to stop here, so everything queued behind it never went up at all —
+      // and it was always first in the queue, so it never would.
+      result.failed++;
+      if(!result.why){
+        result.why = (res.body && (res.body.message || res.body.error || res.body.hint))
+          || ('the office said ' + (res.status || 'nothing'));
+      }
+      if(res.offline) break;          // no connection: stop, nothing will go
+      continue;
+    }
     if(res.body.result === 'missing'){ delete r.edits[key]; saveSyncState(companyId, state); continue; }
 
     // Anything edited here while this was in flight stays waiting
