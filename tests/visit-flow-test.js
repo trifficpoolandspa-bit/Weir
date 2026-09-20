@@ -457,6 +457,22 @@ async function walkVisit(w, d, maxPresses){
   }
 
   
+// ---- A message clears the buttons at the bottom ----
+{
+  console.log('\n=== a message sits above the step button ===');
+  ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+    const src = fs.readFileSync(file, 'utf8');
+    const rule = (src.match(/\.toast\{[^}]*\}/) || [''])[0];
+    check(file + ' places a message above both bars',
+          /var\(--bottombar-height/.test(rule) && /var\(--stepbar-height/.test(rule), rule.slice(0, 140));
+    check(file + ' no longer guesses at 80px', rule.indexOf('bottom:80px') === -1);
+    check(file + ' measures the step bar, and treats it as nothing when hidden',
+          /--stepbar-height/.test(src) && /showing \? Math\.round/.test(src));
+    check(file + ' and measures again as a message appears',
+          /function showToast\(msg\)\{\s*try\{ measureBottomBar\(\); \}catch/.test(src));
+  });
+}
+
 // ---- The step bar sits on the tab bar, with no gap ----
 {
   console.log('\n=== The step bar meets the tabs ===');

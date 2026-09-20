@@ -735,13 +735,15 @@ console.log('\n=== A photo can be required to skip a service ===');
     };
   }
 
-  // The setting exists on the website
+  // It is asked of a technician by name on the Photo requirements tab now,
+  // rather than being one switch in Settings for everyone
   {
     const {dom} = load('customer-intake.html', {seed: {customers: []}});
     const w = dom.window, d = w.document;
     w.console.warn = ()=>{};
-    check('  the website offers the setting', !!d.getElementById('settingRequireSkipPhoto'));
-    check('  it defaults to off', w.eval('appSettings.requireSkipPhoto') !== true);
+    check('  the website no longer has it in Settings', !d.getElementById('settingRequireSkipPhoto'));
+    check('  and it is off unless someone is asked for it',
+          w.eval('appSettings.requireSkipPhoto') !== true);
   }
 
   ['technician-app.html','admin-readings-app.html'].forEach(file=>{

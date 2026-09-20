@@ -134,11 +134,12 @@ console.log('\n=== Only the gate photo is set per technician ===');
 });
 {
   const d = load('admin-readings-app.html').dom.window.document;
-  check('the tech editor keeps the gate tick', !!d.getElementById('tcRequireGate'));
-  check('and has dropped the before tick', !d.getElementById('tcRequireBefore'));
-  check('and the after tick', !d.getElementById('tcRequireAfter'));
-  const gate = d.getElementById('tcRequireGate');
-  check('the gate tick starts unchecked', gate && !gate.checked);
+  // Photo requirements are set on the website's Photo requirements tab now, so
+  // the technician editor in the app carries none of them
+  check('the tech editor has no gate tick', !d.getElementById('tcRequireGate'));
+  check('nor a before tick', !d.getElementById('tcRequireBefore'));
+  check('nor an after tick', !d.getElementById('tcRequireAfter'));
+  check('nor a skip tick, they are all set on the website now', !d.getElementById('tcRequireSkipProof'));
 }
 
 

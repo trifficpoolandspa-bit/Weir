@@ -719,6 +719,57 @@ console.log('\n=== Turning a photo step on does NOT force the requirement ===');
 }
 
 
+console.log('\n=== Rearranging the route is granted per technician ===');
+{
+  // It used to be one switch in Settings for everyone
+  [['admin-readings-app.html','options'], ['customer-intake.html','settings']].forEach(([file, view])=>{
+    const {dom} = load(file, {seed: {customers: []}});
+    const w = dom.window, d = w.document;
+    w.console.warn = ()=>{};
+    w.Element.prototype.scrollIntoView = function(){};
+    try{
+      w.eval("switchView('" + view + "');");
+      ['settingRouteReorder', 'settingRequireSkipReason', 'settingRequireSkipPhoto']
+        .forEach(id => check(file + ' has no ' + id + ' in Settings', !d.getElementById(id)));
+    }catch(e){ check(file + ' settings', false, e.message); }
+  });
+
+  ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+    const src = fs.readFileSync(file, 'utf8');
+    check(file + ' asks the technician, not the app-wide setting',
+          /currentUser\.canReorderRoute === true \|\| currentUser\.isAdmin === true/.test(src));
+    check(file + ' no longer reads allowRouteReorder for the route',
+          src.indexOf('const canReorder = appSettings.allowRouteReorder') === -1);
+  });
+
+  // On the website, admin access carries it
+  {
+    const {dom} = load('customer-intake.html', {seed: {customers: [], technicians: []}});
+    const w = dom.window, d = w.document;
+    w.console.warn = ()=>{};
+    w.Element.prototype.scrollIntoView = function(){};
+    try{
+      w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); switchView('technicians');");
+      d.getElementById('btnAddTech').click();
+      const admin = d.getElementById('techIsAdmin');
+      const reorder = d.getElementById('techCanReorderRoute');
+      check('the technician form has a rearrange box', !!reorder);
+      check('it starts unticked', reorder && !reorder.checked);
+      admin.checked = true;
+      admin.dispatchEvent(new w.Event('change', {bubbles: true}));
+      const equip = d.getElementById('techEquipPhotoAccess');
+      check('granting admin ticks it straight away', reorder.checked === true);
+      check('and equipment photos with it', equip && equip.checked === true);
+      check('and holds both there, since admin includes them',
+            reorder.disabled === true && equip.disabled === true);
+      admin.checked = false;
+      admin.dispatchEvent(new w.Event('change', {bubbles: true}));
+      check('taking admin away hands both choices back',
+            reorder.disabled === false && equip.disabled === false);
+    }catch(e){ check('the rearrange box', false, e.message); }
+  }
+}
+
 console.log('\n=== Photo steps are not switched on and off in Settings ===');
 {
   // Who must take which photo is set in one place: the Photo requirements tab.
