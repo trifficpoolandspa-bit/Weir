@@ -475,6 +475,24 @@ async function walkVisit(w, d, maxPresses){
   });
 }
 
+
+// ---- Skip sits on the heading line, not a row of its own ----
+{
+  console.log('\n=== Skip this pool shares the heading line ===');
+  ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+    const src = fs.readFileSync(file, 'utf8');
+    check(file + ' moves the skip button onto the step heading',
+          /head\.insertBefore\(skipBtn, back\)/.test(src), 'skip not moved');
+    check(file + ' and hides the row it used to have to itself',
+          /skipRow\.style\.display = 'none'/.test(src));
+    check(file + ' no longer heads the service checks with "Service performed"',
+          src.indexOf("eyebrow.textContent = 'Service performed'") === -1);
+    // The report and the email still say it, which is where it belongs
+    check(file + ' but the report still labels that section',
+          src.indexOf('Service performed') !== -1);
+  });
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();

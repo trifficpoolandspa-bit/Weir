@@ -3074,6 +3074,29 @@ async function serverFieldSignIn(){
               !phone.d.querySelector('.route-brief'), 'panel still open');
       }
 
+      console.log('\n=== Today opens with every briefing closed ===');
+      {
+        const rows = () => Array.from(phone.d.querySelectorAll('#homeCustomerList .cust-row'));
+        if(rows().length){
+          rows()[0].click();
+          await sleep(200);
+          check('tapping a customer opens their briefing',
+                phone.d.querySelectorAll('.route-brief').length === 1,
+                String(phone.d.querySelectorAll('.route-brief').length));
+
+          phone.w.eval("switchView('options')"); await sleep(200);
+          phone.w.eval("switchView('home')"); await sleep(250);
+          check('coming back to Today closes it again',
+                phone.d.querySelectorAll('.route-brief').length === 0,
+                String(phone.d.querySelectorAll('.route-brief').length));
+          check('and the arrow points the right way once more',
+                Array.from(phone.d.querySelectorAll('.chev')).every(x => x.textContent === '\u203a'),
+                Array.from(phone.d.querySelectorAll('.chev')).map(x => x.textContent).join(''));
+        } else {
+          check('there is a customer to tap for this', false, 'no rows on the route');
+        }
+      }
+
       console.log('\n=== reports are sent by the office ===');
       {
         // What the phone hands over, and what it does when the office cannot
@@ -3125,6 +3148,8 @@ async function serverFieldSignIn(){
         phone.w.eval('fieldRenderSyncCard()');
         const cardText = phone.d.getElementById('fieldSyncStatus').textContent;
         check('the sync card says how the last report went', /Last report went/.test(cardText), cardText);
+        check('and how many photos went with it',
+              /with \d+ photos?/.test(cardText) || /Nobody|went the old way/.test(cardText), cardText);
 
         srv.reportFails = false;
         srv.offline = true;

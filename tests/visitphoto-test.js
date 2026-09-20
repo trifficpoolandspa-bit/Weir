@@ -267,6 +267,23 @@ function boot(file){
         /photos: attachments\.length, linked: linkOnly\.length/.test(fn));
 }
 
+
+// ---- A gate photo taken on the last body of water is kept ----
+// It used to come back only on the pool, so one taken on a spa or fountain
+// disappeared the moment the technician looked at another section.
+{
+  console.log('\n=== the gate photo survives moving between sections ===');
+  ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+    const src = fs.readFileSync(file, 'utf8');
+    const block = src.slice(src.indexOf('function restoreFinishedSection'),
+                            src.indexOf('function restoreFinishedSection') + 2000);
+    check(file + ' brings a gate photo back whatever section it was taken on',
+          /if\(reading\.gatePhoto && typeof gatePhotoController/.test(block), 'still pool-only');
+    check(file + ' no longer restores it only for the pool',
+          block.indexOf("type === 'pool' && reading.gatePhoto") === -1);
+  });
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();
