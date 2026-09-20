@@ -6631,6 +6631,9 @@ function syncNoteLocalChange(){
   try{
     const state = loadSyncState(siteUser.companyId);
     syncScanLocal(state, lsGet('customers') || []);
+    // Technicians, setup and settings are noticed here too. Marking a change
+    // the moment it is made is what stops the next pull overwriting it.
+    if(typeof syncScanRecords === 'function') syncScanRecords(state);
     saveSyncState(siteUser.companyId, state);
   }catch(e){}
   clearTimeout(syncTimer);
@@ -11395,7 +11398,11 @@ function applyAdminCarries(){
 
 function saveTechnicians(){
   const ok = lsSet('technicians', technicians);
-  if(!ok) showToast('Could not save — your browser storage may be full');
+  if(!ok){ showToast('Could not save — your browser storage may be full'); return; }
+  // Tell sync at once, the same as saving a customer does. Without this the
+  // change waited for the next scheduled sync, and a pull arriving first
+  // overwrote it with the office copy before anything had marked it as ours.
+  if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange();
 }
 
 function showToast(msg){
