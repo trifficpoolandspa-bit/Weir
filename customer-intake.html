@@ -1519,55 +1519,6 @@ input::placeholder{color:#A9BCB9;}
       <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">When on, pool volume (in gallons) can be entered when adding or editing a customer, and shows on their profile right under their technician. When off, the field is hidden entirely.</p>
     </div>
 
-    <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;margin:24px 0 10px;">Photos</div>
-
-<div class="card">
-      <div class="field">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
-          <h2 style="margin:0;">Before photos</h2>
-          <label class="toggle-switch">
-            <input type="checkbox" id="settingBeforePhotos" checked>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">When on, each visit starts with a Before photos step so you can capture the pool before any work is done. Turning this off removes that step entirely. To make a before photo compulsory, tick Required next to that body of water on Readings and Dosages.</p>
-        
-      </div>
-    </div>
-    <div class="card">
-      <div class="field">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
-          <h2 style="margin:0;">After photos</h2>
-          <label class="toggle-switch">
-            <input type="checkbox" id="settingAfterPhotos" checked>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">When on, each visit ends with an After photos step so you can capture the pool once the work is done. Turning this off removes that step entirely. To make an after photo compulsory, tick Required next to that body of water on Readings and Dosages.</p>
-        
-      </div>
-    </div>
-
-
-
-
-
-
-
-<div class="card">
-      <div class="field">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
-          <h2 style="margin:0;">Gate photo</h2>
-          <label class="toggle-switch">
-            <input type="checkbox" id="settingGatePhoto">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">When on, technicians can photograph the closed or locked gate on the last body of water they service. Proof the property was left secure. To make it compulsory, tick Required on the Pool tab of Readings and Dosages &mdash; the gate belongs to the property, so there is no separate tick on Spa or Extra.</p>
-        
-      </div>
-    </div>
-
     <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;margin:24px 0 10px;">Field app</div>
 
     <div class="card">
@@ -3193,15 +3144,6 @@ function saveSettings(){
   lsSet('settings', appSettings);
 }
 
-document.getElementById('settingAfterPhotos').addEventListener('change', (e)=>{
-  appSettings.showAfterPhotos = e.target.checked;
-  // Deliberately does NOT switch the requirement on. The app-wide setting is
-  // inherited by every body of water whose own tick is not set, so forcing it
-  // on here made spa and fountain demand a photo while their boxes looked
-  // unticked. An unticked box means "follow Settings", not "no".
-  saveSettings();
-  showToast(appSettings.showAfterPhotos ? 'After photos step turned on in the field apps' : 'After photos step turned off');
-});
 
 document.getElementById('settingRequireSkipReason').addEventListener('change', (e)=>{
   appSettings.requireSkipReason = e.target.checked;
@@ -3223,15 +3165,6 @@ document.getElementById('settingRouteReorder').addEventListener('change', (e)=>{
   showToast(appSettings.allowRouteReorder ? 'Technicians can rearrange routes' : 'Route order is now locked');
 });
 
-document.getElementById('settingBeforePhotos').addEventListener('change', (e)=>{
-  appSettings.showBeforePhotos = e.target.checked;
-  // Deliberately does NOT switch the requirement on. The app-wide setting is
-  // inherited by every body of water whose own tick is not set, so forcing it
-  // on here made spa and fountain demand a photo while their boxes looked
-  // unticked. An unticked box means "follow Settings", not "no".
-  saveSettings();
-  showToast(appSettings.showBeforePhotos ? 'Before photos step turned on in the field apps' : 'Before photos step turned off');
-});
 
 document.getElementById('settingShowDosageSuggestions').addEventListener('change', (e)=>{
   appSettings.showDosageSuggestions = e.target.checked;
@@ -3278,15 +3211,6 @@ document.getElementById('settingPushToTalk').addEventListener('change', (e)=>{
 });
 
 
-document.getElementById('settingGatePhoto').addEventListener('change', (e)=>{
-  appSettings.showGatePhoto = e.target.checked;
-  // Deliberately does NOT switch the requirement on. The app-wide setting is
-  // inherited by every body of water whose own tick is not set, so forcing it
-  // on here made spa and fountain demand a photo while their boxes looked
-  // unticked. An unticked box means "follow Settings", not "no".
-  saveSettings();
-  showToast(appSettings.showGatePhoto ? 'Gate photo step turned on' : 'Gate photo step turned off');
-});
 
 
 
@@ -16276,12 +16200,10 @@ renderTechnicianList();
 populateTechnicianSelect();
 renderEquipmentTypeList();
 document.getElementById('settingShowPoolSize').checked = appSettings.showPoolSizeInProfile;
-document.getElementById('settingGatePhoto').checked = appSettings.showGatePhoto !== false;
 document.getElementById('settingStorePhotos').checked = appSettings.storePhotos !== false;
 document.getElementById('settingPushToTalk').checked = appSettings.pushToTalkEnabled !== false;
 renderMicSideButtons();
 document.getElementById('settingShowDosageSuggestions').checked = appSettings.showDosageSuggestions;
-document.getElementById('settingBeforePhotos').checked = appSettings.showBeforePhotos !== false;
 document.getElementById('settingRouteReorder').checked = appSettings.allowRouteReorder !== false;
 document.getElementById('settingRequireSkipReason').checked = appSettings.requireSkipReason === true;
 document.getElementById('settingRequireSkipPhoto').checked = appSettings.requireSkipPhoto === true;
@@ -16290,7 +16212,6 @@ document.getElementById('settingAutoNotifyAll').checked = appSettings.autoNotify
 document.getElementById('settingAutoNotifyLead').value = String(appSettings.autoNotifyAllLead || 2);
 document.getElementById('settingAutoNotifyLeadField').style.display =
   appSettings.autoNotifyAll === true ? 'block' : 'none';
-document.getElementById('settingAfterPhotos').checked = appSettings.showAfterPhotos !== false;
 applyPoolGallonsFieldVisibility();
 
 
