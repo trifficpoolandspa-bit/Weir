@@ -14,6 +14,22 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <style>
+/* A text cursor belongs in a field you type into and nowhere else. This is the
+   whole-page rule: everything is unselectable by default, and real fields turn
+   it back on. Anything new inherits it without having to remember. */
+*{
+  -webkit-user-select:none;
+  -moz-user-select:none;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+}
+input, textarea, select, [contenteditable], [contenteditable] *{
+  -webkit-user-select:text;
+  -moz-user-select:text;
+  user-select:text;
+}
+
+
 :root{
   --ink:#0B2422;
   --surface:#F2F7F6;
@@ -330,22 +346,6 @@ input::placeholder{color:#A9BCB9;}
 .toggle-switch input:checked + .toggle-slider:before{
   transform:translateX(22px);
 }
-/* Anything that is pressed rather than typed into should not show a text
-   cursor or highlight blue when tapped. Real text — names, addresses, gate
-   codes — stays selectable so it can still be copied. */
-label, button, .history-type-btn, .profile-meta-row, .access-row,
-.tech-row, .cust-row, .section-head, #photoRequireCard, #photoRequireRows,
-#photoRequireRows *, .history-seg, .seg-btn, .day-btn, .chip{
-  -webkit-user-select:none;
-  user-select:none;
-  -webkit-tap-highlight-color:transparent;
-}
-label input, #photoRequireCard input, #photoRequireRows input,
-input, textarea, select{
-  -webkit-user-select:auto;
-  user-select:auto;
-}
-
 .history-type-btn{
   flex:1;border:1px solid transparent;background:transparent;color:var(--muted);
   padding:8px 10px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;
@@ -3079,8 +3079,33 @@ const DEFAULT_BUTTON_SETS = {
   soda: [0.5, 1, 2, 3, 4]
 };
 
-function seedButtonSets(cfg){
+// A setup saved before Free chlorine gained its 2 keeps the old six buttons,
+// and the filling-in below only helps a field with none at all. So the missing
+// one is put back, but only where the set is otherwise untouched: anyone who
+// has arranged their own buttons keeps exactly what they chose.
+const OLD_CHLORINE_SET = [0, 1, 3, 5, 7.5, 10];
+
+function addMissingChlorineButton(cfg){
   let changed = false;
+  ['pool','spa','fountain'].forEach(t=>{
+    ((cfg[t] || {}).chemicals || []).forEach(item=>{
+      if(!item || item.key !== 'chlorine' || !Array.isArray(item.buttons)) return;
+      const values = item.buttons.map(b => Number(btnValue(b)));
+      const untouched = values.length === OLD_CHLORINE_SET.length
+        && OLD_CHLORINE_SET.every((v, i) => values[i] === v);
+      if(!untouched) return;
+      // Keep any colour the 1 was given, so the new button matches its row
+      const like = item.buttons[1];
+      const two = (like && typeof like === 'object') ? {v: 2, c: like.c} : 2;
+      item.buttons = item.buttons.slice(0, 2).concat([two], item.buttons.slice(2));
+      changed = true;
+    });
+  });
+  return changed;
+}
+
+function seedButtonSets(cfg){
+  let changed = addMissingChlorineButton(cfg);
   ['pool','spa','fountain'].forEach(t=>{
     ['chemicals','dosages'].forEach(listKey=>{
       (cfg[t][listKey] || []).forEach(item=>{
@@ -9696,7 +9721,7 @@ function openDoseRulesModal(item){
       v1.addEventListener('change', ()=>{
         v1.value = padLeadingZero(v1.value);
         rule.value = v1.value;
-        saveActiveConfig(); render();
+        saveActiveConfig();
       });
       row.appendChild(v1);
 
@@ -9711,7 +9736,7 @@ function openDoseRulesModal(item){
         v2.addEventListener('change', ()=>{
           v2.value = padLeadingZero(v2.value);
           rule.value2 = v2.value;
-          saveActiveConfig(); render();
+          saveActiveConfig();
         });
         row.appendChild(v2);
       }
@@ -9727,7 +9752,7 @@ function openDoseRulesModal(item){
       amt.addEventListener('change', ()=>{
         amt.value = padLeadingZero(amt.value);
         rule.amount = amt.value;
-        saveActiveConfig(); render();
+        saveActiveConfig();
       });
       row.appendChild(amt);
 
@@ -10829,6 +10854,18 @@ function photoTechnicianList(step, bodies){
     else setPhotoRule(t, step, key, on);
   };
 
+  // Kept so a tick can update what changed without rebuilding the list
+  // underneath the press: rebuilding mid-click is what made a tick need two
+  const everyoneBoxes = {};
+  const ownBoxes = [];
+  const refresh = ()=>{
+    Object.keys(everyoneBoxes).forEach(key=>{
+      everyoneBoxes[key].checked = technicians.length > 0 && technicians.every(t => tickFor(t, key));
+    });
+    ownBoxes.forEach(entry => { entry.box.checked = tickFor(entry.t, entry.key); });
+    updatePhotoRowCounts();
+  };
+
   // Everyone at once
   const all = document.createElement('div');
   all.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;'
@@ -10846,10 +10883,11 @@ function photoTechnicianList(step, bodies){
     box2.type = 'checkbox';
     box2.style.margin = '0';
     box2.checked = technicians.length > 0 && technicians.every(t => tickFor(t, key));
+    everyoneBoxes[key] = box2;
     box2.addEventListener('change', ()=>{
       technicians.forEach(t => setTick(t, key, box2.checked));
       saveTechnicians();
-      renderPhotoRequirements();
+      refresh();
     });
     wrap.appendChild(box2);
     allTicks.appendChild(wrap);
@@ -10875,10 +10913,11 @@ function photoTechnicianList(step, bodies){
       box3.type = 'checkbox';
       box3.style.margin = '0';
       box3.checked = tickFor(t, key);
+      ownBoxes.push({t: t, key: key, box: box3});
       box3.addEventListener('change', ()=>{
         setTick(t, key, box3.checked);
         saveTechnicians();
-        renderPhotoRequirements();
+        refresh();
       });
       wrap.appendChild(box3);
       ticks.appendChild(wrap);
@@ -10887,6 +10926,23 @@ function photoTechnicianList(step, bodies){
     box.appendChild(row);
   });
   return box;
+}
+
+// The count beside each requirement, written into rows already on screen
+function updatePhotoRowCounts(){
+  const tasks = photoTasks();
+  document.querySelectorAll('#photoRequireRows [data-photo-step]').forEach(el=>{
+    const step = el.dataset.photoStep;
+    const task = tasks.find(t => t.id === step);
+    const bodies = task ? task.bodies : {pool: true, spa: true, fountain: true};
+    const count = technicians.filter(t=>
+      step === 'gate' ? t.requireGatePhoto === true
+      : step === 'skip' ? t.requireSkipProof === true
+      : PHOTO_BODIES.some(([k]) => bodies[k] && photoRuleFor(t, step, k))
+    ).length;
+    el.textContent = (count ? count + (count === 1 ? ' technician' : ' technicians') : 'Nobody yet')
+      + (photoStepOpen === step ? '  \u25b4' : '  \u25be');
+  });
 }
 
 function renderPhotoRequirements(){
@@ -11286,6 +11342,10 @@ document.getElementById('btnRestoreChemDefaults').addEventListener('click', asyn
   const confirmed = await confirmDialog('Restore ' + typeLabel + ' chemicals and dosages to their default labels and units? Any custom ones you\'ve added or renamed here will be replaced.');
   if(!confirmed) return;
   chemConfig[selectedChemConfigType] = JSON.parse(JSON.stringify(DEFAULT_CHEM_CONFIG[selectedChemConfigType]));
+  // The shipped lists carry no quick buttons of their own; they are filled in
+  // when a setup is loaded. Restoring has to do the same, or a restore leaves
+  // every field with no buttons at all until the next reload.
+  seedButtonSets(chemConfig);
   saveChemConfig();
   renderChemConfigLists();
   showToast(typeLabel + ' restored to defaults');

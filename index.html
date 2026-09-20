@@ -9,6 +9,22 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
+/* A text cursor belongs in a field you type into and nowhere else. This is the
+   whole-page rule: everything is unselectable by default, and real fields turn
+   it back on. Anything new inherits it without having to remember. */
+*{
+  -webkit-user-select:none;
+  -moz-user-select:none;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+}
+input, textarea, select, [contenteditable], [contenteditable] *{
+  -webkit-user-select:text;
+  -moz-user-select:text;
+  user-select:text;
+}
+
+
 :root{
   --ink:#0F2E2E;
   --card:#FFFFFF;

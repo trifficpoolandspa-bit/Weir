@@ -10,6 +10,22 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
+/* A text cursor belongs in a field you type into and nowhere else. This is the
+   whole-page rule: everything is unselectable by default, and real fields turn
+   it back on. Anything new inherits it without having to remember. */
+*{
+  -webkit-user-select:none;
+  -moz-user-select:none;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+}
+input, textarea, select, [contenteditable], [contenteditable] *{
+  -webkit-user-select:text;
+  -moz-user-select:text;
+  user-select:text;
+}
+
+
 :root{
   --ink:#0F2E2E;
   --surface:#EDF3F2;
@@ -83,18 +99,6 @@ nav{
 main{max-width:720px;margin:0 auto;padding:12px 14px 20px;}
 .view{display:none;}
 .view.active{display:block;}
-
-/* Anything pressed rather than typed into shows no text cursor and no blue
-   highlight. Real text stays selectable so it can still be copied. */
-label, button, .history-type-btn, .cust-row, .section-head, .seg-btn, .day-btn, .chip{
-  -webkit-user-select:none;
-  user-select:none;
-  -webkit-tap-highlight-color:transparent;
-}
-input, textarea, select{
-  -webkit-user-select:auto;
-  user-select:auto;
-}
 
 .card{
   background:var(--card);
@@ -1240,6 +1244,18 @@ function loadChemConfig(){
         if(!Array.isArray(item.buttons)){
           item.buttons = (DEFAULT_BUTTON_SETS[item.key] || []).slice();
           migrated = true;
+        }
+        // A setup saved before Free chlorine gained its 2 keeps the old six.
+        // Put the missing one back, but only where nobody has rearranged them.
+        if(item.key === 'chlorine' && Array.isArray(item.buttons)){
+          const values = item.buttons.map(b => Number(btnValue(b)));
+          const old = [0, 1, 3, 5, 7.5, 10];
+          if(values.length === old.length && old.every((v, i) => values[i] === v)){
+            const like = item.buttons[1];
+            const two = (like && typeof like === 'object') ? {v: 2, c: like.c} : 2;
+            item.buttons = item.buttons.slice(0, 2).concat([two], item.buttons.slice(2));
+            migrated = true;
+          }
         }
       });
     });
