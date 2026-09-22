@@ -896,6 +896,12 @@ function weirServerHere(){
 const WEIR_SERVER = weirServerHere();
 const WEIR_SERVER_URL = WEIR_SERVER.url;
 const WEIR_SERVER_KEY = WEIR_SERVER.key;
+
+// Everything this copy saves on the device is kept under its own name. The
+// browser shares storage across a whole domain, so without this the beta site
+// would open holding the real company's customers — and push them to the beta
+// server on the first sync.
+const WEIR_STORE = (WEIR_SERVER === WEIR_SERVERS.live) ? '' : 'beta-';
 // =====================================================================
 
 
@@ -1057,6 +1063,7 @@ function reportStorageFailure(where, err){
 // are left where they are: if anything goes wrong, nothing has been lost.
 function weirRenameStoredKeys(){
   try{
+    if(WEIR_STORE) return;                    // only the live copy inherits the old data
     if(localStorage.getItem('weir:__renamed')) return;
     const old = [];
     for(let i = 0; i < localStorage.length; i++){
@@ -1074,7 +1081,7 @@ function weirRenameStoredKeys(){
 }
 weirRenameStoredKeys();
 
-const STORAGE_PREFIX = 'weir:';
+const STORAGE_PREFIX = 'weir:' + WEIR_STORE;
 
 // ---------- Leading zero on decimals ----------
 // Typing ".5" is quicker than "0.5", so accept it and tidy it up. One
@@ -2214,7 +2221,7 @@ function lsSet(key, value){
 // Shared word for word by index.html, technician-app.html and admin-readings-app.html.
 const FIELD_SUPABASE_URL = WEIR_SERVER_URL;
 const FIELD_SUPABASE_KEY = WEIR_SERVER_KEY;
-const DEVICE_PREFIX = 'weirdevice:';
+const DEVICE_PREFIX = 'weirdevice:' + WEIR_STORE;
 
 function deviceGet(key){
   try{ return JSON.parse(localStorage.getItem(DEVICE_PREFIX + key)); }catch(e){ return null; }

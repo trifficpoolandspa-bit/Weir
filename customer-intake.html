@@ -1672,6 +1672,12 @@ function weirServerHere(){
 const WEIR_SERVER = weirServerHere();
 const WEIR_SERVER_URL = WEIR_SERVER.url;
 const WEIR_SERVER_KEY = WEIR_SERVER.key;
+
+// Everything this copy saves on the device is kept under its own name. The
+// browser shares storage across a whole domain, so without this the beta site
+// would open holding the real company's customers — and push them to the beta
+// server on the first sync.
+const WEIR_STORE = (WEIR_SERVER === WEIR_SERVERS.live) ? '' : 'beta-';
 // =====================================================================
 
 
@@ -1833,6 +1839,7 @@ function reportStorageFailure(where, err){
 // are left where they are: if anything goes wrong, nothing has been lost.
 function weirRenameStoredKeys(){
   try{
+    if(WEIR_STORE) return;                    // only the live copy inherits the old data
     if(localStorage.getItem('weir:__renamed')) return;
     const old = [];
     for(let i = 0; i < localStorage.length; i++){
@@ -1850,7 +1857,7 @@ function weirRenameStoredKeys(){
 }
 weirRenameStoredKeys();
 
-const STORAGE_PREFIX = 'weir:';
+const STORAGE_PREFIX = 'weir:' + WEIR_STORE;
 let keepProfileTab = false;   // true while stepping between customers
 
 // ---------- Leading zero on decimals ----------
@@ -6029,7 +6036,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 // Edits are dated by this device's clock. Sync state lives under its own
 // prefix, not STORAGE_PREFIX, so a downloaded backup never carries it and
 // restoring one never rewinds it.
-const SYNC_PREFIX = 'weirsync:';
+const SYNC_PREFIX = 'weirsync:' + WEIR_STORE;
 const SYNC_MASS_DELETE = 5;
 const SYNC_INTERVAL_MS = 60000;
 const SYNC_PAGE = 500;
