@@ -3342,8 +3342,10 @@ async function serverFieldSignIn(){
         const r = JSON.parse(routes);
         check('a customer set to email gets email even with a phone on file', r.asked === 'email', routes);
         check('and one set to text gets a text even with an email', r.alsoAsked === 'text');
-        check('with no phone on file it falls to email', r.noPhone === 'email');
-        check('and a phone on file still means a text by default', r.hasPhone === 'text');
+        check('an address on file means email, with nothing to set', r.noPhone === 'email');
+        check('even when there is a phone number too', r.hasPhone === 'email', routes);
+        const textOnly = phone.w.eval("headsUpRouteFor({phone: '555'})");
+        check('and a customer with only a phone still gets a text', textOnly === 'text', textOnly);
 
         srv.offline = true;
         const noSignal = await phone.w.eval(`(async ()=>{
