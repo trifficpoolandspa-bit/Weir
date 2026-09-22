@@ -10950,7 +10950,17 @@ armBackButton();
 // The date a visit should be recorded against. Normally today, but when an
 // admin services a day other than today, the report belongs to that day so it
 // counts against that route rather than appearing on today's.
+// When the work was actually done, which is today whichever day's route is
+// being looked at. Servicing a Wednesday customer on a Monday is still a
+// Monday visit: that is the date the customer sees on their report, and the
+// date that puts them in Serviced today.
 function visitDateStr(){
+  return todayDateStr();
+}
+
+// The day whose route is on screen. Used for deciding what is due, never for
+// stamping work that has just been done.
+function routeDateStr(){
   const d = dateForWeekday(selectedHomeDay);
   if(!d) return todayDateStr();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0,10);
@@ -10959,12 +10969,7 @@ function visitDateStr(){
 // A timestamp for that date. Same clock time, so duration and ordering still
 // make sense, but on the correct day.
 function visitTimestamp(){
-  const d = dateForWeekday(selectedHomeDay);
-  const now = new Date();
-  if(!d || d.toDateString() === now.toDateString()) return now.toISOString();
-  const stamped = new Date(d);
-  stamped.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), 0);
-  return stamped.toISOString();
+  return new Date().toISOString();
 }
 
 function viewingToday(){
