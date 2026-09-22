@@ -526,6 +526,25 @@ async function walkVisit(w, d, maxPresses){
   });
 }
 
+
+// ---- A visit is dated when it happened ----
+// Servicing a Wednesday customer on a Monday used to be recorded as Wednesday:
+// the report showed the wrong date and they never appeared in Serviced today.
+{
+  console.log('\n=== a visit is dated by when the work was done ===');
+  const src = fs.readFileSync('admin-readings-app.html', 'utf8');
+  check('the visit date is today, whichever route is on screen',
+        /function visitDateStr\(\)\{\s*return todayDateStr\(\);/.test(src));
+  check('and so is the time stamped on the reading',
+        /function visitTimestamp\(\)\{\s*return new Date\(\)\.toISOString\(\);/.test(src));
+  check('the day being looked at is still known, for deciding what is due',
+        /function routeDateStr\(\)/.test(src));
+  check('nothing stamps work with the day being viewed any more',
+        src.indexOf('stamped.setHours(now.getHours()') === -1);
+  check('the technician app already did it this way',
+        /date: new Date\(\)\.toISOString\(\)/.test(fs.readFileSync('technician-app.html', 'utf8')));
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();
