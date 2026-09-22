@@ -461,7 +461,10 @@ console.log('\n=== Saving one body opens the next at its readings ===');
   const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const today = DAYS[new Date().getDay()];
   const seed = {
-    technicians: [{id:'t1', name:'Alex'}],
+    // Asked for a before photo everywhere, so every body of water opens at
+    // that step — which is what this section is about
+    technicians: [{id:'t1', name:'Alex',
+      photoRules: {before: {pool:true, spa:true, fountain:true}}}],
     customers: [{id:'a', name:'Alpha One', day: today, active:true, technicianId:'t1',
       hasPool:true, hasSpa:true, fountains:[{id:'f1', name:'Front fountain'}]}],
     settings: {showAfterPhotos:false, showBeforePhotos:false,
@@ -483,17 +486,18 @@ console.log('\n=== Saving one body opens the next at its readings ===');
       + "return Array.isArray(s) ? s[0] : s; })()");
 
     try{
-      w.eval("currentUser = {id:'t1', name:'Alex'}; openVisit('a');");
-      check(file + ' starts on the pool readings', cardNow() === 'visitPoolSection', cardNow());
+      w.eval("currentUser = {id:'t1', name:'Alex', photoRules: {before: {pool:true, spa:true, fountain:true}}}; openVisit('a');");
+      // Every body of water opens at its before photo, which is its first step
+      check(file + ' starts on the pool before photo', cardNow() === 'visitPoolBeforePhotoSection', cardNow());
 
       w.eval("markSectionDone('pool','r1');");
       check(file + ' moves to the spa', w.eval('currentVisibleSection') === 'spa');
-      check(file + ' at its chemical readings', cardNow() === 'visitSpaSection', cardNow());
+      check(file + ' at its before photo', cardNow() === 'visitSpaBeforePhotoSection', cardNow());
 
       w.eval("markSectionDone('spa','r2');");
       check(file + ' then moves to the fountain', w.eval('currentVisibleSection') === 'fountain');
       check(file + ' with the right fountain selected', w.eval('currentVisitFountainId') === 'f1');
-      check(file + ' at its chemical readings', cardNow() === 'visitFountainSection', cardNow());
+      check(file + ' at its before photo', cardNow() === 'visitFountainBeforePhotoSection', cardNow());
     }catch(e){
       check(file + ' auto-advance between bodies', false, e.message);
     }
@@ -897,7 +901,10 @@ console.log('\n=== Readings are required per reading, not app-wide ===');
     w.console.warn = ()=>{};
     try{
       w.eval("currentUser={id:'t1',name:'Alex'}; openVisit('c1');");
-      w.eval("currentVisibleSection='pool'; currentVisitStep=1;");
+      // Step 1 is the before photo, so move to the readings card itself
+      w.eval("currentVisibleSection='pool';"
+        + "currentVisitStep = visitStepCardsFor('pool')"
+        + ".findIndex(s => (Array.isArray(s) ? s[0] : s) === 'visitPoolSection') + 1;");
       check(file + ' a reading ticked Required is still enforced',
             w.eval('missingReadingFields().length') === 1,
             String(w.eval('missingReadingFields().length')));

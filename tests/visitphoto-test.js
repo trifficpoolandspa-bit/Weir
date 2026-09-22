@@ -252,7 +252,7 @@ function boot(file){
   ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
     const src = fs.readFileSync(file, 'utf8');
     const max = (src.match(/const MAX_REPORT_PHOTOS = (\d+)/) || [])[1];
-    check(file + ' carries as many photos as a technician takes', Number(max) >= 60, String(max));
+    check(file + ' carries ten photos to a report', Number(max) === 10, String(max));
     check(file + ' sizes them for an email rather than for printing',
           /LONGEST_EDGE = 1600/.test(src) && /toDataURL\('image\/jpeg', 0\.78\)/.test(src));
     check(file + ' sizes a photo that is already a JPEG too',
@@ -276,6 +276,10 @@ function boot(file){
         /for\(const p of linkOnly\)[\s\S]{0,120}keepFullSize/.test(fn));
   check('the office reports how many were shown and how many linked',
         /photos: attachments\.length, linked: linkOnly\.length/.test(fn));
+  check('the eleventh photo is named rather than dropped in silence',
+        /over the limit/.test(fs.readFileSync('technician-app.html', 'utf8')));
+  check('and the website says so on the Photo requirements tab',
+        /A report carries up to ten photos/.test(fs.readFileSync('customer-intake.html', 'utf8')));
 }
 
 

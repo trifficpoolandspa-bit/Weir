@@ -546,6 +546,45 @@ async function walkVisit(w, d, maxPresses){
 }
 
 
+// ---- Changing the regular day clears the one-off moves ----
+// A move onto the new day would otherwise land them there twice: once for the
+// move, once because it is now their day.
+{
+  console.log('\n=== changing the regular day clears old moves ===');
+  ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+    const src = fs.readFileSync(file, 'utf8');
+    check(file + ' has a way to clear a customer\u2019s moves',
+          /function clearMovesFor\(customerId\)/.test(src));
+    check(file + ' and does it whenever the regular day changes',
+          (src.match(/clearMovesFor\(/g) || []).length >= 2, String((src.match(/clearMovesFor\(/g) || []).length));
+  });
+
+  // What it does with real data
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const today = DAYS[new Date().getDay()];
+  const dom = boot('technician-app.html', {
+    technicians: [{id: 't1', name: 'Pat'}],
+    customers: [{id: 'a', name: 'Alpha', active: true, hasPool: true, day: today, technicianId: 't1'}],
+    rescheduledVisits: [{id: 'r1', customerId: 'a', fromDate: '2026-01-01', toDate: '2026-01-03'}],
+    settings: {}
+  });
+  const w = dom.window;
+  w.console.warn = ()=>{};
+  await wait(1200);
+  try{
+    check('a move is there to begin with',
+          JSON.parse(w.localStorage.getItem('weir:rescheduledVisits') || '[]').length === 1);
+    w.eval("clearMovesFor('a');");
+    check('changing the day clears it',
+          JSON.parse(w.localStorage.getItem('weir:rescheduledVisits') || '[]').length === 0,
+          w.localStorage.getItem('weir:rescheduledVisits'));
+    w.eval("lsSet('rescheduledVisits', [{id:'r2', customerId:'b', fromDate:'2026-01-01', toDate:'2026-01-03'}]); clearMovesFor('a');");
+    check('and leaves everybody else\u2019s moves alone',
+          JSON.parse(w.localStorage.getItem('weir:rescheduledVisits') || '[]').length === 1);
+  }catch(e){ check('clearing moves', false, e.message); }
+  w.close();
+}
+
 // ---- Moving a visit twice does not leave it on both days ----
 // A customer already moved onto a day kept that first move when moved again,
 // so they showed on the day they had been moved to and on the new one.
@@ -557,6 +596,146 @@ async function walkVisit(w, d, maxPresses){
     check(file + ' clears any move off this day or onto it', matches.length >= 1, String(matches.length));
     check(file + ' and no longer clears only the ones off it',
           !/!\(r\.customerId === customer\.id && r\.fromDate === fromISO\)/.test(src));
+  });
+}
+
+
+// ---- A photo step only appears when somebody must take one ----
+// With the Settings switches gone, every step showed for everyone: a page to
+// tap past, which is how a technician learns to stop reading the screen.
+{
+  console.log('\n=== photo steps appear only when they are required ===');
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const day = DAYS[new Date().getDay()];
+
+  async function stepsFor(file, rules){
+    const dom = boot(file, {
+      technicians: [{id: 't1', name: 'Pat', photoRules: rules}],
+      customers: [{id: 'a', name: 'Alpha', active: true, hasPool: true, day: day, technicianId: 't1'}],
+      settings: {}
+    });
+    const w = dom.window;
+    w.console.warn = ()=>{};
+    w.localStorage.setItem('weirdevice:session', JSON.stringify({access_token: 't'}));
+    w.localStorage.setItem('weirdevice:membership', JSON.stringify({
+      technician_id: 't1', name: 'Pat', username: 'p',
+      full_access: file.indexOf('admin') !== -1, removed: false, company_id: 'co'}));
+    w.localStorage.setItem('weirdevice:company', JSON.stringify({id: 'co', name: 'Triffic'}));
+    await wait(1300);
+    w.Element.prototype.scrollIntoView = function(){};
+    // The app read the device before these were set, so tell it again
+    try{ w.eval("currentUser = fieldCurrentUser();"); }catch(e){}
+    try{
+      await w.eval("openVisit('a')");
+      await wait(200);
+      const out = JSON.parse(w.eval("JSON.stringify(visitStepCardsFor('pool'))"))
+        .map(x => String(Array.isArray(x) ? x[0] : x));
+
+      w.close();
+      return out;
+    }catch(e){ w.close(); return ['ERROR: ' + e.message]; }
+  }
+
+  for(const file of ['technician-app.html', 'admin-readings-app.html']){
+    const none = await stepsFor(file, {});
+    check(file + ': nothing asked means no before photo step',
+          !none.some(c => /BeforePhotoSection/.test(c)), none.join(' | '));
+    check(file + ': and no after photo step of its own',
+          !none.some(c => /PhotoSection/.test(c) && !/Before/.test(c)), none.join(' | '));
+    check(file + ': the readings are still there', none.some(c => /Products|Save|Section/.test(c)), none.join(' | '));
+
+    const before = await stepsFor(file, {before: {pool: true}});
+    check(file + ': asking for a before photo brings that step back',
+          before.some(c => /BeforePhotoSection/.test(c)), before.join(' | '));
+
+    const after = await stepsFor(file, {after: {pool: true}});
+    check(file + ': asking for an after photo brings that one back',
+          after.some(c => /PhotoSection/.test(c) && !/Before/.test(c)), after.join(' | '));
+  }
+
+  ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+    const src = fs.readFileSync(file, 'utf8');
+    check(file + ": a customer's own setup can ask for one too",
+          /lists && lists\.requireBeforePhoto === true/.test(src)
+          && /lists && lists\.requireAfterPhoto === true/.test(src));
+    check(file + ': and so can one of the company\u2019s own photos',
+          /customPhotosRequiredOf\(type, 'before'\)\.length > 0/.test(src));
+  });
+}
+
+
+// ---- The serviced list can look back at earlier days ----
+{
+  console.log('\n=== Serviced: stepping back through days ===');
+  ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+    const src = fs.readFileSync(file, 'utf8');
+    check(file + ' has a day to step back and forward', /id="servicedPrevDay"/.test(src)
+          && /id="servicedNextDay"/.test(src));
+    check(file + ' shows which day is being looked at', /id="servicedDayLabel"/.test(src));
+    check(file + ' the list follows that day rather than always today',
+          /const today = servicedDateStr\(\);/.test(src));
+    check(file + ' and it cannot step past today',
+          /servicedDayOffset = Math\.min\(0, servicedDayOffset \+ by\)/.test(src));
+    check(file + ' arriving at the tab starts on today',
+          src.indexOf('servicedDayOffset = 0;') !== -1
+          && src.split('servicedDayOffset = 0;').length >= 3,
+          'only declared, never reset on arrival');
+  });
+
+  // What it actually shows
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const day = DAYS[new Date().getDay()];
+  const y = new Date(); y.setDate(y.getDate() - 1);
+  const yesterday = new Date(y.getTime() - y.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const todayIso = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+
+  const dom = boot('technician-app.html', {
+    technicians: [{id: 't1', name: 'Pat'}],
+    customers: [
+      {id: 'a', name: 'Done Today', active: true, hasPool: true, day: day, technicianId: 't1', lastServicedDate: todayIso},
+      {id: 'b', name: 'Done Yesterday', active: true, hasPool: true, day: day, technicianId: 't1', lastServicedDate: yesterday}
+    ],
+    settings: {}
+  });
+  const w = dom.window, d = w.document;
+  w.console.warn = ()=>{};
+  await wait(1300);
+  try{
+    w.eval("currentUser = {id:'t1', name:'Pat'}; switchView('serviced');");
+    await wait(200);
+    const names = () => Array.from(d.querySelectorAll('#servicedList .cust-name')).map(n => n.textContent.trim());
+    check('today lists only what was done today', names().join() === 'Done Today', names().join(' | '));
+    check('and the label says Today', d.getElementById('servicedDayLabel').textContent === 'Today');
+    w.eval("stepServicedDay(-1)");
+    await wait(200);
+    check('stepping back lists what was done yesterday',
+          names().join() === 'Done Yesterday', names().join(' | '));
+    check('with the label saying Yesterday', d.getElementById('servicedDayLabel').textContent === 'Yesterday');
+    w.eval("stepServicedDay(1)");
+    await wait(200);
+    check('stepping forward comes back to today', names().join() === 'Done Today', names().join(' | '));
+    w.eval("stepServicedDay(1)");
+    await wait(200);
+    check('and it will not go past today', d.getElementById('servicedDayLabel').textContent === 'Today');
+  }catch(e){ check('the serviced day stepper', false, e.message); }
+  w.close();
+}
+
+
+// ---- Finishing a visit goes straight back to the route ----
+// The report screen was filled in while the visit was still on screen, which
+// showed as a flash of another page on the way out.
+{
+  console.log('\n=== finishing a visit lands on Today, with nothing in between ===');
+  ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+    const src = fs.readFileSync(file, 'utf8');
+    // The one inside finishing a visit, which is the one that mattered
+    const at = src.indexOf('await renderFullCombinedReport(customerId, poolReadingId');
+    const before = src.slice(Math.max(0, at - 700), at);
+    check(file + ' goes back to the route before building the report',
+          /switchView\('home'\);/.test(before), before.slice(-140));
+    check(file + ' and does not switch home twice',
+          (src.match(/renderHomeList\(\);\s*\n\s*renderServicedList\(\);\s*\n\s*switchView\('home'\);/g) || []).length === 1);
   });
 }
 

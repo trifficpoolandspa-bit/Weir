@@ -214,9 +214,12 @@ console.log('\n=== Message all customers ===');
             && d.getElementById('wcBroadcastDelete').style.display !== 'none');
     });
 
-    // Privacy: each customer gets their own email, so no address is shared
+    // Privacy: everyone goes in the Bcc line, so no address is shared, and it
+    // is sent from the owner's own email rather than by the app
     const src = fs.readFileSync('customer-intake.html','utf8');
-    check('  it sends one email per customer', src.indexOf('for(const cust of chosen){') !== -1);
+    check('  everyone is hidden in the Bcc line', src.indexOf("mailto:?bcc=") !== -1);
+    check('  and the app sends none of them itself',
+          src.indexOf('for(const cust of chosen){') === -1);
     check('  there is no recipient limit to work around', src.indexOf('link.length > 1800') === -1);
   }catch(e){
     check('  message all customers', false, e.message);
@@ -376,7 +379,7 @@ console.log('\n=== The email screen stays compact ===');
             .every(id => d.getElementById(id).parentElement === row));
 
     check('  a selected template offers save and delete',
-          shown().join(',') === 'Send emails,Save changes,Delete', shown().join(','));
+          shown().join(',') === 'Open in your email app,Save changes,Delete', shown().join(','));
 
     const plus = Array.from(d.querySelectorAll('#wcBroadcastTemplates button'))
       .find(b => b.textContent === '+');
@@ -384,7 +387,7 @@ console.log('\n=== The email screen stays compact ===');
     plus.click();
     check('  pressing it clears the form', d.getElementById('wcBroadcastBody').value === '');
     check('  and offers save as new instead',
-          shown().join(',') === 'Send emails,Save as new', shown().join(','));
+          shown().join(',') === 'Open in your email app,Save as new', shown().join(','));
   }catch(e){
     check('  compact email screen', false, e.message);
   }
@@ -637,16 +640,18 @@ console.log('\n=== The WorkCenter tab always matches what is shown ===');
 }
 
 
-console.log('\n=== Emails send directly, one per customer ===');
+console.log('\n=== A broadcast is sent by the owner, not by the app ===');
 {
-  // The sending itself is asynchronous, so it is exercised in email-test.js.
-  // Here we only confirm the app no longer routes through a mail app.
+  // Sending them from the app meant one shared sending key for every company:
+  // a monthly cost, and a way in for anyone who reads the page source. The
+  // owner's own email costs nothing and arrives from an address the customer
+  // recognises. The opening itself is exercised in email-test.js.
   const src = fs.readFileSync('customer-intake.html','utf8');
-  check('  nothing opens a mail app any more', src.indexOf('mailto:') === -1);
-  check('  sending does not demand an account email',
-        src.indexOf("if(!accountEmail()){") === -1);
-  check('  both features send through one function',
-        (src.match(/sendCustomerEmail\(/g) || []).length >= 3);
+  check('  a broadcast opens the owner\u2019s email app', src.indexOf('mailto:?bcc=') !== -1);
+  check('  everyone is hidden from everyone else', src.indexOf('bcc=') !== -1);
+  check('  one place hands the message over', /function openMailApp\(href\)\{/.test(src));
+  check('  and the app no longer sends a broadcast itself',
+        src.indexOf('for(const cust of chosen){') === -1);
 }
 
 
@@ -1090,6 +1095,43 @@ setTimeout(()=>{
   deferred.forEach(fn => {
     try{ fn(); }catch(e){ check('deferred check', false, e.message); }
   });
-  console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
+  
+// ---- Typing the company name is not undone by a redraw ----
+// The account fields were refilled from storage on every redraw, so a sync
+// landing mid-word put the old value back and the typing looked deleted.
+{
+  console.log('\n=== the account fields keep what is being typed ===');
+  const src = fs.readFileSync('customer-intake.html', 'utf8');
+  check('a redraw leaves the box being typed in alone',
+        /if\(document\.activeElement === el\) return;/.test(src));
+  check('and does not rewrite a box that already matches',
+        /if\(el\.value === stored\) return;/.test(src));
+  check('what is typed is kept as it goes, not only when leaving the box',
+        /el\.addEventListener\('input'[\s\S]{0,320}lsSet\(key, el\.value\.trim\(\)\);/.test(src));
+
+  const {dom} = load('customer-intake.html', {seed: {customers: []}});
+  const w = dom.window, d = w.document;
+  w.console.warn = ()=>{};
+  try{
+    w.eval("siteUser = {id:'u', companyId:'co', role:'owner'}; hideSiteLogin(); switchView('settings'); renderAccount();");
+    const box = d.getElementById('acctCompanyName');
+    check('the company name box is there', !!box);
+    box.focus();
+    box.value = 'Triffic Pool';
+    // a sync arriving mid-word, the way it does in the office
+    w.eval("renderAccount();");
+    check('a redraw mid-word does not wipe it', box.value === 'Triffic Pool', box.value);
+    box.blur();
+    box.value = 'Triffic Pool and Spa';
+    box.dispatchEvent(new w.Event('change', {bubbles: true}));
+    check('and leaving the box saves it',
+          String(w.eval("lsGet('companyName')")) === 'Triffic Pool and Spa',
+          String(w.eval("lsGet('companyName')")));
+    w.eval("renderAccount();");
+    check('after which a redraw shows the saved value', box.value === 'Triffic Pool and Spa', box.value);
+  }catch(e){ check('the account fields', false, e.message); }
+}
+
+console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 }, 2500);

@@ -178,6 +178,47 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   w.close();
 }
 
+
+// ---- Starting a customer's own setup ----
+{
+  console.log('\n=== the bodies of water sit above the lists they change ===');
+  {
+    const src = fs.readFileSync('customer-intake.html', 'utf8');
+    const bodies = src.indexOf('id="customBodyList"');
+    const chems = src.indexOf('<h2 style="margin:0;">Chemicals to record</h2>');
+    const picker = src.indexOf('id="customConfigPicker"');
+    check('the body list is below the customer picker', bodies > picker);
+    check('and directly above Chemicals to record', bodies < chems && (chems - bodies) < 700,
+          'gap of ' + (chems - bodies) + ' characters');
+  }
+
+  console.log('\n=== starting a new custom setup ===');
+  const dom = boot('customer-intake.html');
+  const w = dom.window, d = w.document;
+  await wait(1300);
+  try{
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin();"
+      + " customers=[{id:'c1', name:'Alpha One', hasPool:true, active:true}]; saveCustomers();"
+      + " switchView('customerconfig');");
+    await wait(250);
+    const btn = d.getElementById('btnNewCustomSetup');
+    check('there is a button to start one', !!btn);
+    // load somebody, then press it
+    w.eval("openCustomSetup(customers[0], bodiesForCustomer(customers[0]));");
+    await wait(200);
+    check('a customer can be loaded', w.eval('customCustomerId') === 'c1', String(w.eval('customCustomerId')));
+    btn.click();
+    await wait(200);
+    check('pressing it clears whoever was loaded', !w.eval('customCustomerId'), String(w.eval('customCustomerId')));
+    check('and empties the search box', d.getElementById('customCustSearch').value === '',
+          d.getElementById('customCustSearch').value);
+    check('with the cursor in it, ready to type a name',
+          d.activeElement === d.getElementById('customCustSearch'),
+          d.activeElement ? d.activeElement.id : 'nothing focused');
+  }catch(e){ check('starting a custom setup', false, e.message); }
+  w.close();
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();

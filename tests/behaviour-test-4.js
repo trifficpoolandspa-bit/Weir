@@ -967,10 +967,11 @@ console.log('\n=== Photo requirements do not depend on Settings ===');
 
   ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
     const src = fs.readFileSync(file, 'utf8');
-    check(file + ' always offers the before photo step',
-          /function showsBeforePhotoStep\(type\)\{\s*return true;/.test(src));
-    check(file + ' always offers the after photo step',
-          /function showsAfterPhotoStep\(type\)\{\s*return true;/.test(src));
+    // A step appears when somebody is asked for that photo, and not otherwise
+    check(file + ' shows a photo step only when one is asked for',
+          /function showsBeforePhotoStep\(type\)\{[\s\S]{0,240}techWantsPhoto\('before', type\)/.test(src));
+    check(file + ' and the same for the after photo',
+          /function showsAfterPhotoStep\(type\)\{[\s\S]{0,240}techWantsPhoto\('after', type\)/.test(src));
     check(file + ' and the gate step', /const stepOn = true;/.test(src));
     check(file + ' with nothing left reading the old switches',
           !/appSettings\.show(Before|After)Photos !== false/.test(src)
@@ -1296,7 +1297,9 @@ console.log('\n=== Admin app: a past day hides the customers finished that day =
     const setup = (offset) => w.eval(`
       (function(){
         selectedHomeDay = 'Monday'; weekOffset = ${offset};
-        const iso = visitDateStr();
+        // The date of the day being looked at. visitDateStr is today now,
+        // which is when work was done rather than which route is on screen.
+        const iso = routeDateStr();
         const day = dateForWeekday('Monday');
         const at = (h, m)=>{ const t = new Date(day); t.setHours(h, m, 0, 0); return t.toISOString(); };
         const later = new Date(day); later.setDate(later.getDate() + 7);
@@ -2118,7 +2121,10 @@ async function serverTechniciansTab(){
       check('a line separates the heading from the first requirement',
             /border-top:1px solid var\(--line\);"><\/div>\s*<div id="photoRequireRows"/.test(src2));
       check('and the gap sits above that line, so every line is the same distance from its row',
-            /margin:0 0 22px;">Press a row/.test(src2) && /id="photoRequireRows"><\/div>/.test(src2));
+            /margin:0 0 22px;">A report carries up to ten photos/.test(src2)
+            && /id="photoRequireRows"><\/div>/.test(src2));
+      check('with a note about how many photos a report carries',
+            /A report carries up to ten photos/.test(src2));
       check('each row has room to be pressed comfortably',
             Array.from(d.querySelectorAll('#photoRequireRows > div'))
               .filter(r => r.querySelector('div'))

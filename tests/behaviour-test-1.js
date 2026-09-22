@@ -155,10 +155,10 @@ console.log('\n=== Submit is not blocked when photos are optional ===');
   // switched off once the Settings toggle was removed
   check(f + ' has no app-wide photo requirement left',
         !src.includes('appSettings.requireAfterPhotos'));
-  check(f + ' the After photos slider controls the step',
-        src.includes('return appSettings.showAfterPhotos !== false;'));
-  check(f + ' nothing is required when the step is off',
-        src.includes('if(!showsAfterPhotoStep(type)) return false;'));
+  // The photo steps always exist now; the Photo requirements tab decides who
+  // has to take what
+  check(f + ' the after photo step is always offered',
+        !src.includes('return appSettings.showAfterPhotos !== false;'));
 });
 
 
@@ -807,8 +807,9 @@ console.log('\n=== Photo settings line up, and rules fire regardless ===');
   const cases = [
     [{requireAfterPhotos:false, showAfterPhotos:true},  true,      true,  'app-wide off, section requires'],
     [{requireAfterPhotos:true,  showAfterPhotos:true},  false,     false, 'app-wide on, section exempt'],
-    [{requireAfterPhotos:false, showAfterPhotos:false}, true,      false, 'step off, section requires (no step, so not enforced)'],
-    [{requireAfterPhotos:false, showAfterPhotos:false}, undefined, false, 'step off, section untouched'],
+    // The old Settings switches are gone: a stale value must change nothing
+    [{requireAfterPhotos:false, showAfterPhotos:false}, true,      true,  'stale step setting, section requires'],
+    [{requireAfterPhotos:false, showAfterPhotos:false}, undefined, false, 'stale step setting, section untouched'],
     // A stale app-wide value must no longer demand anything
     [{requireAfterPhotos:true,  showAfterPhotos:true},  undefined, false, 'stale app-wide value is ignored']
   ];
@@ -840,58 +841,46 @@ console.log('\n=== Photo settings line up, and rules fire regardless ===');
 }
 
 
-console.log('\n=== The photo sliders control the step; require does not ===');
+console.log('\n=== A stale photo setting changes nothing ===');
 {
-  function seedFor(showAfter, showBefore, requireAfter){
-    return {
-      customers: [{id:'c1', name:'Test', day:'Monday', hasPool:true, active:true}],
-      settings: {showAfterPhotos: showAfter, showBeforePhotos: showBefore},
-      afterPhotoDefaultFixed: true,
-      chemConfig: {
-        // The requirement is set per body of water now, not app-wide
-        pool: {chemicals:[{key:'chlorine', label:'Free chlorine', buttons:[3]}], dosages:[],
-               requireAfterPhoto: requireAfter},
-        spa: {chemicals:[], dosages:[]}, fountain: {chemicals:[], dosages:[]}
-      }
-    };
-  }
-
+  // Settings no longer carries switches for the photo steps. Whether a step
+  // appears is decided by who has been asked for a photo, and a leftover
+  // setting must not change that either way.
   ['technician-app.html','admin-readings-app.html'].forEach(file=>{
-    function steps(showAfter, showBefore, requireAfter){
-      const {dom} = load(file, {seed: seedFor(showAfter, showBefore, requireAfter)});
+    const seedWith = rules => ({
+      technicians: [{id:'t1', name:'Pat', photoRules: rules}],
+      customers: [{id:'c1', name:'Test', day:'Monday', hasPool:true, active:true, technicianId:'t1'}],
+      settings: {showAfterPhotos: false, showBeforePhotos: false, showGatePhoto: false}
+    });
+
+    // Nobody asked: no photo steps, whatever the old setting says
+    {
+      const {dom} = load(file, {seed: seedWith({})});
       const w = dom.window;
       w.console.warn = ()=>{};
-      w.eval("openVisit('c1');");
-      return {
-        list: w.eval("JSON.stringify(visitStepCardsFor('pool'))"),
-        required: w.eval("afterPhotoRequiredFor('pool')")
-      };
+      try{
+        w.eval("currentUser = {id:'t1', name:'Pat'};");
+        check(file + ' asks for no before photo when nobody is asked',
+              w.eval("showsBeforePhotoStep('pool')") === false);
+      }catch(e){ check(file + ' stale settings, nobody asked', false, e.message); }
     }
 
-    // After photos ON — button there, requirement follows its own setting
-    let r = steps(true, true, false);
-    check(file + ' after ON: step present', r.list.indexOf('PoolPhotoSection') !== -1);
-    check(file + ' after ON, require OFF: not required', r.required === false);
-
-    r = steps(true, true, true);
-    check(file + ' after ON, require ON: still present', r.list.indexOf('PoolPhotoSection') !== -1);
-    check(file + ' after ON, require ON: required', r.required === true);
-
-    // After photos OFF — no step, whatever require says
-    r = steps(false, true, false);
-    check(file + ' after OFF: step gone', r.list.indexOf('PoolPhotoSection') === -1);
-
-    r = steps(false, true, true);
-    check(file + ' after OFF with require ON: step still gone',
-          r.list.indexOf('PoolPhotoSection') === -1);
-    check(file + ' after OFF with require ON: nothing required', r.required === false);
-
-    // Before photos slider is independent
-    r = steps(true, false, false);
-    check(file + ' before OFF: before step gone',
-          r.list.indexOf('PoolBeforePhotoSection') === -1);
-    check(file + ' before OFF: after step unaffected',
-          r.list.indexOf('PoolPhotoSection') !== -1);
+    // Asked: the step appears, and the stale setting does not stop it
+    {
+      const {dom} = load(file, {seed: seedWith({before: {pool: true}, after: {pool: true}})});
+      const w = dom.window;
+      w.console.warn = ()=>{};
+      try{
+        w.eval("currentUser = {id:'t1', name:'Pat', photoRules: {before:{pool:true}, after:{pool:true}}};");
+        check(file + ' shows the before photo step when it is asked for',
+              w.eval("showsBeforePhotoStep('pool')") === true);
+        check(file + ' and the after photo step too',
+              w.eval("showsAfterPhotoStep('pool')") === true);
+        const steps = JSON.parse(w.eval("JSON.stringify(visitStepCardsFor('pool'))"))
+          .map(x => String(Array.isArray(x) ? x[0] : x));
+        check(file + ' with the before photo first', /BeforePhotoSection/.test(steps[0]), steps.join(' | '));
+      }catch(e){ check(file + ' stale settings, asked', false, e.message); }
+    }
   });
 }
 

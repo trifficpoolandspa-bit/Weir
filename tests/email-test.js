@@ -40,13 +40,16 @@ function boot(){
 
 (async ()=>{
   // ---- The Email tab ----
-  console.log('\n=== Email tab: one email per customer ===');
+  console.log('\n=== Email tab: opens the owner\u2019s email app ===');
   {
     const dom = boot();
     await new Promise(r => setTimeout(r, 1500));
     const w = dom.window, d = w.document;
     try{
-      w.eval("window.__sent = []; sendCustomerEmail = (to,s,m)=>{ window.__sent.push({to:to, subject:s, body:m}); return Promise.resolve(true); }; confirmDialog = ()=> Promise.resolve(true);");
+      // The mail app is opened by setting the address bar, so that is what is
+      // watched here rather than anything being sent by the app
+      w.eval("window.__opened = []; confirmDialog = ()=> Promise.resolve(true);"
+        + " openMailApp = (href)=> window.__opened.push(href);");
       w.eval("switchView('workcenter');");
       Array.from(d.querySelectorAll('#workCenterTypeControl .history-type-btn'))
         .find(b => b.dataset.type === 'broadcast').click();
@@ -54,17 +57,20 @@ function boot(){
       d.getElementById('wcBroadcastOpen').click();
       await new Promise(r => setTimeout(r, 500));
 
-      const sent = JSON.parse(w.eval("JSON.stringify(window.__sent)"));
-      check('  each selected customer gets their own', sent.length === 2, sent.length + ' sent');
-      check('  addressed individually',
-            sent.map(s => s.to).sort().join(',') === 'alpha@x.com,bravo@x.com',
-            sent.map(s => s.to).join(','));
+      // jsdom reports the refused navigation, and its message carries the link
+      const opened = JSON.parse(w.eval("JSON.stringify(window.__opened)"));
+      check('  the email app is opened once, not once per customer', opened.length === 1, String(opened.length));
+      const link = opened[0] || '';
+      check('  with everybody in the Bcc line', link.indexOf('mailto:?bcc=') === 0, link.slice(0, 40));
+      check('  both addresses are there',
+            decodeURIComponent(link).indexOf('alpha@x.com') !== -1
+            && decodeURIComponent(link).indexOf('bravo@x.com') !== -1);
+      check('  nobody is in the To line, so no address is on show',
+            link.indexOf('mailto:?') === 0);
       check('  the message is the one written',
-            sent[0].body.indexOf('Turn your system on') !== -1);
-      check('  the button goes back to normal',
-            d.getElementById('wcBroadcastOpen').textContent === 'Send emails');
-      check('  and it says what happened',
-            d.getElementById('wcBroadcastNote').textContent.indexOf('Sent to 2') !== -1,
+            decodeURIComponent(link).indexOf('Turn your system on') !== -1);
+      check('  and it says what to do next',
+            d.getElementById('wcBroadcastNote').textContent.indexOf('press send there') !== -1,
             d.getElementById('wcBroadcastNote').textContent);
     }catch(e){ check('  email tab send', false, e.message); }
   }
@@ -335,6 +341,27 @@ function boot(){
     }catch(e){ check('  company name in mass emails', false, e.message); }
   }
 
-  console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
+  
+// ---- A broadcast goes from the owner's own email account ----
+// Sending them from the app meant one shared sending key: a monthly cost, and
+// a way in for anyone who reads the page source.
+{
+  console.log('\n=== broadcasts open in the owner\u2019s email app ===');
+  const src = fs.readFileSync('customer-intake.html', 'utf8');
+  check('the button says where it is going', /Open in your email app/.test(src));
+  check('addresses go in the Bcc line, so nobody sees anyone else',
+        /mailto:\?bcc=/.test(src));
+  check('the subject and message are carried over',
+        /&subject=' \+ encodeURIComponent\(subject\)/.test(src)
+        && /&body=' \+ encodeURIComponent\(body\)/.test(src));
+  check('a long list is handed over in batches rather than cut short',
+        /MAX_LINK = 1800/.test(src) && /Send the rest/.test(src));
+  check('and the addresses can be copied for a mail app that will not take a link',
+        /id="wcBroadcastCopy"/.test(src) && /clipboard\.writeText/.test(src));
+  check('nothing is sent by the app itself any more',
+        !/for\(const cust of chosen\)[\s\S]{0,200}sendCustomerEmail/.test(src));
+}
+
+console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();
