@@ -245,6 +245,68 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   w.close();
 }
 
+
+// ---- Groups of customers who share one setup ----
+{
+  console.log('\n=== groups share one setup ===');
+  const dom = boot('customer-intake.html');
+  const w = dom.window, d = w.document;
+  await wait(1300);
+  try{
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin();"
+      + " customers=[{id:'c1',name:'Alpha',hasPool:true,active:true},"
+      + "{id:'c2',name:'Bravo',hasPool:true,active:true},"
+      + "{id:'c3',name:'Charlie',hasPool:true,active:true}];"
+      + " saveCustomers(); switchView('customerconfig');");
+    check('there is a button to start a group', !!d.getElementById('btnNewCustomerGroup'));
+
+    d.getElementById('btnNewCustomerGroup').click();
+    check('it opens a window', d.getElementById('groupOverlay').style.display === 'flex');
+    d.getElementById('btnSaveGroup').click();
+    check('it will not save without a name',
+          d.getElementById('groupError').style.display === 'block');
+
+    d.getElementById('groupName').value = 'Salt pools';
+    const boxes = Array.from(d.querySelectorAll('#groupPickList input[type=checkbox]'));
+    check('every customer can be chosen', boxes.length === 3, String(boxes.length));
+    boxes[0].checked = true; boxes[0].dispatchEvent(new w.Event('change'));
+    boxes[1].checked = true; boxes[1].dispatchEvent(new w.Event('change'));
+    d.getElementById('btnSaveGroup').click();
+    await wait(250);
+    check('the group is saved with its members',
+          w.eval("customerGroups.length") === 1 && w.eval("customerGroups[0].customerIds.length") === 2,
+          String(w.eval("JSON.stringify(customerGroups)")).slice(0, 120));
+    check('and it is listed', d.getElementById('customGroupWrap').style.display !== 'none');
+
+    // Editing the group reaches everyone in it
+    w.eval("openGroupSetup(customerGroups[0]);");
+    w.eval("customWorking = {chemicals:[{key:'chlorine',label:'Salt reading',unit:'ppm'}], dosages:[]};"
+      + " customWorkingFor = customCustomerId + '|' + customBodyKey; saveActiveConfig();");
+    await wait(250);
+    const labelFor = id => w.eval("(((customConfig." + id + "||{}).pool||{}).chemicals||[]).map(c=>c.label).join()");
+    check('both members get the group\u2019s setup',
+          labelFor('c1') === 'Salt reading' && labelFor('c2') === 'Salt reading',
+          labelFor('c1') + ' / ' + labelFor('c2'));
+    check('somebody outside the group is untouched', labelFor('c3') === '', labelFor('c3'));
+
+    // Taking someone out puts them back on the defaults
+    w.eval("const g = customerGroups[0]; g.customerIds = ['c1']; saveCustomerGroups(); clearSetupFor('c2');");
+    await wait(150);
+    check('leaving a group clears that customer\u2019s setup', labelFor('c2') === '', labelFor('c2'));
+    check('and the one still in it keeps it', labelFor('c1') === 'Salt reading');
+
+    // A customer's own tweak is replaced by the group, with a warning
+    const site = fs.readFileSync('customer-intake.html', 'utf8');
+    check('the window warns when somebody already has their own setup',
+          /their own setup, which the group will replace/.test(site));
+    check('and when somebody is being taken from another group',
+          /in another group and will be moved into this one/.test(site));
+    check('groups travel between office devices',
+          /'reportEmailStyle', 'customerGroups'/.test(site));
+  }catch(e){ check('groups', false, e.message); }
+  w.close();
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();
