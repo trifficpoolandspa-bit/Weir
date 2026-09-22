@@ -41,6 +41,9 @@ create policy "versions readable by own company" on public.customer_versions
   using (company_id = public.my_company_id());
 
 -- Read only. Versions are written by push_customer and nothing else.
+-- Supabase hands a new table to anon by default. Row level security refuses
+-- every row anyway, but the permission should not be there at all.
+revoke all on public.customer_versions from anon;
 grant select on public.customer_versions to authenticated;
 
 create or replace function public.push_customer(

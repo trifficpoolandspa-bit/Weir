@@ -75,6 +75,9 @@ create policy "record versions readable by full access" on public.record_version
   using (company_id = public.my_company_id() and public.my_full_access());
 
 revoke insert, update, delete on public.company_records, public.record_versions from authenticated, anon;
+-- Reading too: Supabase hands a new table to anon by default, and row level
+-- security refusing every row is not a reason to leave the permission there.
+revoke all on public.company_records, public.record_versions from anon;
 grant select on public.company_records, public.record_versions to authenticated;
 
 -- Only owners and admin technicians change company records
