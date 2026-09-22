@@ -545,6 +545,21 @@ async function walkVisit(w, d, maxPresses){
         /date: new Date\(\)\.toISOString\(\)/.test(fs.readFileSync('technician-app.html', 'utf8')));
 }
 
+
+// ---- Moving a visit twice does not leave it on both days ----
+// A customer already moved onto a day kept that first move when moved again,
+// so they showed on the day they had been moved to and on the new one.
+{
+  console.log('\n=== moving a visit again replaces the first move ===');
+  ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+    const src = fs.readFileSync(file, 'utf8');
+    const matches = src.match(/r\.customerId === customer\.id\s*\n?\s*&& \(r\.fromDate === fromISO \|\| r\.toDate === fromISO\)/g) || [];
+    check(file + ' clears any move off this day or onto it', matches.length >= 1, String(matches.length));
+    check(file + ' and no longer clears only the ones off it',
+          !/!\(r\.customerId === customer\.id && r\.fromDate === fromISO\)/.test(src));
+  });
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();
