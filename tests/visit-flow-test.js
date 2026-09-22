@@ -546,6 +546,18 @@ async function walkVisit(w, d, maxPresses){
 }
 
 
+// ---- Rescheduling writes to the customer in the list, not a stale copy ----
+{
+  console.log('\n=== rescheduling survives the list being replaced ===');
+  ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+    const src = fs.readFileSync(file, 'utf8');
+    const modals = (src.match(/const liveCustomer = \(\) => customers\.find/g) || []).length;
+    check(file + ' looks the customer up when the button is pressed', modals >= 1, String(modals));
+    check(file + ' and never writes the day onto the captured copy',
+          !/\n    customer\.day = newDay;/.test(src));
+  });
+}
+
 // ---- Changing the regular day clears the one-off moves ----
 // A move onto the new day would otherwise land them there twice: once for the
 // move, once because it is now their day.
@@ -736,6 +748,48 @@ async function walkVisit(w, d, maxPresses){
           /switchView\('home'\);/.test(before), before.slice(-140));
     check(file + ' and does not switch home twice',
           (src.match(/renderHomeList\(\);\s*\n\s*renderServicedList\(\);\s*\n\s*switchView\('home'\);/g) || []).length === 1);
+  });
+}
+
+
+// ---- A day's route clears once the work is caught up ----
+// Work is dated when it was done, so a Friday customer serviced on Monday has
+// a later date than the day they were on. Friday's route kept listing them.
+{
+  console.log('\n=== catching up clears the day it was for ===');
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const yesterdayName = DAYS[(new Date().getDay() + 6) % 7];
+  const y = new Date(); y.setDate(y.getDate() - 1);
+  const todayIso = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+
+  const dom = boot('technician-app.html', {
+    technicians: [{id: 't1', name: 'Pat'}],
+    customers: [
+      {id: 'a', name: 'Caught Up', active: true, hasPool: true, day: yesterdayName,
+       technicianId: 't1', lastServicedDate: todayIso},
+      {id: 'b', name: 'Still Waiting', active: true, hasPool: true, day: yesterdayName,
+       technicianId: 't1'}
+    ],
+    settings: {}
+  });
+  const w = dom.window, d = w.document;
+  w.console.warn = ()=>{};
+  await wait(1300);
+  try{
+    w.eval("currentUser = {id:'t1', name:'Pat'}; selectedHomeDay = '" + yesterdayName + "'; renderHomeList();");
+    await wait(200);
+    const names = Array.from(d.querySelectorAll('#homeCustomerList .cust-name')).map(n => n.textContent.trim());
+    check('someone caught up today is off yesterday\u2019s route',
+          names.indexOf('Caught Up') === -1, names.join(' | '));
+    check('and anyone still waiting is still on it',
+          names.indexOf('Still Waiting') !== -1, names.join(' | '));
+  }catch(e){ check('catching up', false, e.message); }
+  w.close();
+
+  ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+    const src = fs.readFileSync(file, 'utf8');
+    check(file + ' counts a later service as done for an earlier day',
+          /lastServicedDate >= (selectedDayISO|iso)/.test(src));
   });
 }
 

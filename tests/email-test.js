@@ -60,6 +60,11 @@ function boot(){
       // jsdom reports the refused navigation, and its message carries the link
       const opened = JSON.parse(w.eval("JSON.stringify(window.__opened)"));
       check('  the email app is opened once, not once per customer', opened.length === 1, String(opened.length));
+      const site = fs.readFileSync('customer-intake.html', 'utf8');
+      check('  by clicking a link rather than navigating the page',
+            /const link = document\.createElement\('a'\);[\s\S]{0,200}link\.click\(\);/.test(site));
+      check('  and it says what to do if no email app is set up',
+            /Copy the addresses" and paste them/.test(site) || /no email app set up/.test(site));
       const link = opened[0] || '';
       check('  with everybody in the Bcc line', link.indexOf('mailto:?bcc=') === 0, link.slice(0, 40));
       check('  both addresses are there',

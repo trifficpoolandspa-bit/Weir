@@ -192,6 +192,32 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
           'gap of ' + (chems - bodies) + ' characters');
   }
 
+  console.log('\n=== the bodies of water stay on their own page ===');
+  {
+    const dom = boot('customer-intake.html');
+    const w = dom.window, d = w.document;
+    await wait(1300);
+    try{
+      w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin();"
+        + " customers=[{id:'c1', name:'Alpha One', hasPool:true, hasSpa:true, active:true}]; saveCustomers();"
+        + " switchView('customerconfig'); openCustomSetup(customers[0], bodiesForCustomer(customers[0]));");
+      await wait(250);
+      check('they show while setting up a customer',
+            d.getElementById('customBodyList').style.display !== 'none',
+            d.getElementById('customBodyList').style.display);
+      w.eval("switchView('chemconfig');");
+      await wait(250);
+      check('and are put away on Readings and dosages',
+            d.getElementById('customBodyList').style.display === 'none',
+            d.getElementById('customBodyList').style.display);
+      w.eval("switchView('customerconfig');");
+      await wait(250);
+      check('Readings and dosages keeps its own Pool, Spa and Extra buttons',
+            !!d.getElementById('chemConfigTypeControl'));
+    }catch(e){ check('the bodies of water', false, e.message); }
+    w.close();
+  }
+
   console.log('\n=== starting a new custom setup ===');
   const dom = boot('customer-intake.html');
   const w = dom.window, d = w.document;
