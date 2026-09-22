@@ -891,6 +891,30 @@ console.log('\n=== A photo requirement survives a sync ===');
         /function syncNoteLocalChange\(\)\{[\s\S]{0,400}syncScanRecords\(state\);/.test(site));
 }
 
+console.log('\n=== The same file works in both repositories ===');
+{
+  // The server is decided by where the app is served from, so a tested file
+  // moves between the live repo and the beta one untouched.
+  [['https://trifficpoolandspa-bit.github.io/Weir/customer-intake.html', 'myxxahrlmzvrbcmopwyo', 'the live repo'],
+   ['https://trifficpoolandspa-bit.github.io/Weir-Beta/customer-intake.html', 'mjjgvpejbibybhsmrdno', 'the beta repo'],
+   ['https://trifficpoolandspa-bit.github.io/weir-beta/customer-intake.html', 'mjjgvpejbibybhsmrdno', 'beta in lower case'],
+   ['https://example.com/customer-intake.html', 'myxxahrlmzvrbcmopwyo', 'anywhere else']
+  ].forEach(([url, expect, what])=>{
+    const {dom} = load('customer-intake.html', {seed: {customers: []}, url: url});
+    const w = dom.window;
+    w.console.warn = ()=>{};
+    check('served from ' + what + ' it talks to the right server',
+          String(w.eval('WEIR_SERVER_URL')).indexOf(expect) !== -1, String(w.eval('WEIR_SERVER_URL')));
+  });
+
+  ['index.html', 'technician-app.html', 'admin-readings-app.html', 'customer-intake.html'].forEach(file=>{
+    const src = fs.readFileSync(file, 'utf8');
+    check(file + ' knows both servers', /const WEIR_SERVERS = \{/.test(src)
+          && /'weir-beta':/.test(src) && /'live':/.test(src));
+    check(file + ' and falls back to the live one', /return WEIR_SERVERS\.live;/.test(src));
+  });
+}
+
 console.log('\n=== Photo requirements do not depend on Settings ===');
 {
   // The old Settings switches are gone. A saved setting left over from before
@@ -1072,8 +1096,18 @@ console.log('\n=== The office account lives on the server ===');
   check('  an expired token is refreshed', src.indexOf('grant_type=refresh_token') !== -1);
   check('  and a dead connection does not throw',
         src.indexOf('return {ok: false, status: 0, body: null, offline: true};') !== -1);
-  check('  the field apps sign in against the same server',
-        fs.readFileSync('technician-app.html','utf8').indexOf("FIELD_SUPABASE_URL = 'https://myxxahrlmzvrbcmopwyo.supabase.co'") !== -1);
+  // The server is chosen by where the app is served from, in one marked block
+  // at the top of every file, so the same file works in every repository
+  const serversOf = f => (fs.readFileSync(f, 'utf8').match(/const WEIR_SERVERS = \{[\s\S]*?\};/) || [])[0];
+  const files = ['customer-intake.html', 'technician-app.html', 'admin-readings-app.html', 'index.html'];
+  files.forEach(f=>{
+    check('  ' + f + ' says which servers it knows, once, at the top', !!serversOf(f), 'no server block');
+  });
+  check('  and every file knows the same ones',
+        files.every(f => serversOf(f) === serversOf(files[0])),
+        files.map(f => f + (serversOf(f) === serversOf(files[0]) ? ' same' : ' DIFFERENT')).join(' | '));
+  check('  the field apps take theirs from that block',
+        fs.readFileSync('technician-app.html','utf8').indexOf('const FIELD_SUPABASE_URL = WEIR_SERVER_URL;') !== -1);
 }
 
 console.log('\n=== Technicians cannot open the office site ===');
