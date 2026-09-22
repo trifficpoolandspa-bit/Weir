@@ -5762,6 +5762,11 @@ function isoForDay(dayName){
 }
 
 function openRescheduleModal(customer){
+  // Always the customer as they are in the list right now. A sync replaces the
+  // whole list with fresh objects, so the one captured when this opened can be
+  // an orphan: changing its day changed nothing that gets saved, and the old
+  // day kept showing them.
+  const liveCustomer = () => customers.find(c => c && c.id === customer.id) || customer;
   const fromISO = isoForDay(selectedHomeDay);
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
@@ -5811,8 +5816,9 @@ function openRescheduleModal(customer){
     const ok = await confirmDialog('Move ' + customer.name + ' to ' + newDay +
       ' every week from now on?', 'Change day');
     if(!ok) return;
-    customer.day = newDay;
-    clearMovesFor(customer.id);
+    const target = liveCustomer();
+    target.day = newDay;
+    clearMovesFor(target.id);
     await saveCustomers();
     cleanup();
     renderHomeList();
@@ -6162,7 +6168,9 @@ function renderHomeList(){
     .filter(c => c.day === selectedHomeDay && c.active !== false)
     // Only customers assigned to the signed-in technician appear on their route
     .filter(c => currentUser ? c.technicianId === currentUser.id : false)
-    .filter(c => weekOffset !== 0 || c.lastServicedDate !== today);
+    // Done on that day, or since: a Friday customer caught up on Monday drops
+    // off Friday's route rather than sitting there for good
+    .filter(c => !(c.lastServicedDate && c.lastServicedDate >= selectedDayISO));
 
   // One-off reschedules: pull people off this date, add anyone moved onto it
   const reschedules = loadReschedules();
@@ -6196,7 +6204,7 @@ function renderHomeList(){
     // Once serviced they drop off, exactly as a customer whose regular day it
     // is. Without this a customer moved in for the day stayed on the list
     // after their report was submitted.
-    (weekOffset !== 0 || c.lastServicedDate !== today) &&
+    !(c.lastServicedDate && c.lastServicedDate >= selectedDayISO) &&
     !routeCustomers.some(r => r.id === c.id));
 
   const todaysCustomers = orderCustomersForDay(selectedHomeDay,

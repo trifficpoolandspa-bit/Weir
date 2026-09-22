@@ -4880,7 +4880,21 @@ let lastBroadcastRemaining = null;
 // change rather than four.
 function openMailApp(href){
   lastMailAppLink = href;
-  window.location.href = href;
+  // A link that is clicked, rather than an address the page navigates to. A
+  // browser ignores a navigation that is not tied to a press, and the press
+  // here happened before the confirmation, so nothing opened.
+  try{
+    const link = document.createElement('a');
+    link.href = href;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(()=>{ try{ document.body.removeChild(link); }catch(e){} }, 0);
+  }catch(e){
+    window.location.href = href;          // whatever the browser will take
+  }
 }
 let lastMailAppLink = '';
 
@@ -4959,7 +4973,9 @@ document.getElementById('wcBroadcastOpen').addEventListener('click', async ()=>{
     if(note){
       note.textContent = 'Opening your email app with ' + addresses.length
         + ' address' + (addresses.length === 1 ? '' : 'es') + ' in the Bcc line. '
-        + 'Check it over and press send there.';
+        + 'Check it over and press send there. '
+        + 'If nothing opened, this browser has no email app set up \u2014 use '
+        + '"Copy the addresses" and paste them into the Bcc line yourself.';
     }
   } else {
     const perBatch = Math.max(1, Math.floor(addresses.length
@@ -11271,6 +11287,11 @@ function applyChemConfigMode(customerMode){
 
   if(heading) heading.textContent = customerMode ? 'Customer Customization' : 'Readings and Dosages';
   if(seg) seg.style.display = customerMode ? 'none' : '';
+  // The chosen customer's bodies of water belong to Customer Customization.
+  // The two pages share these lists, so it has to be put away here or it turns
+  // up in the middle of Readings and dosages.
+  const bodies = document.getElementById('customBodyList');
+  if(bodies && !customerMode) bodies.style.display = 'none';
   if(restore) restore.style.display = customerMode ? 'none' : '';
   if(desc){
     desc.textContent = customerMode

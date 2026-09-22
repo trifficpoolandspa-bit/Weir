@@ -7295,6 +7295,11 @@ function renderTechRoute(){
 
 // Move one customer off this day — once, or for good
 function openTechRescheduleModal(customer){
+  // Always the customer as they are in the list right now. A sync replaces the
+  // whole list with fresh objects, so the one captured when this opened can be
+  // an orphan: changing its day changed nothing that gets saved, and the old
+  // day kept showing them.
+  const liveCustomer = () => customers.find(c => c && c.id === customer.id) || customer;
   const fromISO = techRouteDateISO();
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
@@ -7344,7 +7349,8 @@ function openTechRescheduleModal(customer){
       + ' every week from now on?', 'Change day');
     if(!ok) return;
     const target = customers.find(x => x.id === customer.id);
-    if(target){ target.day = newDay; clearMovesFor(target.id); saveCustomers(); }
+    const live = liveCustomer();
+    if(live){ live.day = newDay; clearMovesFor(live.id); saveCustomers(); }
     close();
     renderTechRoute();
     showToast(customer.name + ' now serviced on ' + newDay + 's');
@@ -7605,6 +7611,11 @@ function isoForDay(dayName){
 }
 
 function openRescheduleModal(customer){
+  // Always the customer as they are in the list right now. A sync replaces the
+  // whole list with fresh objects, so the one captured when this opened can be
+  // an orphan: changing its day changed nothing that gets saved, and the old
+  // day kept showing them.
+  const liveCustomer = () => customers.find(c => c && c.id === customer.id) || customer;
   const fromISO = isoForDay(selectedHomeDay);
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
@@ -7654,8 +7665,9 @@ function openRescheduleModal(customer){
     const ok = await confirmDialog('Move ' + customer.name + ' to ' + newDay +
       ' every week from now on?', 'Change day');
     if(!ok) return;
-    customer.day = newDay;
-    clearMovesFor(customer.id);
+    const target = liveCustomer();
+    target.day = newDay;
+    clearMovesFor(target.id);
     await saveCustomers();
     cleanup();
     renderHomeList();
@@ -8026,8 +8038,11 @@ function localDateOfStamp(stamp){
 // which brings the customer back for that day as it always has.
 function servicedOnDate(c, iso){
   if(!c || !iso) return false;
-  if(c.lastServicedDate === iso) return true;
-  if(!c.lastServicedDate || iso >= c.lastServicedDate) return false;
+  // Serviced on that day, or since. A Friday customer caught up on Monday is
+  // done: Friday's route should not keep asking for them. Work is dated when
+  // it was done, so the date on the visit is later than the day it was for.
+  if(c.lastServicedDate && c.lastServicedDate >= iso) return true;
+  if(!c.lastServicedDate) return false;
   const onDay = r => r && r.date && localDateOfStamp(r.date) === iso;
   if((lsGet(readingsStorageKey(c.id, 'pool')) || []).some(onDay)) return true;
   if((lsGet(readingsStorageKey(c.id, 'spa')) || []).some(onDay)) return true;
