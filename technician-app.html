@@ -6709,8 +6709,12 @@ async function checkHeadsUpAfter(finishedCustomerId){
 function headsUpRouteFor(customer){
   const wants = (customer.notifyBy || '').trim();
   if(wants === 'email' || wants === 'text') return wants;
-  const phone = ((customer.notifyPhone || '').trim() || customer.phone || '').trim();
-  return phone ? 'text' : 'email';
+  // An email address wins: the office sends it, so it goes whether or not this
+  // phone has signal, and nobody has to press send. A text is the fallback for
+  // a customer with no address on file.
+  const email = ((customer.notifyEmail || '').trim() || customer.email || '').trim();
+  if(email && email.indexOf('@') !== -1) return 'email';
+  return 'text';
 }
 
 async function dispatchHeadsUp(customer){
