@@ -4821,7 +4821,7 @@ function syncGatePhotoBlock(){
 
   // The whole step can be switched off in Settings, in which case it never
   // appears regardless of any requirement set elsewhere.
-  const stepOn = appSettings.showGatePhoto !== false;
+  const stepOn = true;   // the gate step always exists; the requirement decides who takes it
   const show = stepOn && gatePhotoApplies() && isLastSectionOfVisit();
   block.style.display = show ? 'block' : 'none';
   if(!show) return;
@@ -8601,14 +8601,91 @@ async function checkHeadsUpAfter(finishedCustomerId){
 // a browser cannot send one without the technician pressing send. When emails
 // send from a backend this is the only function that has to change: swap the
 // sendOnMyWay call for the email send and everything else stays as it is.
-const HEADS_UP_METHOD = 'text';        // 'text' today, 'email' once there is a backend
+// How each customer wants their heads-up. A customer with 'email' chosen, or
+// with an address and no phone, gets one sent by the office; everyone else
+// gets the text the technician sends from their own phone, which costs nothing
+// and is what most people prefer anyway.
+function headsUpRouteFor(customer){
+  const wants = (customer.notifyBy || '').trim();
+  if(wants === 'email' || wants === 'text') return wants;
+  const phone = ((customer.notifyPhone || '').trim() || customer.phone || '').trim();
+  return phone ? 'text' : 'email';
+}
 
-function dispatchHeadsUp(customer){
-  if(HEADS_UP_METHOD === 'email'){
-    // Not reachable yet — left here so the switch is one line, not a rewrite
-    if(typeof sendHeadsUpEmail === 'function'){ sendHeadsUpEmail(customer); return; }
+async function dispatchHeadsUp(customer){
+  if(headsUpRouteFor(customer) === 'email'){
+    const sent = await sendHeadsUpEmail(customer);
+    if(sent) return;
+    // The office could not send it: the technician still has a way to tell them
   }
   sendOnMyWay(customer);
+}
+
+// Sent from the office, as "<the company> via Weir", so it arrives whether or
+// not this phone has signal a moment later.
+async function sendHeadsUpEmail(customer){
+  const toName = (customer.notifyName || '').trim() || customer.name;
+  const toEmail = ((customer.notifyEmail || '').trim() || customer.email || '').trim();
+  if(!toEmail || toEmail.indexOf('@') === -1) return false;
+
+  const session = deviceGet('session');
+  if(!session || !session.access_token){
+    noteLastHeadsUp('the old way', 'this phone needs signing in again');
+    return false;
+  }
+
+  const bodies = customer.hasSpa ? 'pool and spa' : 'pool';
+  const text = 'Hi ' + toName + ', just a heads up that I am on my way to service the '
+    + bodies + ' today. See you shortly.';
+  const html = '<!DOCTYPE html><html><body style="margin:0;background:#F4F7F6;">'
+    + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+    + 'style="background:#F4F7F6;padding:24px 0;"><tr><td align="center">'
+    + '<table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" '
+    + 'style="width:520px;max-width:100%;background:#fff;border-radius:14px;overflow:hidden;'
+    + 'font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">'
+    + '<tr><td style="padding:26px 26px 6px;">'
+    + '<div style="font-size:19px;font-weight:700;color:#16302E;">On my way</div></td></tr>'
+    + '<tr><td style="padding:10px 26px 26px;font-size:15px;line-height:1.6;color:#334444;">'
+    + escapeHtmlForEmail(text) + '</td></tr>'
+    + '</table></td></tr></table></body></html>';
+
+  try{
+    const res = await fetch(FIELD_SUPABASE_URL + '/functions/v1/send-report', {
+      method: 'POST',
+      headers: {'apikey': FIELD_SUPABASE_KEY,
+                'Authorization': 'Bearer ' + session.access_token,
+                'Content-Type': 'application/json'},
+      body: JSON.stringify({to: toEmail, subject: 'On my way', html: html, customerId: customer.id})
+    });
+    if(res.status === 401){
+      const again = await fieldRefresh();
+      if(again === true) return sendHeadsUpEmail(customer);
+      noteLastHeadsUp('the old way', 'this phone needs signing in again');
+      return false;
+    }
+    if(!res.ok){
+      const body = await res.json().catch(()=> ({}));
+      noteLastHeadsUp('the old way', body.error || ('the office said ' + res.status));
+      return false;
+    }
+    noteLastHeadsUp('office', '');
+    showToast('Heads-up sent to ' + toName);
+    return true;
+  }catch(e){
+    noteLastHeadsUp('the old way', 'no connection when it was sent');
+    return false;
+  }
+}
+
+function escapeHtmlForEmail(t){
+  return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function noteLastHeadsUp(by, why){
+  try{
+    deviceSet('lastHeadsUp', {at: new Date().toISOString(), by: by, why: why || ''});
+    setTimeout(fieldRenderSyncCard, 0);
+  }catch(e){}
 }
 
 function sendOnMyWay(customer){
@@ -9582,9 +9659,7 @@ function missingRequiredPhoto(){
   const beforeNeeded = !!beforeWhy;
   const afterNeeded = !!afterWhy;
 
-  if(here === 'visit' + cap + 'BeforePhotoSection'
-     && appSettings.showBeforePhotos !== false
-     && beforeNeeded){
+  if(here === 'visit' + cap + 'BeforePhotoSection' && beforeNeeded){
     const ctrl = beforeControllerFor(type);
     if(ctrl && !ctrl.getData()) return 'A before photo is required here (' + beforeWhy + ')';
   }
@@ -9596,7 +9671,6 @@ function missingRequiredPhoto(){
 
   if(here.indexOf(cap + 'PhotoSection') !== -1
      && here.indexOf('Before') === -1
-     && appSettings.showAfterPhotos !== false
      && afterNeeded){
     const ctrl = type === 'pool' ? poolPhotoController
       : (type === 'spa' ? spaPhotoController : fountainPhotoController);
@@ -9672,11 +9746,13 @@ function flagMissingReadings(missing){
 // button appear. The require settings never affect this — they only decide
 // whether a photo must be taken before submitting.
 function showsAfterPhotoStep(type){
-  return appSettings.showAfterPhotos !== false;
+  return true;
 }
 
+// The photo steps always exist. Who has to take which is set on the website,
+// on the Photo requirements tab, and nowhere else.
 function showsBeforePhotoStep(type){
-  return appSettings.showBeforePhotos !== false;
+  return true;
 }
 
 function visitStepCardsFor(type){
@@ -9711,9 +9787,7 @@ function applyVisitStep(opts){
   const steps = visitStepCardsFor(currentVisibleSection);
   if(!steps) return;
   document.querySelectorAll('[data-final-step-label]').forEach(btn=>{
-    btn.textContent = appSettings.showAfterPhotos !== false
-      ? 'After Photos \u2192'
-      : finishBodyLabel();
+    btn.textContent = 'After Photos \u2192';
   });
   steps.forEach((entry, i)=>{
     const ids = Array.isArray(entry) ? entry : [entry];

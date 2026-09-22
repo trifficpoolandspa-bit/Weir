@@ -15051,9 +15051,32 @@ function inlineNotifyContact(cust){
     line.appendChild(emailEl);
     wrap.appendChild(line);
 
+    // How they are told. A text comes from the technician's own phone; an
+    // email is sent by the office, so it arrives whether or not the phone has
+    // signal a moment later.
+    const howLine = document.createElement('div');
+    howLine.style.cssText = 'display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap;';
+    const howLabel = document.createElement('span');
+    howLabel.style.cssText = 'font-size:12.5px;color:var(--muted);';
+    howLabel.textContent = 'Tell them by';
+    howLine.appendChild(howLabel);
+
+    const howPick = document.createElement('select');
+    howPick.style.cssText = 'width:auto;';
+    [['', 'Whatever is on file'], ['text', 'Text message'], ['email', 'Email']].forEach(([v, shown])=>{
+      const o = document.createElement('option');
+      o.value = v;
+      o.textContent = shown;
+      howPick.appendChild(o);
+    });
+    howPick.value = cust.notifyBy || '';
+    howLine.appendChild(howPick);
+    wrap.appendChild(howLine);
+
     const hint = document.createElement('p');
     hint.style.cssText = 'font-size:11.5px;color:var(--muted);margin:8px 0 0;';
-    hint.textContent = 'Leave blank to text the customer as usual.';
+    hint.textContent = 'Leave the name and contact blank to use the customer\u2019s own details. '
+      + 'A text opens on the technician\u2019s phone for them to send; an email goes from the office.';
     wrap.appendChild(hint);
 
     const btns = document.createElement('div');
@@ -15071,6 +15094,7 @@ function inlineNotifyContact(cust){
       cust.notifyName = nameEl.value.trim();
       cust.notifyPhone = phoneEl.value.trim();
       cust.notifyEmail = emailEl.value.trim();
+      cust.notifyBy = howPick.value;
       saveCustomerField();
       done();
     }
