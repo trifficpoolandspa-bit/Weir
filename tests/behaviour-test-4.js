@@ -3313,6 +3313,16 @@ async function serverFieldSignIn(){
         })()`);
         check('a customer who wants email gets one from the office',
               JSON.parse(sentIt).ok === true, sentIt);
+
+        // The button itself has to go through the chooser, not straight to a text
+        ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
+          const src = fs.readFileSync(file, 'utf8');
+          const handler = (src.match(/onWayBtn\.addEventListener\('click'[\s\S]{0,260}?\}\);/) || [''])[0];
+          check(file + ': the On my way button asks how to tell them',
+                /dispatchHeadsUp\(c\)/.test(handler), handler.slice(0, 160));
+          check(file + ': and does not go straight to a text',
+                handler.indexOf('sendOnMyWay(c)') === -1);
+        });
         check('addressed to them, saying what is being serviced',
               srv.notices.length === 1 && srv.notices[0].to === 'nina@example.test'
               && /On my way/.test(srv.notices[0].subject)
