@@ -1096,6 +1096,39 @@ select#customerSelect{font-weight:600;}
 <div id="offlineBadge" style="position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:400;padding:7px 14px;border-radius:999px;font-size:12px;font-weight:600;font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;box-shadow:0 3px 12px rgba(0,0,0,0.18);display:none;pointer-events:none;"></div>
 
 <script>
+// ================== WHICH SERVER THIS COPY TALKS TO ==================
+// The only two lines that change between one company's copy and another's.
+// Both come from Supabase: Project Settings > API. The key is the publishable
+// one, safe to have in a file anyone can read; it grants nothing on its own.
+// ---------- Which server this copy talks to ----------
+// Decided by where the app is served from, so the same file works in both
+// repositories. Nothing to edit when a tested file moves to beta or back:
+// copy it across as it is.
+//
+// Both keys are public ones, already readable by anyone who views the page.
+// What keeps a company's data private is the row rules on the server, not the
+// key being secret.
+const WEIR_SERVERS = {
+  'weir-beta': {url: 'https://mjjgvpejbibybhsmrdno.supabase.co',
+                key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qamd2cGVqYmlieWJoc21yZG5vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwOTIyNzgsImV4cCI6MjEwNTY2ODI3OH0.fC627DhuydW81Bie_abdlWTZ-FykNHZUMVd9RrFJSJg'},
+  'live':      {url: 'https://myxxahrlmzvrbcmopwyo.supabase.co',
+                key: 'sb_publishable_32m_kcK3pQpClCGAvAAogg_Ut9RBFS1'}
+};
+
+function weirServerHere(){
+  try{
+    // The first part of the path is the repository: /Weir-Beta/… or /Weir/…
+    const first = (location.pathname.split('/')[1] || '').toLowerCase();
+    if(WEIR_SERVERS[first]) return WEIR_SERVERS[first];
+  }catch(e){}
+  return WEIR_SERVERS.live;          // anywhere else, including a file opened by hand
+}
+
+const WEIR_SERVER = weirServerHere();
+const WEIR_SERVER_URL = WEIR_SERVER.url;
+const WEIR_SERVER_KEY = WEIR_SERVER.key;
+// =====================================================================
+
 
 // ---------- Error reporting ----------
 // A tester who says "it froze" gives you nothing to work with. This catches
@@ -2495,8 +2528,8 @@ function lsSet(key, value){
 // The phone's company and sign-in live under their own prefix, apart from the
 // company's data, so they are never copied into a backup.
 // Shared word for word by index.html, technician-app.html and admin-readings-app.html.
-const FIELD_SUPABASE_URL = 'https://myxxahrlmzvrbcmopwyo.supabase.co';
-const FIELD_SUPABASE_KEY = 'sb_publishable_32m_kcK3pQpClCGAvAAogg_Ut9RBFS1';
+const FIELD_SUPABASE_URL = WEIR_SERVER_URL;
+const FIELD_SUPABASE_KEY = WEIR_SERVER_KEY;
 const DEVICE_PREFIX = 'weirdevice:';
 
 function deviceGet(key){
