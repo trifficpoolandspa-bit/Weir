@@ -844,6 +844,26 @@ input::placeholder{color:#A9BCB9;}
 
   </div>
 
+  <div id="groupOverlay" style="display:none;position:fixed;inset:0;z-index:320;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
+    <div style="background:#fff;border-radius:14px;padding:22px;max-width:460px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);max-height:85vh;overflow-y:auto;">
+      <h2 id="groupHeading" style="font-size:18px;margin:0 0 4px;">A group of customers</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 16px;">Everyone in a group shares one setup. Changing the group changes all of them.</p>
+      <div class="field">
+        <label>Group name</label>
+        <input id="groupName" placeholder="e.g. Salt pools, HOA properties" maxlength="40">
+      </div>
+      <div class="field">
+        <label>Customers</label>
+        <input id="groupSearch" placeholder="Search by name&hellip;" autocomplete="off">
+      </div>
+      <div id="groupPickList" style="max-height:240px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:6px;"></div>
+      <p id="groupWarning" style="display:none;font-size:11.5px;color:var(--rust);margin:10px 0 0;"></p>
+      <p id="groupError" style="display:none;font-size:12.5px;color:var(--rust);margin:10px 0 0;"></p>
+      <button class="btn btn-primary" id="btnSaveGroup" style="width:100%;margin-top:14px;">Save</button>
+      <button class="btn btn-ghost" id="btnCancelGroup" style="width:100%;margin-top:8px;">Cancel</button>
+    </div>
+  </div>
+
   <div id="photoTaskOverlay" style="display:none;position:fixed;inset:0;z-index:320;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
     <div style="background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);">
       <h2 id="photoTaskHeading" style="font-size:18px;margin:0 0 14px;">A photo of your own</h2>
@@ -895,6 +915,12 @@ input::placeholder{color:#A9BCB9;}
 
       <div class="btn-row" style="margin:0 0 14px;">
         <button class="btn btn-primary" id="btnNewCustomSetup" style="width:auto;">+ New customer setup</button>
+        <button class="btn btn-ghost" id="btnNewCustomerGroup" style="width:auto;">+ New group</button>
+      </div>
+
+      <div id="customGroupWrap" style="display:none;margin:0 0 16px;padding-bottom:14px;border-bottom:1px solid var(--line);">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Groups</span>
+        <div id="customGroupList" style="margin-top:8px;"></div>
       </div>
 
       <div class="field" style="position:relative;">
@@ -6995,7 +7021,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
 // Settings are split deliberately: how the business operates is company-wide,
 // while anything about a phone itself — its camera, its storage, who is signed
 // in on it, which tabs that person wants — stays on that phone.
-const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'routeOrders', 'reportEmailStyle'];
+const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'routeOrders',
+                         'reportEmailStyle', 'customerGroups'];
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
   'requireSkipPhoto', 'requireSkipReason', 'allowRouteReorder', 'showDosageSuggestions',
   'showWaterBalance', 'autoNotifyAll', 'autoNotifyAllLead', 'showPoolSizeInProfile',
@@ -10376,10 +10403,255 @@ wireApplyAll('chkApplyAllDosages', 'applyPoolDosagesToAll', 'dosages', 'dosages'
 // Stored as customConfig[customerId][bodyKey] = {chemicals, dosages}.
 // Anything not set here falls back to the standard Pool/Spa/Extra lists.
 let customConfig = lsGet('customChemConfig') || {};
+
+// ---------- Groups of customers who share a setup ----------
+// A group holds one setup and every member follows it. Changing the group
+// writes that setup onto each member, which is what the phones already read,
+// so nothing on a phone has to know groups exist.
+//
+// A member's own tweak does not survive: the group is what they belong to, and
+// the warning when adding them says so. Taking someone out of a group clears
+// their setup, so they go back to the company defaults rather than keeping a
+// copy of a group they are no longer in.
+let customerGroups = lsGet('customerGroups') || [];
+
+function saveCustomerGroups(){
+  lsSet('customerGroups', customerGroups);
+}
+
+function groupFor(customerId){
+  return customerGroups.find(g => g && (g.customerIds || []).indexOf(customerId) !== -1) || null;
+}
+
+// Writes a group's setup onto everyone in it
+function applyGroupToMembers(group){
+  if(!group) return;
+  (group.customerIds || []).forEach(id=>{
+    customConfig[id] = JSON.parse(JSON.stringify(group.config || {}));
+  });
+  lsSet('customChemConfig', customConfig);
+}
+
+// Back to the company defaults
+function clearSetupFor(customerId){
+  if(customConfig[customerId]){
+    delete customConfig[customerId];
+    lsSet('customChemConfig', customConfig);
+  }
+}
 let customCustomerId = null;
 let customBodyKey = null;
 let customCustHideTimer = null;
 let customSnapshot = null;
+
+
+// ---------- The group window ----------
+let editingGroupId = null;
+let groupPicked = new Set();
+
+function renderGroupList(){
+  const wrap = document.getElementById('customGroupWrap');
+  const box = document.getElementById('customGroupList');
+  if(!wrap || !box) return;
+  wrap.style.display = customerGroups.length ? 'block' : 'none';
+  box.innerHTML = '';
+  customerGroups.forEach(g=>{
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;'
+      + 'padding:9px 0;border-top:1px solid var(--line);cursor:pointer;';
+    row.title = 'Open this group\u2019s setup';
+    const left = document.createElement('div');
+    left.style.cssText = 'min-width:0;';
+    const name = document.createElement('div');
+    name.style.cssText = 'font-size:13.5px;font-weight:600;';
+    name.textContent = g.name || 'Unnamed group';
+    const who = document.createElement('div');
+    who.style.cssText = 'font-size:11.5px;color:var(--muted);';
+    const n = (g.customerIds || []).length;
+    who.textContent = n + (n === 1 ? ' customer' : ' customers');
+    left.appendChild(name); left.appendChild(who);
+    row.appendChild(left);
+
+    const right = document.createElement('div');
+    right.style.cssText = 'display:flex;gap:6px;flex-shrink:0;';
+    const edit = document.createElement('button');
+    edit.className = 'btn btn-ghost';
+    edit.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;';
+    edit.textContent = 'Who is in it';
+    edit.addEventListener('click', (e)=>{ e.stopPropagation(); openGroupWindow(g); });
+    right.appendChild(edit);
+
+    const del = document.createElement('button');
+    del.className = 'btn btn-ghost';
+    del.style.cssText = 'width:auto;padding:5px 9px;font-size:14px;color:var(--muted);';
+    del.textContent = '\u00d7';
+    del.title = 'Remove this group';
+    del.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const sure = await confirmDialog('Remove the group "' + (g.name || 'Unnamed')
+        + '"? Its customers go back to your default readings and dosages.', 'Remove');
+      if(!sure) return;
+      (g.customerIds || []).forEach(clearSetupFor);
+      customerGroups = customerGroups.filter(x => x.id !== g.id);
+      saveCustomerGroups();
+      if(customGroupId === g.id) closeCustomSetup();
+      renderGroupList();
+      renderExistingCustomSetups();
+      showToast('Group removed');
+    });
+    right.appendChild(del);
+    row.appendChild(right);
+
+    row.addEventListener('click', ()=> openGroupSetup(g));
+    box.appendChild(row);
+  });
+}
+
+function openGroupWindow(group){
+  editingGroupId = group ? group.id : null;
+  groupPicked = new Set(group ? (group.customerIds || []) : []);
+  document.getElementById('groupHeading').textContent = group ? 'Who is in this group' : 'A group of customers';
+  document.getElementById('groupName').value = group ? (group.name || '') : '';
+  document.getElementById('groupSearch').value = '';
+  document.getElementById('groupError').style.display = 'none';
+  renderGroupPickList('');
+  document.getElementById('groupOverlay').style.display = 'flex';
+  document.getElementById('groupName').focus();
+}
+
+function closeGroupWindow(){
+  document.getElementById('groupOverlay').style.display = 'none';
+  editingGroupId = null;
+}
+
+function renderGroupPickList(term){
+  const box = document.getElementById('groupPickList');
+  const warn = document.getElementById('groupWarning');
+  if(!box) return;
+  const needle = (term || '').trim().toLowerCase();
+  const list = customers
+    .filter(c => c && c.active !== false)
+    .filter(c => !needle || (c.name || '').toLowerCase().indexOf(needle) !== -1)
+    .slice(0, 200);
+
+  box.innerHTML = '';
+  if(!list.length){
+    box.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:8px;">Nobody matches that.</div>';
+  }
+  list.forEach(c=>{
+    const row = document.createElement('label');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:7px 6px;font-size:13.5px;cursor:pointer;';
+    const box2 = document.createElement('input');
+    box2.type = 'checkbox';
+    box2.style.margin = '0';
+    box2.checked = groupPicked.has(c.id);
+    box2.addEventListener('change', ()=>{
+      if(box2.checked) groupPicked.add(c.id); else groupPicked.delete(c.id);
+      renderGroupWarning();
+    });
+    row.appendChild(box2);
+    const name = document.createElement('span');
+    name.textContent = displayName(c.name);
+    row.appendChild(name);
+
+    // Already somewhere else, or already set up their own way
+    const inOther = customerGroups.find(g => g.id !== editingGroupId
+      && (g.customerIds || []).indexOf(c.id) !== -1);
+    if(inOther){
+      const tag = document.createElement('span');
+      tag.style.cssText = 'font-size:11px;color:var(--muted);margin-left:auto;';
+      tag.textContent = 'in ' + (inOther.name || 'another group');
+      row.appendChild(tag);
+    }
+    box.appendChild(row);
+  });
+  renderGroupWarning();
+}
+
+function renderGroupWarning(){
+  const warn = document.getElementById('groupWarning');
+  if(!warn) return;
+  const own = Array.from(groupPicked).filter(id=>{
+    const g = customerGroups.find(x => (x.customerIds || []).indexOf(id) !== -1);
+    return customConfig[id] && (!g || g.id === editingGroupId) && !(g && g.id === editingGroupId);
+  });
+  const moving = Array.from(groupPicked).filter(id=>{
+    const g = customerGroups.find(x => x.id !== editingGroupId && (x.customerIds || []).indexOf(id) !== -1);
+    return !!g;
+  });
+  const lines = [];
+  if(own.length) lines.push(own.length + (own.length === 1 ? ' customer has' : ' customers have')
+    + ' their own setup, which the group will replace.');
+  if(moving.length) lines.push(moving.length + (moving.length === 1 ? ' is' : ' are')
+    + ' in another group and will be moved into this one.');
+  warn.textContent = lines.join(' ');
+  warn.style.display = lines.length ? 'block' : 'none';
+}
+
+// Opens a group's setup in the editor below, the same as opening a customer
+let customGroupId = null;
+
+function openGroupSetup(group){
+  customGroupId = group.id;
+  // The editor is written around one id, so the group uses its own. Every
+  // change is copied onto the members as it is saved.
+  customCustomerId = group.id;
+  customBodyKey = 'pool';
+  customWorking = null;
+  customWorkingFor = null;
+  const searchEl = document.getElementById('customCustSearch');
+  if(searchEl) searchEl.value = 'Group: ' + (group.name || 'Unnamed');
+  const clearEl = document.getElementById('customCustClear');
+  if(clearEl) clearEl.style.display = 'flex';
+  renderCustomBodies();
+  renderChemConfigLists();
+  showToast('Editing ' + (group.name || 'the group') + ' \u2014 changes apply to everyone in it');
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  const add = document.getElementById('btnNewCustomerGroup');
+  if(add) add.addEventListener('click', ()=> openGroupWindow(null));
+  const cancel = document.getElementById('btnCancelGroup');
+  if(cancel) cancel.addEventListener('click', closeGroupWindow);
+  const overlay = document.getElementById('groupOverlay');
+  if(overlay) overlay.addEventListener('click', e=>{ if(e.target === overlay) closeGroupWindow(); });
+  const search = document.getElementById('groupSearch');
+  if(search) search.addEventListener('input', ()=> renderGroupPickList(search.value));
+
+  const save = document.getElementById('btnSaveGroup');
+  if(save) save.addEventListener('click', ()=>{
+    const err = document.getElementById('groupError');
+    const say = t => { err.textContent = t || ''; err.style.display = t ? 'block' : 'none'; };
+    const name = (document.getElementById('groupName').value || '').trim();
+    if(!name){ say('Give the group a name.'); return; }
+    if(!groupPicked.size){ say('Choose at least one customer.'); return; }
+
+    const chosen = Array.from(groupPicked);
+    let group = customerGroups.find(g => g.id === editingGroupId);
+    if(!group){
+      group = {id: 'grp_' + Date.now(), name: name, customerIds: [], config: {}};
+      customerGroups.push(group);
+    }
+
+    // Anyone taken out goes back to the company defaults
+    (group.customerIds || []).forEach(id=>{ if(chosen.indexOf(id) === -1) clearSetupFor(id); });
+    // And anyone in another group leaves that one
+    customerGroups.forEach(g=>{
+      if(g.id === group.id) return;
+      g.customerIds = (g.customerIds || []).filter(id => chosen.indexOf(id) === -1);
+    });
+
+    group.name = name;
+    group.customerIds = chosen;
+    saveCustomerGroups();
+    applyGroupToMembers(group);
+
+    closeGroupWindow();
+    renderGroupList();
+    renderExistingCustomSetups();
+    showToast('Saved \u2014 ' + chosen.length + (chosen.length === 1 ? ' customer' : ' customers') + ' in ' + name);
+  });
+});
 
 function saveCustomConfig(){
   const ok = lsSet('customChemConfig', customConfig);
@@ -10398,7 +10670,17 @@ function saveCustomConfig(){
       note.textContent = 'NOT SAVED — storage is full';
     }
   }
+  // A group's setup belongs to everyone in it
+  if(customGroupId){
+    const group = customerGroups.find(g => g.id === customGroupId);
+    if(group){
+      group.config = JSON.parse(JSON.stringify(customConfig[customGroupId] || {}));
+      saveCustomerGroups();
+      applyGroupToMembers(group);
+    }
+  }
   if(typeof renderExistingCustomSetups === 'function') renderExistingCustomSetups();
+  if(typeof renderGroupList === 'function') renderGroupList();
   return ok;
 }
 
@@ -10464,6 +10746,7 @@ function startNewCustomSetup(){
 }
 
 function closeCustomSetup(){
+  customGroupId = null;
   customCustomerId = null;
   customBodyKey = null;
   customWorking = null;
