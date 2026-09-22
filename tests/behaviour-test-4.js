@@ -912,7 +912,35 @@ console.log('\n=== The same file works in both repositories ===');
     check(file + ' knows both servers', /const WEIR_SERVERS = \{/.test(src)
           && /'weir-beta':/.test(src) && /'live':/.test(src));
     check(file + ' and falls back to the live one', /return WEIR_SERVERS\.live;/.test(src));
+    // A browser shares storage across a whole domain, so the two sites must
+    // keep their own. Otherwise beta opens holding the real customers.
+    check(file + ' keeps its own data on the device',
+          /const WEIR_STORE = \(WEIR_SERVER === WEIR_SERVERS\.live\) \? '' : 'beta-';/.test(src));
+    check(file + ' and every stored name carries that',
+          !/= 'weir:';/.test(src) && !/= 'weirdevice:';/.test(src) && !/= 'weirsync:';/.test(src));
   });
+
+  // The beta site must not inherit what the live one saved
+  {
+    const seen = {};
+    const fakeStore = {
+      getItem: k => (k in seen) ? seen[k] : null,
+      setItem: (k, v) => { seen[k] = String(v); },
+      removeItem: k => { delete seen[k]; },
+      key: i => Object.keys(seen)[i],
+      get length(){ return Object.keys(seen).length; }
+    };
+    const liveSite = load('customer-intake.html', {seed: {customers: []},
+      url: 'https://trifficpoolandspa-bit.github.io/Weir/customer-intake.html', storage: fakeStore});
+    liveSite.dom.window.console.warn = ()=>{};
+    liveSite.dom.window.eval("customers = [{id:'c1', name:'Real Customer', active:true}]; saveCustomers();");
+    const betaSite = load('customer-intake.html', {seed: {customers: []},
+      url: 'https://trifficpoolandspa-bit.github.io/Weir-Beta/customer-intake.html', storage: fakeStore});
+    betaSite.dom.window.console.warn = ()=>{};
+    const namesOnBeta = String(betaSite.dom.window.eval("JSON.stringify((customers||[]).map(c=>c.name))"));
+    check('the beta site does not open holding the real customers',
+          namesOnBeta.indexOf('Real Customer') === -1, namesOnBeta);
+  }
 }
 
 console.log('\n=== Photo requirements do not depend on Settings ===');
