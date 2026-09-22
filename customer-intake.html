@@ -696,7 +696,8 @@ input::placeholder{color:#A9BCB9;}
 
     <div class="card" id="photoRequireCard" style="display:none;">
       <h2 style="margin:0 0 4px;">Photos a technician must take</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:0 0 22px;">Press a row to choose who it applies to. A technician cannot move past the step without it.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 6px;">Press a row to choose who it applies to. A technician cannot move past the step without it.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 22px;">A report carries up to ten photos. Anything past that is taken and kept, but not sent with the report.</p>
 
       <!-- The gap belongs above this line, not below it: every line sits the
            same distance above the text of the row it introduces. -->
@@ -892,6 +893,10 @@ input::placeholder{color:#A9BCB9;}
       <h2>Custom setup for one customer</h2>
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Find a customer, pick one of their bodies of water, and set exactly what gets recorded there. This affects only that customer.</p>
 
+      <div class="btn-row" style="margin:0 0 14px;">
+        <button class="btn btn-primary" id="btnNewCustomSetup" style="width:auto;">+ New customer setup</button>
+      </div>
+
       <div class="field" style="position:relative;">
         <label>Customer</label>
         <!-- The button is measured against the field itself rather than the
@@ -903,7 +908,6 @@ input::placeholder{color:#A9BCB9;}
         <div id="customCustSuggest" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:200;background:#fff;border:1px solid var(--line);border-radius:10px;margin-top:4px;box-shadow:0 8px 24px rgba(15,46,46,0.22);max-height:240px;overflow-y:auto;"></div>
       </div>
 
-      <div id="customBodyList" style="display:none;"></div>
 
       <div id="customExistingWrap" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line);">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
@@ -944,6 +948,10 @@ input::placeholder{color:#A9BCB9;}
         <p style="font-size:12.5px;color:var(--muted);margin:10px 0 0;" id="autoNotifyExplain"></p>
       </div>
     </div>
+
+    <!-- Which body of water is being set up sits directly above the lists it
+         changes, rather than at the top of the page away from them -->
+    <div id="customBodyList" style="display:none;margin-bottom:14px;"></div>
 
     <div class="card">
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px;">
@@ -1017,7 +1025,9 @@ input::placeholder{color:#A9BCB9;}
       <div id="wcBroadcastCount" style="font-size:12.5px;color:var(--muted);margin-bottom:12px;"></div>
 
       <div class="btn-row" style="flex-wrap:wrap;gap:8px;">
-        <button class="btn btn-primary" id="wcBroadcastOpen" style="width:auto;">Send emails</button>
+        <button class="btn btn-primary" id="wcBroadcastOpen" style="width:auto;">Open in your email app</button>
+        <button class="btn btn-ghost" id="wcBroadcastMore" style="width:auto;display:none;">Send the rest</button>
+        <button class="btn btn-ghost" id="wcBroadcastCopy" style="width:auto;">Copy the addresses</button>
         <button class="btn btn-ghost" id="wcBroadcastSave" style="width:auto;display:none;">Save as new</button>
         <button class="btn btn-ghost" id="wcBroadcastUpdate" style="width:auto;display:none;">Save changes</button>
         <button class="btn btn-ghost" id="wcBroadcastDelete" style="width:auto;display:none;color:var(--rust);border-color:#EFC9BC;">Delete</button>
@@ -4862,6 +4872,43 @@ document.getElementById('wcBroadcastDelete').addEventListener('click', async ()=
   showToast('"' + t.name + '" deleted');
 });
 
+// Addresses left over when a list is too long for one email
+let lastBroadcastRemaining = null;
+
+// Hands a prepared message to whatever the person uses for email. One place,
+// so it can be watched and so a different way of opening it later is a single
+// change rather than four.
+function openMailApp(href){
+  lastMailAppLink = href;
+  window.location.href = href;
+}
+let lastMailAppLink = '';
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  const more = document.getElementById('wcBroadcastMore');
+  if(more) more.addEventListener('click', ()=>{
+    if(!lastBroadcastRemaining || !lastBroadcastRemaining.rest.length) return;
+    const batch = lastBroadcastRemaining.rest.slice(0, 40);
+    lastBroadcastRemaining.rest = lastBroadcastRemaining.rest.slice(40);
+    openMailApp('mailto:?bcc=' + encodeURIComponent(batch.join(','))
+      + '&subject=' + encodeURIComponent(lastBroadcastRemaining.subject)
+      + '&body=' + encodeURIComponent(lastBroadcastRemaining.body));
+    if(!lastBroadcastRemaining.rest.length) more.style.display = 'none';
+  });
+
+  // For anyone whose mail client will not take a link at all
+  const copy = document.getElementById('wcBroadcastCopy');
+  if(copy) copy.addEventListener('click', async ()=>{
+    const chosen = broadcastCandidates().filter(c => broadcastPicked.has(c.id));
+    const addresses = chosen.map(c => (c.email || '').trim()).filter(a => a.indexOf('@') !== -1);
+    if(!addresses.length){ showToast('Nobody chosen has an email address'); return; }
+    try{
+      await navigator.clipboard.writeText(addresses.join(', '));
+      showToast(addresses.length + ' address' + (addresses.length === 1 ? '' : 'es') + ' copied');
+    }catch(e){ showToast('Could not copy — select the list and copy it by hand'); }
+  });
+});
+
 document.getElementById('wcBroadcastOpen').addEventListener('click', async ()=>{
   const btn = document.getElementById('wcBroadcastOpen');
   const note = document.getElementById('wcBroadcastNote');
@@ -4877,33 +4924,63 @@ document.getElementById('wcBroadcastOpen').addEventListener('click', async ()=>{
   if(!body.trim()){ showToast('Write a message first'); return; }
 
   const ok = await confirmDialog(
-    'Send this to ' + chosen.length + ' customer' + (chosen.length === 1 ? '' : 's') + '?\n\n'
-    + 'Each one gets their own copy, so nobody sees anyone else\u2019s address.',
-    'Send');
+    'Open your email app with ' + chosen.length + ' customer'
+    + (chosen.length === 1 ? '' : 's') + ' in the Bcc line?\n\n'
+    + 'It is sent from your own email address, and nobody sees anyone else\u2019s. '
+    + 'Nothing goes until you press send there.',
+    'Open');
   if(!ok) return;
 
   btn.disabled = true;
   const wasLabel = btn.textContent;
-  btn.textContent = 'Sending\u2026';
 
-  let sent = 0, failed = 0;
-  for(const cust of chosen){
-    const to = (cust.email || '').trim();
-    if(!to) continue;
-    const good = await sendCustomerEmail(to, subject, body);
-    if(good) sent++; else failed++;
+  // Sent from the owner's own email account rather than by the app. A mass
+  // send from the app would run on one shared sending key, which is both a
+  // monthly cost and a way in for anyone who reads the page source. Going
+  // through their own mail client costs nothing, arrives from an address the
+  // customer recognises, and puts replies where they belong.
+  const addresses = chosen.map(c => (c.email || '').trim()).filter(a => a.indexOf('@') !== -1);
+  if(!addresses.length){
+    showToast('None of those customers has an email address on file');
+    btn.disabled = false;
+    return;
+  }
+
+  // Everyone hidden from everyone else
+  const link = 'mailto:?bcc=' + encodeURIComponent(addresses.join(','))
+    + '&subject=' + encodeURIComponent(subject)
+    + '&body=' + encodeURIComponent(body);
+
+  // A mail client will refuse a very long link, so a big list is handed over
+  // in batches rather than silently losing the end of it
+  const MAX_LINK = 1800;
+  if(link.length <= MAX_LINK){
+    openMailApp(link);
+    if(note){
+      note.textContent = 'Opening your email app with ' + addresses.length
+        + ' address' + (addresses.length === 1 ? '' : 'es') + ' in the Bcc line. '
+        + 'Check it over and press send there.';
+    }
+  } else {
+    const perBatch = Math.max(1, Math.floor(addresses.length
+      * (MAX_LINK - (link.length - encodeURIComponent(addresses.join(',')).length)) / encodeURIComponent(addresses.join(',')).length));
+    const first = addresses.slice(0, perBatch);
+    const rest = addresses.slice(perBatch);
+    openMailApp('mailto:?bcc=' + encodeURIComponent(first.join(','))
+      + '&subject=' + encodeURIComponent(subject)
+      + '&body=' + encodeURIComponent(body));
+    lastBroadcastRemaining = {rest: rest, subject: subject, body: body};
+    if(note){
+      note.textContent = 'Too many for one email. Opening the first ' + first.length
+        + '; press "Send the rest" for the remaining ' + rest.length + '.';
+    }
+    const more = document.getElementById('wcBroadcastMore');
+    if(more) more.style.display = 'inline-flex';
   }
 
   btn.disabled = false;
   btn.textContent = wasLabel;
-
-  showToast(sent + ' email' + (sent === 1 ? '' : 's') + ' sent'
-    + (failed ? '  \u00b7  ' + failed + ' failed' : ''));
-  if(note){
-    note.textContent = failed
-      ? sent + ' sent, ' + failed + ' could not be delivered. Check those addresses are correct.'
-      : 'Sent to ' + sent + ' customer' + (sent === 1 ? '' : 's') + '. Each got their own copy.';
-  }
+  showToast('Opening your email app');
 });
 
 // Every WorkCenter mode in one place. Both the tab buttons and the reset on
@@ -7704,7 +7781,13 @@ function applyAccountTab(tab){
 function renderAccount(){
   ACCOUNT_FIELDS.forEach(([elId, key])=>{
     const el = document.getElementById(elId);
-    if(el) el.value = lsGet(key) || '';
+    if(!el) return;
+    // Never write over the box being typed in. A sync landing mid-word used to
+    // put the stored value back, which looked like the typing being deleted.
+    if(document.activeElement === el) return;
+    const stored = lsGet(key) || '';
+    if(el.value === stored) return;          // nothing to do, and no cursor jump
+    el.value = stored;
   });
   applyAccountTab(accountTab);
   renderAccountButton();
@@ -7721,6 +7804,18 @@ ACCOUNT_FIELDS.forEach(([elId, key])=>{
       refreshBroadcastSignoff(wasCompany);
     }
     showToast('Saved');
+  });
+
+  // Kept as it is typed, so a sync that arrives a moment later has the new
+  // value to send rather than the old one to put back
+  let typingTimer = null;
+  el.addEventListener('input', ()=>{
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(()=>{
+      if(document.activeElement !== el) return;
+      lsSet(key, el.value.trim());
+      if(key === 'companyName') renderAccountButton();
+    }, 600);
   });
 });
 
@@ -10339,6 +10434,19 @@ function openCustomSetup(cust, bodies){
 }
 
 // Put the editors away without touching what was saved
+// Starting one from scratch: clears whoever is loaded and puts the cursor in
+// the search box, so the next thing typed is the customer's name.
+document.addEventListener('DOMContentLoaded', ()=>{
+  const newBtn = document.getElementById('btnNewCustomSetup');
+  if(newBtn) newBtn.addEventListener('click', startNewCustomSetup);
+});
+
+function startNewCustomSetup(){
+  closeCustomSetup();
+  const searchEl = document.getElementById('customCustSearch');
+  if(searchEl) searchEl.focus();
+}
+
 function closeCustomSetup(){
   customCustomerId = null;
   customBodyKey = null;

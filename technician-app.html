@@ -759,9 +759,16 @@ select#customerSelect{font-weight:600;}
 
   <!-- SERVICED POOLS VIEW -->
   <div class="view" id="view-serviced">
+      <div class="card" style="padding:10px 12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <button class="btn btn-ghost" id="servicedPrevDay" type="button" style="width:auto;padding:6px 12px;">&lsaquo;</button>
+          <div id="servicedDayLabel" style="font-size:13.5px;font-weight:600;color:var(--ink);text-align:center;flex:1;">Today</div>
+          <button class="btn btn-ghost" id="servicedNextDay" type="button" style="width:auto;padding:6px 12px;">&rsaquo;</button>
+        </div>
+      </div>
     <div class="card">
-      <h2>Serviced today</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Customers whose report has already gone out today. Use "Reservice" to send someone back to Today's list if you need to revisit them.</p>
+      <h2 id="servicedHeading">Serviced today</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Customers whose report has already gone out. Use "Reservice" to send someone back to Today's list if you need to revisit them.</p>
       <div id="servicedList"></div>
     </div>
   </div>
@@ -2017,7 +2024,10 @@ function switchView(view, opts){
     closeRouteBriefs();
     renderHomeList();
   }
-  if(view === 'serviced') renderServicedList();
+  if(view === 'serviced'){
+    servicedDayOffset = 0;             // always arrives on today
+    renderServicedList();
+  }
 }
 
 // Move any visit photos still held in localStorage across to the database.
@@ -5733,6 +5743,14 @@ function attachTouchDrag(handle, row, container){
 // ---------- Rescheduling ----------
 // Permanent changes move customer.day. One-offs are stored here as
 // {customerId, fromDate, toDate} and applied when building a day's route.
+// Changing someone's regular day makes every one-off move of theirs pointless:
+// a move onto the new day would land them there twice, once for the move and
+// once because it is now their day.
+function clearMovesFor(customerId){
+  const list = (lsGet('rescheduledVisits') || []).filter(r => r && r.customerId !== customerId);
+  lsSet('rescheduledVisits', list);
+}
+
 function loadReschedules(){
   return lsGet('rescheduledVisits') || [];
 }
@@ -5794,6 +5812,7 @@ function openRescheduleModal(customer){
       ' every week from now on?', 'Change day');
     if(!ok) return;
     customer.day = newDay;
+    clearMovesFor(customer.id);
     await saveCustomers();
     cleanup();
     renderHomeList();
@@ -6437,10 +6456,49 @@ function renderHomeList(){
   });
 }
 
+// ---- Which day the serviced list is showing ----
+// Usually today, but a day can be stepped back through to put someone back on
+// the route after the fact: a report sent on the wrong customer, or a pool
+// that needs revisiting the next morning.
+let servicedDayOffset = 0;              // 0 today, -1 yesterday, and so on
+
+function servicedDateStr(){
+  const d = new Date();
+  d.setDate(d.getDate() + servicedDayOffset);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function renderServicedDayLabel(){
+  const el = document.getElementById('servicedDayLabel');
+  if(!el) return;
+  const d = new Date();
+  d.setDate(d.getDate() + servicedDayOffset);
+  el.textContent = servicedDayOffset === 0 ? 'Today'
+    : servicedDayOffset === -1 ? 'Yesterday'
+    : d.toLocaleDateString(undefined, {weekday: 'long', month: 'short', day: 'numeric'});
+  const next = document.getElementById('servicedNextDay');
+  if(next) next.disabled = servicedDayOffset >= 0;      // nothing has been serviced tomorrow
+}
+
+function stepServicedDay(by){
+  servicedDayOffset = Math.min(0, servicedDayOffset + by);
+  renderServicedList();
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  const prev = document.getElementById('servicedPrevDay');
+  if(prev) prev.addEventListener('click', ()=> stepServicedDay(-1));
+  const next = document.getElementById('servicedNextDay');
+  if(next) next.addEventListener('click', ()=> stepServicedDay(1));
+});
+
 function renderServicedList(){
   const container = document.getElementById('servicedList');
   if(!container) return;
-  const today = todayDateStr();
+  renderServicedDayLabel();
+  const heading = document.getElementById('servicedHeading');
+  if(heading) heading.textContent = servicedDayOffset === 0 ? 'Serviced today' : 'Serviced that day';
+  const today = servicedDateStr();
   const servicedCustomers = customers
     .filter(c => c.lastServicedDate === today && c.active !== false)
     .slice()
@@ -6449,7 +6507,9 @@ function renderServicedList(){
     // bottom rather than disappearing.
     .sort((a,b)=> (b.lastServicedAt || '').localeCompare(a.lastServicedAt || ''));
   if(servicedCustomers.length === 0){
-    container.innerHTML = '<div class="empty">No one\'s been serviced yet today.</div>';
+    container.innerHTML = '<div class="empty">'
+      + (servicedDayOffset === 0 ? 'No one\'s been serviced yet today.' : 'Nobody was serviced that day.')
+      + '</div>';
     return;
   }
   container.innerHTML = '';
@@ -8210,13 +8270,36 @@ function flagMissingReadings(missing){
 // button appear. The require settings never affect this — they only decide
 // whether a photo must be taken before submitting.
 function showsAfterPhotoStep(type){
-  return true;
+  if(techWantsPhoto('after', type)) return true;
+  const lists = photoListsFor(type);
+  if(lists && lists.requireAfterPhoto === true) return true;
+  return customPhotosRequiredOf(type, 'after').length > 0;
 }
 
 // The photo steps always exist. Who has to take which is set on the website,
 // on the Photo requirements tab, and nowhere else.
+// The setup that applies to a body of water during this visit: the customer's
+// own if they have one, otherwise the company's.
+function photoListsFor(type){
+  const key = (type === 'fountain' && currentVisitFountainId) ? currentVisitFountainId : type;
+  try{
+    return currentVisitCustomerId
+      ? listsForBody(currentVisitCustomerId, key, type)
+      : chemConfig[type];
+  }catch(e){ return chemConfig[type]; }
+}
+
+// A photo step appears only when somebody has to take one here: this
+// technician for this body of water, or the customer's own setup asking for
+// it. A step nobody is asked for is a page to tap past, and a technician who
+// taps past half the screens stops reading any of them.
 function showsBeforePhotoStep(type){
-  return true;
+  if(techWantsPhoto('before', type)) return true;
+  // This customer's own setup, falling back to the company's
+  const lists = photoListsFor(type);
+  if(lists && lists.requireBeforePhoto === true) return true;
+  // One of the company's own photos that belongs before the readings
+  return customPhotosRequiredOf(type, 'before').length > 0;
 }
 
 function visitStepCardsFor(type){
@@ -9848,6 +9931,13 @@ async function finalizeVisitSend(){
   // Someone further down the route may want warning before you arrive
   await checkHeadsUpAfter(customerId);
 
+  // Back to the route before the report is put together. Building it fills the
+  // report screen, and doing that while the visit is still on screen showed as
+  // a flash of another page on the way out.
+  renderHomeList();
+  renderServicedList();
+  switchView('home');
+
   populateCustomerSelect(document.getElementById('reportCustomerSelect'), 'Add a customer first');
   document.getElementById('reportCustomerSelect').value = customerId;
   await renderFullCombinedReport(customerId, poolReadingId, spaReadingId, fountainReadings);
@@ -9872,9 +9962,6 @@ async function finalizeVisitSend(){
   visitDraft = {customerId: null, values: {}, section: null, step: 1};
   visitLeftOpenFor = null;
 
-  renderHomeList();
-  renderServicedList();
-  switchView('home');
   const who = customer ? customer.name : 'Customer';
   showToast(who + ' done — sending report');
 
@@ -10047,10 +10134,10 @@ function webpToJpegDataUrl(dataUrl){
   });
 }
 
-// Whatever the technician took, the report carries. The only ceiling is a
-// guard against something having gone wrong; the office decides what fits in
-// the email itself, and says so when something does not.
-const MAX_REPORT_PHOTOS = 60;
+// Ten photos to a report. Past that a report becomes a slideshow nobody
+// scrolls through, and the email grows for no benefit. The office says so when
+// more were taken than were sent.
+const MAX_REPORT_PHOTOS = 10;
 
 // What the visit had, against what could be read back off this phone. A photo
 // whose stored copy will not come back is skipped in silence otherwise, which
