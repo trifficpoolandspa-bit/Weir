@@ -8149,7 +8149,9 @@ function renderHomeList(){
     onWayBtn.textContent = 'On my way';
     onWayBtn.addEventListener('click', (e)=>{
       e.stopPropagation();
-      sendOnMyWay(c);
+      // Through the chooser, so a customer set to email gets one from the
+      // office rather than a text being opened on this phone
+      dispatchHeadsUp(c);
     });
     rightWrap.appendChild(onWayBtn);
     const chev = document.createElement('div');
