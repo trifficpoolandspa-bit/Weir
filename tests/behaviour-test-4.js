@@ -3293,6 +3293,61 @@ async function serverFieldSignIn(){
               JSON.parse(after).join() === '1,4,9', before + ' then ' + after);
       }
 
+      console.log('\n=== "On my way" by email ===');
+      {
+        srv.notices = [];
+        const realHandle3 = srv.handle;
+        srv.handle = async (url, o3) => {
+          if(String(url).indexOf('/functions/v1/send-report') !== -1){
+            if(srv.offline) throw new TypeError('Failed to fetch');
+            srv.notices.push(JSON.parse((o3 && o3.body) || '{}'));
+            return [200, {sent: true, id: 'mail_2'}];
+          }
+          return realHandle3(url, o3);
+        };
+
+        const sentIt = await phone.w.eval(`(async ()=>{
+          const c = {id: 'n9', name: 'Nina Pool', email: 'nina@example.test', hasSpa: true, notifyBy: 'email'};
+          const ok = await sendHeadsUpEmail(c);
+          return JSON.stringify({ok: ok});
+        })()`);
+        check('a customer who wants email gets one from the office',
+              JSON.parse(sentIt).ok === true, sentIt);
+        check('addressed to them, saying what is being serviced',
+              srv.notices.length === 1 && srv.notices[0].to === 'nina@example.test'
+              && /On my way/.test(srv.notices[0].subject)
+              && /pool and spa/.test(srv.notices[0].html),
+              JSON.stringify(srv.notices[0] || {}).slice(0, 200));
+
+        // Who it goes to, and how, is the customer's choice
+        const routes = await phone.w.eval(`(function(){
+          const r = c => headsUpRouteFor(c);
+          return JSON.stringify({
+            asked: r({notifyBy: 'email', phone: '555'}),
+            alsoAsked: r({notifyBy: 'text', email: 'a@b.test'}),
+            noPhone: r({email: 'a@b.test'}),
+            hasPhone: r({phone: '555', email: 'a@b.test'})
+          });
+        })()`);
+        const r = JSON.parse(routes);
+        check('a customer set to email gets email even with a phone on file', r.asked === 'email', routes);
+        check('and one set to text gets a text even with an email', r.alsoAsked === 'text');
+        check('with no phone on file it falls to email', r.noPhone === 'email');
+        check('and a phone on file still means a text by default', r.hasPhone === 'text');
+
+        srv.offline = true;
+        const noSignal = await phone.w.eval(`(async ()=>{
+          const ok = await sendHeadsUpEmail({id:'n9', name:'Nina', email:'nina@example.test'});
+          return JSON.stringify({ok: ok});
+        })()`);
+        check('with no signal it says so rather than pretending', JSON.parse(noSignal).ok === false, noSignal);
+        check('and the phone writes down what happened',
+              /no connection/.test(String(phone.w.eval("JSON.stringify(deviceGet('lastHeadsUp'))"))),
+              String(phone.w.eval("JSON.stringify(deviceGet('lastHeadsUp'))")));
+        srv.offline = false;
+        srv.handle = realHandle3;
+      }
+
       console.log('\n=== reports are sent by the office ===');
       {
         // What the phone hands over, and what it does when the office cannot
