@@ -5768,7 +5768,10 @@ function openRescheduleModal(customer){
   overlay.querySelector('#rsOnce').addEventListener('click', ()=>{
     const toISO = dateEl.value;
     if(!toISO){ showToast('Pick a date first'); return; }
-    const list = loadReschedules().filter(r => !(r.customerId === customer.id && r.fromDate === fromISO));
+    // Anything that moved this customer off this day, or onto it, is replaced.
+    // Leaving an earlier move in place left them showing on both days.
+    const list = loadReschedules().filter(r => !(r.customerId === customer.id
+      && (r.fromDate === fromISO || r.toDate === fromISO)));
     list.push({
       id: 'resched_' + Date.now(),
       customerId: customer.id,
