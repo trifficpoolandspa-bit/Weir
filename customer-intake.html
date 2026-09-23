@@ -1062,6 +1062,8 @@ input::placeholder{color:#A9BCB9;}
 
       <div class="btn-row" style="flex-wrap:wrap;gap:8px;">
         <button class="btn btn-primary" id="wcBroadcastOpen" style="width:auto;">Open in your email app</button>
+        <button class="btn btn-primary" id="wcBroadcastGmail" style="width:auto;">Open in Gmail</button>
+        <button class="btn btn-primary" id="wcBroadcastOutlook" style="width:auto;">Open in Outlook</button>
         <button class="btn btn-ghost" id="wcBroadcastMore" style="width:auto;display:none;">Send the rest</button>
         <button class="btn btn-ghost" id="wcBroadcastCopy" style="width:auto;">Copy the addresses</button>
         <button class="btn btn-ghost" id="wcBroadcastSave" style="width:auto;display:none;">Save as new</button>
@@ -4978,7 +4980,53 @@ document.getElementById('wcBroadcastDelete').addEventListener('click', async ()=
   showToast('"' + t.name + '" deleted');
 });
 
-// Addresses left over when a list is too long for one email
+// Where a broadcast can be opened. "Your email app" is whatever the computer
+// hands email links to, which is nothing at all on a browser with no mail app
+// set up. Gmail and Outlook open their own compose page in a new tab, so they
+// work either way. Everyone goes in Bcc on every route.
+const BROADCAST_ROUTES = {
+  app: {
+    name: 'your email app', maxLink: 1800,   // mail apps refuse long links
+    link: (bcc, subject, body)=> 'mailto:?bcc=' + encodeURIComponent(bcc)
+      + '&subject=' + encodeURIComponent(subject)
+      + '&body=' + encodeURIComponent(body)
+  },
+  gmail: {
+    name: 'Gmail', maxLink: 7000,
+    link: (bcc, subject, body)=> 'https://mail.google.com/mail/?view=cm&fs=1&bcc='
+      + encodeURIComponent(bcc)
+      + '&su=' + encodeURIComponent(subject)
+      + '&body=' + encodeURIComponent(body)
+  },
+  outlook: {
+    name: 'Outlook', maxLink: 7000,
+    link: (bcc, subject, body)=> 'https://outlook.office.com/mail/deeplink/compose?bcc='
+      + encodeURIComponent(bcc)
+      + '&subject=' + encodeURIComponent(subject)
+      + '&body=' + encodeURIComponent(body)
+  }
+};
+
+// Splits the addresses so no single link is longer than that route will take.
+// Nobody is dropped off the end, and nobody appears in two batches.
+function broadcastBatches(route, addresses, subject, body){
+  const room = Math.max(200, route.maxLink - route.link('', subject, body).length);
+  const batches = [];
+  let current = [];
+  addresses.forEach(a=>{
+    const next = current.concat(a);
+    if(current.length && encodeURIComponent(next.join(',')).length > room){
+      batches.push(current);
+      current = [a];
+    } else {
+      current = next;
+    }
+  });
+  if(current.length) batches.push(current);
+  return batches;
+}
+
+// Batches still to open after the first, and which route they go by
 let lastBroadcastRemaining = null;
 
 // Hands a prepared message to whatever the person uses for email. One place,
@@ -4992,8 +5040,9 @@ function openMailApp(href){
   try{
     const link = document.createElement('a');
     link.href = href;
-    link.target = '_blank';
-    link.rel = 'noopener';
+    // Gmail and Outlook open in a new tab. An email link stays put: in a new
+    // tab, a browser with no email app left a blank page showing the link.
+    if(/^https:/.test(href)){ link.target = '_blank'; link.rel = 'noopener'; }
     link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
@@ -5004,19 +5053,108 @@ function openMailApp(href){
 }
 let lastMailAppLink = '';
 
-document.addEventListener('DOMContentLoaded', ()=>{
+// Outlook's compose page is not documented to fill in Bcc, so the addresses are
+// also put on the clipboard. If its Bcc line comes up empty, a paste fixes it,
+// and nobody is ever put in the To line where everyone would see them.
+async function copyBroadcastAddresses(addresses){
+  try{ await navigator.clipboard.writeText(addresses.join(', ')); return true; }
+  catch(e){ return false; }
+}
+
+function broadcastNoteFor(via, count, copied){
+  const route = BROADCAST_ROUTES[via];
+  let text = 'Opening ' + route.name + ' with ' + count + ' address'
+    + (count === 1 ? '' : 'es') + ' in the Bcc line. Check it over and press send there.';
+  if(via === 'app'){
+    text += ' If nothing opened, this browser has no email app set up \u2014 use '
+      + '"Open in Gmail", "Open in Outlook" or "Copy the addresses" instead.';
+  } else if(via === 'outlook'){
+    text += copied
+      ? ' The addresses are also copied: if the Bcc line is empty, paste them into it.'
+      : ' If the Bcc line is empty, press "Copy the addresses" and paste them into it.';
+  } else {
+    text += ' If it asks you to sign in, do that and press the button again.';
+  }
+  return text;
+}
+
+async function startBroadcast(via){
+  const route = BROADCAST_ROUTES[via];
+  const note = document.getElementById('wcBroadcastNote');
   const more = document.getElementById('wcBroadcastMore');
-  if(more) more.addEventListener('click', ()=>{
-    if(!lastBroadcastRemaining || !lastBroadcastRemaining.rest.length) return;
-    const batch = lastBroadcastRemaining.rest.slice(0, 40);
-    lastBroadcastRemaining.rest = lastBroadcastRemaining.rest.slice(40);
-    openMailApp('mailto:?bcc=' + encodeURIComponent(batch.join(','))
-      + '&subject=' + encodeURIComponent(lastBroadcastRemaining.subject)
-      + '&body=' + encodeURIComponent(lastBroadcastRemaining.body));
-    if(!lastBroadcastRemaining.rest.length) more.style.display = 'none';
+
+  const chosen = broadcastCandidates().filter(c => broadcastPicked.has(c.id));
+  if(!chosen.length){
+    showToast('Choose at least one customer first');
+    return;
+  }
+
+  const subject = document.getElementById('wcBroadcastSubject').value.trim();
+  const body = document.getElementById('wcBroadcastBody').value;
+  if(!body.trim()){ showToast('Write a message first'); return; }
+
+  // Sent from the owner's own email account rather than by the app. A mass
+  // send from the app would run on one shared sending key, which is both a
+  // monthly cost and a way in for anyone who reads the page source. Going
+  // through their own mail costs nothing, arrives from an address the
+  // customer recognises, and puts replies where they belong.
+  const addresses = chosen.map(c => (c.email || '').trim()).filter(a => a.indexOf('@') !== -1);
+  if(!addresses.length){
+    showToast('None of those customers has an email address on file');
+    return;
+  }
+
+  const ok = await confirmDialog(
+    'Open ' + route.name + ' with ' + addresses.length + ' customer'
+    + (addresses.length === 1 ? '' : 's') + ' in the Bcc line?\n\n'
+    + 'It is sent from your own email address, and nobody sees anyone else\u2019s. '
+    + 'Nothing goes until you press send there.',
+    'Open');
+  if(!ok) return;
+
+  const batches = broadcastBatches(route, addresses, subject, body);
+  const copied = via === 'outlook' ? await copyBroadcastAddresses(batches[0]) : false;
+  openMailApp(route.link(batches[0].join(','), subject, body));
+
+  if(batches.length > 1){
+    const rest = batches.slice(1);
+    lastBroadcastRemaining = {via: via, batches: rest, subject: subject, body: body};
+    const left = rest.reduce((n, b)=> n + b.length, 0);
+    if(note){
+      note.textContent = 'Too many for one email. Opening the first ' + batches[0].length
+        + ' in ' + route.name + '; press "Send the rest" for the remaining ' + left + '.';
+    }
+    if(more) more.style.display = 'inline-flex';
+  } else {
+    lastBroadcastRemaining = null;
+    if(note) note.textContent = broadcastNoteFor(via, addresses.length, copied);
+    if(more) more.style.display = 'none';
+  }
+  showToast('Opening ' + route.name);
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  // The rest of a long list, one batch per press, by the route the first went
+  const more = document.getElementById('wcBroadcastMore');
+  if(more) more.addEventListener('click', async ()=>{
+    const r = lastBroadcastRemaining;
+    if(!r || !r.batches.length) return;
+    const route = BROADCAST_ROUTES[r.via];
+    const batch = r.batches.shift();
+    if(r.via === 'outlook') await copyBroadcastAddresses(batch);
+    openMailApp(route.link(batch.join(','), r.subject, r.body));
+    const note = document.getElementById('wcBroadcastNote');
+    if(!r.batches.length){
+      more.style.display = 'none';
+      lastBroadcastRemaining = null;
+      if(note) note.textContent = 'That was the last batch. Press send in each one.';
+    } else if(note){
+      const left = r.batches.reduce((n, b)=> n + b.length, 0);
+      note.textContent = 'Opened ' + batch.length + ' more; ' + left + ' still to go.';
+    }
   });
 
-  // For anyone whose mail client will not take a link at all
+  // For anyone whose email will not take a link at all
   const copy = document.getElementById('wcBroadcastCopy');
   if(copy) copy.addEventListener('click', async ()=>{
     const chosen = broadcastCandidates().filter(c => broadcastPicked.has(c.id));
@@ -5029,81 +5167,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
   });
 });
 
-document.getElementById('wcBroadcastOpen').addEventListener('click', async ()=>{
-  const btn = document.getElementById('wcBroadcastOpen');
-  const note = document.getElementById('wcBroadcastNote');
-
-  const chosen = broadcastCandidates().filter(c => broadcastPicked.has(c.id));
-  if(!chosen.length){
-    showToast('Choose at least one customer first');
-    return;
-  }
-
-  const subject = document.getElementById('wcBroadcastSubject').value.trim();
-  const body = document.getElementById('wcBroadcastBody').value;
-  if(!body.trim()){ showToast('Write a message first'); return; }
-
-  const ok = await confirmDialog(
-    'Open your email app with ' + chosen.length + ' customer'
-    + (chosen.length === 1 ? '' : 's') + ' in the Bcc line?\n\n'
-    + 'It is sent from your own email address, and nobody sees anyone else\u2019s. '
-    + 'Nothing goes until you press send there.',
-    'Open');
-  if(!ok) return;
-
-  btn.disabled = true;
-  const wasLabel = btn.textContent;
-
-  // Sent from the owner's own email account rather than by the app. A mass
-  // send from the app would run on one shared sending key, which is both a
-  // monthly cost and a way in for anyone who reads the page source. Going
-  // through their own mail client costs nothing, arrives from an address the
-  // customer recognises, and puts replies where they belong.
-  const addresses = chosen.map(c => (c.email || '').trim()).filter(a => a.indexOf('@') !== -1);
-  if(!addresses.length){
-    showToast('None of those customers has an email address on file');
-    btn.disabled = false;
-    return;
-  }
-
-  // Everyone hidden from everyone else
-  const link = 'mailto:?bcc=' + encodeURIComponent(addresses.join(','))
-    + '&subject=' + encodeURIComponent(subject)
-    + '&body=' + encodeURIComponent(body);
-
-  // A mail client will refuse a very long link, so a big list is handed over
-  // in batches rather than silently losing the end of it
-  const MAX_LINK = 1800;
-  if(link.length <= MAX_LINK){
-    openMailApp(link);
-    if(note){
-      note.textContent = 'Opening your email app with ' + addresses.length
-        + ' address' + (addresses.length === 1 ? '' : 'es') + ' in the Bcc line. '
-        + 'Check it over and press send there. '
-        + 'If nothing opened, this browser has no email app set up \u2014 use '
-        + '"Copy the addresses" and paste them into the Bcc line yourself.';
-    }
-  } else {
-    const perBatch = Math.max(1, Math.floor(addresses.length
-      * (MAX_LINK - (link.length - encodeURIComponent(addresses.join(',')).length)) / encodeURIComponent(addresses.join(',')).length));
-    const first = addresses.slice(0, perBatch);
-    const rest = addresses.slice(perBatch);
-    openMailApp('mailto:?bcc=' + encodeURIComponent(first.join(','))
-      + '&subject=' + encodeURIComponent(subject)
-      + '&body=' + encodeURIComponent(body));
-    lastBroadcastRemaining = {rest: rest, subject: subject, body: body};
-    if(note){
-      note.textContent = 'Too many for one email. Opening the first ' + first.length
-        + '; press "Send the rest" for the remaining ' + rest.length + '.';
-    }
-    const more = document.getElementById('wcBroadcastMore');
-    if(more) more.style.display = 'inline-flex';
-  }
-
-  btn.disabled = false;
-  btn.textContent = wasLabel;
-  showToast('Opening your email app');
-});
+document.getElementById('wcBroadcastOpen').addEventListener('click', ()=> startBroadcast('app'));
+document.getElementById('wcBroadcastGmail').addEventListener('click', ()=> startBroadcast('gmail'));
+document.getElementById('wcBroadcastOutlook').addEventListener('click', ()=> startBroadcast('outlook'));
 
 // Every WorkCenter mode in one place. Both the tab buttons and the reset on
 // entry go through this, so a new mode can't be added to one and forgotten in
