@@ -2696,7 +2696,8 @@ const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGateP
   'requireSkipPhoto', 'requireSkipReason', 'allowRouteReorder', 'showDosageSuggestions',
   'showWaterBalance', 'autoNotifyAll', 'autoNotifyAllLead', 'showPoolSizeInProfile',
   'applyPoolDosagesToAll', 'applyPoolChemicalsToAll'];
-const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'routeOrders', 'reportEmailStyle'];
+const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'routeOrders',
+                         'reportEmailStyle', 'customerGroups', 'photoDefaults'];
 const SYNC_COMPANY_DETAIL_KEYS = ['companyName', 'ownerName', 'licenseNumber', 'serviceArea',
   'accountEmail', 'accountPhone', 'businessAddress', 'businessCity', 'businessState',
   'businessZip', 'businessWebsite'];
@@ -4475,11 +4476,29 @@ function techRequires(flag){
 
 // Set for this technician on the website: before or after photos, for each
 // body of water. The body of water is 'pool', 'spa' or 'fountain'.
+// What a photo is for everyone here, before exceptions: off, optional or
+// required. Set on the Photo requirements tab at the office.
+function photoStepState(step){
+  const all = lsGet('photoDefaults') || {};
+  const state = all[step];
+  return (state === 'optional' || state === 'required') ? state : 'off';
+}
+
+// Does this technician have to take it?
 function techWantsPhoto(step, type){
-  const rules = currentUser && currentUser.photoRules;
-  if(!rules || !rules[step]) return false;
   const key = type === 'spa' ? 'spa' : (type === 'pool' ? 'pool' : 'fountain');
-  return rules[step][key] === true;
+  const rules = currentUser && currentUser.photoRules;
+  // Asked of them by name, whatever the row says
+  if(rules && rules[step] && rules[step][key] === true) return true;
+  // Otherwise they follow the row
+  return photoStepState(step) === 'required';
+}
+
+// Does the step appear at all? Required means yes; optional means yes but it
+// can be walked past; off means it is not there.
+function photoStepShows(step, type){
+  if(techWantsPhoto(step, type)) return true;
+  return photoStepState(step) === 'optional';
 }
 
 // Which of the company's own photos this technician must take here
@@ -4550,7 +4569,8 @@ function syncGatePhotoBlock(){
 
   // The whole step can be switched off in Settings, in which case it never
   // appears regardless of any requirement set elsewhere.
-  const stepOn = true;   // the gate step always exists; the requirement decides who takes it
+  // Off, optional or required, with anyone asked by name counting as required
+  const stepOn = photoStepShows('gate', 'pool');
   const show = stepOn && gatePhotoApplies() && isLastSectionOfVisit();
   block.style.display = show ? 'block' : 'none';
   if(!show) return;
@@ -6829,12 +6849,46 @@ function headsUpRouteFor(customer){
 }
 
 async function dispatchHeadsUp(customer){
-  if(headsUpRouteFor(customer) === 'email'){
+  const email = ((customer.notifyEmail || '').trim() || customer.email || '').trim();
+  const phone = ((customer.notifyPhone || '').trim() || customer.phone || '').trim();
+  const hasEmail = email.indexOf('@') !== -1;
+
+  // Both on file and nothing chosen for this customer: ask, rather than decide
+  // for the technician standing at the gate.
+  let how = headsUpRouteFor(customer);
+  if(hasEmail && phone && !(customer.notifyBy || '').trim()){
+    how = await askHeadsUpWay(customer);
+    if(!how) return;                       // they changed their mind
+  }
+
+  if(how === 'email'){
     const sent = await sendHeadsUpEmail(customer);
     if(sent) return;
     // The office could not send it: the technician still has a way to tell them
   }
   sendOnMyWay(customer);
+}
+
+// Text or email, asked once at the moment of sending
+function askHeadsUpWay(customer){
+  return new Promise(resolve=>{
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = '<div class="confirm-box" style="max-width:340px;">'
+      + '<h3 style="font-size:15px;margin:0 0 4px;">Tell ' + escapeHtmlForEmail(customer.name) + ' how?</h3>'
+      + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">'
+      + 'An email goes from the office. A text opens on this phone for you to send.</p>'
+      + '<button class="btn btn-primary" id="huEmail" style="width:100%;">Email</button>'
+      + '<button class="btn btn-primary" id="huText" style="width:100%;margin-top:8px;">Text message</button>'
+      + '<button class="btn btn-ghost" id="huCancel" style="width:100%;margin-top:8px;">Cancel</button>'
+      + '</div>';
+    document.body.appendChild(overlay);
+    const done = answer => { try{ document.body.removeChild(overlay); }catch(e){} resolve(answer); };
+    overlay.querySelector('#huEmail').addEventListener('click', ()=> done('email'));
+    overlay.querySelector('#huText').addEventListener('click', ()=> done('text'));
+    overlay.querySelector('#huCancel').addEventListener('click', ()=> done(null));
+    overlay.addEventListener('click', e=>{ if(e.target === overlay) done(null); });
+  });
 }
 
 // Sent from the office, as "<the company> via Weir", so it arrives whether or
@@ -8278,7 +8332,7 @@ function flagMissingReadings(missing){
 // button appear. The require settings never affect this — they only decide
 // whether a photo must be taken before submitting.
 function showsAfterPhotoStep(type){
-  if(techWantsPhoto('after', type)) return true;
+  if(photoStepShows('after', type)) return true;
   const lists = photoListsFor(type);
   if(lists && lists.requireAfterPhoto === true) return true;
   return customPhotosRequiredOf(type, 'after').length > 0;
@@ -8302,7 +8356,7 @@ function photoListsFor(type){
 // it. A step nobody is asked for is a page to tap past, and a technician who
 // taps past half the screens stops reading any of them.
 function showsBeforePhotoStep(type){
-  if(techWantsPhoto('before', type)) return true;
+  if(photoStepShows('before', type)) return true;
   // This customer's own setup, falling back to the company's
   const lists = photoListsFor(type);
   if(lists && lists.requireBeforePhoto === true) return true;
@@ -9918,6 +9972,13 @@ async function finalizeVisitSend(){
 
   // This is the moment the visit becomes real. Everything held for every body
   // of water is written to the reading history in one go.
+  // Back to the route first. Saving clears the photos and rebuilds the visit
+  // screen, and doing that while it is still on show is the flash of the after
+  // photos page emptying on the way out.
+  renderHomeList();
+  renderServicedList();
+  switchView('home');
+
   await commitVisitPackage(customerId);
 
   pendingVisit = null;
@@ -9938,13 +9999,6 @@ async function finalizeVisitSend(){
 
   // Someone further down the route may want warning before you arrive
   await checkHeadsUpAfter(customerId);
-
-  // Back to the route before the report is put together. Building it fills the
-  // report screen, and doing that while the visit is still on screen showed as
-  // a flash of another page on the way out.
-  renderHomeList();
-  renderServicedList();
-  switchView('home');
 
   populateCustomerSelect(document.getElementById('reportCustomerSelect'), 'Add a customer first');
   document.getElementById('reportCustomerSelect').value = customerId;

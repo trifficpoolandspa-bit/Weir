@@ -816,6 +816,12 @@ input::placeholder{color:#A9BCB9;}
         <button class="btn btn-primary" id="btnShowAssignCustomers"
           style="width:auto;margin-left:auto;flex:0 0 auto;white-space:nowrap;">Edit customers</button>
       </div>
+      <div style="position:relative;margin-top:14px;">
+        <input id="techAssignedSearch" placeholder="Search these customers by name or address"
+          autocomplete="off" style="margin-bottom:0;padding-right:34px;">
+        <button type="button" id="techAssignedSearchClear"
+          style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);height:26px;width:26px;padding:0;border:none;background:none;color:var(--muted);font-size:17px;line-height:1;cursor:pointer;">&times;</button>
+      </div>
       <div id="techAssignedList" style="margin-top:14px;"></div>
     </div>
     <!-- Opens over the page rather than unfolding below it. As a panel further
@@ -918,11 +924,6 @@ input::placeholder{color:#A9BCB9;}
         <button class="btn btn-ghost" id="btnNewCustomerGroup" style="width:auto;">+ New group</button>
       </div>
 
-      <div id="customGroupWrap" style="display:none;margin:0 0 16px;padding-bottom:14px;border-bottom:1px solid var(--line);">
-        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Groups</span>
-        <div id="customGroupList" style="margin-top:8px;"></div>
-      </div>
-
       <div class="field" style="position:relative;">
         <label>Customer</label>
         <!-- The button is measured against the field itself rather than the
@@ -932,6 +933,13 @@ input::placeholder{color:#A9BCB9;}
           <button type="button" id="customCustClear" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);height:30px;width:30px;padding:0;border:1px solid #EFC9BC;border-radius:8px;background:#fff;color:var(--rust);font-size:18px;line-height:1;cursor:pointer;align-items:center;justify-content:center;">&times;</button>
         </div>
         <div id="customCustSuggest" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:200;background:#fff;border:1px solid var(--line);border-radius:10px;margin-top:4px;box-shadow:0 8px 24px rgba(15,46,46,0.22);max-height:240px;overflow-y:auto;"></div>
+      </div>
+
+      <!-- Groups sit under the customer search, and the line above them is the
+           same distance from the heading as the heading is from the list -->
+      <div id="customGroupWrap" style="display:none;margin:16px 0 0;padding-top:14px;border-top:1px solid var(--line);">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Groups</span>
+        <div id="customGroupList" style="margin-top:14px;"></div>
       </div>
 
 
@@ -3502,7 +3510,11 @@ function renderProductsServicesList(){
     if(isChemical){
       extraWrap = document.createElement('label');
       extraWrap.title = 'Bill this to the customer as an extra charge';
-      extraWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex:0 0 168px;font-size:11.5px;color:var(--muted);cursor:pointer;white-space:nowrap;';
+      // The tick and the words sit together at the left of the column, with a
+      // fixed slot for the abbreviation beside them. The slot is there whether
+      // or not there is an abbreviation, so nothing shifts when one is added.
+      extraWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex:0 0 168px;'
+        + 'font-size:11.5px;color:var(--muted);cursor:pointer;white-space:nowrap;';
       const extraCb = document.createElement('input');
       extraCb.type = 'checkbox';
       extraCb.checked = !!item.extraCharge;
@@ -3516,20 +3528,27 @@ function renderProductsServicesList(){
         }
         const abbr = await promptDialog(
           'What abbreviation should "' + (item.name || 'this item') +
-          '" use? This is what shows on the billing section, so keep it short and recognisable.',
-          'e.g. MA for Muriatic acid');
+          '" use? Four characters at most \u2014 it has to fit the billing column.',
+          'e.g. MA');
         if(!abbr){
           // Cancelled — leave it unchecked
           extraCb.checked = false;
           return;
         }
         item.extraCharge = true;
-        item.abbr = abbr.trim();
+        item.abbr = abbr.trim().slice(0, 4);
         saveProductsServices();
         renderProductsServicesList();
       });
       extraWrap.appendChild(extraCb);
-      extraWrap.appendChild(document.createTextNode('Extra charge'));
+      const words = document.createElement('span');
+      words.textContent = 'Extra charge';
+      extraWrap.appendChild(words);
+
+      // Room for four characters, always. Empty when there is nothing to show.
+      const abbrSlot = document.createElement('span');
+      abbrSlot.style.cssText = 'flex:0 0 46px;display:flex;justify-content:flex-start;';
+      extraWrap.appendChild(abbrSlot);
 
       if(item.extraCharge && item.abbr){
         const abbrTag = document.createElement('span');
@@ -3539,13 +3558,14 @@ function renderProductsServicesList(){
         abbrTag.addEventListener('click', async (e)=>{
           e.preventDefault();
           e.stopPropagation();
-          const next = await promptDialog('Billing abbreviation for "' + (item.name || 'this item') + '"', item.abbr);
+          const next = await promptDialog('Billing abbreviation for "' + (item.name || 'this item')
+            + '" \u2014 four characters at most', item.abbr);
           if(!next) return;
-          item.abbr = next.trim();
+          item.abbr = next.trim().slice(0, 4);
           saveProductsServices();
           renderProductsServicesList();
         });
-        extraWrap.appendChild(abbrTag);
+        abbrSlot.appendChild(abbrTag);
       }
     } else {
       extraWrap = document.createElement('span');
@@ -4347,6 +4367,7 @@ function renderBilling(){
       b.type = 'button';
       b.textContent = p;
       const cur = p === billingPage;
+      b.dataset.billingPage = String(p);
       b.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;'
         + "font-family:'JetBrains Mono',monospace;"
         + (cur ? 'background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);'
@@ -4354,6 +4375,23 @@ function renderBilling(){
       b.addEventListener('click', ()=>{ billingPage = p; renderBilling(); });
       pager.appendChild(b);
     }
+
+    // An arrow each side, so the pages can be stepped through
+    const arrow = (text, to, title)=>{
+      const a = document.createElement('button');
+      a.type = 'button';
+      a.textContent = text;
+      a.title = title;
+      const dead = to < 1 || to > totalPages;
+      a.disabled = dead;
+      a.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border-radius:8px;font-size:15px;'
+        + 'background:#fff;border:1px solid var(--line);'
+        + (dead ? 'color:var(--line);cursor:default;' : 'color:var(--teal-deep);cursor:pointer;');
+      if(!dead) a.addEventListener('click', ()=>{ billingPage = to; renderBilling(); });
+      return a;
+    };
+    pager.insertBefore(arrow('\u2039', billingPage - 1, 'Previous page'), pager.firstChild);
+    pager.appendChild(arrow('\u203a', billingPage + 1, 'Next page'));
     const info = document.createElement('div');
     info.style.cssText = 'width:100%;text-align:center;font-size:11.5px;color:var(--muted);margin-top:8px;';
     info.textContent = 'Showing ' + (start + 1) + '\u2013' + Math.min(start + PER, rows.length) + ' of ' + rows.length;
@@ -4392,6 +4430,43 @@ function shiftBillingMonth(delta){
 document.getElementById('billingExtraOnly').addEventListener('change', (e)=>{
   billingExtraOnly = e.target.checked;
   renderBilling();
+});
+
+// Left and right step through the pages of a list. Ignored while something is
+// being typed into, so arrowing along a line of text still works.
+document.addEventListener('keydown', (e)=>{
+  if(e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  if(e.metaKey || e.ctrlKey || e.altKey) return;
+  const el = document.activeElement;
+  if(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+  const step = e.key === 'ArrowLeft' ? -1 : 1;
+
+  const onView = id => {
+    const v = document.getElementById(id);
+    return !!(v && v.classList.contains('active'));
+  };
+
+  // The bill
+  if(onView('view-history')){
+    const pages = document.querySelectorAll('[data-billing-page]').length;
+    if(pages < 2) return;
+    const before = billingPage;
+    billingPage = Math.min(pages, Math.max(1, billingPage + step));
+    if(billingPage !== before){ e.preventDefault(); renderBilling(); }
+    return;
+  }
+
+  // The customer list, when it is the list on show rather than one customer
+  if(onView('view-customers')){
+    const pages = document.querySelectorAll('[data-customer-page]').length;
+    if(pages < 2) return;
+    const before = customerPage;
+    customerPage = Math.min(pages, Math.max(1, customerPage + step));
+    if(customerPage !== before){
+      e.preventDefault();
+      renderList();
+    }
+  }
 });
 
 document.getElementById('billingMonthPrev').addEventListener('click', ()=> shiftBillingMonth(-1));
@@ -7022,7 +7097,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 // while anything about a phone itself — its camera, its storage, who is signed
 // in on it, which tabs that person wants — stays on that phone.
 const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'routeOrders',
-                         'reportEmailStyle', 'customerGroups'];
+                         'reportEmailStyle', 'customerGroups', 'photoDefaults'];
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
   'requireSkipPhoto', 'requireSkipReason', 'allowRouteReorder', 'showDosageSuggestions',
   'showWaterBalance', 'autoNotifyAll', 'autoNotifyAllLead', 'showPoolSizeInProfile',
@@ -8845,7 +8920,10 @@ document.getElementById('btnAddLineItem').addEventListener('click', ()=>{
   if(inputs.length) inputs[inputs.length - 3].focus();
 });
 
-function resetWorkOrderForm(){
+// Emptying the form leaves the kind of record alone by default. Finishing a
+// work order used to put it back to Quote, which threw you onto the quote tab
+// when you were most likely to be writing another work order.
+function resetWorkOrderForm(backToQuote){
   const heading = document.getElementById('wcFormHeading');
   if(heading){
     heading.textContent = '';
@@ -8858,7 +8936,7 @@ function resetWorkOrderForm(){
   currentLineItems = [];
   renderLineItems();
   document.getElementById('wcNotes').value = '';
-  document.getElementById('wcType').value = 'Quote';
+  if(backToQuote === true) document.getElementById('wcType').value = 'Quote';
   const d = document.getElementById('wcDate');
   if(d) d.value = '';
   const t = document.getElementById('wcTechnician');
@@ -10477,7 +10555,7 @@ function renderGroupList(){
     const edit = document.createElement('button');
     edit.className = 'btn btn-ghost';
     edit.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;';
-    edit.textContent = 'Who is in it';
+    edit.textContent = 'Customers';
     edit.addEventListener('click', (e)=>{ e.stopPropagation(); openGroupWindow(g); });
     right.appendChild(edit);
 
@@ -10735,6 +10813,23 @@ function openCustomSetup(cust, bodies){
 // Starting one from scratch: clears whoever is loaded and puts the cursor in
 // the search box, so the next thing typed is the customer's name.
 document.addEventListener('DOMContentLoaded', ()=>{
+  const find = document.getElementById('techAssignedSearch');
+  const clear = document.getElementById('techAssignedSearchClear');
+  if(find){
+    find.addEventListener('input', ()=>{
+      techAssignedSearchTerm = find.value;
+      if(clear) clear.style.display = find.value ? 'flex' : 'none';
+      techAssignedPage = 1;
+      if(currentTechDetailId) renderTechAssignedList(currentTechDetailId);
+    });
+  }
+  if(clear) clear.addEventListener('click', ()=>{
+    techAssignedSearchTerm = '';
+    if(find){ find.value = ''; find.focus(); }
+    clear.style.display = 'none';
+    if(currentTechDetailId) renderTechAssignedList(currentTechDetailId);
+  });
+
   const newBtn = document.getElementById('btnNewCustomSetup');
   if(newBtn) newBtn.addEventListener('click', startNewCustomSetup);
 });
@@ -11143,6 +11238,31 @@ function photoRuleFor(tech, step, bodyKey){
   return !!(rules && rules[step] && rules[step][bodyKey] === true);
 }
 
+// ---------- What a photo is for everyone, before exceptions ----------
+// Three states rather than two:
+//   off       the step never appears
+//   optional  the step appears, and can be walked past
+//   required  the step appears and must be done
+//
+// A technician can be raised to required or dropped to off on their own. Left
+// alone, they follow the row.
+const PHOTO_STATES = ['off', 'optional', 'required'];
+
+function photoDefaults(){
+  return lsGet('photoDefaults') || {};
+}
+
+function photoDefaultFor(step){
+  const saved = photoDefaults()[step];
+  return PHOTO_STATES.indexOf(saved) !== -1 ? saved : 'off';
+}
+
+function setPhotoDefault(step, state){
+  const all = photoDefaults();
+  all[step] = state;
+  lsSet('photoDefaults', all);
+}
+
 function setPhotoRule(tech, step, bodyKey, on){
   if(!tech) return;
   tech.photoRules = tech.photoRules || {};
@@ -11406,6 +11526,30 @@ function renderPhotoRequirements(){
     }
     head.appendChild(left);
 
+    // What this photo is for everyone, before any exception
+    const pick = document.createElement('div');
+    pick.dataset.keepsClick = 'default';
+    pick.style.cssText = 'display:flex;gap:4px;flex-shrink:0;';
+    PHOTO_STATES.forEach(state=>{
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn btn-ghost';
+      const on = photoDefaultFor(entry.step) === state;
+      b.style.cssText = 'width:auto;padding:4px 10px;font-size:11.5px;text-transform:capitalize;'
+        + (on ? 'background:var(--teal-deep);color:#fff;border-color:var(--teal-deep);' : '');
+      b.textContent = state;
+      b.title = state === 'off' ? 'Nobody sees this step'
+        : state === 'optional' ? 'Everyone sees it, nobody has to do it'
+        : 'Everyone must do it';
+      b.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        setPhotoDefault(entry.step, state);
+        renderPhotoRequirements();
+      });
+      pick.appendChild(b);
+    });
+    head.appendChild(pick);
+
     const open = document.createElement('span');
     open.dataset.photoStep = entry.step;
     open.style.cssText = 'font-size:12.5px;color:var(--muted);flex-shrink:0;';
@@ -11414,7 +11558,10 @@ function renderPhotoRequirements(){
       : entry.step === 'skip' ? t.requireSkipProof === true
       : PHOTO_BODIES.some(([k]) => entry.bodies[k] && photoRuleFor(t, entry.step, k))
     ).length;
-    open.textContent = (count ? count + (count === 1 ? ' technician' : ' technicians') : 'Nobody yet')
+    const base = photoDefaultFor(entry.step);
+    open.textContent = (count
+        ? count + (count === 1 ? ' technician' : ' technicians') + ' must'
+        : (base === 'required' ? 'Everyone must' : base === 'optional' ? 'Nobody has to' : 'Switched off'))
       + (photoStepOpen === entry.step ? '  \u25b4' : '  \u25be');
     head.appendChild(open);
 
@@ -12057,6 +12204,11 @@ function editTechnician(t){
   techAssignedDayFilter = '';
   const custCard = document.getElementById('techCustomersCard');
   if(custCard) custCard.style.display = 'block';
+  techAssignedSearchTerm = '';
+  const findBox = document.getElementById('techAssignedSearch');
+  if(findBox) findBox.value = '';
+  const clearBox = document.getElementById('techAssignedSearchClear');
+  if(clearBox) clearBox.style.display = 'none';
   try{ renderTechAssignedList(t.id); }catch(e){}
 
   const acct = techAccounts ? techAccounts[t.id] : null;
@@ -12478,13 +12630,23 @@ function renderTechProfile(techId){
     val.textContent = opts.value || opts.placeholder || '—';
     el.appendChild(val);
     if(opts.editor){
-      el.addEventListener('click', ()=>{
+      const open = ()=>{
         if(el.dataset.editing === 'true') return;
         el.dataset.editing = 'true';
         el.classList.remove('editable');
         val.style.display = 'none';
         opts.editor(el, ()=>{ el.dataset.editing = 'false'; refresh(); });
-      });
+      };
+      const want = ()=>{ if(el.dataset.editing !== 'true') profileRowWanted = opts.label; };
+      el.addEventListener('mousedown', want);
+      el.addEventListener('touchstart', want, {passive: true});
+      el.addEventListener('click', open);
+      meta.appendChild(el);
+      if(profileRowWanted === opts.label){
+        profileRowWanted = null;
+        setTimeout(()=>{ try{ el.click(); }catch(e){} }, 0);
+      }
+      return;
     }
     meta.appendChild(el);
   }
@@ -12582,6 +12744,8 @@ function renderTechProfile(techId){
 
 let techAssignedDayFilter = '';
 let techAssignedPage = 1;
+// What is typed into the search above the assigned customers
+let techAssignedSearchTerm = '';
 let techAssignPage = 1;
 
 document.getElementById('techAssignedDay').addEventListener('change', (e)=>{
@@ -12641,15 +12805,23 @@ function renderTechAssignedList(techId){
     techAssignedDayFilter = daySel.value;
   }
 
+  const needle = (techAssignedSearchTerm || '').trim().toLowerCase();
   const shown = assigned.filter(c=>{
-    if(!techAssignedDayFilter) return true;
-    if(techAssignedDayFilter === '__none__') return !DAYS_OF_WEEK.includes(c.day || '');
-    return (c.day || '') === techAssignedDayFilter;
+    if(techAssignedDayFilter === '__none__'){
+      if(DAYS_OF_WEEK.includes(c.day || '')) return false;
+    } else if(techAssignedDayFilter && (c.day || '') !== techAssignedDayFilter){
+      return false;
+    }
+    if(!needle) return true;
+    return ((c.name || '') + ' ' + (c.address || '') + ' ' + (c.city || ''))
+      .toLowerCase().indexOf(needle) !== -1;
   });
 
   container.innerHTML = '';
   if(shown.length === 0){
-    container.innerHTML = emptyState('No customers on that day.');
+    container.innerHTML = emptyState(needle
+      ? 'Nobody assigned to this technician matches that.'
+      : 'No customers on that day.');
     techAssignedPage = 1;
     return;
   }
@@ -13713,6 +13885,54 @@ function historyStorageKey(customerId, type){
   return 'fountainReadings:' + customerId + ':' + type;
 }
 
+// "3 days ago" within the same week, "2 weeks ago" beyond it. Plain enough to
+// read at a glance down a list of bars.
+function howLongAgo(dateStr){
+  const then = new Date(dateStr);
+  if(isNaN(then)) return '';
+  const startOfDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const days = Math.round((startOfDay(new Date()) - startOfDay(then)) / 86400000);
+  if(days < 0) return '';
+  if(days === 0) return 'today';
+  if(days === 1) return 'yesterday';
+  if(days < 7) return days + ' days ago';
+  const weeks = Math.floor(days / 7);
+  return weeks === 1 ? 'a week ago' : weeks + ' weeks ago';
+}
+
+// Which report is open. One at a time: opening another closes it.
+let historyOpenId = null;
+
+// Takes a report off this customer for good. The reading is what the report is
+// made from, so removing it removes the report; there is no copy to fall back
+// on, which is why it is asked about plainly first.
+async function deleteHistoryReport(customerId, type, reading){
+  const when = fmtDate(reading.date);
+  const sure = await confirmDialog(
+    'Delete the service report from ' + when + '?\n\n'
+    + 'It is removed for good, on every device, and cannot be brought back. '
+    + 'The copy already emailed to the customer is not affected.',
+    'Delete for good');
+  if(!sure) return;
+
+  removeHistoryReport(customerId, type, reading.id);
+}
+
+// The removal itself, once it has been agreed to
+function removeHistoryReport(customerId, type, readingId){
+  const key = historyStorageKey(customerId, type);
+  const list = (lsGet(key) || []).filter(r => r && r.id !== readingId);
+  if(!lsSet(key, list)){
+    showToast('Could not delete — storage may be full');
+    return false;
+  }
+  if(historyOpenId === readingId) historyOpenId = null;
+  const cust = customers.find(c => c.id === customerId);
+  showHistory(customerId, cust ? cust.name : '');
+  showToast('Report deleted');
+  return true;
+}
+
 function renderHistorySegControl(customer){
   const container = document.getElementById('historySegControl');
   container.innerHTML = '';
@@ -13742,16 +13962,14 @@ function showHistory(customerId, name){
   const headEl0 = document.getElementById('historyHead');
   if(headEl0) headEl0.style.display = 'none';
 
-  // Reports only appear once a date is entered
-  if(!historyDateFilter){
-    document.getElementById('historyTitle').textContent = 'Service reports';
-    document.getElementById('historyList').innerHTML =
-      emptyState('Enter a date above to pull up that visit\'s service report.');
-    return;
+  // Every report is listed as a bar, newest first. A date still narrows it,
+  // but it is no longer the only way to see anything: the list used to stay
+  // empty until a date was typed in.
+  let list = (lsGet(historyStorageKey(customerId, type)) || []).slice();
+  if(historyDateFilter){
+    list = list.filter(r => (r.date || '').slice(0,10) === historyDateFilter);
   }
-
-  let list = (lsGet(historyStorageKey(customerId, type)) || [])
-    .filter(r => (r.date || '').slice(0,10) === historyDateFilter);
+  list.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
 
   const label = historyTypeLabel(customer, type);
   const cfgType = type === 'spa' ? 'spa' : (type === 'pool' ? 'pool' : 'fountain');
@@ -13771,9 +13989,50 @@ function showHistory(customerId, name){
   }
 
   histList.innerHTML = '';
+  // Only the one opened last time survives a redraw
+  if(historyOpenId && !list.some(x => x.id === historyOpenId)) historyOpenId = null;
+
   list.forEach(r=>{
+    const bar = document.createElement('div');
+    const isOpen = historyOpenId === r.id;
+    bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;'
+      + 'padding:11px 12px;border:1px solid var(--line);border-radius:10px;margin-top:8px;'
+      + 'cursor:pointer;user-select:none;background:' + (isOpen ? 'var(--teal-pale)' : '#fff') + ';';
+    const when = document.createElement('div');
+    when.style.cssText = 'font-size:13.5px;font-weight:600;color:var(--ink);';
+    when.textContent = fmtDate(r.date);
+    const right = document.createElement('div');
+    right.style.cssText = 'display:flex;align-items:center;gap:10px;flex-shrink:0;';
+    const ago = document.createElement('div');
+    ago.style.cssText = 'font-size:12px;color:var(--muted);';
+    ago.textContent = howLongAgo(r.date) + (isOpen ? '  \u25b4' : '  \u25be');
+    right.appendChild(ago);
+
+    const del = document.createElement('button');
+    del.className = 'btn btn-ghost';
+    del.type = 'button';
+    del.textContent = 'Delete';
+    del.title = 'Delete this report for good';
+    del.style.cssText = 'width:auto;padding:4px 10px;font-size:11.5px;color:var(--rust);border-color:#EFC0B4;';
+    del.addEventListener('click', (e)=>{
+      e.stopPropagation();                 // not a press on the bar
+      deleteHistoryReport(customerId, type, r);
+    });
+    right.appendChild(del);
+
+    bar.appendChild(when);
+    bar.appendChild(right);
+    bar.addEventListener('click', ()=>{
+      historyOpenId = isOpen ? null : r.id;
+      showHistory(selectedHistoryCustomerId, name);
+    });
+    histList.appendChild(bar);
+
+    if(!isOpen) return;
+
     const doc = document.createElement('div');
     doc.className = 'report-doc';
+    doc.style.marginTop = '8px';
 
     let html = `
       <div class="report-head">
@@ -13843,6 +14102,20 @@ function showHistory(customerId, name){
       });
       doc.appendChild(wrap);
     }
+
+    // The same again at the foot of the report, so it can be read and then
+    // removed without scrolling back to the bar
+    const footer = document.createElement('div');
+    footer.style.cssText = 'display:flex;justify-content:flex-end;margin-top:14px;'
+      + 'padding-top:12px;border-top:1px solid var(--line);';
+    const delOpen = document.createElement('button');
+    delOpen.className = 'btn btn-ghost';
+    delOpen.type = 'button';
+    delOpen.textContent = 'Delete this report';
+    delOpen.style.cssText = 'width:auto;color:var(--rust);border-color:#EFC0B4;';
+    delOpen.addEventListener('click', ()=> deleteHistoryReport(customerId, type, r));
+    footer.appendChild(delOpen);
+    doc.appendChild(footer);
 
     histList.appendChild(doc);
   });
@@ -15278,7 +15551,7 @@ function switchView(view){
   }
   if(view === 'workcenter'){
     applyWorkCenterMode('quotes');
-    resetWorkOrderForm();
+    resetWorkOrderForm(true);
     document.getElementById('wcCustomer').value = '';
     document.getElementById('scCustomer').value = '';
     populateWorkCenterCustomerSelect(document.getElementById('scCustomer'));
@@ -15299,6 +15572,12 @@ function saveCustomerField(){
   renderList();
 }
 
+// Which row a press was meant for. Opening a row saves the one already open,
+// and saving rebuilds the whole profile, so the press lands on a row that no
+// longer exists and nothing happens until it is pressed again. The label is
+// noted as the press starts, and the rebuilt row opens itself.
+let profileRowWanted = null;
+
 // Renders one labelled row that turns into an editor when tapped
 function profileRow(container, opts){
   const {label, value, placeholder, editor} = opts;
@@ -15316,7 +15595,7 @@ function profileRow(container, opts){
   row.appendChild(valueEl);
 
   if(editor){
-    row.addEventListener('click', (e)=>{
+    const open = ()=>{
       if(row.dataset.editing === 'true') return;
       row.dataset.editing = 'true';
       row.classList.remove('editable');
@@ -15327,9 +15606,20 @@ function profileRow(container, opts){
         if(cust) viewCustomer(cust);
       };
       editor(row, done);
-    });
+    };
+    // Noted before the open row saves and the profile is rebuilt
+    const want = ()=>{ if(row.dataset.editing !== 'true') profileRowWanted = label; };
+    row.addEventListener('mousedown', want);
+    row.addEventListener('touchstart', want, {passive: true});
+    row.addEventListener('click', open);
   }
   container.appendChild(row);
+
+  // The row that was pressed a moment ago, now rebuilt: open it
+  if(editor && profileRowWanted === label){
+    profileRowWanted = null;
+    setTimeout(()=>{ try{ row.click(); }catch(e){} }, 0);
+  }
   return row;
 }
 
@@ -16528,6 +16818,7 @@ function renderList(){
       b.type = 'button';
       b.textContent = p;
       const isCurrent = p === customerPage;
+      b.dataset.customerPage = String(p);
       b.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:\'JetBrains Mono\',monospace;'
         + (isCurrent
           ? 'background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);'
