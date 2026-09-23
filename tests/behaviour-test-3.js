@@ -1404,6 +1404,10 @@ setTimeout(()=>{
   check('the customer list pages with the keys too',
         /if\(onView\('view-customers'\)\)\{/.test(src)
         && /customerPage = Math\.min\(pages, Math\.max\(1, customerPage \+ step\)\);/.test(src));
+  check('but not while a customer profile is open',
+        /const profile = document\.getElementById\('customerProfileCard'\);\s*\n\s*if\(profile && profile\.style\.display !== 'none'\) return;/.test(src));
+  check('and stepping between customers needs a profile actually on screen',
+        /if\(!card \|\| card\.style\.display === 'none'\) return;/.test(src));
   check('its pages are marked so they can be counted',
         /b\.dataset\.customerPage = String\(p\);/.test(src));
   check('and it already had arrows to press', /next\.textContent = '\u203a';/.test(src));
