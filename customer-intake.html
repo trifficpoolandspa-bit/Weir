@@ -250,6 +250,10 @@ input::placeholder{color:#A9BCB9;}
 .profile-meta-row{position:relative;transition:background-color .12s ease;border-radius:8px;}
 .profile-meta-row.editable{cursor:pointer;}
 .profile-meta-row.editable:hover{background:var(--teal-pale);}
+/* A pressable row in a list or window */
+.press-row:hover{background:var(--teal-pale);}
+.pick-row{display:flex;align-items:center;gap:10px;padding:11px 8px;border-bottom:1px solid var(--line);font-size:13.5px;cursor:pointer;margin:0;}
+.pick-row:last-child{border-bottom:none;}
 .profile-meta-row.editable:hover .profile-meta-value{color:var(--teal-deep);}
 .profile-meta-value.placeholder{color:#A9BCB9;font-style:italic;}
 .profile-inline-input{
@@ -870,6 +874,20 @@ input::placeholder{color:#A9BCB9;}
     </div>
   </div>
 
+  <div id="techPickOverlay" style="display:none;position:fixed;inset:0;z-index:320;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
+    <div style="background:var(--card);border-radius:14px;padding:22px;max-width:460px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);max-height:85vh;overflow-y:auto;">
+      <h2 style="font-size:18px;margin:0 0 4px;">Technicians</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Tick everyone this is for. Each one gets their own copy on their route.</p>
+      <div class="btn-row" style="margin-bottom:12px;">
+        <button class="btn btn-ghost" id="btnTechPickAll" type="button" style="width:auto;padding:6px 12px;font-size:12px;">Select all</button>
+        <button class="btn btn-ghost" id="btnTechPickNone" type="button" style="width:auto;padding:6px 12px;font-size:12px;">Clear</button>
+      </div>
+      <div id="techPickList" style="max-height:280px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:0 6px;"></div>
+      <button class="btn btn-primary" id="btnSaveTechPick" style="width:100%;margin-top:14px;">Save</button>
+      <button class="btn btn-ghost" id="btnCancelTechPick" style="width:100%;margin-top:8px;">Cancel</button>
+    </div>
+  </div>
+
   <div id="photoTaskOverlay" style="display:none;position:fixed;inset:0;z-index:320;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
     <div style="background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);">
       <h2 id="photoTaskHeading" style="font-size:18px;margin:0 0 14px;">A photo of your own</h2>
@@ -920,8 +938,7 @@ input::placeholder{color:#A9BCB9;}
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Find a customer, pick one of their bodies of water, and set exactly what gets recorded there. This affects only that customer.</p>
 
       <div class="btn-row" style="margin:0 0 14px;">
-        <button class="btn btn-primary" id="btnNewCustomSetup" style="width:auto;">+ New customer setup</button>
-        <button class="btn btn-ghost" id="btnNewCustomerGroup" style="width:auto;">+ New group</button>
+        <button class="btn btn-primary" id="btnNewCustomerGroup" style="width:auto;">+ New group</button>
       </div>
 
       <div class="field" style="position:relative;">
@@ -941,7 +958,7 @@ input::placeholder{color:#A9BCB9;}
            line below, and each row's text the same distance under its line -->
       <div id="customGroupWrap" style="display:none;margin:14px 0 0;padding-top:14px;border-top:1px solid var(--line);">
         <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Groups</span>
-        <div id="customGroupList" style="margin-top:14px;"></div>
+        <div id="customGroupList" style="margin-top:8px;"></div>
       </div>
 
 
@@ -1062,8 +1079,8 @@ input::placeholder{color:#A9BCB9;}
 
       <div class="btn-row" style="flex-wrap:wrap;gap:8px;">
         <button class="btn btn-primary" id="wcBroadcastOpen" style="width:auto;">Open in your email app</button>
-        <button class="btn btn-primary" id="wcBroadcastGmail" style="width:auto;">Open in Gmail</button>
-        <button class="btn btn-primary" id="wcBroadcastOutlook" style="width:auto;">Open in Outlook</button>
+        <button class="btn btn-ghost" id="wcBroadcastGmail" style="width:auto;">Open in Gmail</button>
+        <button class="btn btn-ghost" id="wcBroadcastOutlook" style="width:auto;">Open in Outlook</button>
         <button class="btn btn-ghost" id="wcBroadcastMore" style="width:auto;display:none;">Send the rest</button>
         <button class="btn btn-ghost" id="wcBroadcastCopy" style="width:auto;">Copy the addresses</button>
         <button class="btn btn-ghost" id="wcBroadcastSave" style="width:auto;display:none;">Save as new</button>
@@ -1107,7 +1124,7 @@ input::placeholder{color:#A9BCB9;}
       </div>
       <div class="field" id="wcTechField">
         <label>Saved technician</label>
-        <select id="wcTechnician"><option value="">Unassigned</option></select>
+        <button type="button" class="btn btn-ghost tech-pick-btn" id="wcTechnician" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;"></button>
       </div>
       <div class="field" id="wcRepeatField">
         <label>Repeat</label>
@@ -1171,7 +1188,7 @@ input::placeholder{color:#A9BCB9;}
 
       <div class="field">
         <label>Saved technician</label>
-        <select id="taskTechnician"></select>
+        <button type="button" class="btn btn-ghost tech-pick-btn" id="taskTechnician" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;"></button>
       </div>
 
       <div class="field">
@@ -5108,8 +5125,13 @@ async function startBroadcast(via){
     'Open ' + route.name + ' with ' + addresses.length + ' customer'
     + (addresses.length === 1 ? '' : 's') + ' in the Bcc line?\n\n'
     + 'It is sent from your own email address, and nobody sees anyone else\u2019s. '
-    + 'Nothing goes until you press send there.',
-    'Open');
+    + 'Nothing goes until you press send there.'
+    // Gmail's compose page can open too tall to scroll, hiding its Send button
+    + (via === 'gmail'
+      ? '\n\nIf you can\u2019t see Gmail\u2019s Send button, zoom out with Ctrl + minus '
+        + '(Cmd + minus on a Mac), or just press Ctrl + Enter (Cmd + Enter on a Mac) to send.'
+      : ''),
+    via === 'app' ? 'Open email app' : 'Open ' + route.name);
   if(!ok) return;
 
   const batches = broadcastBatches(route, addresses, subject, body);
@@ -5175,8 +5197,27 @@ document.getElementById('wcBroadcastOutlook').addEventListener('click', ()=> sta
 // entry go through this, so a new mode can't be added to one and forgotten in
 // the other — which is exactly how the Email section got left on screen while
 // the Quotes tab was selected.
+// Quote, Work Order and Task always open on today, whatever was picked last
+function resetScheduleDates(){
+  ['wcDate', 'taskDate'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.value = taskTodayStr();
+  });
+}
+
 function applyWorkCenterMode(mode){
+  const cameFrom = workCenterMode;
   workCenterMode = mode;
+  if(mode === 'quotes' && cameFrom !== 'quotes') resetScheduleDates();
+  // Coming into Email from anywhere else starts with nobody chosen, so a list
+  // picked for an earlier message can't be sent a new one by mistake.
+  // Pressing Email while already on it keeps the choices.
+  if(mode === 'broadcast' && cameFrom !== 'broadcast'){
+    broadcastPicked.clear();
+    lastBroadcastRemaining = null;
+    const more = document.getElementById('wcBroadcastMore');
+    if(more) more.style.display = 'none';
+  }
 
   document.querySelectorAll('#workCenterTypeControl .history-type-btn').forEach(b=>{
     b.classList.toggle('active', b.dataset.type === mode);
@@ -7247,7 +7288,16 @@ function syncApplyRecord(kind, id, data, deleted){
   }
   if(kind === 'setup'){
     if(deleted || !('value' in data)) return true;
-    return lsSet(id, data.value);
+    if(!lsSet(id, data.value)) return false;
+    // The page works from its own copy of the groups. Left alone it goes on
+    // showing the old list, and the next save writes it back over this one.
+    if(id === 'customerGroups'){
+      try{
+        customerGroups = lsGet('customerGroups') || [];
+        renderGroupList();
+      }catch(e){}
+    }
+    return true;
   }
   const listFor = SYNC_RECORD_LISTS.find(([, k]) => k === kind);
   if(listFor){
@@ -8263,23 +8313,133 @@ function taskRepeatWeeks(){
   return parseInt(mode, 10) || 1;
 }
 
+// ---------- Choosing technicians for a task or work order ----------
+// Several can be ticked. Each one gets their own copy of the task or job, with
+// only their name on it, so each ticks off their own and the phones and the
+// server go on working with one technician per record.
+// The choice lives on the button itself, and the button shows who is chosen
+function pickedTechIds(btn){
+  if(!btn) return [];
+  try{ return JSON.parse(btn.dataset.ids || '[]'); }catch(e){ return []; }
+}
+function setPickedTechIds(btn, ids){
+  if(!btn) return;
+  btn.dataset.ids = JSON.stringify((ids || []).map(String).filter(Boolean));
+  labelTechPickButton(btn);
+}
+function labelTechPickButton(btn){
+  const ids = pickedTechIds(btn);
+  const text = ids.length ? techNamesFor(ids)
+    : (btn.dataset.unassigned === '1' ? 'Unassigned' : 'Choose technicians');
+  btn.innerHTML = '';
+  const span = document.createElement('span');
+  span.textContent = text;
+  span.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+  const arrow = document.createElement('span');
+  arrow.textContent = '\u203a';
+  arrow.style.cssText = 'color:var(--muted);flex-shrink:0;';
+  btn.appendChild(span); btn.appendChild(arrow);
+}
+// Called when the technician list may have changed: drops anyone no longer on
+// it and relabels. withUnassigned offers "Unassigned" as a choice.
+function renderTechPicker(btn, withUnassigned){
+  if(!btn) return;
+  btn.dataset.unassigned = withUnassigned ? '1' : '';
+  const known = technicians.map(t => String(t.id));
+  btn.dataset.ids = JSON.stringify(pickedTechIds(btn).filter(id => known.indexOf(id) !== -1));
+  labelTechPickButton(btn);
+  if(!btn.dataset.wired){
+    btn.dataset.wired = '1';
+    btn.addEventListener('click', ()=> openTechPickWindow(btn));
+  }
+}
+
+// ---------- The window ----------
+let techPickFor = null;
+
+function openTechPickWindow(btn){
+  techPickFor = btn;
+  const list = document.getElementById('techPickList');
+  const picked = pickedTechIds(btn);
+  const withUnassigned = btn.dataset.unassigned === '1';
+  list.innerHTML = '';
+  const rowFor = (value, text, checked)=>{
+    const row = document.createElement('label');
+    row.className = 'pick-row press-row';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.style.margin = '0';
+    box.value = value;
+    box.checked = checked;
+    row.appendChild(box);
+    const name = document.createElement('span');
+    name.textContent = text;
+    row.appendChild(name);
+    list.appendChild(row);
+  };
+  if(withUnassigned) rowFor('', 'Unassigned', !picked.length);
+  if(!technicians.length){
+    list.insertAdjacentHTML('beforeend',
+      '<div style="font-size:12.5px;color:var(--muted);padding:11px 8px;">Add a technician first.</div>');
+  }
+  technicians.forEach(t => rowFor(String(t.id), t.name, picked.indexOf(String(t.id)) !== -1));
+  document.getElementById('techPickOverlay').style.display = 'flex';
+}
+
+function closeTechPickWindow(){
+  document.getElementById('techPickOverlay').style.display = 'none';
+  techPickFor = null;
+}
+
+// Wired straight away, like the rest of the page's buttons: the window's
+// markup comes before this script
+(function wireTechPickWindow(){
+  const list = document.getElementById('techPickList');
+  // Unassigned and the technicians rule each other out, and the list is never
+  // left with nothing ticked. Nothing redraws on a tick.
+  if(list) list.addEventListener('change', (e)=>{
+    const hit = e.target;
+    if(!hit || hit.type !== 'checkbox') return;
+    const all = Array.from(list.querySelectorAll('input[type=checkbox]'));
+    const un = all.find(i => i.value === '');
+    if(!un) return;
+    if(hit === un && un.checked) all.forEach(i=>{ if(i !== un) i.checked = false; });
+    else if(hit !== un && hit.checked) un.checked = false;
+    if(!all.some(i => i.checked)) un.checked = true;
+  });
+  const save = document.getElementById('btnSaveTechPick');
+  if(save) save.addEventListener('click', ()=>{
+    if(!techPickFor) return closeTechPickWindow();
+    const ids = Array.from(list.querySelectorAll('input[type=checkbox]:checked'))
+      .map(i => i.value).filter(v => v !== '');
+    setPickedTechIds(techPickFor, ids);
+    closeTechPickWindow();
+  });
+  const cancel = document.getElementById('btnCancelTechPick');
+  if(cancel) cancel.addEventListener('click', closeTechPickWindow);
+
+  // Everyone, or nobody. Only the ticks change; Save still decides.
+  const boxes = ()=> Array.from(list.querySelectorAll('input[type=checkbox]'));
+  const all = document.getElementById('btnTechPickAll');
+  if(all) all.addEventListener('click', ()=>{
+    boxes().forEach(i=>{ i.checked = i.value !== ''; });
+  });
+  const none = document.getElementById('btnTechPickNone');
+  if(none) none.addEventListener('click', ()=>{
+    boxes().forEach(i=>{ i.checked = i.value === ''; });
+  });
+})();
+
+function techNamesFor(ids){
+  const names = ids.map(id => technicianNameById(id) || 'technician');
+  if(names.length <= 1) return names.join('');
+  return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+}
+
 function renderTaskForm(){
   const techSel = document.getElementById('taskTechnician');
   if(!techSel) return;
-
-  const prevTech = techSel.value;
-  techSel.innerHTML = '';
-  if(!technicians.length){
-    const o = document.createElement('option');
-    o.value = ''; o.textContent = 'Add a technician first';
-    techSel.appendChild(o);
-  }
-  technicians.forEach(t=>{
-    const o = document.createElement('option');
-    o.value = t.id; o.textContent = t.name;
-    techSel.appendChild(o);
-  });
-  if(prevTech) techSel.value = prevTech;
+  renderTechPicker(techSel);
 
   renderTaskChips();
   applyTaskRepeat();
@@ -8291,6 +8451,7 @@ function renderTaskForm(){
 
 function clearTaskForm(){
   editingTaskId = null;
+  setPickedTechIds(document.getElementById('taskTechnician'), []);
   document.getElementById('taskTitle').value = '';
   document.getElementById('taskDetails').value = '';
   document.getElementById('taskDate').value = taskTodayStr();
@@ -8349,7 +8510,7 @@ function renderTaskList(){
       .toLocaleDateString(undefined,{weekday:'short', month:'short', day:'numeric'}) : 'no day set';
     text.innerHTML = '<div style="font-weight:600;font-size:13.5px;">' + t.title + '</div>'
       + '<div style="font-size:11.5px;color:var(--muted);margin-top:3px;">'
-      + when + '  \u00b7  ' + (tech ? tech.name : 'no technician')
+      + when + '  \u00b7  ' + (tech ? tech.name : 'Unassigned')
       + (named.length ? '  \u00b7  ' + (named.length <= 2 ? named.join(', ')
           : named.length + ' customers') : '')
       + (t.everyWeeks ? '  \u00b7  every '
@@ -8367,7 +8528,7 @@ function renderTaskList(){
       editingTaskId = t.id;
       document.getElementById('taskTitle').value = t.title;
       document.getElementById('taskDetails').value = t.details || '';
-      document.getElementById('taskTechnician').value = t.technicianId || '';
+      setPickedTechIds(document.getElementById('taskTechnician'), t.technicianId ? [String(t.technicianId)] : []);
       document.getElementById('taskDate').value = t.date || '';
       taskPicked.clear();
       (t.customerIds || (t.customerId ? [t.customerId] : [])).forEach(id => taskPicked.add(id));
@@ -8426,8 +8587,9 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
   const title = document.getElementById('taskTitle').value.trim();
   if(!title){ showToast('Say what needs doing first'); return; }
 
-  const techId = document.getElementById('taskTechnician').value;
-  if(!techId){ showToast('Choose a technician'); return; }
+  // Like a work order, a task needs at least one technician
+  const techIds = pickedTechIds(document.getElementById('taskTechnician'));
+  if(!techIds.length){ showToast('Choose a technician'); return; }
 
   const date = document.getElementById('taskDate').value;
   if(!date){ showToast('Choose a day'); return; }
@@ -8438,9 +8600,21 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
   const until = document.getElementById('taskRepeatUntil').value;
 
   if(editingTaskId){
+    // This copy goes to the first technician ticked; anyone else ticked gets
+    // their own copy of this one date
     const t = tasks.find(x => x.id === editingTaskId);
-    if(t) Object.assign(t, {title, details, technicianId: techId, date,
-                            customerIds, everyWeeks, until, done: false});
+    if(t){
+      Object.assign(t, {title, details, technicianId: techIds[0], date,
+                        customerIds, everyWeeks, until, done: false});
+      techIds.slice(1).forEach(techId=>{
+        tasks.push({
+          id: 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2,9),
+          title, details, technicianId: techId, date, customerIds,
+          everyWeeks: 0, seriesId: '', done: false,
+          createdAt: new Date().toISOString()
+        });
+      });
+    }
     saveTasks();
     clearTaskForm();
     renderTaskList();
@@ -8465,30 +8639,33 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
     }
   }
 
-  const series = everyWeeks > 0
-    ? 'series_' + Date.now() + '_' + Math.random().toString(36).slice(2,7)
-    : '';
-
-  dates.forEach(dt=>{
-    tasks.push({
-      id: 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2,9),
-      title, details,
-      technicianId: techId,
-      date: dt,
-      customerIds,
-      everyWeeks,
-      seriesId: series,
-      done: false,
-      createdAt: new Date().toISOString()
+  // Each technician has their own copy, and their own series if it repeats
+  techIds.forEach(techId=>{
+    const series = everyWeeks > 0
+      ? 'series_' + Date.now() + '_' + Math.random().toString(36).slice(2,7)
+      : '';
+    dates.forEach(dt=>{
+      tasks.push({
+        id: 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2,9),
+        title, details,
+        technicianId: techId,
+        date: dt,
+        customerIds,
+        everyWeeks,
+        seriesId: series,
+        done: false,
+        createdAt: new Date().toISOString()
+      });
     });
   });
 
   saveTasks();
   clearTaskForm();
   renderTaskList();
+  const who = techIds.length === 1 ? 'the route' : techNamesFor(techIds) + '\u2019s routes';
   showToast(dates.length === 1
-    ? 'Task added to the route'
-    : 'Added ' + dates.length + ' times, every '
+    ? 'Task added to ' + who
+    : 'Added ' + dates.length + ' times to ' + who + ', every '
       + (everyWeeks === 1 ? 'week' : everyWeeks + ' weeks'));
 });
 
@@ -9009,9 +9186,8 @@ function resetWorkOrderForm(backToQuote){
   document.getElementById('wcNotes').value = '';
   if(backToQuote === true) document.getElementById('wcType').value = 'Quote';
   const d = document.getElementById('wcDate');
-  if(d) d.value = '';
-  const t = document.getElementById('wcTechnician');
-  if(t) t.value = '';
+  if(d) d.value = taskTodayStr();
+  setPickedTechIds(document.getElementById('wcTechnician'), []);
   const r = document.getElementById('wcRepeat');
   if(r) r.value = 'none';
   const cr = document.getElementById('wcCustomRepeat');
@@ -9164,22 +9340,19 @@ function applyWorkOrderType(){
 }
 
 function populateWorkOrderTechnicians(){
-  const sel = document.getElementById('wcTechnician');
-  if(!sel) return;
-  const prev = sel.value;
-  sel.innerHTML = '<option value="">Unassigned</option>';
-  technicians.forEach(t=>{
-    const o = document.createElement('option');
-    o.value = t.id; o.textContent = t.name;
-    sel.appendChild(o);
-  });
-  sel.value = prev;
+  renderTechPicker(document.getElementById('wcTechnician'));
 }
 
 document.getElementById('wcType').addEventListener('change', applyWorkOrderType);
 
 document.querySelectorAll('#wcTypeToggle [data-wctype]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
+    // Coming to Task from another kind starts with nobody chosen
+    if(btn.dataset.wctype === 'Task' && document.getElementById('wcType').value !== 'Task'){
+      setPickedTechIds(document.getElementById('taskTechnician'), []);
+    }
+    // Coming to any of the three from another starts on today's date
+    if(btn.dataset.wctype !== document.getElementById('wcType').value) resetScheduleDates();
     document.getElementById('wcType').value = btn.dataset.wctype;
     applyWorkOrderType();
   });
@@ -9349,10 +9522,10 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
   // Work orders get finalized onto a technician's route instead of emailed
   if(type === 'Work Order'){
     const date = document.getElementById('wcDate').value;
-    const techId = document.getElementById('wcTechnician').value;
+    const techIds = pickedTechIds(document.getElementById('wcTechnician'));
     const repeat = document.getElementById('wcRepeat').value;
     if(!date){ showToast('Pick a scheduled date'); return; }
-    if(!techId){ showToast('Assign a technician'); return; }
+    if(!techIds.length){ showToast('Assign a technician'); return; }
 
     const dates = workOrderDates(date, repeat,
       document.getElementById('wcCustomEvery').value,
@@ -9361,7 +9534,8 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
     const jobs = lsGet('scheduledWorkOrders') || [];
     picked.forEach(customer=>{
       const woId = 'wo_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
-      dates.forEach(d=>{
+      // A separate job for each technician, each ticked off by its own person
+      techIds.forEach(techId => dates.forEach(d=>{
         jobs.push({
           id: 'woJob_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
           workOrderId: woId,
@@ -9373,10 +9547,10 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
           notes,
           status: 'scheduled'
         });
-      });
+      }));
       workOrders.push({
         id: woId, customerId: customer.id, type, lineItems: validItems, notes, total,
-        technicianId: techId, date, repeat,
+        technicianId: techIds[0], technicianIds: techIds, date, repeat,
         createdAt: new Date().toISOString(),
         status: 'finalized'
       });
@@ -9386,10 +9560,9 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
     renderWorkOrderHistory();
     resetWorkOrderForm();
 
-    const techName = technicianNameById(techId) || 'technician';
     const visits = dates.length * picked.length;
     showToast('Finalized — ' + visits + (visits === 1 ? ' visit' : ' visits') +
-      ' added to ' + techName + "'s route");
+      ' added to ' + techNamesFor(techIds) + (techIds.length === 1 ? "'s route" : "'s routes"));
     return;
   }
 
@@ -9456,8 +9629,8 @@ function loadWorkOrderIntoForm(w){
     document.getElementById('wcNotes').value = w.notes || '';
 
     populateWorkOrderTechnicians();
-    const techEl = document.getElementById('wcTechnician');
-    if(techEl) techEl.value = w.technicianId || '';
+    setPickedTechIds(document.getElementById('wcTechnician'),
+      (w.technicianIds || (w.technicianId ? [w.technicianId] : [])).map(String));
 
     const repeatEl = document.getElementById('wcRepeat');
     if(repeatEl){
@@ -10594,6 +10767,57 @@ let customCustHideTimer = null;
 let customSnapshot = null;
 
 
+// ---------- Ten to a page on this tab ----------
+// Page numbers built exactly like the customer list's. `wrapStyle` places the
+// block: between the groups and the section below, or under the last customer.
+const CUSTOM_PER_PAGE = 10;
+let groupListPage = 1;
+let customSetupPage = 1;
+
+function buildListPager(page, pages, total, go, wrapStyle){
+  const pager = document.createElement('div');
+  pager.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;' + wrapStyle;
+  const arrowCss = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:var(--card);color:var(--teal-deep);border-radius:8px;cursor:pointer;font-size:14px;';
+
+  const prev = document.createElement('button');
+  prev.type = 'button';
+  prev.textContent = '\u2039';
+  prev.style.cssText = arrowCss;
+  prev.disabled = page === 1;
+  if(prev.disabled) prev.style.opacity = '0.35';
+  prev.addEventListener('click', ()=>{ if(page > 1) go(page - 1); });
+  pager.appendChild(prev);
+
+  for(let p = 1; p <= pages; p++){
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = p;
+    b.dataset.listPage = String(p);
+    b.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:\'JetBrains Mono\',monospace;'
+      + (p === page
+        ? 'background:var(--teal-deep);color:var(--card);border:1px solid var(--teal-deep);'
+        : 'background:var(--card);color:var(--teal-deep);border:1px solid var(--line);');
+    b.addEventListener('click', ()=> go(p));
+    pager.appendChild(b);
+  }
+
+  const next = document.createElement('button');
+  next.type = 'button';
+  next.textContent = '\u203a';
+  next.style.cssText = arrowCss;
+  next.disabled = page === pages;
+  if(next.disabled) next.style.opacity = '0.35';
+  next.addEventListener('click', ()=>{ if(page < pages) go(page + 1); });
+  pager.appendChild(next);
+
+  const start = (page - 1) * CUSTOM_PER_PAGE;
+  const info = document.createElement('div');
+  info.style.cssText = 'width:100%;text-align:center;font-size:11.5px;color:var(--muted);margin-top:8px;';
+  info.textContent = 'Showing ' + (start + 1) + '\u2013' + Math.min(start + CUSTOM_PER_PAGE, total) + ' of ' + total;
+  pager.appendChild(info);
+  return pager;
+}
+
 // ---------- The group window ----------
 let editingGroupId = null;
 let groupPicked = new Set();
@@ -10603,11 +10827,22 @@ function renderGroupList(){
   const box = document.getElementById('customGroupList');
   if(!wrap || !box) return;
   wrap.style.display = customerGroups.length ? 'block' : 'none';
+  // The line above "Customers with a custom setup" is the last group's bottom
+  // line, so it sits straight after it rather than a gap further down
+  const existing = document.getElementById('customExistingWrap');
+  if(existing) existing.style.marginTop = customerGroups.length ? '0' : '18px';
   box.innerHTML = '';
-  customerGroups.forEach(g=>{
+  const groupPages = Math.max(1, Math.ceil(customerGroups.length / CUSTOM_PER_PAGE));
+  groupListPage = Math.min(groupPages, Math.max(1, groupListPage));
+  const shownGroups = customerGroups.slice((groupListPage - 1) * CUSTOM_PER_PAGE,
+                                           groupListPage * CUSTOM_PER_PAGE);
+  shownGroups.forEach((g, gi)=>{
     const row = document.createElement('div');
+    const last = gi === shownGroups.length - 1;
     row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;'
-      + 'padding:14px 0 0;border-top:1px solid var(--line);cursor:pointer;';
+      + 'padding:12px 0;cursor:pointer;'
+      + (last ? '' : 'border-bottom:1px solid var(--line);');
+    row.className = 'press-row';
     row.title = 'Open this group\u2019s setup';
     const left = document.createElement('div');
     left.style.cssText = 'min-width:0;';
@@ -10654,6 +10889,15 @@ function renderGroupList(){
     row.addEventListener('click', ()=> openGroupSetup(g));
     box.appendChild(row);
   });
+
+  // The line above the page numbers closes off the last group, and the line
+  // above "Customers with a custom setup" closes off the page numbers, with
+  // the same room either side
+  if(groupPages > 1){
+    box.appendChild(buildListPager(groupListPage, groupPages, customerGroups.length,
+      p => { groupListPage = p; renderGroupList(); },
+      'padding:14px 0;border-top:1px solid var(--line);'));
+  }
 }
 
 function openGroupWindow(group){
@@ -10900,16 +11144,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
     clear.style.display = 'none';
     if(currentTechDetailId) renderTechAssignedList(currentTechDetailId);
   });
-
-  const newBtn = document.getElementById('btnNewCustomSetup');
-  if(newBtn) newBtn.addEventListener('click', startNewCustomSetup);
 });
-
-function startNewCustomSetup(){
-  closeCustomSetup();
-  const searchEl = document.getElementById('customCustSearch');
-  if(searchEl) searchEl.focus();
-}
 
 function closeCustomSetup(){
   customGroupId = null;
@@ -10952,11 +11187,15 @@ function renderExistingCustomSetups(){
 
   entries.sort((a,b)=> sortKeyName(a.cust.name).localeCompare(sortKeyName(b.cust.name)));
   box.innerHTML = '';
-  entries.forEach(({cust, bodies})=>{
+  const setupPages = Math.max(1, Math.ceil(entries.length / CUSTOM_PER_PAGE));
+  customSetupPage = Math.min(setupPages, Math.max(1, customSetupPage));
+  entries.slice((customSetupPage - 1) * CUSTOM_PER_PAGE, customSetupPage * CUSTOM_PER_PAGE)
+    .forEach(({cust, bodies})=>{
     const isOpen = customCustomerId === cust.id;
 
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);cursor:pointer;';
+    row.className = 'press-row';     // pale teal under the pointer, like a group row
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid var(--line);cursor:pointer;';
 
     // Anywhere on the row opens or closes this customer's setup, but it isn't
     // styled as a button — the name alone carries the visual cue.
@@ -10978,7 +11217,7 @@ function renderExistingCustomSetups(){
       return f ? f.name : 'Extra';
     });
     left.innerHTML = '<div style="font-size:13.5px;font-weight:' + (isOpen ? '700' : '600')
-      + ';color:var(--teal-deep);">' + displayName(cust.name) + (isOpen ? ' \u2039' : '')
+      + ';color:var(--ink);">' + displayName(cust.name) + (isOpen ? ' \u2039' : '')
       + '</div><div style="font-size:11.5px;color:var(--muted);">' + names.join(', ') + '</div>';
 
     row.appendChild(left);
@@ -11001,6 +11240,13 @@ function renderExistingCustomSetups(){
     row.appendChild(del);
     box.appendChild(row);
   });
+
+  // Under the last customer, whose own line sits above them
+  if(setupPages > 1){
+    box.appendChild(buildListPager(customSetupPage, setupPages, entries.length,
+      p => { customSetupPage = p; renderExistingCustomSetups(); },
+      'padding-top:14px;'));
+  }
 }
 
 document.getElementById('btnClearAllCustom').addEventListener('click', async ()=>{
@@ -13974,6 +14220,12 @@ function howLongAgo(dateStr){
 // Which report is open. One at a time: opening another closes it.
 let historyOpenId = null;
 
+// Ten reports to a page. A different customer, body of water or date starts
+// back on page 1; opening, closing or deleting a report keeps the page.
+const HISTORY_PER_PAGE = 10;
+let historyPage = 1;
+let historyPageKey = '';
+
 // Takes a report off this customer for good. The reading is what the report is
 // made from, so removing it removes the report; there is no copy to fall back
 // on, which is why it is asked about plainly first.
@@ -14062,6 +14314,14 @@ function showHistory(customerId, name){
   histList.innerHTML = '';
   // Only the one opened last time survives a redraw
   if(historyOpenId && !list.some(x => x.id === historyOpenId)) historyOpenId = null;
+
+  const pageKey = customerId + '|' + type + '|' + (historyDateFilter || '');
+  if(pageKey !== historyPageKey){ historyPageKey = pageKey; historyPage = 1; }
+  const totalPages = Math.max(1, Math.ceil(list.length / HISTORY_PER_PAGE));
+  historyPage = Math.min(totalPages, Math.max(1, historyPage));
+  const pageStart = (historyPage - 1) * HISTORY_PER_PAGE;
+  const fullCount = list.length;
+  list = list.slice(pageStart, pageStart + HISTORY_PER_PAGE);
 
   list.forEach(r=>{
     const bar = document.createElement('div');
@@ -14190,6 +14450,54 @@ function showHistory(customerId, name){
 
     histList.appendChild(doc);
   });
+
+  // Page numbers, only once there's more than one page. Built the same way as
+  // the customer list's.
+  if(totalPages > 1){
+    const again = ()=> showHistory(customerId, name);
+    const pager = document.createElement('div');
+    pager.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--line);';
+
+    const prev = document.createElement('button');
+    prev.type = 'button';
+    prev.textContent = '\u2039';
+    prev.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:var(--card);color:var(--teal-deep);border-radius:8px;cursor:pointer;font-size:14px;';
+    prev.disabled = historyPage === 1;
+    if(prev.disabled) prev.style.opacity = '0.35';
+    prev.addEventListener('click', ()=>{ if(historyPage > 1){ historyPage--; again(); } });
+    pager.appendChild(prev);
+
+    for(let p = 1; p <= totalPages; p++){
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = p;
+      const isCurrent = p === historyPage;
+      b.dataset.historyPage = String(p);
+      b.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:\'JetBrains Mono\',monospace;'
+        + (isCurrent
+          ? 'background:var(--teal-deep);color:var(--card);border:1px solid var(--teal-deep);'
+          : 'background:var(--card);color:var(--teal-deep);border:1px solid var(--line);');
+      b.addEventListener('click', ()=>{ historyPage = p; again(); });
+      pager.appendChild(b);
+    }
+
+    const next = document.createElement('button');
+    next.type = 'button';
+    next.textContent = '\u203a';
+    next.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:var(--card);color:var(--teal-deep);border-radius:8px;cursor:pointer;font-size:14px;';
+    next.disabled = historyPage === totalPages;
+    if(next.disabled) next.style.opacity = '0.35';
+    next.addEventListener('click', ()=>{ if(historyPage < totalPages){ historyPage++; again(); } });
+    pager.appendChild(next);
+
+    const info = document.createElement('div');
+    info.style.cssText = 'width:100%;text-align:center;font-size:11.5px;color:var(--muted);margin-top:8px;';
+    info.textContent = 'Showing ' + (pageStart + 1) + '\u2013' + Math.min(pageStart + HISTORY_PER_PAGE, fullCount)
+      + ' of ' + fullCount;
+    pager.appendChild(info);
+
+    histList.appendChild(pager);
+  }
 }
 
 async function openHistoryPhotoModal(source, dateLabel){
@@ -15584,6 +15892,10 @@ function switchView(view){
     closeCustomSetup();
     applyChemConfigMode(true);
     renderChemConfigLists();
+    // Groups are drawn on arrival, from the saved list, which a sync may have
+    // changed since the page loaded
+    customerGroups = lsGet('customerGroups') || [];
+    renderGroupList();
   }
   if(view === 'productsservices') renderProductsServicesList();
   if(view === 'customers'){
@@ -15938,6 +16250,9 @@ function inlineAddress(cust){
       const input = document.createElement('input');
       input.className = 'profile-inline-input';
       input.placeholder = ph;
+      // The browser's own address suggestions can't tell these boxes apart and
+      // filled nothing; Weir's list below fills all four
+      input.autocomplete = 'off';
       input.value = cust[field] || '';
       if(styleExtra) input.style.cssText += styleExtra;
       return input;
@@ -15945,7 +16260,16 @@ function inlineAddress(cust){
 
     const street = box('address', 'Street address');
     street.style.marginBottom = '8px';
-    wrap.appendChild(street);
+    // The same suggestions as the Add customer form, in the same list style
+    const streetWrap = document.createElement('div');
+    streetWrap.style.position = 'relative';
+    streetWrap.appendChild(street);
+    const suggest = document.createElement('div');
+    suggest.style.cssText = 'display:none;position:absolute;top:100%;left:0;right:0;z-index:20;'
+      + 'background:var(--card);border:1px solid var(--line);border-radius:9px;margin-top:-4px;'
+      + 'box-shadow:0 4px 14px rgba(11,36,34,0.12);max-height:220px;overflow-y:auto;';
+    streetWrap.appendChild(suggest);
+    wrap.appendChild(streetWrap);
 
     const line = document.createElement('div');
     line.style.cssText = 'display:flex;gap:8px;';
@@ -15986,6 +16310,44 @@ function inlineAddress(cust){
         if(e.key === 'Escape'){ done(); }
       });
     });
+
+    // Typing in the street looks addresses up; choosing one fills all four
+    // boxes. Chosen on the press itself, before the street box loses focus.
+    let lookup = null;
+    const hideSuggest = ()=>{ suggest.style.display = 'none'; suggest.innerHTML = ''; };
+    street.addEventListener('input', ()=>{
+      const query = street.value.trim();
+      clearTimeout(lookup);
+      if(query.length < 4){ hideSuggest(); return; }
+      lookup = setTimeout(async ()=>{
+        const results = await searchAddressSuggestions(query);
+        if(street.value.trim() !== query) return;      // typed on since
+        suggest.innerHTML = '';
+        if(!results || !results.length){ hideSuggest(); return; }
+        results.forEach(r=>{
+          const item = document.createElement('div');
+          item.className = 'press-row';
+          item.textContent = r.display_name;
+          item.style.cssText = 'padding:10px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--line);';
+          const choose = (e)=>{
+            e.preventDefault();
+            e.stopPropagation();
+            const addr = r.address || {};
+            street.value = streetFromResult(r);
+            city.value = addr.city || addr.town || addr.village || addr.hamlet || addr.suburb || '';
+            state.value = addr.state || '';
+            zip.value = addr.postcode || '';
+            hideSuggest();
+            street.focus();
+          };
+          item.addEventListener('mousedown', choose);
+          item.addEventListener('touchstart', choose, {passive: false});
+          suggest.appendChild(item);
+        });
+        suggest.style.display = 'block';
+      }, 550);
+    });
+    street.addEventListener('blur', ()=> setTimeout(hideSuggest, 150));
 
     row.appendChild(wrap);
     street.focus();
