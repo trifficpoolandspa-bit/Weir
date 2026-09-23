@@ -62,7 +62,7 @@ function boot(){
       check('  the email app is opened once, not once per customer', opened.length === 1, String(opened.length));
       const site = fs.readFileSync('customer-intake.html', 'utf8');
       check('  by clicking a link rather than navigating the page',
-            /const link = document\.createElement\('a'\);[\s\S]{0,200}link\.click\(\);/.test(site));
+            /const link = document\.createElement\('a'\);[\s\S]{0,500}link\.click\(\);/.test(site));
       check('  and it says what to do if no email app is set up',
             /Copy the addresses" and paste them/.test(site) || /no email app set up/.test(site));
       const link = opened[0] || '';
@@ -360,11 +360,163 @@ function boot(){
         /&subject=' \+ encodeURIComponent\(subject\)/.test(src)
         && /&body=' \+ encodeURIComponent\(body\)/.test(src));
   check('a long list is handed over in batches rather than cut short',
-        /MAX_LINK = 1800/.test(src) && /Send the rest/.test(src));
+        /maxLink: 1800/.test(src) && /Send the rest/.test(src));
+  check('Gmail and Outlook each have their own button',
+        /id="wcBroadcastGmail"[^>]*>Open in Gmail</.test(src)
+        && /id="wcBroadcastOutlook"[^>]*>Open in Outlook</.test(src));
   check('and the addresses can be copied for a mail app that will not take a link',
         /id="wcBroadcastCopy"/.test(src) && /clipboard\.writeText/.test(src));
   check('nothing is sent by the app itself any more',
         !/for\(const cust of chosen\)[\s\S]{0,200}sendCustomerEmail/.test(src));
+}
+
+
+// ---- Gmail, Outlook and the email app, pressed as the owner presses them ----
+{
+  console.log('\n=== broadcasts: email app, Gmail and Outlook ===');
+  const press = async (w, d, id, clip)=>{
+    w.eval("window.__opened = []; window.__copied = []; confirmDialog = ()=> Promise.resolve(true);"
+      + " openMailApp = (href)=> window.__opened.push(href);");
+    Object.defineProperty(w.navigator, 'clipboard', {configurable: true,
+      value: {writeText: t => { w.__copied.push(t); return clip === false ? Promise.reject(new Error('no')) : Promise.resolve(); }}});
+    d.getElementById(id).click();
+    await new Promise(r => setTimeout(r, 300));
+    return {opened: JSON.parse(w.eval("JSON.stringify(window.__opened)")),
+            copied: JSON.parse(w.eval("JSON.stringify(window.__copied)"))};
+  };
+  const pick = (w, d)=>{
+    w.eval("switchView('workcenter');");
+    Array.from(d.querySelectorAll('#workCenterTypeControl .history-type-btn'))
+      .find(b => b.dataset.type === 'broadcast').click();
+    d.getElementById('wcRecipientAll').click();
+    d.getElementById('wcBroadcastSubject').value = 'Storm warning';
+    d.getElementById('wcBroadcastBody').value = 'Turn your system on.\n\nThank you';
+  };
+  const param = (link, key)=> new URL(link).searchParams.get(key) || '';
+
+  const dom = boot();
+  await new Promise(r => setTimeout(r, 1500));
+  const w = dom.window, d = w.document;
+  try{
+    pick(w, d);
+
+    // Gmail
+    let r = await press(w, d, 'wcBroadcastGmail');
+    const g = r.opened[0] || '';
+    check('  Gmail opens once', r.opened.length === 1, String(r.opened.length));
+    check('  at Gmail\u2019s compose page', g.indexOf('https://mail.google.com/mail/?view=cm') === 0, g.slice(0, 50));
+    check('  with both addresses in Bcc', param(g, 'bcc') === 'alpha@x.com,bravo@x.com', param(g, 'bcc'));
+    check('  and nobody in To', !param(g, 'to'));
+    check('  the subject carried over', param(g, 'su') === 'Storm warning', param(g, 'su'));
+    check('  the message carried over, line breaks and all',
+          param(g, 'body') === 'Turn your system on.\n\nThank you', JSON.stringify(param(g, 'body')));
+    check('  the note says it went to Gmail',
+          d.getElementById('wcBroadcastNote').textContent.indexOf('Opening Gmail') === 0,
+          d.getElementById('wcBroadcastNote').textContent);
+
+    // Outlook
+    r = await press(w, d, 'wcBroadcastOutlook');
+    const o = r.opened[0] || '';
+    check('  Outlook opens once', r.opened.length === 1, String(r.opened.length));
+    check('  at Outlook\u2019s compose page',
+          o.indexOf('https://outlook.office.com/mail/deeplink/compose?') === 0, o.slice(0, 50));
+    check('  with both addresses in Bcc', param(o, 'bcc') === 'alpha@x.com,bravo@x.com', param(o, 'bcc'));
+    check('  and nobody in To', !param(o, 'to'));
+    check('  subject and message carried over',
+          param(o, 'subject') === 'Storm warning' && param(o, 'body').indexOf('Turn your system on') === 0);
+    check('  the addresses are copied too, in case Bcc comes up empty',
+          r.copied[0] === 'alpha@x.com, bravo@x.com', JSON.stringify(r.copied));
+    check('  and the note says to paste them',
+          /paste them into it/.test(d.getElementById('wcBroadcastNote').textContent));
+    r = await press(w, d, 'wcBroadcastOutlook', false);
+    check('  if copying fails it still opens, and says to use Copy the addresses',
+          r.opened.length === 1 && /press "Copy the addresses"/.test(d.getElementById('wcBroadcastNote').textContent));
+
+    // The email app
+    r = await press(w, d, 'wcBroadcastOpen');
+    check('  the email app still gets a Bcc email link',
+          r.opened.length === 1 && r.opened[0].indexOf('mailto:?bcc=') === 0, (r.opened[0] || '').slice(0, 30));
+    check('  and its note points at Gmail and Outlook if nothing opened',
+          /"Open in Gmail", "Open in Outlook"/.test(d.getElementById('wcBroadcastNote').textContent));
+
+    // Nobody chosen
+    d.getElementById('wcRecipientNone') && d.getElementById('wcRecipientNone').click();
+    w.eval("broadcastPicked.clear();");
+    r = await press(w, d, 'wcBroadcastGmail');
+    check('  nobody chosen opens nothing', r.opened.length === 0);
+  }catch(e){ check('  broadcast routes', false, e.message); }
+  w.close();
+}
+
+{
+  console.log('\n=== broadcasts: where each one opens ===');
+  const dom = boot();
+  await new Promise(r => setTimeout(r, 1500));
+  const w = dom.window, d = w.document;
+  try{
+    // The real openMailApp, watching the link it presses
+    w.eval("window.__targets = []; HTMLAnchorElement.prototype.click = function(){ window.__targets.push(this.target); };");
+    w.eval("openMailApp('mailto:?bcc=a%40x.com'); openMailApp('https://mail.google.com/mail/?view=cm');");
+    const t = JSON.parse(w.eval("JSON.stringify(window.__targets)"));
+    check('  an email link stays in this tab, so no blank tab is left behind', t[0] === '', JSON.stringify(t));
+    check('  Gmail and Outlook open in a new tab', t[1] === '_blank', JSON.stringify(t));
+  }catch(e){ check('  where each opens', false, e.message); }
+  w.close();
+}
+
+{
+  console.log('\n=== broadcasts: a long list goes in batches, by the same route ===');
+  const saved = seed.customers;
+  seed.customers = Array.from({length: 400}, (_, i)=> ({id: 'c' + i, name: 'Customer ' + i,
+    active: true, email: 'someone.with.a.long.address.' + i + '@example-pool-customer.com'}));
+  const dom = boot();
+  seed.customers = saved;
+  await new Promise(r => setTimeout(r, 1500));
+  const w = dom.window, d = w.document;
+  try{
+    w.eval("switchView('workcenter');");
+    Array.from(d.querySelectorAll('#workCenterTypeControl .history-type-btn'))
+      .find(b => b.dataset.type === 'broadcast').click();
+    d.getElementById('wcRecipientAll').click();
+    d.getElementById('wcBroadcastBody').value = 'Turn your system on.';
+    w.eval("window.__opened = []; confirmDialog = ()=> Promise.resolve(true);"
+      + " openMailApp = (href)=> window.__opened.push(href);");
+    d.getElementById('wcBroadcastGmail').click();
+    await new Promise(r => setTimeout(r, 300));
+    const more = d.getElementById('wcBroadcastMore');
+    check('  too many for one opens a first batch and offers Send the rest',
+          more.style.display !== 'none', more.style.display);
+    let guard = 0;
+    while(more.style.display !== 'none' && guard++ < 50){
+      more.click();
+      await new Promise(r => setTimeout(r, 50));
+    }
+    const opened = JSON.parse(w.eval("JSON.stringify(window.__opened)"));
+    check('  every batch goes to Gmail, not the email app',
+          opened.every(l => l.indexOf('https://mail.google.com/') === 0));
+    check('  no link is longer than Gmail will take', opened.every(l => l.length <= 7000),
+          String(Math.max(...opened.map(l => l.length))));
+    const all = [].concat(...opened.map(l => new URL(l).searchParams.get('bcc').split(',')));
+    check('  all 400 are sent to, none twice', all.length === 400 && new Set(all).size === 400, String(all.length));
+    check('  and Send the rest goes away after the last batch', more.style.display === 'none');
+
+    // The email app takes much shorter links, so the same list needs more batches
+    w.eval("window.__opened = [];");
+    d.getElementById('wcBroadcastOpen').click();
+    await new Promise(r => setTimeout(r, 300));
+    guard = 0;
+    while(more.style.display !== 'none' && guard++ < 100){
+      more.click();
+      await new Promise(r => setTimeout(r, 30));
+    }
+    const app = JSON.parse(w.eval("JSON.stringify(window.__opened)"));
+    check('  the email app keeps every link under 1800 characters',
+          app.every(l => l.indexOf('mailto:') === 0 && l.length <= 1800),
+          String(Math.max(...app.map(l => l.length))));
+    check('  and still reaches all 400',
+          [].concat(...app.map(l => decodeURIComponent(l.split('bcc=')[1].split('&')[0]).split(','))).length === 400);
+  }catch(e){ check('  batches', false, e.message); }
+  w.close();
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
