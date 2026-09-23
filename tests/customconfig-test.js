@@ -278,6 +278,14 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
           String(w.eval("JSON.stringify(customerGroups)")).slice(0, 120));
     check('and it is listed', d.getElementById('customGroupWrap').style.display !== 'none');
 
+    const page = fs.readFileSync('customer-intake.html', 'utf8');
+    check('groups sit below the customer search, not above it',
+          page.indexOf('id="customCustSearch"') < page.indexOf('id="customGroupWrap"'));
+    check('with the same space above the line as below the heading',
+          /id="customGroupWrap"[^>]*margin:16px 0 0;padding-top:14px/.test(page)
+          && /id="customGroupList" style="margin-top:14px;"/.test(page));
+    check('and the button says what it opens', /edit\.textContent = 'Customers';/.test(page));
+
     // Editing the group reaches everyone in it
     w.eval("openGroupSetup(customerGroups[0]);");
     w.eval("customWorking = {chemicals:[{key:'chlorine',label:'Salt reading',unit:'ppm'}], dosages:[]};"

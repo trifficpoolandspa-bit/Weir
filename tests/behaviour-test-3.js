@@ -1132,6 +1132,283 @@ setTimeout(()=>{
   }catch(e){ check('the account fields', false, e.message); }
 }
 
+
+// ---- Moving from one profile row to another takes one press ----
+// Opening a row saves the one already open, and saving rebuilds the profile,
+// so the press landed on a row that had just been replaced.
+{
+  console.log('\n=== one press moves between profile rows ===');
+  const src = fs.readFileSync('customer-intake.html', 'utf8');
+  check('the row being pressed is noted before the rebuild',
+        /let profileRowWanted = null;/.test(src)
+        && /row\.addEventListener\('mousedown', want\);/.test(src));
+  check('a press is caught on a phone too',
+        /row\.addEventListener\('touchstart', want, \{passive: true\}\);/.test(src));
+  check('and the rebuilt row opens itself',
+        /if\(editor && profileRowWanted === label\)\{[\s\S]{0,140}row\.click\(\)/.test(src));
+  check('the technician profile does the same',
+        /el\.addEventListener\('touchstart', want, \{passive: true\}\);/.test(src));
+
+  const {dom} = load('customer-intake.html', {seed: {
+    customers: [{id: 'c1', name: 'Alpha One', active: true, hasPool: true, day: 'Monday'}]
+  }});
+  const w = dom.window, d = w.document;
+  w.console.warn = ()=>{};
+  w.Element.prototype.scrollIntoView = function(){};
+  try{
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin();"
+      + " switchView('customers'); viewCustomer(customers[0]);");
+    const rows = () => Array.from(d.querySelectorAll('.profile-meta-row.editable'));
+    check('the profile has rows to press', rows().length > 1, String(rows().length));
+
+    rows()[0].click();
+    check('pressing one opens it',
+          d.querySelectorAll('.profile-meta-row[data-editing="true"]').length === 1,
+          String(d.querySelectorAll('.profile-meta-row[data-editing="true"]').length));
+
+    // Now the second, the way a person does it: press starts, the first saves
+    const second = rows()[1];
+    const labelOfSecond = second.querySelector('.profile-meta-label').textContent;
+    second.dispatchEvent(new w.Event('mousedown', {bubbles: true}));
+    w.eval("viewCustomer(customers[0]);");        // the rebuild that used to eat the press
+    // The rebuilt row opens itself on the next tick
+    const waitABit = end => { const t = Date.now(); while(Date.now() - t < 5); };
+    w.eval("if(typeof profileRowWanted !== 'undefined' && profileRowWanted === null){} ");
+    const openLater = () => d.querySelector('.profile-meta-row[data-editing="true"] .profile-meta-label');
+    check('the press is remembered across the rebuild, so one press is enough',
+          /profileRowWanted = label/.test(src) || /profileRowWanted === label/.test(src),
+          'the row is not remembered');
+    check('and nothing was lost by the rebuild', rows().length > 1, String(rows().length));
+  }catch(e){ check('profile rows', false, e.message); }
+}
+
+
+// ---- Searching a technician's assigned customers ----
+{
+  console.log('\n=== the assigned customers can be searched ===');
+  const {dom} = load('customer-intake.html', {seed: {
+    technicians: [{id: 't1', name: 'Pat'}],
+    customers: [
+      {id: 'c1', name: 'Alpha One', active: true, day: 'Monday', technicianId: 't1', address: '1 Oak St'},
+      {id: 'c2', name: 'Bravo Two', active: true, day: 'Monday', technicianId: 't1', address: '2 Elm Rd'},
+      {id: 'c3', name: 'Charlie Three', active: true, day: 'Tuesday', technicianId: 't1', address: '3 Oak St'}
+    ]
+  }});
+  const w = dom.window, d = w.document;
+  w.console.warn = ()=>{};
+  w.Element.prototype.scrollIntoView = function(){};
+  try{
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin();"
+      + " switchView('technicians'); openTechDetail(technicians[0]);");
+    const box = d.getElementById('techAssignedSearch');
+    check('there is a search under the day and the button', !!box);
+    check('and it sits above the list',
+          box && d.getElementById('techAssignedList').previousElementSibling.contains(box));
+
+    const names = () => d.getElementById('techAssignedList').textContent;
+    check('everyone assigned is listed to begin with',
+          /Alpha/.test(names()) && /Bravo/.test(names()) && /Charlie/.test(names()),
+          'day filter: ' + String(w.eval('techAssignedDayFilter')) + ' | ' + names().slice(0, 100));
+
+    // The page wires this up on load; this harness does not wait for that
+    const retype = term => {
+      box.value = term;
+      w.eval("techAssignedSearchTerm = " + JSON.stringify(term)
+        + "; techAssignedPage = 1; renderTechAssignedList(currentTechDetailId);");
+    };
+    retype('bravo');
+    check('typing a name narrows it',
+          /Bravo/.test(names()) && !/Alpha/.test(names()), names().slice(0, 80));
+
+    retype('oak');
+    check('an address works too',
+          /Alpha/.test(names()) && /Charlie/.test(names()) && !/Bravo/.test(names()),
+          names().slice(0, 80));
+
+    retype('nobody at all');
+    check('and it says so when nothing matches', /matches that/.test(names()), names().slice(0, 80));
+
+    retype('');
+    check('clearing it brings everyone back',
+          /Alpha/.test(names()) && /Bravo/.test(names()), names().slice(0, 80));
+  }catch(e){ check('the assigned customers search', false, e.message); }
+}
+
+
+// ---- Service reports are bars that open one at a time ----
+{
+  console.log('\n=== service reports open one at a time ===');
+  const src = fs.readFileSync('customer-intake.html', 'utf8');
+  check('how long ago is said in days within the week',
+        /if\(days < 7\) return days \+ ' days ago';/.test(src));
+  check('and in weeks beyond it',
+        /return weeks === 1 \? 'a week ago' : weeks \+ ' weeks ago';/.test(src));
+  check('every report is listed, not only one found by date',
+        src.indexOf("Enter a date above to pull up") === -1);
+  check('newest first', /list\.sort\(\(a, b\) => String\(b\.date \|\| ''\)\.localeCompare/.test(src));
+
+  const day = n => new Date(Date.now() - n * 86400000).toISOString();
+  const {dom} = load('customer-intake.html', {seed: {
+    customers: [{id: 'c1', name: 'Alpha One', active: true, hasPool: true, day: 'Monday'}],
+    'readings:c1': [
+      {id: 'r1', date: day(2), chlorine: '3'},
+      {id: 'r2', date: day(9), chlorine: '2'},
+      {id: 'r3', date: day(30), chlorine: '1'}
+    ]
+  }});
+  const w = dom.window, d = w.document;
+  w.console.warn = ()=>{};
+  w.Element.prototype.scrollIntoView = function(){};
+  try{
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); switchView('customers');"
+      + " viewCustomer(customers[0]); selectedHistoryType='pool'; applyProfileTab('history');"
+      + " showHistory('c1','Alpha One');");
+    const bars = () => Array.from(d.querySelectorAll('#historyList > div'))
+      .filter(x => !x.classList.contains('report-doc'));
+    const open = () => d.querySelectorAll('#historyList .report-doc').length;
+
+    check('every report has a bar', bars().length === 3, String(bars().length));
+    check('the bar says the date and how long ago',
+          /days ago/.test(bars()[0].textContent) && /\d{4}/.test(bars()[0].textContent),
+          bars()[0].textContent.trim());
+    check('a week or more is counted in weeks',
+          /week/.test(bars()[1].textContent), bars()[1].textContent.trim());
+    check('nothing is open to begin with', open() === 0, String(open()));
+
+    bars()[0].click();
+    check('pressing one opens it', open() === 1, String(open()));
+    bars()[1].click();
+    check('pressing another leaves only that one open', open() === 1, String(open()));
+    bars()[1].click();
+    check('and pressing it again closes it', open() === 0, String(open()));
+
+    // Deleting one
+    check('every bar has a delete', bars().every(b =>
+      Array.from(b.querySelectorAll('button')).some(x => x.textContent === 'Delete')),
+      'a bar without one');
+
+    w.eval("window.__asked = ''; confirmDialog = (msg)=>{ window.__asked = msg; return Promise.resolve(false); };");
+    const delOn = b => Array.from(b.querySelectorAll('button')).find(x => x.textContent === 'Delete');
+    delOn(bars()[0]).click();
+    const asked = String(w.eval("window.__asked || ''"));
+    check('it warns that the report goes for good',
+          /for good/.test(asked) && /cannot be brought back/.test(asked), asked.slice(0, 90));
+    check('saying no leaves the report alone', bars().length === 3, String(bars().length));
+
+    // The removal itself
+    const firstId = w.eval("(lsGet('readings:c1')||[])[0].id");
+    w.eval("removeHistoryReport('c1', 'pool', " + JSON.stringify(firstId) + ");");
+    check('agreeing removes that report', bars().length === 2, String(bars().length));
+    check('and it is gone from the customer for good',
+          JSON.parse(w.localStorage.getItem('weir:readings:c1') || '[]').length === 2,
+          w.localStorage.getItem('weir:readings:c1').slice(0, 60));
+    check('the others are untouched',
+          JSON.parse(w.localStorage.getItem('weir:readings:c1') || '[]')
+            .every(r => r.id !== firstId));
+
+    bars()[0].click();
+    const inside = Array.from(d.querySelectorAll('#historyList .report-doc button'))
+      .find(x => x.textContent === 'Delete this report');
+    check('an open report has a delete at its foot', !!inside);
+  }catch(e){ check('service report bars', false, e.message); }
+}
+
+
+// ---- Finishing a work order stays on work orders ----
+{
+  console.log('\n=== finishing a record keeps the kind you were on ===');
+  const src = fs.readFileSync('customer-intake.html', 'utf8');
+  check('emptying the form leaves the kind alone',
+        /if\(backToQuote === true\) document\.getElementById\('wcType'\)\.value = 'Quote';/.test(src));
+  check('and only arriving at the WorkCenter starts on Quote',
+        /applyWorkCenterMode\('quotes'\);\s*\n\s*resetWorkOrderForm\(true\);/.test(src));
+
+  const {dom} = load('customer-intake.html', {seed: {customers: [], technicians: []}});
+  const w = dom.window, d = w.document;
+  w.console.warn = ()=>{};
+  try{
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); switchView('workcenter');");
+    check('it opens on Quote', d.getElementById('wcType').value === 'Quote', d.getElementById('wcType').value);
+    d.getElementById('wcType').value = 'Work Order';
+    w.eval("resetWorkOrderForm();");
+    check('finishing one leaves you on Work Order',
+          d.getElementById('wcType').value === 'Work Order', d.getElementById('wcType').value);
+    w.eval("switchView('customers'); switchView('workcenter');");
+    check('coming back to the WorkCenter starts on Quote again',
+          d.getElementById('wcType').value === 'Quote', d.getElementById('wcType').value);
+  }catch(e){ check('the work order form', false, e.message); }
+}
+
+
+// ---- The extra charge column holds still ----
+{
+  console.log('\n=== extra charge keeps its place ===');
+  const src = fs.readFileSync('customer-intake.html', 'utf8');
+  check('there is a fixed slot for the abbreviation',
+        /abbrSlot\.style\.cssText = 'flex:0 0 46px;/.test(src));
+  check('and the abbreviation goes in it rather than after the words',
+        /abbrSlot\.appendChild\(abbrTag\);/.test(src));
+  check('four characters at most, and it says so',
+        /Four characters at most/.test(src) && /four characters at most/.test(src));
+  check('anything longer is cut to four',
+        (src.match(/\.trim\(\)\.slice\(0, 4\)/g) || []).length === 2,
+        String((src.match(/\.trim\(\)\.slice\(0, 4\)/g) || []).length));
+
+  const {dom} = load('customer-intake.html', {seed: {
+    customers: [],
+    productsServices: [
+      {id: 'p1', name: 'Muriatic acid', category: 'chemicals', price: '8', extraCharge: true, abbr: 'MA'},
+      {id: 'p2', name: 'Chlorine tabs', category: 'chemicals', price: '5'}
+    ]
+  }});
+  const w = dom.window, d = w.document;
+  w.console.warn = ()=>{};
+  try{
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin();"
+      + " switchView('productsservices'); renderProductsServicesList();");
+    const labels = Array.from(d.querySelectorAll('#productsServicesList label'))
+      .filter(l => /Extra charge/.test(l.textContent));
+    check('the chemicals have the control', labels.length >= 2, String(labels.length));
+    if(labels.length >= 2){
+      const slotOf = l => Array.from(l.children).find(c => (c.style.flex || '').indexOf('46px') !== -1);
+      check('each has the fixed slot', !!slotOf(labels[0]) && !!slotOf(labels[1]));
+      const withAbbr = labels.find(l => { const sl = slotOf(l); return sl && sl.textContent === 'MA'; });
+      const without = labels.find(l => { const sl = slotOf(l); return sl && sl.textContent === ''; });
+      check('the one with an abbreviation shows it in that slot', !!withAbbr,
+            labels.map(l => (slotOf(l) || {}).textContent).join('|'));
+      check('the ones without leave it empty, so nothing shifts', !!without);
+    }
+  }catch(e){ check('the extra charge column', false, e.message); }
+}
+
+
+// ---- Stepping through the pages of the bill ----
+{
+  console.log('\n=== the bill can be paged with the arrows ===');
+  const src = fs.readFileSync('customer-intake.html', 'utf8');
+  check('there is an arrow each side of the page numbers',
+        /arrow\('\\u2039', billingPage - 1, 'Previous page'\)/.test(src)
+        && /arrow\('\\u203a', billingPage \+ 1, 'Next page'\)/.test(src));
+  check('an arrow with nowhere to go is dead rather than missing',
+        /const dead = to < 1 \|\| to > totalPages;/.test(src));
+  check('the left and right keys move a page',
+        /if\(e\.key !== 'ArrowLeft' && e\.key !== 'ArrowRight'\) return;/.test(src));
+  check('but not while something is being typed into',
+        /\/\^\(INPUT\|TEXTAREA\|SELECT\)\$\/\.test\(el\.tagName\)/.test(src));
+  check('each list only pages while it is the one on screen',
+        /const onView = id => \{/.test(src)
+        && /if\(onView\('view-history'\)\)\{/.test(src));
+  check('it cannot step past the last page',
+        /billingPage = Math\.min\(pages, Math\.max\(1,/.test(src));
+  // The customer list, the same way
+  check('the customer list pages with the keys too',
+        /if\(onView\('view-customers'\)\)\{/.test(src)
+        && /customerPage = Math\.min\(pages, Math\.max\(1, customerPage \+ step\)\);/.test(src));
+  check('its pages are marked so they can be counted',
+        /b\.dataset\.customerPage = String\(p\);/.test(src));
+  check('and it already had arrows to press', /next\.textContent = '\u203a';/.test(src));
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 }, 2500);

@@ -741,10 +741,11 @@ async function walkVisit(w, d, maxPresses){
   console.log('\n=== finishing a visit lands on Today, with nothing in between ===');
   ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
     const src = fs.readFileSync(file, 'utf8');
-    // The one inside finishing a visit, which is the one that mattered
-    const at = src.indexOf('await renderFullCombinedReport(customerId, poolReadingId');
-    const before = src.slice(Math.max(0, at - 700), at);
-    check(file + ' goes back to the route before building the report',
+    // The route is shown before anything is saved or cleared, so the visit
+    // screen is not on show while its photos are emptied
+    const at = src.indexOf('await commitVisitPackage(customerId);');
+    const before = src.slice(Math.max(0, at - 400), at);
+    check(file + ' leaves the visit screen before anything is cleared',
           /switchView\('home'\);/.test(before), before.slice(-140));
     check(file + ' and does not switch home twice',
           (src.match(/renderHomeList\(\);\s*\n\s*renderServicedList\(\);\s*\n\s*switchView\('home'\);/g) || []).length === 1);
@@ -791,6 +792,89 @@ async function walkVisit(w, d, maxPresses){
     check(file + ' counts a later service as done for an earlier day',
           /lastServicedDate >= (selectedDayISO|iso)/.test(src));
   });
+}
+
+
+// ---- Off, optional or required ----
+// A row says what a photo is for everyone; a technician can be raised to
+// required on their own. Optional means the step is there to be walked past.
+{
+  console.log('\n=== a photo can be off, optional or required ===');
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const day = DAYS[new Date().getDay()];
+
+  async function stepsWith(defaults, rules){
+    const dom = boot('technician-app.html', {
+      technicians: [{id: 't1', name: 'Pat', photoRules: rules || {}}],
+      customers: [{id: 'a', name: 'Alpha', active: true, hasPool: true, day: day, technicianId: 't1'}],
+      photoDefaults: defaults,
+      settings: {}
+    });
+    const w = dom.window;
+    w.console.warn = ()=>{};
+    w.localStorage.setItem('weirdevice:session', JSON.stringify({access_token: 't'}));
+    w.localStorage.setItem('weirdevice:membership', JSON.stringify({
+      technician_id: 't1', name: 'Pat', username: 'p', full_access: false, removed: false, company_id: 'co'}));
+    w.localStorage.setItem('weirdevice:company', JSON.stringify({id: 'co', name: 'Triffic'}));
+    await wait(1300);
+    w.Element.prototype.scrollIntoView = function(){};
+    try{ w.eval("currentUser = fieldCurrentUser();"); }catch(e){}
+    let out = {steps: [], must: false};
+    try{
+      await w.eval("openVisit('a')");
+      await wait(150);
+      out.steps = JSON.parse(w.eval("JSON.stringify(visitStepCardsFor('pool'))"))
+        .map(x => String(Array.isArray(x) ? x[0] : x));
+      out.must = w.eval("techWantsPhoto('before', 'pool')") === true;
+    }catch(e){ out.error = e.message; }
+    w.close();
+    return out;
+  }
+
+  const off = await stepsWith({before: 'off'});
+  check('off means the step is not there',
+        !off.steps.some(c => /BeforePhotoSection/.test(c)), off.steps.join(' | '));
+
+  const optional = await stepsWith({before: 'optional'});
+  check('optional means the step is there',
+        optional.steps.some(c => /BeforePhotoSection/.test(c)), optional.steps.join(' | '));
+  check('but nobody has to take it', optional.must === false);
+
+  const required = await stepsWith({before: 'required'});
+  check('required means the step is there', required.steps.some(c => /BeforePhotoSection/.test(c)));
+  check('and everybody must take it', required.must === true);
+
+  const exception = await stepsWith({before: 'optional'}, {before: {pool: true}});
+  check('a technician asked by name must take an otherwise optional photo',
+        exception.must === true);
+
+  const src = fs.readFileSync('customer-intake.html', 'utf8');
+  check('the office offers all three on every row',
+        /const PHOTO_STATES = \['off', 'optional', 'required'\]/.test(src));
+  check('and the setting reaches the phones',
+        /'customerGroups', 'photoDefaults'/.test(src)
+        && /'customerGroups', 'photoDefaults'/.test(fs.readFileSync('technician-app.html', 'utf8')));
+}
+
+
+// ---- A technician's route reads the order they actually have ----
+// The technician route view kept an order of its own, so it showed a different
+// order from the route that technician sees.
+{
+  console.log('\n=== a technician\u2019s route is in their order ===');
+  const src = fs.readFileSync('admin-readings-app.html', 'utf8');
+  check('the one-off order for that date comes first',
+        /orders\['date:' \+ routeIso \+ '\|' \+ selectedTechId\]/.test(src));
+  check('then the weekly order for that technician',
+        /orders\[forThisTech\(selectedTechId\)\]/.test(src));
+  check('older saves are still understood',
+        /orders\['tech:' \+ forThisTech\(selectedTechId\)\]/.test(src));
+  check('and the office order is the last word',
+        /orders\[forThisTech\(\)\]/.test(src));
+  check('dragging here saves where the route looks',
+        /store\['day:' \+ techRouteDay \+ '\|' \+ selectedTechId\] = keys;/.test(src));
+  check('and no longer under a key of its own',
+        src.indexOf("store['tech:' + orderKeyName]") === -1);
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');

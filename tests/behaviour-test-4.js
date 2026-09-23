@@ -968,11 +968,14 @@ console.log('\n=== Photo requirements do not depend on Settings ===');
   ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
     const src = fs.readFileSync(file, 'utf8');
     // A step appears when somebody is asked for that photo, and not otherwise
-    check(file + ' shows a photo step only when one is asked for',
-          /function showsBeforePhotoStep\(type\)\{[\s\S]{0,240}techWantsPhoto\('before', type\)/.test(src));
+    // Off, optional or required: the step appears for the last two
+    check(file + ' shows a photo step when it is optional or required',
+          /function showsBeforePhotoStep\(type\)\{[\s\S]{0,120}photoStepShows\('before', type\)/.test(src));
     check(file + ' and the same for the after photo',
-          /function showsAfterPhotoStep\(type\)\{[\s\S]{0,240}techWantsPhoto\('after', type\)/.test(src));
-    check(file + ' and the gate step', /const stepOn = true;/.test(src));
+          /function showsAfterPhotoStep\(type\)\{[\s\S]{0,120}photoStepShows\('after', type\)/.test(src));
+    check(file + ' with a technician asked by name counting as required',
+          /if\(rules && rules\[step\] && rules\[step\]\[key\] === true\) return true;/.test(src));
+    check(file + ' and the gate step', /const stepOn = photoStepShows\('gate', 'pool'\);/.test(src));
     check(file + ' with nothing left reading the old switches',
           !/appSettings\.show(Before|After)Photos !== false/.test(src)
           && !/appSettings\.showGatePhoto !== false/.test(src));
@@ -2114,8 +2117,13 @@ async function serverTechniciansTab(){
       check('and no Technicians buttons any more',
             Array.from(d.querySelectorAll('#photoRequireRows button'))
               .filter(b => /Technicians/.test(b.textContent)).length === 0);
-      check('each row says how many technicians it applies to',
-            /Nobody yet|technician/.test(rowHeads()[0].textContent), rowHeads()[0].textContent);
+      check('each row says what it is for everyone, and who differs',
+            /Switched off|Nobody has to|Everyone must|technician/.test(rowHeads()[0].textContent),
+            rowHeads()[0].textContent);
+      check('and offers off, optional and required',
+            ['off', 'optional', 'required'].every(state =>
+              Array.from(rowHeads()[0].querySelectorAll('button')).some(b => b.textContent === state)),
+            Array.from(rowHeads()[0].querySelectorAll('button')).map(b => b.textContent).join(','));
       const firstName = rowHeads()[0].querySelector('div').firstElementChild;
       const src2 = fs.readFileSync('customer-intake.html', 'utf8');
       check('a line separates the heading from the first requirement',
@@ -3414,6 +3422,25 @@ async function serverFieldSignIn(){
         check('even when there is a phone number too', r.hasPhone === 'email', routes);
         const textOnly = phone.w.eval("headsUpRouteFor({phone: '555'})");
         check('and a customer with only a phone still gets a text', textOnly === 'text', textOnly);
+
+        // With both on file and nothing chosen, the technician is asked
+        phone.w.eval("window.__asked = 0; sendOnMyWay = ()=>{ window.__asked = 'text'; };");
+        const both = phone.d.body;
+        phone.w.eval("dispatchHeadsUp({id:'z1', name:'Both Ways', email:'b@x.test', phone:'555'});");
+        await sleep(200);
+        const box = Array.from(phone.d.querySelectorAll('.confirm-box'))
+          .find(b => /Tell Both Ways how/.test(b.textContent));
+        check('a customer with both on file is asked which way', !!box,
+              box ? box.textContent.slice(0, 40) : 'no window');
+        if(box){
+          check('offering email', !!box.querySelector('#huEmail'));
+          check('and a text', !!box.querySelector('#huText'));
+          box.querySelector('#huText').click();
+          await sleep(200);
+          check('choosing text sends the text',
+                String(phone.w.eval("window.__asked")) === 'text',
+                String(phone.w.eval("window.__asked")));
+        }
 
         srv.offline = true;
         const noSignal = await phone.w.eval(`(async ()=>{
