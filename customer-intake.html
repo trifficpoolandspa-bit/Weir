@@ -937,7 +937,9 @@ input::placeholder{color:#A9BCB9;}
 
       <!-- Groups sit under the customer search, and the line above them is the
            same distance from the heading as the heading is from the list -->
-      <div id="customGroupWrap" style="display:none;margin:16px 0 0;padding-top:14px;border-top:1px solid var(--line);">
+      <!-- The heading sits the same distance from the line above it as from the
+           line below, and each row's text the same distance under its line -->
+      <div id="customGroupWrap" style="display:none;margin:14px 0 0;padding-top:14px;border-top:1px solid var(--line);">
         <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Groups</span>
         <div id="customGroupList" style="margin-top:14px;"></div>
       </div>
@@ -4456,8 +4458,11 @@ document.addEventListener('keydown', (e)=>{
     return;
   }
 
-  // The customer list, when it is the list on show rather than one customer
+  // The customer list, and only while the list is what is on show. With a
+  // profile open the arrows step between customers instead.
   if(onView('view-customers')){
+    const profile = document.getElementById('customerProfileCard');
+    if(profile && profile.style.display !== 'none') return;
     const pages = document.querySelectorAll('[data-customer-page]').length;
     if(pages < 2) return;
     const before = customerPage;
@@ -10536,7 +10541,7 @@ function renderGroupList(){
   customerGroups.forEach(g=>{
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;'
-      + 'padding:9px 0;border-top:1px solid var(--line);cursor:pointer;';
+      + 'padding:14px 0 0;border-top:1px solid var(--line);cursor:pointer;';
     row.title = 'Open this group\u2019s setup';
     const left = document.createElement('div');
     left.style.cssText = 'min-width:0;';
@@ -14202,10 +14207,14 @@ document.addEventListener('keydown', (e)=>{
   // A modifier means the person wants the browser's own behaviour
   if(e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
 
-  // Only on an open customer profile
+  // Only on an open customer profile. Going by the remembered id alone meant
+  // this still fired back on the list, where it opened a customer and then
+  // walked through them one by one.
   const view = document.getElementById('view-customers');
   if(!view || !view.classList.contains('active')) return;
   if(!profileCustomerId) return;
+  const card = document.getElementById('customerProfileCard');
+  if(!card || card.style.display === 'none') return;
 
   // Not while a dialog or picker is up
   if(document.querySelector('.confirm-overlay')) return;
