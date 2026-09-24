@@ -3767,7 +3767,6 @@ function openProductServiceModal(){
   });
 
   overlay.querySelector('#psCancel').addEventListener('click', cleanup);
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) cleanup(); });
   nameEl.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') priceEl.focus(); });
 }
 
@@ -3805,7 +3804,6 @@ function openScheduleServiceModal(item){
 
   const cleanup = ()=> document.body.removeChild(overlay);
   overlay.querySelector('#schCancel').addEventListener('click', cleanup);
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) cleanup(); });
 
   overlay.querySelector('#schSave').addEventListener('click', ()=>{
     const custId = sel.value;
@@ -5634,7 +5632,6 @@ function openGroupCustomerPicker(g){
   const cleanup = ()=>{ document.body.removeChild(overlay); renderFilterGroups(); };
   overlay.querySelector('#gcpDone').addEventListener('click', cleanup);
   overlay.querySelector('#gcpCancel').addEventListener('click', cleanup);
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) cleanup(); });
 }
 
 
@@ -5768,7 +5765,6 @@ async function openFilterEmailEditor(onSaved){
 
   const close = ()=>{ if(overlay.parentNode) document.body.removeChild(overlay); };
   cancel.addEventListener('click', close);
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) close(); });
 
   reset.addEventListener('click', ()=>{
     sub.value = DEFAULT_FILTER_EMAIL.subject;
@@ -5975,7 +5971,6 @@ document.getElementById('btnEmailPreview').addEventListener('click', ()=>{
 
   const shut = ()=>{ if(overlay.parentNode) document.body.removeChild(overlay); };
   close.addEventListener('click', shut);
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) shut(); });
 });
 
 
@@ -6047,7 +6042,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const typed = document.getElementById('forgotEmail');
   if(typed) typed.addEventListener('keydown', e=>{ if(e.key === 'Enter') sendPasswordReset(); });
   const box = document.getElementById('forgotScreen');
-  if(box) box.addEventListener('click', e=>{ if(e.target === box) closeForgotBox(); });
   // Arriving from the emailed link: set a password before anything else
   try{ startPasswordReset(); }catch(e){}
 });
@@ -7908,7 +7902,6 @@ async function openDeletedCustomers(){
   document.body.appendChild(overlay);
   const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
   overlay.querySelector('#deletedClose').addEventListener('click', close);
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) close(); });
 
   const box = overlay.querySelector('#deletedList');
   const search = overlay.querySelector('#deletedSearch');
@@ -8893,7 +8886,6 @@ document.getElementById('btnTaskTemplates').addEventListener('click', ()=>{
 
   overlay.appendChild(card);
   document.body.appendChild(overlay);
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) close(); });
 });
 
 // ---------- Scheduling filter clean groups ----------
@@ -9012,7 +9004,6 @@ async function openFilterGroupScheduler(){
 
   const close = ()=>{ if(overlay.parentNode) document.body.removeChild(overlay); };
   cancel.addEventListener('click', close);
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) close(); });
 
   go.addEventListener('click', async ()=>{
     const toAdd = filterGroups.filter(g => picked.has(g.id) && !g.finalized
@@ -9149,7 +9140,6 @@ async function openFilterGroupEmail(){
 
   const close = ()=>{ if(overlay.parentNode) document.body.removeChild(overlay); };
   cancel.addEventListener('click', close);
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) close(); });
   edit.addEventListener('click', ()=> openFilterEmailEditor());
 
   go.addEventListener('click', async ()=>{
@@ -10103,7 +10093,6 @@ function fillQuoteEmailForm(q){
     doc.open(); doc.write(html); doc.close();
     const done = ()=>{ if(view.parentNode) view.remove(); };
     shut.addEventListener('click', done);
-    view.addEventListener('click', e => { if(e.target === view) done(); });
   });
 })();
 
@@ -10786,7 +10775,6 @@ function openDoseRulesModal(item){
     renderChemConfigLists();
   };
   overlay.querySelector('#ruleDone').addEventListener('click', close);
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) close(); });
 
   render();
 }
@@ -10835,7 +10823,6 @@ function openColorPicker(item, idx, onDone){
 
   const close = ()=> document.body.removeChild(overlay);
   overlay.querySelector('#colorCancel').addEventListener('click', close);
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) close(); });
 }
 
 function openQuickButtonsModal(item){
@@ -10994,7 +10981,6 @@ function openQuickButtonsModal(item){
     renderChemConfigLists();
   };
   overlay.querySelector('#quickButtonsDone').addEventListener('click', cleanup);
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) cleanup(); });
 }
 
 let draggedButtonCtx = null;
@@ -11517,7 +11503,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const cancel = document.getElementById('btnCancelGroup');
   if(cancel) cancel.addEventListener('click', closeGroupWindow);
   const overlay = document.getElementById('groupOverlay');
-  if(overlay) overlay.addEventListener('click', e=>{ if(e.target === overlay) closeGroupWindow(); });
   const search = document.getElementById('groupSearch');
   if(search) search.addEventListener('input', ()=> renderGroupPickList(search.value));
 
@@ -12610,7 +12595,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const cancel = document.getElementById('btnCancelPhotoTask');
   if(cancel) cancel.addEventListener('click', closePhotoTask);
   const overlay = document.getElementById('photoTaskOverlay');
-  if(overlay) overlay.addEventListener('click', e=>{ if(e.target === overlay) closePhotoTask(); });
 
   // Enter saves, the same as pressing the button
   const typed = document.getElementById('photoTaskLabel');
@@ -13039,7 +13023,6 @@ function alertDialog(message, title){
     document.body.appendChild(overlay);
     const done = ()=>{ document.body.removeChild(overlay); resolve(); };
     overlay.querySelector('#alertOk').addEventListener('click', done);
-    overlay.addEventListener('click', (e)=>{ if(e.target === overlay) done(); });
   });
 }
 
@@ -13065,7 +13048,6 @@ function confirmDialog(message, confirmLabel){
     };
     overlay.querySelector('#confirmCancel').addEventListener('click', ()=>cleanup(false));
     overlay.querySelector('#confirmOk').addEventListener('click', ()=>cleanup(true));
-    overlay.addEventListener('click', (e)=>{ if(e.target === overlay) cleanup(false); });
   });
 }
 
@@ -13095,7 +13077,6 @@ function promptDialog(message, placeholder){
       if(e.key === 'Enter') cleanup(input.value.trim() || null);
       if(e.key === 'Escape') cleanup(null);
     });
-    overlay.addEventListener('click', (e)=>{ if(e.target === overlay) cleanup(null); });
     setTimeout(()=> input.focus(), 50);
   });
 }
@@ -13910,10 +13891,6 @@ function closeAssignOverlay(){
 
 document.getElementById('btnShowAssignCustomers').addEventListener('click', openAssignOverlay);
 
-// Tapping the dark area closes it, the same as every other dialog here
-document.getElementById('techAssignOverlay').addEventListener('click', (e)=>{
-  if(e.target.id === 'techAssignOverlay') closeAssignOverlay();
-});
 
 document.getElementById('btnAssignSelectAll').addEventListener('click', async ()=>{
   if(!currentTechDetailId) return;
@@ -14353,7 +14330,6 @@ function openMultiReportPicker(){
 
   const cleanup = ()=> document.body.removeChild(overlay);
   overlay.querySelector('#mrCancel').addEventListener('click', cleanup);
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) cleanup(); });
 
   overlay.querySelector('#mrDownload').addEventListener('click', ()=>{
     if(picked.length === 0){ showToast('Add at least one visit'); return; }
@@ -15181,7 +15157,6 @@ async function openHistoryPhotoModal(source, dateLabel){
   document.body.appendChild(overlay);
   const cleanup = ()=> document.body.removeChild(overlay);
   overlay.querySelector('#historyPhotoClose').addEventListener('click', cleanup);
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) cleanup(); });
 }
 
 let isEditingCustomerForm = false;
@@ -15461,7 +15436,6 @@ function openEquipmentOptionsModal(type, onDone){
     if(onDone) onDone();
   };
   overlay.querySelector('#eqOptDone').addEventListener('click', close);
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) close(); });
 
   draw();
 }
@@ -15712,7 +15686,6 @@ function openDeleteEquipmentModal(typeName){
     });
 
     overlay.querySelector('#delEqCancel').addEventListener('click', ()=> finish(null));
-    overlay.addEventListener('click', (e)=>{ if(e.target === overlay) finish(null); });
   });
 }
 
@@ -16238,7 +16211,6 @@ function openAddToCustomersModal(typeName){
     const finish = (ids)=>{ document.body.removeChild(overlay); resolve(ids); };
     overlay.querySelector('#addEqSkip').addEventListener('click', ()=> finish([]));
     overlay.querySelector('#addEqGo').addEventListener('click', ()=> finish(Array.from(picked)));
-    overlay.addEventListener('click', (e)=>{ if(e.target === overlay) finish([]); });
 
     draw();
   });
@@ -16325,7 +16297,6 @@ function openEquipmentNotesModal(item){
     showToast('Note saved');
   });
   overlay.querySelector('#equipmentNotesCancel').addEventListener('click', cleanup);
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) cleanup(); });
 }
 
 function openEquipmentPhotoModal(item){
@@ -16438,7 +16409,6 @@ function openEquipmentPhotoModal(item){
     renderEquipmentTypeList();
   };
   overlay.querySelector('#equipmentPhotoModalDone').addEventListener('click', cleanup);
-  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) cleanup(); });
 }
 
 document.getElementById('icEquipmentPhotoInput').addEventListener('change', async (e)=>{
@@ -18408,6 +18378,26 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
       });
     });
   }).observe(document.body, {childList: true, subtree: true, characterData: true});
+})();
+</script>
+<script>
+// Windows close only from their own buttons. A click on the dark backdrop
+// around a window, the full-screen layer behind it, is ignored before any
+// handler can act on it. Clicks inside the window itself are untouched.
+(function windowsCloseOnlyFromButtons(){
+  const isBackdrop = el=>{
+    if(!el || el === document.body || el === document.documentElement) return false;
+    const cs = getComputedStyle(el);
+    if(cs.position !== 'fixed') return false;
+    const r = el.getBoundingClientRect();
+    const coversScreen = r.left <= 1 && r.top <= 1
+      && r.right >= window.innerWidth - 1 && r.bottom >= window.innerHeight - 1;
+    // A backdrop holds a window; an empty full-screen layer is something else
+    return coversScreen && el.children.length > 0;
+  };
+  document.addEventListener('click', e=>{
+    if(isBackdrop(e.target)){ e.stopPropagation(); e.preventDefault(); }
+  }, true);
 })();
 </script>
 </body>

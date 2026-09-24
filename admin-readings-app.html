@@ -7784,6 +7784,8 @@ function openRescheduleModal(customer){
   document.body.appendChild(overlay);
 
   const dateEl = overlay.querySelector('#rsDate');
+  // Starts on today; the new date is usually soon
+  dateEl.value = todayDateStr();
   const cleanup = ()=> document.body.removeChild(overlay);
   overlay.querySelector('#rsCancel').addEventListener('click', cleanup);
   overlay.addEventListener('click', (e)=>{ if(e.target === overlay) cleanup(); });
