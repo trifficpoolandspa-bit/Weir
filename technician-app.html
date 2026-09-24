@@ -585,8 +585,8 @@ select#customerSelect{font-weight:600;}
       <!-- Filter backwash / salt cell sit here rather than by the submit
            button: the dosages fill themselves in, so that step gets skipped
            past, but the readings are typed one by one. -->
-      <div class="btn-row" id="poolSkipRow" style="margin-bottom:12px;">
-        <button class="btn btn-ghost" id="btnPoolSkip" type="button" style="width:auto;">Skip this pool</button>
+      <div class="btn-row" id="poolSkipRow" style="margin-bottom:12px;justify-content:center;">
+        <button class="btn" id="btnPoolSkip" type="button" style="width:auto;background:var(--rust);color:var(--card);border:1.5px solid var(--rust);">Skip this pool</button>
       </div>
       <div id="poolServiceChecks" style="display:none;margin-bottom:14px;"></div>
       <div id="poolChemFields"></div>
@@ -648,8 +648,8 @@ select#customerSelect{font-weight:600;}
 
     <div class="card" id="visitSpaSection" style="display:none;">
       <h2>Chemical Readings</h2>
-      <div class="btn-row" id="spaSkipRow" style="margin-bottom:12px;">
-        <button class="btn btn-ghost" id="btnSpaSkip" type="button" style="width:auto;">Skip this spa</button>
+      <div class="btn-row" id="spaSkipRow" style="margin-bottom:12px;justify-content:center;">
+        <button class="btn" id="btnSpaSkip" type="button" style="width:auto;background:var(--rust);color:var(--card);border:1.5px solid var(--rust);">Skip this spa</button>
       </div>
       <div id="spaChemFields"></div>
       <div id="spa_waterBalance" style="display:none;margin:10px 0 0;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--surface-alt);"></div>
@@ -699,8 +699,8 @@ select#customerSelect{font-weight:600;}
 
     <div class="card" id="visitFountainSection" style="display:none;">
       <h2 id="visitFountainTitle">Chemical Readings</h2>
-      <div class="btn-row" id="fountainSkipRow" style="margin-bottom:12px;">
-        <button class="btn btn-ghost" id="btnFountainSkip" type="button" style="width:auto;">Skip this fountain</button>
+      <div class="btn-row" id="fountainSkipRow" style="margin-bottom:12px;justify-content:center;">
+        <button class="btn" id="btnFountainSkip" type="button" style="width:auto;background:var(--rust);color:var(--card);border:1.5px solid var(--rust);">Skip this fountain</button>
       </div>
       <div id="fountainChemFields"></div>
       <div id="fountain_waterBalance" style="display:none;margin:10px 0 0;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--surface-alt);"></div>
@@ -1574,6 +1574,32 @@ function customPhotoSection(type){
 function customPhotosTakenFor(type){
   const key = customPhotoSection(type);
   return customPhotoData[key] || (customPhotoData[key] = {});
+}
+
+// The name the office gave an extra photo, wherever it was set up: the pool,
+// spa or extra body lists, or a customer's own setup. A report is sometimes
+// built long after the visit, so this can't rely on which visit is open.
+function customPhotoLabelFor(id){
+  if(!id) return '';
+  const look = list => {
+    const hit = (list || []).find(p => p && p.id === id && p.label);
+    return hit ? hit.label : '';
+  };
+  for(const t of ['pool', 'spa', 'fountain']){
+    const found = look((chemConfig[t] || {}).customPhotos);
+    if(found) return found;
+  }
+  const own = lsGet('customChemConfig') || {};
+  for(const cid of Object.keys(own)){
+    const setups = own[cid] || {};
+    // Each body of water has its own setup; very old ones held one list
+    const bodies = setups.customPhotos ? [setups] : Object.keys(setups).map(k => setups[k]);
+    for(const b of bodies){
+      const found = look(b && b.customPhotos);
+      if(found) return found;
+    }
+  }
+  return '';
 }
 
 function customPhotosFor(type){
@@ -5844,6 +5870,8 @@ function attachTouchDrag(handle, row, container){
     fieldRouteOrder[orderKey(selectedHomeDay, isoForDay(selectedHomeDay))] = ids;
     saveFieldRouteOrder();
     showOrderBanner(ids);
+    // A customer's task and work order rows follow them to their new place
+    if(document.querySelector('#homeCustomerList .route-job')) renderHomeList();
   });
 }
 
@@ -6255,6 +6283,63 @@ function renderRouteTasks(){
   });
 }
 
+// ---------- Tasks and work orders under their customer ----------
+// Each task or work order for a customer on the day shown gets its own row
+// straight under that customer: "Customer – what needs doing", in the same
+// gold as the jobs count at the top. Pressing it opens what the office wrote.
+// `techId` narrows to one technician; empty means everyone's.
+function routeJobsFor(customerId, dayISO, techId){
+  const mine = x => !techId || String(x.technicianId) === String(techId);
+  const tasks = (lsGet('tasks') || [])
+    .filter(t => !t.done && t.date === dayISO && mine(t))
+    .filter(t => (t.customerIds || []).indexOf(customerId) !== -1 || t.customerId === customerId)
+    .map(t => ({kind: 'task', title: t.title || 'Task', details: t.details || ''}));
+  const orders = (lsGet('scheduledWorkOrders') || [])
+    .filter(j => j.status === 'scheduled' && j.date === dayISO && j.customerId === customerId && mine(j))
+    .map(j => ({kind: 'work order', title: j.title || 'Work order', details: j.notes || ''}));
+  return orders.concat(tasks);
+}
+// Customers with a task or work order that day, so the job has somewhere to sit
+function routeJobCustomerIds(dayISO, techId){
+  const ids = new Set();
+  const mine = x => !techId || String(x.technicianId) === String(techId);
+  (lsGet('tasks') || []).filter(t => !t.done && t.date === dayISO && mine(t))
+    .forEach(t => { (t.customerIds || []).forEach(id => ids.add(id)); if(t.customerId) ids.add(t.customerId); });
+  (lsGet('scheduledWorkOrders') || []).filter(j => j.status === 'scheduled' && j.date === dayISO && mine(j))
+    .forEach(j => ids.add(j.customerId));
+  return ids;
+}
+function appendRouteJobRows(container, customer, jobs){
+  jobs.forEach(job=>{
+    const row = document.createElement('div');
+    row.className = 'route-job';
+    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;'
+      + 'padding:12px 4px 12px 12px;border-bottom:1px solid var(--line);cursor:pointer;';
+    const text = document.createElement('div');
+    text.style.cssText = 'min-width:0;flex:1 1 auto;font-family:\'Space Grotesk\',sans-serif;font-weight:700;'
+      + 'font-size:14.5px;color:var(--gold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    text.textContent = customer.name + ' \u2013 ' + job.title;
+    row.appendChild(text);
+    const chev = document.createElement('div');
+    chev.className = 'chev';
+    chev.style.cssText = 'flex-shrink:0;color:var(--gold);font-size:18px;padding:0 8px;';
+    chev.textContent = '\u203A';
+    row.appendChild(chev);
+    // Opens to what the office wrote; what else belongs here is still to decide
+    row.addEventListener('click', ()=>{
+      const open = row.nextElementSibling && row.nextElementSibling.classList.contains('route-job-brief');
+      if(open){ row.nextElementSibling.remove(); chev.textContent = '\u203A'; return; }
+      const panel = document.createElement('div');
+      panel.className = 'route-job-brief';
+      panel.style.cssText = 'padding:4px 12px 14px 12px;border-bottom:1px solid var(--line);font-size:13.5px;color:var(--ink);';
+      panel.textContent = job.details || ('No details for this ' + job.kind + '.');
+      row.after(panel);
+      chev.textContent = '\u2039';
+    });
+    container.appendChild(row);
+  });
+}
+
 // Tasks attached to one customer, shown on that stop
 function tasksForCustomer(customerId){
   return tasksForToday().filter(t =>
@@ -6305,9 +6390,11 @@ function renderHomeList(){
   const workOrderTitles = {};
   workOrderJobs.forEach(j => { workOrderTitles[j.customerId] = j.title; });
   const workOrderIds = new Set(workOrderJobs.map(j => j.customerId));
+  // Anyone with a task for this technician today joins the route too
+  const jobCustomerIds = routeJobCustomerIds(selectedDayISO, currentUser ? currentUser.id : '__none__');
 
   const extraFilterCustomers = customers.filter(c =>
-    (filterCleanIds.has(c.id) || workOrderIds.has(c.id) || movedHere.has(c.id)) &&
+    (filterCleanIds.has(c.id) || workOrderIds.has(c.id) || movedHere.has(c.id) || jobCustomerIds.has(c.id)) &&
     c.active !== false &&
     // Once serviced they drop off, exactly as a customer whose regular day it
     // is. Without this a customer moved in for the day stayed on the list
@@ -6384,7 +6471,7 @@ function renderHomeList(){
     row.className = 'cust-row';
     row.style.flexWrap = 'nowrap';
     row.innerHTML = `<div style="display:flex;align-items:center;min-width:0;flex:1 1 auto;">
-        <div style="min-width:0;flex:1 1 auto;"><div class="cust-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.name}${filterCleanIds.has(c.id) ? ' <span style="background:var(--gold);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;vertical-align:middle;margin-left:6px;">FILTER CLEAN</span>' : ''}</div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.address || 'No address on file'}</div>${workOrderIds.has(c.id) ? '<div style="display:flex;align-items:center;gap:6px;margin-top:5px;min-width:0;"><span style="flex-shrink:0;background:var(--teal-mid);color:#fff;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:5px;">JOB</span><span style="font-size:12.5px;font-weight:600;color:var(--teal-deep);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + workOrderTitles[c.id] + '</span></div>' : ''}</div>
+        <div style="min-width:0;flex:1 1 auto;"><div class="cust-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.name}${filterCleanIds.has(c.id) ? ' <span style="background:var(--gold);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;vertical-align:middle;margin-left:6px;">FILTER CLEAN</span>' : ''}</div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.address || 'No address on file'}</div></div>
       </div>`;
 
     if(canReorder){
@@ -6569,6 +6656,7 @@ function renderHomeList(){
       row.after(panel);
     });
     container.appendChild(row);
+    appendRouteJobRows(container, c, routeJobsFor(c.id, selectedDayISO, currentUser ? currentUser.id : '__none__'));
   });
 }
 
@@ -8688,7 +8776,7 @@ function syncStepChrome(){
   // and Back, rather than taking a whole row to itself
   const skipRow = card.querySelector('[id$="SkipRow"]');
   if(skipRow){
-    const skipBtn = skipRow.querySelector('button');
+    const skipBtn = skipRow.querySelector('button') || head.querySelector('[id$="Skip"]');
     if(skipBtn && skipBtn.parentElement !== head){
       skipBtn.style.width = 'auto';
       skipBtn.style.flexShrink = '0';
@@ -8697,9 +8785,15 @@ function syncStepChrome(){
       head.insertBefore(skipBtn, back);
       skipRow.style.display = 'none';
     }
-    // The heading takes the slack, so the two buttons sit together on the right
-    h.style.flex = '1 1 auto';
+    // Three parts on one line: the heading on the left, Skip in the middle,
+    // Back on the right. The two outer columns share the space equally, so
+    // Skip sits in the true centre whatever the heading says.
+    head.style.display = 'grid';
+    head.style.gridTemplateColumns = '1fr auto 1fr';
     h.style.minWidth = '0';
+    h.style.justifySelf = 'start';
+    if(skipBtn) skipBtn.style.justifySelf = 'center';
+    back.style.justifySelf = 'end';
   }
 }
 
@@ -10201,11 +10295,9 @@ function buildReadingSection(reading, chemList, prodList){
   // Photos the user defined, listed by name so a customer knows what they show
   const namedShots = [];
   if(reading.customPhotos){
-    const defs = customPhotosFor(reading.spaKey ? 'spa' : 'pool');
     Object.keys(reading.customPhotos).forEach(id=>{
       if(!reading.customPhotos[id]) return;
-      const def = defs.find(d => d.id === id);
-      namedShots.push({label: (def && def.label) || 'Photo', data: reading.customPhotos[id]});
+      namedShots.push({label: customPhotoLabelFor(id) || 'Extra photo', data: reading.customPhotos[id]});
     });
   }
 
@@ -10324,7 +10416,8 @@ function collectReportPhotos(sections){
     if(r.photo) add(r.photo, label + '-after.jpg', says('after'));
     // Anything the company added themselves
     Object.keys(r.customPhotos || {}).forEach(k=>{
-      const what = String(k).replace(/[-_]+/g, ' ').trim();
+      // Labelled with the name the office gave it, e.g. "Pool Filter gauge"
+      const what = customPhotoLabelFor(k) || 'extra photo';
       add(r.customPhotos[k], label + '-' + String(k).replace(/[^a-z0-9]+/gi, '-') + '.jpg',
           says(what || 'photo'));
     });
