@@ -5865,7 +5865,7 @@ function websiteOrderForDay(day){
 // The route list uses the same smooth reordering as everything else, so the
 // feel is identical wherever a list can be rearranged.
 function attachTouchDrag(handle, row, container){
-  attachTouchReorder(handle, row, container, '.cust-row', (ids)=>{
+  attachTouchReorder(handle, row, container, '.cust-row, .route-job', (ids)=>{
     if(!ids.length) return;
     fieldRouteOrder[orderKey(selectedHomeDay, isoForDay(selectedHomeDay))] = ids;
     saveFieldRouteOrder();
@@ -6316,22 +6316,87 @@ function routeJobCustomerIds(dayISO, techId){
     .forEach(j => { if(!jobSubmitted('work order:' + j.id)) ids.add(j.customerId); });
   return ids;
 }
-function appendRouteJobRows(container, customer, jobs, dayISO){
+// How many jobs a day holds: every work order and every task counts as one,
+// however many a customer has. Still to do is what's on the route; done is
+// what was submitted for that day.
+function routeJobCounts(dayISO, techId, customersOnRoute){
+  const open = (customersOnRoute || []).reduce((n, c)=> n + routeJobsFor(c.id, dayISO, techId).length, 0);
+  const localDay = iso => { const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+  const done = jobSubmissions().filter(s =>
+    (s.date ? s.date === dayISO : (s.submittedAt && localDay(s.submittedAt) === dayISO))
+    && (!techId || String(s.technicianId) === String(techId))).length;
+  return {open: open, done: done};
+}
+
+// A job that was dragged sits where it was left; one that wasn't stays under
+// its customer. The saved route order holds customers and jobs together.
+function placeMovedJobs(container, day){
+  const saved = (fieldRouteOrder[orderKey(day, isoForDay(day))] || fieldRouteOrder[orderKey(day)] || []);
+  if(!saved.some(k => String(k).indexOf('job:') === 0)) return;
+  const rowFor = key => container.querySelector('[data-reorder-key="' + String(key).replace(/"/g, '\\"') + '"]');
+  saved.forEach((key, i)=>{
+    if(String(key).indexOf('job:') !== 0) return;
+    const row = rowFor(key);
+    if(!row) return;
+    // Straight after whatever it followed, if that's still on the list
+    let before = null;
+    for(let j = i - 1; j >= 0 && !before; j--) before = rowFor(saved[j]);
+    if(before){
+      // Past an open drop-down, which belongs to the row above it
+      let anchor = before;
+      while(anchor.nextElementSibling && /route-brief|route-job-brief/.test(anchor.nextElementSibling.className)) anchor = anchor.nextElementSibling;
+      anchor.after(row);
+    } else {
+      container.insertBefore(row, container.firstChild);
+    }
+  });
+}
+
+function appendRouteJobRows(container, customer, jobs, dayISO, canReorder){
   jobs.forEach(job=>{
     const row = document.createElement('div');
     row.className = 'route-job';
-    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;'
+    // A job has its own place in the route, saved with the customers' order
+    row.dataset.reorderKey = 'job:' + job.key;
+    // No gap between the parts, the same as a customer row, so the names start
+    // at the same place whether or not there's a grip
+    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:0;'
       + 'padding:12px 4px 12px 12px;border-bottom:1px solid var(--line);cursor:pointer;';
+    // The same grip as a customer, so names line up down the list
+    if(canReorder){
+      const handle = document.createElement('div');
+      handle.className = 'route-grip';
+      handle.textContent = '\u2261';
+      handle.style.cssText = 'flex-shrink:0;width:40px;align-self:stretch;display:flex;'
+        + 'align-items:center;justify-content:center;color:var(--muted);font-size:20px;'
+        + 'cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;'
+        + '-webkit-touch-callout:none;';
+      attachTouchDrag(handle, row, container);
+      row.appendChild(handle);
+    }
     const text = document.createElement('div');
     text.style.cssText = 'min-width:0;flex:1 1 auto;font-family:\'Space Grotesk\',sans-serif;font-weight:700;'
       + 'font-size:14.5px;color:var(--gold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
     text.textContent = customer.name + ' \u2013 ' + job.title;
     row.appendChild(text);
+    const right = document.createElement('div');
+    right.style.cssText = 'display:flex;align-items:center;gap:10px;flex-shrink:0;';
+    const onWay = document.createElement('button');
+    onWay.className = 'btn btn-secondary';
+    onWay.style.cssText = 'flex:0 0 72px !important;width:72px !important;'
+      + 'min-width:72px !important;max-width:72px !important;'
+      + 'height:46px !important;min-height:46px;padding:0;'
+      + 'margin-left:10px;font-size:11.5px;line-height:1.25;text-align:center;'
+      + 'display:flex;align-items:center;justify-content:center;';
+    onWay.textContent = 'On my way';
+    onWay.addEventListener('click', e => { e.stopPropagation(); dispatchHeadsUp(customer); });
+    right.appendChild(onWay);
     const chev = document.createElement('div');
     chev.className = 'chev';
     chev.style.cssText = 'flex-shrink:0;color:var(--gold);font-size:18px;padding:0 8px;';
     chev.textContent = '\u203A';
-    row.appendChild(chev);
+    right.appendChild(chev);
+    row.appendChild(right);
 
     // Opens like a customer on the route: their details, Directions, and the
     // job itself with Start job
@@ -6380,7 +6445,7 @@ function appendRouteJobRows(container, customer, jobs, dayISO){
       const isToday = dayISO === todayDateStr();
       start.textContent = isToday ? 'Start job' : 'Not today\u2019s job';
       if(!isToday){ start.disabled = true; start.style.opacity = '0.45'; start.style.cursor = 'not-allowed'; }
-      start.addEventListener('click', e => { e.stopPropagation(); if(isToday) openJobPage(customer, job); });
+      start.addEventListener('click', e => { e.stopPropagation(); if(isToday) openJobPage(customer, Object.assign({}, job, {dayISO: dayISO})); });
       btnRow.appendChild(start);
       panel.appendChild(btnRow);
       panel.addEventListener('click', e => e.stopPropagation());
@@ -6507,7 +6572,7 @@ function openJobPage(customer, job){
     list.push({
       key: job.key, kind: job.kind, sourceId: job.id,
       customerId: customer.id, customerName: customer.name, title: job.title,
-      notes: notes.value.trim(), photo: stored,
+      notes: notes.value.trim(), photo: stored, date: job.dayISO || todayDateStr(),
       technicianId: currentUser ? currentUser.id : '',
       submittedAt: new Date().toISOString()
     });
@@ -6613,24 +6678,25 @@ function renderHomeList(){
     stopLabelEl.textContent = totalStops ? 'stops left' : '';
   }
 
-  // Work orders and filter cleans landing on this day count as jobs
-  const jobCount = todaysCustomers.filter(cust =>
-    filterCleanIds.has(cust.id) || workOrderIds.has(cust.id)).length;
-  // Jobs already completed today still count toward the total
-  const jobsDone = customers.filter(cust =>
-    cust.active !== false &&
-    cust.lastServicedDate === today &&
-    (filterCleanIds.has(cust.id) || workOrderIds.has(cust.id))
-  ).length;
-  const jobsTotal = jobCount + (weekOffset === 0 ? jobsDone : 0);
+  // Jobs: every work order and task on this day counts as one, however many a
+  // customer has, and each filter clean counts as one
+  const jobTech = currentUser ? currentUser.id : '__none__';
+  const jobTally = routeJobCounts(selectedDayISO, jobTech, todaysCustomers);
+  const cleansLeft = todaysCustomers.filter(cust => filterCleanIds.has(cust.id)).length;
+  // Filter cleans finished today still count toward the total
+  const cleansDone = customers.filter(cust =>
+    cust.active !== false && cust.lastServicedDate === today && filterCleanIds.has(cust.id)).length;
+  const jobCount = jobTally.open + cleansLeft;
+  const jobsDone = jobTally.done + (weekOffset === 0 ? cleansDone : 0);
+  const jobsTotal = jobCount + jobsDone;
 
   const jobEl = document.getElementById('homeJobCount');
   const jobLabelEl = document.getElementById('homeJobLabel');
   if(jobEl){
     jobEl.textContent = jobCount + ' of ' + jobsTotal;
     jobEl.title = jobsTotal
-      ? jobCount + ' of ' + jobsTotal + ' filter cleans and work orders left today'
-      : 'No filter cleans or work orders scheduled today';
+      ? jobCount + ' of ' + jobsTotal + ' work orders, tasks and filter cleans left'
+      : 'No work orders, tasks or filter cleans on this day';
   }
   if(jobLabelEl) jobLabelEl.textContent = 'jobs';
 
@@ -6838,8 +6904,9 @@ function renderHomeList(){
       row.after(panel);
     });
     container.appendChild(row);
-    appendRouteJobRows(container, c, routeJobsFor(c.id, selectedDayISO, currentUser ? currentUser.id : '__none__'), selectedDayISO);
+    appendRouteJobRows(container, c, routeJobsFor(c.id, selectedDayISO, currentUser ? currentUser.id : '__none__'), selectedDayISO, canReorder);
   });
+  placeMovedJobs(container, selectedHomeDay);
 }
 
 // ---- Which day the serviced list is showing ----
