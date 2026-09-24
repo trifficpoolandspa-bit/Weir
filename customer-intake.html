@@ -3853,7 +3853,14 @@ let workCenterMode = 'quotes';
 
 document.querySelectorAll('#workCenterTypeControl .history-type-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
+    const cameFrom = workCenterMode;
     applyWorkCenterMode(btn.dataset.type);
+    // Back to Quote / Work Order / Task from another WorkCenter tab: anything
+    // held from a moment ago comes back
+    if(btn.dataset.type === 'quotes' && cameFrom !== 'quotes'){
+      restoreWcDraft(document.getElementById('wcType').value);
+      applyWorkOrderType();
+    }
   });
 });
 
@@ -5245,6 +5252,7 @@ function resetScheduleDates(){
 function applyWorkCenterMode(mode){
   const cameFrom = workCenterMode;
   workCenterMode = mode;
+  if(cameFrom === 'quotes' && mode !== 'quotes') leaveWcForm();
   if(mode === 'quotes' && cameFrom !== 'quotes'){ resetScheduleDates(); wcView = 'main'; }
   // Coming into Email from anywhere else starts with nobody chosen, so a list
   // picked for an earlier message can't be sent a new one by mistake.
@@ -9496,8 +9504,111 @@ function populateWorkOrderTechnicians(){
 
 document.getElementById('wcType').addEventListener('change', applyWorkOrderType);
 
+// ---------- Quote, Work Order and Task each keep their own entries ----------
+// Nothing is saved. Leaving a tab holds what was typed for one minute; come back
+// within it and it's all still there, after that the form starts blank. Held
+// only in this page, so a reload clears it too. Quote and Work Order share one
+// set of boxes, which is why each needs its own held copy.
+const WC_DRAFT_MS = 60 * 1000;
+const wcDrafts = {};
+
+function captureWcDraft(type){
+  let state, hasContent;
+  if(type === 'Task'){
+    state = {
+      title: document.getElementById('taskTitle').value,
+      details: document.getElementById('taskDetails').value,
+      date: document.getElementById('taskDate').value,
+      repeat: document.getElementById('taskRepeat').value,
+      until: document.getElementById('taskRepeatUntil').value,
+      search: document.getElementById('taskCustomerSearch').value,
+      customers: Array.from(taskPicked),
+      techs: pickedTechIds(document.getElementById('taskTechnician')),
+      editing: editingTaskId
+    };
+    hasContent = !!(state.title.trim() || state.details.trim() || state.customers.length
+      || state.techs.length || state.editing || state.search.trim());
+  } else {
+    const heading = document.getElementById('wcFormHeading');
+    state = {
+      customers: wcSelectedCustomerIds.slice(),
+      search: document.getElementById('wcCustomerSearch').value,
+      lineItems: currentLineItems.map(li => Object.assign({}, li)),
+      notes: document.getElementById('wcNotes').value,
+      date: document.getElementById('wcDate').value,
+      techs: pickedTechIds(document.getElementById('wcTechnician')),
+      repeat: document.getElementById('wcRepeat').value,
+      customEvery: (document.getElementById('wcCustomEvery') || {}).value,
+      customUnit: (document.getElementById('wcCustomUnit') || {}).value,
+      heading: heading ? heading.textContent : ''
+    };
+    hasContent = !!(state.customers.length || state.search.trim() || state.lineItems.length
+      || state.notes.trim() || state.techs.length || state.heading);
+  }
+  if(hasContent) wcDrafts[type] = {at: Date.now(), state: state};
+  else delete wcDrafts[type];
+}
+
+function clearWcForm(type){
+  if(type === 'Task') clearTaskForm();
+  else resetWorkOrderForm();
+}
+
+// Puts back what was held for this kind, if it's under a minute old
+function restoreWcDraft(type){
+  const held = wcDrafts[type];
+  delete wcDrafts[type];
+  if(!held || Date.now() - held.at > WC_DRAFT_MS) return;
+  const st = held.state;
+  if(type === 'Task'){
+    document.getElementById('taskTitle').value = st.title;
+    document.getElementById('taskDetails').value = st.details;
+    document.getElementById('taskDate').value = st.date;
+    document.getElementById('taskRepeat').value = st.repeat;
+    document.getElementById('taskRepeatUntil').value = st.until;
+    document.getElementById('taskCustomerSearch').value = st.search;
+    taskPicked.clear(); st.customers.forEach(id => taskPicked.add(id));
+    renderTaskChips();
+    setPickedTechIds(document.getElementById('taskTechnician'), st.techs);
+    editingTaskId = st.editing;
+    applyTaskRepeat();
+    if(st.editing){
+      document.getElementById('btnSaveTask').textContent = 'Save changes';
+    }
+  } else {
+    wcSelectedCustomerIds = st.customers.slice();
+    renderWcCustomerChips();
+    document.getElementById('wcCustomerSearch').value = st.search;
+    currentLineItems = st.lineItems.map(li => Object.assign({}, li));
+    renderLineItems();
+    document.getElementById('wcNotes').value = st.notes;
+    document.getElementById('wcDate').value = st.date;
+    setPickedTechIds(document.getElementById('wcTechnician'), st.techs);
+    document.getElementById('wcRepeat').value = st.repeat;
+    if(document.getElementById('wcCustomEvery')) document.getElementById('wcCustomEvery').value = st.customEvery;
+    if(document.getElementById('wcCustomUnit')) document.getElementById('wcCustomUnit').value = st.customUnit;
+    const box = document.getElementById('wcCustomRepeat');
+    if(box) box.style.display = st.repeat === 'custom' ? 'flex' : 'none';
+    const heading = document.getElementById('wcFormHeading');
+    if(heading && st.heading){ heading.textContent = st.heading; heading.style.display = ''; }
+    recalcWorkOrderTotal();
+  }
+}
+
+// Leaving whichever of the three is showing: hold it, and empty the form
+function leaveWcForm(){
+  const type = document.getElementById('wcType').value;
+  captureWcDraft(type);
+  clearWcForm(type);
+}
+
 document.querySelectorAll('#wcTypeToggle [data-wctype]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
+    const leaving = document.getElementById('wcType').value;
+    const arriving = btn.dataset.wctype;
+    // Each kind keeps its own entries: hold this one's, start the next afresh
+    // or with what it held a moment ago
+    if(arriving !== leaving){ captureWcDraft(leaving); clearWcForm(leaving); }
     // Coming to Task from another kind starts with nobody chosen
     if(btn.dataset.wctype === 'Task' && document.getElementById('wcType').value !== 'Task'){
       setPickedTechIds(document.getElementById('taskTechnician'), []);
@@ -9507,6 +9618,7 @@ document.querySelectorAll('#wcTypeToggle [data-wctype]').forEach(btn=>{
     if(btn.dataset.wctype !== document.getElementById('wcType').value){ resetScheduleDates(); wcView = 'main'; }
     document.getElementById('wcType').value = btn.dataset.wctype;
     applyWorkOrderType();
+    if(arriving !== leaving){ restoreWcDraft(arriving); applyWorkOrderType(); }
   });
 });
 
@@ -16145,6 +16257,14 @@ document.getElementById('btnAddCustomer').addEventListener('click', ()=>{
 });
 
 function switchView(view){
+  // Leaving the WorkCenter's Quote / Work Order / Task form for another page
+  // holds what was typed for a minute, like switching tabs does
+  const wcPage = document.getElementById('view-workcenter');
+  if(view !== 'workcenter' && wcPage && wcPage.classList.contains('active')
+     && typeof workCenterMode !== 'undefined' && workCenterMode === 'quotes'
+     && typeof leaveWcForm === 'function'){
+    leaveWcForm();
+  }
   // Coming to Account from anywhere else always starts on Business. Only
   // staying on the Account page keeps whichever tab was chosen.
   const acctView = document.getElementById('view-account');
@@ -16236,6 +16356,10 @@ function switchView(view){
     recalcWorkOrderTotal();
     renderWorkOrderHistory();
     renderServiceCallsList();
+    // Anything held from leaving a minute ago comes back, after the form above
+    // has been set up fresh
+    restoreWcDraft(document.getElementById('wcType').value);
+    applyWorkOrderType();
   }
   window.scrollTo({top: 0, behavior: 'smooth'});
 }

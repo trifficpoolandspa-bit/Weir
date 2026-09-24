@@ -6396,7 +6396,9 @@ function appendRouteJobRows(container, customer, jobs, dayISO, canReorder){
     right.appendChild(onWay);
     const chev = document.createElement('div');
     chev.className = 'chev';
-    chev.style.cssText = 'flex-shrink:0;color:var(--gold);font-size:18px;padding:0 8px;';
+    // The same arrow as a service row, only gold, so On my way and the arrow
+    // stand in the same column down the list
+    chev.style.color = 'var(--gold)';
     chev.textContent = '\u203A';
     right.appendChild(chev);
     row.appendChild(right);
@@ -6719,6 +6721,8 @@ function renderHomeList(){
   todaysCustomers.forEach((c, idx)=>{
     const row = document.createElement('div');
     row.className = 'cust-row';
+    // Whose service this is, so their jobs that day can sit just below it
+    row.dataset.customerRow = c.id;
     row.style.flexWrap = 'nowrap';
     row.innerHTML = `<div style="display:flex;align-items:center;min-width:0;flex:1 1 auto;">
         <div style="min-width:0;flex:1 1 auto;"><div class="cust-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.name}${filterCleanIds.has(c.id) ? ' <span style="background:var(--gold);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;vertical-align:middle;margin-left:6px;">FILTER CLEAN</span>' : ''}</div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.address || 'No address on file'}</div></div>
@@ -6907,8 +6911,18 @@ function renderHomeList(){
     });
     container.appendChild(row);
   });
-  jobsOnTheirOwn.forEach(c =>
-    appendRouteJobRows(container, c, routeJobsFor(c.id, selectedDayISO, currentUser ? currentUser.id : '__none__'), selectedDayISO, canReorder));
+  // By default a job sits just below its customer's service when they're on
+  // the route that day, and at the bottom otherwise. Separate items either way:
+  // submitting one never submits the other, and a dragged job keeps its place.
+  jobsOnTheirOwn.forEach(c=>{
+    const before = container.children.length;
+    appendRouteJobRows(container, c, routeJobsFor(c.id, selectedDayISO, currentUser ? currentUser.id : '__none__'), selectedDayISO, canReorder);
+    const added = Array.from(container.children).slice(before);
+    const service = container.querySelector('[data-customer-row="' + c.id + '"]');
+    if(!service) return;
+    let anchor = service;
+    added.forEach(r => { anchor.after(r); anchor = r; });
+  });
   placeMovedJobs(container, selectedHomeDay);
 }
 
