@@ -10,6 +10,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
+/* The regular before/after photo on a page that is only there for an extra photo */
+.photo-part-off{display:none !important;}
 /* A text cursor belongs in a field you type into and nowhere else. This is the
    whole-page rule: everything is unselectable by default, and real fields turn
    it back on. Anything new inherits it without having to remember. */
@@ -1825,6 +1827,35 @@ function customPhotosFor(type){
   });
 }
 
+// The regular before and after photo appear only where they are wanted: ticked
+// or Optional for this technician, or asked for by the customer's own setup.
+// A page that is only there for an extra photo, or for the gate, shows just
+// that. The extra photos and the gate photo are never hidden here.
+const PHOTO_PAGES = {
+  pool:     {before: 'visitPoolBeforePhotoSection',     after: 'visitPoolPhotoSection'},
+  spa:      {before: 'visitSpaBeforePhotoSection',      after: 'visitSpaPhotoSection'},
+  fountain: {before: 'visitFountainBeforePhotoSection', after: 'visitFountainPhotoSection'}
+};
+function regularPhotoWanted(type, when){
+  if(photoStepShows(when, type)) return true;
+  const lists = photoListsFor(type);
+  return !!(lists && (when === 'before' ? lists.requireBeforePhoto : lists.requireAfterPhoto) === true);
+}
+function syncRegularPhotoParts(){
+  Object.keys(PHOTO_PAGES).forEach(type=>{
+    ['before', 'after'].forEach(when=>{
+      const card = document.getElementById(PHOTO_PAGES[type][when]);
+      if(!card) return;
+      const off = !regularPhotoWanted(type, when);
+      Array.from(card.children).forEach(el=>{
+        if(el.id === 'customPhotos_' + type + '_' + when) return;   // the extra photos
+        if(el.id === 'gatePhotoBlock') return;                     // the gate photo
+        el.classList.toggle('photo-part-off', off);
+      });
+    });
+  });
+}
+
 function renderCustomPhotoBlocks(type, when){
   const host = document.getElementById('customPhotos_' + type + '_' + when);
   if(!host) return;
@@ -2084,6 +2115,7 @@ function renderAllConfigFields(){
     renderCustomPhotoBlocks(t, 'before');
     renderCustomPhotoBlocks(t, 'after');
   });
+  syncRegularPhotoParts();
   renderConfigFields('poolChemFields', poolL.chemicals, 'pool', 'chem', renderStripPreview);
   renderConfigFields('poolDoseFields', poolL.dosages, 'pool', 'dose');
   renderConfigFields('spaChemFields', spaL.chemicals, 'spa', 'chem', renderSpaStripPreview);
