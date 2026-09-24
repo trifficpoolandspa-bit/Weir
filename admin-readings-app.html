@@ -5440,11 +5440,19 @@ function attachTouchReorder(handle, item, container, itemSelector, onReorder){
   }
 
   let orderAtLift = [];
+  // Whether the items sit side by side (chips in a grid) or one under another
+  // (a list). Decided by how they're actually laid out: a wide list row is
+  // still a list row. Judging it by the row's shape sent a drag toward the
+  // bottom of a list by left/right, so the last place could never be reached.
+  let sideBySide = false;
 
   function lift(clientX, clientY){
     const rect = item.getBoundingClientRect();
-    orderAtLift = Array.from(container.querySelectorAll(itemSelector))
-      .map(el => el.dataset.reorderKey).filter(k => k !== undefined);
+    const all = Array.from(container.querySelectorAll(itemSelector));
+    orderAtLift = all.map(el => el.dataset.reorderKey).filter(k => k !== undefined);
+    const boxes = all.map(el => el.getBoundingClientRect()).filter(b => b.width && b.height);
+    sideBySide = boxes.some((a, i) => boxes.some((b, j) =>
+      j !== i && Math.abs(a.top - b.top) < Math.min(a.height, b.height) / 2 && Math.abs(a.left - b.left) > 4));
     dragging = true;
     startX = clientX; startY = clientY;
     offsetX = clientX - rect.left;
@@ -5485,7 +5493,7 @@ function attachTouchReorder(handle, item, container, itemSelector, onReorder){
     // Move the placeholder once the finger clears a neighbour's midpoint
     for(const other of siblings()){
       const b = other.getBoundingClientRect();
-      const horizontal = b.width > b.height * 1.6;
+      const horizontal = sideBySide;
       const overIt = lastX > b.left && lastX < b.right && lastY > b.top && lastY < b.bottom;
       if(!overIt) continue;
       const past = horizontal
@@ -7734,9 +7742,14 @@ function websiteOrderForDay(day){
 function attachTouchDrag(handle, row, container){
   attachTouchReorder(handle, row, container, '.cust-row, .route-job', (ids)=>{
     if(!ids.length) return;
-    fieldRouteOrder[orderKey(selectedHomeDay, isoForDay(selectedHomeDay))] = ids;
+    // Every drag here is the company's route order for this day, straight away:
+    // it goes to the website's route scheduling with the next sync. Kept on this
+    // phone too, only so dragged jobs keep their places.
+    fieldRouteOrder[orderKey(selectedHomeDay)] = ids;
+    delete fieldRouteOrder[orderKey(selectedHomeDay, isoForDay(selectedHomeDay))];
     saveFieldRouteOrder();
-    showOrderBanner(ids);
+    saveCompanyRouteOrder(selectedHomeDay, ids);
+    showToast('Route order saved');
     // A customer's task and work order rows follow them to their new place
     if(document.querySelector('#homeCustomerList .route-job')) renderHomeList();
   });
@@ -7840,19 +7853,11 @@ function orderKey(day, dateISO){
 
 function orderCustomersForDay(day, list){
   const ids = list.map(c => c.id);
-  const iso = isoForDay(day);
 
-  // One-off order for this exact date wins, then the weekly order, then the website
-  let order = (fieldRouteOrder[orderKey(day, iso)] || []).filter(id => ids.includes(id));
-  if(order.length === 0){
-    order = (fieldRouteOrder[orderKey(day)] || []).filter(id => ids.includes(id));
-  }
-  if(order.length === 0){
-    order = (fieldRouteOrder[day] || []).filter(id => ids.includes(id));  // older saves
-  }
-  if(order.length === 0){
-    order = websiteOrderForDay(day).filter(id => ids.includes(id));
-  }
+  // The admin app always follows the company's route order, the same one the
+  // website's route scheduling shows: a change on either side shows on the
+  // other after a sync. Nothing kept only on this phone overrides it.
+  let order = websiteOrderForDay(day).filter(id => ids.includes(id));
   ids.forEach(id => { if(!order.includes(id)) order.push(id); });
   return order.map(id => list.find(c => c.id === id)).filter(Boolean);
 }

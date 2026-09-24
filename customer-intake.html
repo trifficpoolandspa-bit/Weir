@@ -2973,11 +2973,19 @@ function attachTouchReorder(handle, item, container, itemSelector, onReorder){
   }
 
   let orderAtLift = [];
+  // Whether the items sit side by side (chips in a grid) or one under another
+  // (a list). Decided by how they're actually laid out: a wide list row is
+  // still a list row. Judging it by the row's shape sent a drag toward the
+  // bottom of a list by left/right, so the last place could never be reached.
+  let sideBySide = false;
 
   function lift(clientX, clientY){
     const rect = item.getBoundingClientRect();
-    orderAtLift = Array.from(container.querySelectorAll(itemSelector))
-      .map(el => el.dataset.reorderKey).filter(k => k !== undefined);
+    const all = Array.from(container.querySelectorAll(itemSelector));
+    orderAtLift = all.map(el => el.dataset.reorderKey).filter(k => k !== undefined);
+    const boxes = all.map(el => el.getBoundingClientRect()).filter(b => b.width && b.height);
+    sideBySide = boxes.some((a, i) => boxes.some((b, j) =>
+      j !== i && Math.abs(a.top - b.top) < Math.min(a.height, b.height) / 2 && Math.abs(a.left - b.left) > 4));
     dragging = true;
     startX = clientX; startY = clientY;
     offsetX = clientX - rect.left;
@@ -3018,7 +3026,7 @@ function attachTouchReorder(handle, item, container, itemSelector, onReorder){
     // Move the placeholder once the finger clears a neighbour's midpoint
     for(const other of siblings()){
       const b = other.getBoundingClientRect();
-      const horizontal = b.width > b.height * 1.6;
+      const horizontal = sideBySide;
       const overIt = lastX > b.left && lastX < b.right && lastY > b.top && lastY < b.bottom;
       if(!overIt) continue;
       const past = horizontal

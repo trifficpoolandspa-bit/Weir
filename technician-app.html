@@ -6475,8 +6475,7 @@ function appendRouteJobRows(container, customer, jobs, dayISO, canReorder){
 // submitted stays on this phone for now; a place to keep submissions on the
 // server comes later.
 function openJobPage(customer, job){
-  const old = document.getElementById('jobPage');
-  if(old) old.remove();
+  if(openJobPage.open) openJobPage.open.remove();
   let photo = null;
 
   const page = document.createElement('div');
@@ -6596,6 +6595,7 @@ function openJobPage(customer, job){
 
   page.appendChild(card);
   document.body.appendChild(page);
+  openJobPage.open = page;
   page.scrollTop = 0;
 }
 
@@ -8103,11 +8103,19 @@ function attachTouchReorder(handle, item, container, itemSelector, onReorder){
   }
 
   let orderAtLift = [];
+  // Whether the items sit side by side (chips in a grid) or one under another
+  // (a list). Decided by how they're actually laid out: a wide list row is
+  // still a list row. Judging it by the row's shape sent a drag toward the
+  // bottom of a list by left/right, so the last place could never be reached.
+  let sideBySide = false;
 
   function lift(clientX, clientY){
     const rect = item.getBoundingClientRect();
-    orderAtLift = Array.from(container.querySelectorAll(itemSelector))
-      .map(el => el.dataset.reorderKey).filter(k => k !== undefined);
+    const all = Array.from(container.querySelectorAll(itemSelector));
+    orderAtLift = all.map(el => el.dataset.reorderKey).filter(k => k !== undefined);
+    const boxes = all.map(el => el.getBoundingClientRect()).filter(b => b.width && b.height);
+    sideBySide = boxes.some((a, i) => boxes.some((b, j) =>
+      j !== i && Math.abs(a.top - b.top) < Math.min(a.height, b.height) / 2 && Math.abs(a.left - b.left) > 4));
     dragging = true;
     startX = clientX; startY = clientY;
     offsetX = clientX - rect.left;
@@ -8148,7 +8156,7 @@ function attachTouchReorder(handle, item, container, itemSelector, onReorder){
     // Move the placeholder once the finger clears a neighbour's midpoint
     for(const other of siblings()){
       const b = other.getBoundingClientRect();
-      const horizontal = b.width > b.height * 1.6;
+      const horizontal = sideBySide;
       const overIt = lastX > b.left && lastX < b.right && lastY > b.top && lastY < b.bottom;
       if(!overIt) continue;
       const past = horizontal
@@ -11708,8 +11716,7 @@ attachAllPhoneFormatting();
   const b = document.getElementById('btn' + T + 'Skip');
   if(b) b.addEventListener('click', ()=> skipBodyOfWater(T.toLowerCase()));
 });
-</script>
-<script>
+
 // Any button whose only content is a typed "×" is given a drawn × instead, now
 // and whenever one is added later. It takes the button's own colour and scales
 // with its text size, so it looks the same, just centred.
