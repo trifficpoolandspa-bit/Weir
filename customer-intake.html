@@ -7347,7 +7347,14 @@ let syncRedrawWaiting = false;
 function refreshSyncedWorkingCopy(id){
   if(id === 'chemConfig') chemConfig = loadChemConfig();
   if(id === 'customChemConfig') customConfig = lsGet('customChemConfig') || {};
-  if(id === 'routeOrders'){ routeOrders = lsGet('routeOrders') || {}; return; }
+  if(id === 'routeOrders'){
+    routeOrders = lsGet('routeOrders') || {};
+    // An order set on a phone shows here straight away, unless a route is
+    // being dragged at this moment
+    const dragging = document.querySelector('.dragging, .is-dragging');
+    if(!dragging && typeof renderRoutesList === 'function') renderRoutesList();
+    return;
+  }
   if(id === 'productsServices'){
     productsServices = lsGet('productsServices') || [];
     const box = document.getElementById('productsServicesList');
@@ -18439,8 +18446,7 @@ attachAllPhoneFormatting();
 
 
 document.getElementById('btnChangePassword').addEventListener('click', changeOwnPassword);
-</script>
-<script>
+
 // Any button whose only content is a typed "×" is given a drawn × instead, now
 // and whenever one is added later. It takes the button's own colour and scales
 // with its text size, so it looks the same, just centred.
@@ -18467,8 +18473,7 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
     });
   }).observe(document.body, {childList: true, subtree: true, characterData: true});
 })();
-</script>
-<script>
+
 // Windows close only from their own buttons. A click on the dark backdrop
 // around a window, the full-screen layer behind it, is ignored before any
 // handler can act on it. Clicks inside the window itself are untouched.
@@ -18487,8 +18492,7 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
     if(isBackdrop(e.target)){ e.stopPropagation(); e.preventDefault(); }
   }, true);
 })();
-</script>
-<script>
+
 // Clicking a customer field empties it, so a new name can be typed straight
 // away without backspacing over the old one. Click away without choosing or
 // typing anything and what was there comes back. Pressing something beside the

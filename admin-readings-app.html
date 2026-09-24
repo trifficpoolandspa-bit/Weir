@@ -4260,6 +4260,9 @@ async function fieldSync(){
     result.pushed = pushedResult.pushed || 0;
     if(!pushedResult.ok){ result.reason = pushedResult.offline ? 'offline' : 'push-failed'; saveFieldSyncState(state); return result; }
 
+    // A route order made permanent here, if it hasn't gone yet
+    await pushCompanyRouteOrder();
+
     // Tasks ticked off and visits moved here
     const work = await syncPushWork(state);
     result.work = work.pushed || 0;
@@ -7910,6 +7913,53 @@ document.getElementById('orderTempBtn').addEventListener('click', async ()=>{
   renderHomeList();
 });
 
+// "Every week" is the company's order for that day, not just this phone's: it's
+// written into the same route order the website keeps (by day, then by route),
+// which syncs to the website and every phone. Each route keeps its customers in
+// the new order; anyone on that route who wasn't on screen keeps their place
+// after them. Jobs aren't part of a route, so they're left out.
+function saveCompanyRouteOrder(day, ids){
+  const ro = lsGet('routeOrders') || {};
+  if(!ro[day] || Array.isArray(ro[day])) ro[day] = {};
+  const byRoute = {};
+  ids.forEach(id=>{
+    if(String(id).indexOf('job:') === 0) return;
+    const c = customers.find(x => String(x.id) === String(id));
+    if(!c) return;
+    const key = c.routeId || 'unassigned';
+    (byRoute[key] = byRoute[key] || []).push(c.id);
+  });
+  Object.keys(byRoute).forEach(key=>{
+    const moved = byRoute[key];
+    const before = Array.isArray(ro[day][key]) ? ro[day][key] : [];
+    ro[day][key] = moved.concat(before.filter(id => moved.indexOf(id) === -1));
+  });
+  lsSet('routeOrders', ro);
+  // Sent to the office now, or with the next sync if there's no signal
+  lsSet('routeOrdersToSend', Date.now());
+  pushCompanyRouteOrder();
+}
+
+// Sends the company's route order up. Only an owner or admin may change it
+// (snippet 07); it's the same record the website edits on its Routes page.
+async function pushCompanyRouteOrder(){
+  const at = lsGet('routeOrdersToSend');
+  if(!at) return true;
+  try{
+    const res = await fieldAuthed('/rest/v1/rpc/push_record_fields', {
+      method: 'POST',
+      body: JSON.stringify({p_kind: 'setup', p_id: 'routeOrders',
+        p_changes: {value: {t: new Date(at).toISOString(), v: lsGet('routeOrders') || {}}}, p_base: null})
+    });
+    if(res && res.ok && res.body && res.body.result){
+      // Unless it was changed again while this was on its way
+      if(lsGet('routeOrdersToSend') === at) lsSet('routeOrdersToSend', null);
+      return true;
+    }
+  }catch(e){}
+  return false;
+}
+
 document.getElementById('orderPermBtn').addEventListener('click', async ()=>{
   if(!pendingOrderIds) return hideOrderBanner();
   const ok = await confirmDialog('Use this order every ' + selectedHomeDay +
@@ -7919,6 +7969,8 @@ document.getElementById('orderPermBtn').addEventListener('click', async ()=>{
   // Drop any one-off order for today so the weekly one takes effect
   delete fieldRouteOrder[orderKey(selectedHomeDay, isoForDay(selectedHomeDay))];
   saveFieldRouteOrder();
+  // and for the company: the website and every phone follow it
+  saveCompanyRouteOrder(selectedHomeDay, pendingOrderIds);
   hideOrderBanner();
   showToast('Order saved for every ' + selectedHomeDay);
   renderHomeList();
@@ -8355,8 +8407,7 @@ function appendRouteJobRows(container, customer, jobs, dayISO, canReorder){
 // submitted stays on this phone for now; a place to keep submissions on the
 // server comes later.
 function openJobPage(customer, job){
-  const old = document.getElementById('jobPage');
-  if(old) old.remove();
+  if(openJobPage.open) openJobPage.open.remove();
   let photo = null;
 
   const page = document.createElement('div');
@@ -8476,6 +8527,7 @@ function openJobPage(customer, job){
 
   page.appendChild(card);
   document.body.appendChild(page);
+  openJobPage.open = page;
   page.scrollTop = 0;
 }
 
@@ -13379,8 +13431,7 @@ attachAllPhoneFormatting();
   const b = document.getElementById('btn' + T + 'Skip');
   if(b) b.addEventListener('click', ()=> skipBodyOfWater(T.toLowerCase()));
 });
-</script>
-<script>
+
 // Any button whose only content is a typed "×" is given a drawn × instead, now
 // and whenever one is added later. It takes the button's own colour and scales
 // with its text size, so it looks the same, just centred.
