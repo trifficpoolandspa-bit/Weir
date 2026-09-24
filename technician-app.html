@@ -1645,9 +1645,21 @@ function renderCustomPhotoBlocks(type, when){
     title.textContent = p.label + (techWantsPhoto(p.id, type) ? ' (required)' : '');
     block.appendChild(title);
 
+    // A centred thumbnail, the same as the before and after photos: a full-size
+    // preview pushed the rest of the visit off the screen. Tapping it opens
+    // the whole photo.
+    const imgWrap = document.createElement('div');
+    imgWrap.style.cssText = 'display:none;justify-content:center;margin-bottom:8px;';
     const img = document.createElement('img');
-    img.style.cssText = 'max-width:100%;border-radius:10px;border:1px solid var(--line);display:none;margin-bottom:8px;';
-    block.appendChild(img);
+    img.style.cssText = 'max-width:25%;min-width:96px;border-radius:10px;border:1px solid var(--line);display:block;cursor:zoom-in;';
+    img.title = 'Tap to see it full size';
+    img.alt = p.label + ' photo';
+    img.addEventListener('click', ()=>{
+      const data = customPhotosTakenFor(type)[p.id];
+      if(data && typeof openPhotoFullSize === 'function') openPhotoFullSize(data);
+    });
+    imgWrap.appendChild(img);
+    block.appendChild(imgWrap);
 
     const take = document.createElement('button');
     take.type = 'button';
@@ -1666,11 +1678,11 @@ function renderCustomPhotoBlocks(type, when){
     function show(data){
       customPhotosTakenFor(type)[p.id] = data || null;
       if(data){
-        img.src = data; img.style.display = 'block';
+        img.src = data; imgWrap.style.display = 'flex';
         take.textContent = 'Retake photo';
         remove.style.display = 'inline-flex';
       } else {
-        img.removeAttribute('src'); img.style.display = 'none';
+        img.removeAttribute('src'); imgWrap.style.display = 'none';
         take.textContent = 'Take photo';
         remove.style.display = 'none';
       }

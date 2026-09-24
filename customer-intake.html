@@ -7282,6 +7282,29 @@ function syncLocalRecords(){
 }
 
 // Put a record from the server back where this device keeps it
+// Picks up a synced setting in the page's working copy, and redraws the lists
+// that show it. Not while someone is typing in those lists: the redraw waits
+// until they leave the box, so it never swallows a keystroke.
+let syncRedrawWaiting = false;
+function refreshSyncedWorkingCopy(id){
+  if(id === 'chemConfig') chemConfig = loadChemConfig();
+  if(id === 'customChemConfig') customConfig = lsGet('customChemConfig') || {};
+  if(id === 'routeOrders'){ routeOrders = lsGet('routeOrders') || {}; return; }
+  const lists = ['chemConfigChemicalsList', 'chemConfigDosagesList', 'customExistingList']
+    .map(x => document.getElementById(x)).filter(Boolean);
+  const active = document.activeElement;
+  const typingHere = active && lists.some(el => el.contains(active));
+  const redraw = ()=>{
+    syncRedrawWaiting = false;
+    if(typeof renderChemConfigLists === 'function') renderChemConfigLists();
+    if(typeof renderExistingCustomSetups === 'function') renderExistingCustomSetups();
+  };
+  if(!typingHere){ redraw(); return; }
+  if(syncRedrawWaiting) return;
+  syncRedrawWaiting = true;
+  active.addEventListener('blur', ()=> setTimeout(redraw, 0), {once: true});
+}
+
 function syncApplyRecord(kind, id, data, deleted){
   if(kind === 'technician'){
     const list = lsGet('technicians') || [];
@@ -7320,6 +7343,12 @@ function syncApplyRecord(kind, id, data, deleted){
         customerGroups = lsGet('customerGroups') || [];
         renderGroupList();
       }catch(e){}
+    }
+    // The same for the other settings the page keeps a working copy of. A
+    // dosage added on another device was saved here but never reached the
+    // copy the page edits, so the next save on this computer deleted it.
+    if(id === 'chemConfig' || id === 'customChemConfig' || id === 'routeOrders'){
+      try{ refreshSyncedWorkingCopy(id); }catch(e){}
     }
     return true;
   }
