@@ -11263,6 +11263,9 @@ let customCustHideTimer = null;
 let customSnapshot = null;
 
 
+// Which group's list of customers is open; one at a time
+let groupOpenId = null;
+
 // ---------- Ten to a page on this tab ----------
 // Page numbers built exactly like the customer list's. `wrapStyle` places the
 // block: between the groups and the section below, or under the last customer.
@@ -11335,11 +11338,13 @@ function renderGroupList(){
   shownGroups.forEach((g, gi)=>{
     const row = document.createElement('div');
     const last = gi === shownGroups.length - 1;
+    const open = groupOpenId === g.id;
+    // An open group's line moves below its list of customers
     row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;'
       + 'padding:12px 0;cursor:pointer;'
-      + (last ? '' : 'border-bottom:1px solid var(--line);');
+      + (last || open ? '' : 'border-bottom:1px solid var(--line);');
     row.className = 'press-row';
-    row.title = 'Open this group\u2019s setup';
+    row.title = open ? 'Close this group' : 'Open this group and its setup';
     const left = document.createElement('div');
     left.style.cssText = 'min-width:0;';
     const name = document.createElement('div');
@@ -11348,7 +11353,7 @@ function renderGroupList(){
     const who = document.createElement('div');
     who.style.cssText = 'font-size:11.5px;color:var(--muted);';
     const n = (g.customerIds || []).length;
-    who.textContent = n + (n === 1 ? ' customer' : ' customers');
+    who.textContent = n + (n === 1 ? ' customer' : ' customers') + (open ? '  \u25b4' : '  \u25be');
     left.appendChild(name); left.appendChild(who);
     row.appendChild(left);
 
@@ -11382,8 +11387,73 @@ function renderGroupList(){
     right.appendChild(del);
     row.appendChild(right);
 
-    row.addEventListener('click', ()=> openGroupSetup(g));
+    // Pressing the group opens its list of customers and its setup together;
+    // pressing it again closes both
+    row.addEventListener('click', ()=>{
+      if(open){
+        groupOpenId = null;
+        if(customGroupId === g.id) closeCustomSetup();
+        renderGroupList();
+        return;
+      }
+      openGroupSetup(g);
+    });
     box.appendChild(row);
+
+    if(open){
+      const panel = document.createElement('div');
+      panel.style.cssText = 'padding:0 0 14px 14px;' + (last ? '' : 'border-bottom:1px solid var(--line);');
+      const members = (g.customerIds || [])
+        .map(id => customers.find(c => String(c.id) === String(id)))
+        .filter(Boolean)
+        .sort((a, b)=> sortKeyName(a.name).localeCompare(sortKeyName(b.name)));
+      if(!members.length){
+        const none = document.createElement('div');
+        none.style.cssText = 'font-size:12.5px;color:var(--muted);padding:4px 0;';
+        none.textContent = 'No customers in this group yet.';
+        panel.appendChild(none);
+      }
+      // Five even columns, lined up; a long name is cut short rather than
+      // taking more room
+      if(members.length){
+        const grid = document.createElement('div');
+        grid.style.cssText = 'display:grid;grid-template-columns:repeat(5, minmax(0, 1fr));column-gap:14px;row-gap:4px;';
+        members.forEach(c=>{
+          // A small × just left of the name takes them out of the group
+          const cell = document.createElement('div');
+          cell.style.cssText = 'display:flex;align-items:center;gap:5px;min-width:0;';
+          const x = document.createElement('button');
+          x.type = 'button';
+          x.className = 'btn btn-ghost';
+          x.style.cssText = 'width:18px;height:18px;min-width:18px;padding:0;flex-shrink:0;'
+            + 'font-size:12px;color:var(--muted);border-radius:5px;';
+          x.textContent = '\u00d7';
+          x.title = 'Take ' + displayName(c.name) + ' out of this group';
+          x.addEventListener('click', async (e)=>{
+            e.stopPropagation();
+            const sure = await confirmDialog('Take ' + displayName(c.name) + ' out of "' + (g.name || 'this group')
+              + '"? They go back to your default readings and dosages.', 'Take out');
+            if(!sure) return;
+            // The same as taking them out in the Customers window
+            clearSetupFor(c.id);
+            g.customerIds = (g.customerIds || []).filter(id => String(id) !== String(c.id));
+            saveCustomerGroups();
+            renderGroupList();
+            renderExistingCustomSetups();
+            showToast(displayName(c.name) + ' taken out of ' + (g.name || 'the group'));
+          });
+          const name = document.createElement('span');
+          name.style.cssText = 'font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;';
+          name.textContent = displayName(c.name);
+          name.title = displayName(c.name);
+          cell.appendChild(x);
+          cell.appendChild(name);
+          grid.appendChild(cell);
+        });
+        panel.appendChild(grid);
+      }
+      box.appendChild(panel);
+    }
   });
 
   // The line above the page numbers closes off the last group, and the line
@@ -11482,6 +11552,9 @@ let customGroupId = null;
 
 function openGroupSetup(group){
   customGroupId = group.id;
+  // This group's list opens, any other closes
+  groupOpenId = group.id;
+  if(typeof renderGroupList === 'function') renderGroupList();
   // The editor is written around one id, so the group uses its own. Every
   // change is copied onto the members as it is saved.
   customCustomerId = group.id;
@@ -11599,6 +11672,12 @@ function saveCustomConfig(){
 
 // Load one customer's custom setup into the editors above
 function openCustomSetup(cust, bodies){
+  // A customer's own setup: any open group closes
+  if(groupOpenId !== null){
+    groupOpenId = null;
+    if(typeof renderGroupList === 'function') renderGroupList();
+  }
+  customGroupId = null;
   customCustomerId = cust.id;
   customBodyKey = (bodies && bodies[0]) || null;
   customWorking = null;
@@ -11642,6 +11721,11 @@ document.addEventListener('DOMContentLoaded', ()=>{
 });
 
 function closeCustomSetup(){
+  // A group's list is open only while its setup is
+  if(groupOpenId !== null){
+    groupOpenId = null;
+    if(typeof renderGroupList === 'function') renderGroupList();
+  }
   customGroupId = null;
   customCustomerId = null;
   customBodyKey = null;
@@ -11668,7 +11752,11 @@ function renderExistingCustomSetups(){
   if(!box || !wrap) return;
 
   const entries = [];
+  // Anyone in a group uses the group's setup and is listed under the group
+  const inAGroup = new Set();
+  customerGroups.forEach(g => (g.customerIds || []).forEach(id => inAGroup.add(String(id))));
   Object.keys(customConfig).forEach(cid=>{
+    if(inAGroup.has(String(cid))) return;
     const cust = customers.find(x => x.id === cid);
     if(!cust) return;
     const bodies = Object.keys(customConfig[cid] || {});
@@ -18398,6 +18486,56 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
   document.addEventListener('click', e=>{
     if(isBackdrop(e.target)){ e.stopPropagation(); e.preventDefault(); }
   }, true);
+})();
+</script>
+<script>
+// Clicking a customer field empties it, so a new name can be typed straight
+// away without backspacing over the old one. Click away without choosing or
+// typing anything and what was there comes back. Pressing something beside the
+// field (its ×, or a suggestion) counts as a choice, so nothing is put back.
+// Only a click or tap empties a field; tabbing into it leaves it alone.
+(function customerFieldsClearOnClick(){
+  const IDS = ['customerSearch', 'techAssignedSearch', 'techAssignSearch', 'customCustSearch',
+               'wcRecipientSearch', 'wcCustomerSearch', 'taskCustomerSearch', 'wcHistorySearch',
+               'billingSearch', 'groupSearch', 'delEqSearch', 'addEqSearch'];
+  const isCustomerField = el => el && el.tagName === 'INPUT' && IDS.indexOf(el.id) !== -1;
+  const nearby = inp => inp.closest('.field') || inp.parentElement;
+  // Noted at the press itself: some of these fields already empty themselves
+  // when they get focus, so by then the old text would be gone
+  let pressed = null;
+  document.addEventListener('pointerdown', e=>{
+    if(isCustomerField(e.target) && document.activeElement !== e.target){
+      pressed = {el: e.target, before: e.target.value};
+    }
+  }, true);
+  document.addEventListener('focusin', e=>{
+    const inp = e.target;
+    if(!pressed || inp !== pressed.el) return;
+    const before = pressed.before;
+    pressed = null;
+    if(!before) return;
+    if(inp.value){
+      inp.value = '';
+      inp.dispatchEvent(new Event('input', {bubbles: true}));
+    }
+    let choseSomething = false;
+    const watch = ev=>{
+      const area = nearby(inp);
+      if(area && area.contains(ev.target) && ev.target !== inp) choseSomething = true;
+    };
+    document.addEventListener('pointerdown', watch, true);
+    inp.addEventListener('blur', function onLeave(){
+      inp.removeEventListener('blur', onLeave);
+      setTimeout(()=>{
+        document.removeEventListener('pointerdown', watch, true);
+        if(choseSomething || inp.value !== '' || document.activeElement === inp) return;
+        inp.value = before;
+        inp.dispatchEvent(new Event('input', {bubbles: true}));
+        // and any suggestion list that opened is closed again
+        inp.dispatchEvent(new Event('blur'));
+      }, 250);
+    });
+  });
 })();
 </script>
 </body>
