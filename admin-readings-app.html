@@ -7742,14 +7742,12 @@ function websiteOrderForDay(day){
 function attachTouchDrag(handle, row, container){
   attachTouchReorder(handle, row, container, '.cust-row, .route-job', (ids)=>{
     if(!ids.length) return;
-    // Every drag here is the company's route order for this day, straight away:
-    // it goes to the website's route scheduling with the next sync. Kept on this
-    // phone too, only so dragged jobs keep their places.
-    fieldRouteOrder[orderKey(selectedHomeDay)] = ids;
-    delete fieldRouteOrder[orderKey(selectedHomeDay, isoForDay(selectedHomeDay))];
+    // Shown for today straight away; the bar then asks: Just today keeps it on
+    // this phone for today, Every week makes it the company's route order (the
+    // website's route scheduling), and the undo puts it back
+    fieldRouteOrder[orderKey(selectedHomeDay, isoForDay(selectedHomeDay))] = ids;
     saveFieldRouteOrder();
-    saveCompanyRouteOrder(selectedHomeDay, ids);
-    showToast('Route order saved');
+    showOrderBanner(ids);
     // A customer's task and work order rows follow them to their new place
     if(document.querySelector('#homeCustomerList .route-job')) renderHomeList();
   });
@@ -7854,10 +7852,15 @@ function orderKey(day, dateISO){
 function orderCustomersForDay(day, list){
   const ids = list.map(c => c.id);
 
-  // The admin app always follows the company's route order, the same one the
-  // website's route scheduling shows: a change on either side shows on the
-  // other after a sync. Nothing kept only on this phone overrides it.
-  let order = websiteOrderForDay(day).filter(id => ids.includes(id));
+  // A "Just today" order for this exact date wins for that date only.
+  // Otherwise the admin app follows the company's route order, the same one
+  // the website's route scheduling shows, so a change made on either side
+  // shows on the other after a sync.
+  const iso = isoForDay(day);
+  let order = (fieldRouteOrder[orderKey(day, iso)] || []).filter(id => ids.includes(id));
+  if(order.length === 0){
+    order = websiteOrderForDay(day).filter(id => ids.includes(id));
+  }
   ids.forEach(id => { if(!order.includes(id)) order.push(id); });
   return order.map(id => list.find(c => c.id === id)).filter(Boolean);
 }
@@ -7989,7 +7992,13 @@ document.getElementById('orderCloseBtn').addEventListener('click', async ()=>{
   // deleting the override would fall back to an older saved order, which is
   // why a stop from further down could appear to jump up the list.
   const key = orderKey(selectedHomeDay, isoForDay(selectedHomeDay));
-  if(orderBeforeDrag && orderBeforeDrag.length){
+  // If what was showing was simply the company's order, go back to following
+  // it, so the website's changes keep coming through; otherwise restore the
+  // one-day order exactly
+  const company = websiteOrderForDay(selectedHomeDay);
+  const before = (orderBeforeDrag || []).filter(id => String(id).indexOf('job:') !== 0);
+  const wasCompany = before.length && company.filter(id => before.includes(id)).join() === before.join();
+  if(orderBeforeDrag && orderBeforeDrag.length && !wasCompany){
     fieldRouteOrder[key] = orderBeforeDrag.slice();
   } else {
     delete fieldRouteOrder[key];
