@@ -6319,8 +6319,11 @@ function routeJobCustomerIds(dayISO, techId){
 // How many jobs a day holds: every work order and every task counts as one,
 // however many a customer has. Still to do is what's on the route; done is
 // what was submitted for that day.
-function routeJobCounts(dayISO, techId, customersOnRoute){
-  const open = (customersOnRoute || []).reduce((n, c)=> n + routeJobsFor(c.id, dayISO, techId).length, 0);
+function routeJobCounts(dayISO, techId){
+  // Every open job that day, including ones whose customer has already been
+  // serviced: a job is its own piece of work, finished only when submitted
+  const open = Array.from(routeJobCustomerIds(dayISO, techId))
+    .reduce((n, id)=> n + routeJobsFor(id, dayISO, techId).length, 0);
   const localDay = iso => { const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
   const done = jobSubmissions().filter(s =>
     (s.date ? s.date === dayISO : (s.submittedAt && localDay(s.submittedAt) === dayISO))
@@ -6681,7 +6684,7 @@ function renderHomeList(){
   // Jobs: every work order and task on this day counts as one, however many a
   // customer has, and each filter clean counts as one
   const jobTech = currentUser ? currentUser.id : '__none__';
-  const jobTally = routeJobCounts(selectedDayISO, jobTech, todaysCustomers);
+  const jobTally = routeJobCounts(selectedDayISO, jobTech);
   const cleansLeft = todaysCustomers.filter(cust => filterCleanIds.has(cust.id)).length;
   // Filter cleans finished today still count toward the total
   const cleansDone = customers.filter(cust =>
@@ -6706,7 +6709,15 @@ function renderHomeList(){
   const dateStr = d ? d.toLocaleDateString(undefined, {month:'long', day:'numeric', year:'numeric'}) : selectedHomeDay;
   dateInfo.textContent = dateStr + ' · ' + stopText;
 
-  if(todaysCustomers.length === 0){
+  // Jobs whose customer has already been serviced, or who isn't on the route:
+  // they stay until the job itself is submitted
+  const onRouteIds = new Set(todaysCustomers.map(c => c.id));
+  const jobsOnTheirOwn = Array.from(routeJobCustomerIds(selectedDayISO, currentUser ? currentUser.id : '__none__'))
+    .filter(id => !onRouteIds.has(id))
+    .map(id => customers.find(c => c.id === id))
+    .filter(c => c && c.active !== false);
+
+  if(todaysCustomers.length === 0 && !jobsOnTheirOwn.length){
     container.innerHTML = `<div class="empty">No remaining customers for today.</div>`;
     return;
   }
@@ -6906,6 +6917,8 @@ function renderHomeList(){
     container.appendChild(row);
     appendRouteJobRows(container, c, routeJobsFor(c.id, selectedDayISO, currentUser ? currentUser.id : '__none__'), selectedDayISO, canReorder);
   });
+  jobsOnTheirOwn.forEach(c =>
+    appendRouteJobRows(container, c, routeJobsFor(c.id, selectedDayISO, currentUser ? currentUser.id : '__none__'), selectedDayISO, canReorder));
   placeMovedJobs(container, selectedHomeDay);
 }
 
