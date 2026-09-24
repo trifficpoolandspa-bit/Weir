@@ -10,6 +10,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
+/* A drawn × for close and remove buttons, centred on the box whatever the font
+   does (a typed × sits about a pixel high) */
+button[data-x-drawn]{align-items:center;justify-content:center;}
+button[data-x-drawn]:not([style*="display: none"]):not([style*="display:none"]){display:inline-flex;}
+button[data-x-drawn] > svg{display:block;width:0.62em;height:0.62em;margin:auto;flex-shrink:0;pointer-events:none;}
 /* The regular before/after photo on a page that is only there for an extra photo */
 .photo-part-off{display:none !important;}
 /* A text cursor belongs in a field you type into and nowhere else. This is the
@@ -11701,6 +11706,34 @@ attachAllPhoneFormatting();
   const b = document.getElementById('btn' + T + 'Skip');
   if(b) b.addEventListener('click', ()=> skipBodyOfWater(T.toLowerCase()));
 });
+</script>
+<script>
+// Any button whose only content is a typed "×" is given a drawn × instead, now
+// and whenever one is added later. It takes the button's own colour and scales
+// with its text size, so it looks the same, just centred.
+(function drawCloseMarks(){
+  const SVG = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.6 1.6 L8.4 8.4 M8.4 1.6 L1.6 8.4" '
+    + 'stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>';
+  const convert = btn=>{
+    if(!btn || btn.dataset.xDrawn || btn.childElementCount !== 0) return;
+    if((btn.textContent || '').trim() !== '\u00d7') return;
+    if(!btn.getAttribute('aria-label')) btn.setAttribute('aria-label', btn.title || 'Remove');
+    btn.innerHTML = SVG;
+    btn.dataset.xDrawn = '1';
+  };
+  const sweep = root => { if(root && root.querySelectorAll) root.querySelectorAll('button').forEach(convert); };
+  sweep(document);
+  new MutationObserver(list=>{
+    list.forEach(m=>{
+      if(m.type === 'characterData'){ convert(m.target.parentElement); return; }
+      if(m.target && m.target.tagName === 'BUTTON') convert(m.target);
+      m.addedNodes.forEach(n=>{
+        if(n.nodeType !== 1) return;
+        if(n.tagName === 'BUTTON') convert(n); else sweep(n);
+      });
+    });
+  }).observe(document.body, {childList: true, subtree: true, characterData: true});
+})();
 </script>
 </body>
 </html>
