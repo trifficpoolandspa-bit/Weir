@@ -281,9 +281,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     const page = fs.readFileSync('customer-intake.html', 'utf8');
     check('groups sit below the customer search, not above it',
           page.indexOf('id="customCustSearch"') < page.indexOf('id="customGroupWrap"'));
-    check('with the same space above the line as below the heading',
-          /id="customGroupWrap"[^>]*margin:16px 0 0;padding-top:14px/.test(page)
-          && /id="customGroupList" style="margin-top:14px;"/.test(page));
+
     check('and the button says what it opens', /edit\.textContent = 'Customers';/.test(page));
 
     // Editing the group reaches everyone in it
@@ -312,6 +310,71 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     check('groups travel between office devices',
           /'reportEmailStyle', 'customerGroups'/.test(site));
   }catch(e){ check('groups', false, e.message); }
+  w.close();
+}
+
+
+// ---- Groups show the moment the tab opens, and sit evenly between lines ----
+{
+  console.log('\n=== customer-intake.html — groups on arrival ===');
+  const groups = [{id:'g1', name:'Salt pools', customerIds:['a'], config:{}},
+                  {id:'g2', name:'Tab pools', customerIds:[], config:{}}];
+  const dom = new JSDOM(fs.readFileSync('customer-intake.html','utf8'),{
+    runScripts:'dangerously',pretendToBeVisual:true,url:'https://example.com/',
+    beforeParse(w){
+      w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
+      w.scrollTo=()=>{};w.scrollBy=()=>{};w.alert=()=>{};
+      w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){},fillRect(){}});
+      w.console.warn=()=>{};w.console.error=()=>{};
+      w.indexedDB=global.indexedDB;w.IDBKeyRange=global.IDBKeyRange;
+      Object.keys(seed).forEach(k=>w.localStorage.setItem('weir:'+k,JSON.stringify(seed[k])));
+      w.localStorage.setItem('weir:customerGroups', JSON.stringify(groups));
+    }});
+  await wait(1500);
+  const w = dom.window, d = w.document;
+  const names = ()=> Array.from(d.querySelectorAll('#customGroupList > div'))
+    .map(r => r.firstChild.firstChild.textContent);
+  try{
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); switchView('customerconfig');");
+    check('saved groups show as soon as the tab opens',
+          d.getElementById('customGroupWrap').style.display !== 'none'
+          && names().join() === 'Salt pools,Tab pools', names().join() || '(none)');
+
+    // A group arriving by sync after the page loaded
+    w.eval("switchView('customers');");
+    w.eval("syncApplyRecord('setup', 'customerGroups', {value: "
+      + JSON.stringify(groups.concat({id:'g3', name:'Spa only', customerIds:[], config:{}})) + "}, false);");
+    w.eval("switchView('customerconfig');");
+    check('a group that arrived by sync shows too', names().indexOf('Spa only') !== -1, names().join());
+    w.eval("syncApplyRecord('setup', 'customerGroups', {value: "
+      + JSON.stringify(groups.concat({id:'g4', name:'Arrived while open', customerIds:[], config:{}})) + "}, false);");
+    check('even while the tab is open', names().indexOf('Arrived while open') !== -1, names().join());
+    check('and the page is working from the synced list, not a stale copy',
+          w.eval("customerGroups.map(g=>g.id).join()") === 'g1,g2,g4', w.eval("customerGroups.map(g=>g.id).join()"));
+
+    // Spacing: each group name sits the same distance from the line above as
+    // from the line below, including the last one
+    const rows = Array.from(d.querySelectorAll('#customGroupList > div'));
+    const pad = (el, side)=> parseFloat(el.style['padding' + side] || '0');
+    check('each group has as much room below its name as above',
+          rows.length === 3 && rows.every(r => pad(r, 'Top') > 0 && pad(r, 'Top') === pad(r, 'Bottom')),
+          rows.map(r => pad(r, 'Top') + '/' + pad(r, 'Bottom')).join(' '));
+    check('every group has a line above it', rows.every(r => /1px solid/.test(r.style.borderTop)));
+    const existing = d.getElementById('customExistingWrap');
+    check('the next line comes straight after the last group, so it is spaced like the rest',
+          parseFloat(existing.style.marginTop || '0') === 0 && /1px solid/.test(existing.style.borderTop),
+          existing.style.marginTop);
+    const list = d.getElementById('customGroupList');
+    const wrap = d.getElementById('customGroupWrap');
+    check('the Groups heading sits as far below its line as above the first group',
+          parseFloat(wrap.style.paddingTop) === parseFloat(list.style.marginTop),
+          wrap.style.paddingTop + ' / ' + list.style.marginTop);
+
+    // With no groups, the section beneath keeps its usual gap
+    w.eval("syncApplyRecord('setup', 'customerGroups', {value: []}, false);");
+    check('with no groups the heading is hidden', wrap.style.display === 'none');
+    check('and the section below keeps its own space', parseFloat(existing.style.marginTop) > 0, existing.style.marginTop);
+  }catch(e){ check('groups on arrival', false, e.message); }
   w.close();
 }
 

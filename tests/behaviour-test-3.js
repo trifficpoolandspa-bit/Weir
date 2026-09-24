@@ -816,8 +816,10 @@ console.log('\n=== Tasks sent to a route ===');
       check('  and hides the quote history',
             d.getElementById('wcQuotesHistoryCard').style.display === 'none');
       check('  the day is prefilled', !!d.getElementById('taskDate').value);
+      // Technicians are chosen in a window opened from one button
+      d.getElementById('taskTechnician').click();
       check('  technicians are listed',
-            d.getElementById('taskTechnician').options.length > 0);
+            d.querySelectorAll('#techPickList input[type=checkbox]').length > 1);
       check('  the customer label is just "Customer"',
             fs.readFileSync('customer-intake.html','utf8')
               .indexOf('<label>Customer <span') !== -1);
@@ -829,7 +831,9 @@ console.log('\n=== Tasks sent to a route ===');
 
       d.getElementById('taskTitle').value = 'Photograph the heater model plate';
       d.getElementById('taskDetails').value = 'Customer wants a quote.';
-      d.getElementById('taskTechnician').value = 't1';
+      Array.from(d.querySelectorAll('#techPickList input[type=checkbox]'))
+        .find(i => i.value === 't1').click();
+      d.getElementById('btnSaveTechPick').click();
       d.getElementById('btnSaveTask').click();
 
       saved = JSON.parse(w.eval("JSON.stringify(lsGet('tasks') || [])"));
@@ -1311,6 +1315,98 @@ setTimeout(()=>{
       .find(x => x.textContent === 'Delete this report');
     check('an open report has a delete at its foot', !!inside);
   }catch(e){ check('service report bars', false, e.message); }
+}
+
+
+// ---- Service reports come ten to a page ----
+{
+  console.log('\n=== service reports come ten to a page ===');
+  const day = n => new Date(Date.now() - n * 86400000).toISOString();
+  const many = Array.from({length: 23}, (_, i) => ({id: 'p' + i, date: day(i + 1), chlorine: '3'}));
+  const {dom} = load('customer-intake.html', {seed: {
+    customers: [{id: 'c1', name: 'Alpha One', active: true, hasPool: true, hasSpa: true, day: 'Monday'},
+                {id: 'c2', name: 'Bravo Two', active: true, hasPool: true, day: 'Monday'}],
+    'readings:c1': many,
+    'spaReadings:c1': many.slice(0, 12).map(r => Object.assign({}, r, {id: 's' + r.id})),
+    'readings:c2': many.slice(0, 10).map(r => Object.assign({}, r, {id: 'b' + r.id}))
+  }});
+  const w = dom.window, d = w.document;
+  w.console.warn = ()=>{};
+  w.Element.prototype.scrollIntoView = function(){};
+  try{
+    const bars = () => Array.from(d.querySelectorAll('#historyList > div'))
+      .filter(x => !x.classList.contains('report-doc') && !x.querySelector('[data-history-page]'));
+    const pageBtn = n => d.querySelector('#historyList [data-history-page="' + n + '"]');
+    const pager = () => { const b = pageBtn(1); return b ? b.parentElement : null; };
+    const info = () => pager() ? pager().lastChild.textContent : '(no page numbers)';
+    const dates = () => bars().map(b => b.textContent);
+    const openAlpha = ()=> w.eval("viewCustomer(customers[0]); selectedHistoryType='pool'; showHistory('c1','Alpha One');");
+
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); switchView('customers');");
+    openAlpha();
+
+    check('ten bars on the first page', bars().length === 10, String(bars().length));
+    const fmt = id => w.eval("fmtDate((lsGet('readings:c1')||[]).find(r => r.id === '" + id + "').date)");
+    check('the newest ten, newest first',
+          dates()[0].indexOf(fmt('p0')) === 0 && dates()[9].indexOf(fmt('p9')) === 0,
+          dates()[0] + ' ... ' + dates()[9]);
+    check('page numbers for three pages', !!pageBtn(3) && !pageBtn(4));
+    check('it says which ten are showing', info() === 'Showing 1\u201310 of 23', info());
+
+    const arrows = () => Array.from(pager().querySelectorAll('button')).filter(b => !b.dataset.historyPage);
+    check('the back arrow is dead on the first page', arrows()[0].disabled);
+
+    arrows()[1].click();
+    check('the forward arrow goes to page 2', info() === 'Showing 11\u201320 of 23' && bars().length === 10, info());
+    pageBtn(3).click();
+    check('the last page holds what is left', bars().length === 3 && info() === 'Showing 21\u201323 of 23',
+          bars().length + ' / ' + info());
+    check('and its forward arrow is dead', arrows()[1].disabled);
+    check('the page being looked at is marked',
+          /var\(--teal-deep\)/.test(pageBtn(3).style.background) && !/var\(--teal-deep\)/.test(pageBtn(1).style.background));
+
+    // Nothing is shown twice or missed across the pages
+    const seen = [];
+    [1, 2, 3].forEach(n => { pageBtn(n).click(); seen.push(...dates()); });
+    check('every report appears once across the pages', seen.length === 23 && new Set(seen).size === 23, String(seen.length));
+
+    // Opening, closing and deleting keep the page
+    pageBtn(2).click();
+    bars()[0].click();
+    check('opening a report stays on the page', info() === 'Showing 11\u201320 of 23'
+          && d.querySelectorAll('#historyList .report-doc').length === 1, info());
+    bars()[0].click();
+    check('closing it stays on the page', info() === 'Showing 11\u201320 of 23', info());
+    const onPage2 = w.eval("(lsGet('readings:c1')||[]).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)))[12].id");
+    w.eval("removeHistoryReport('c1', 'pool', " + JSON.stringify(onPage2) + ");");
+    check('deleting one stays on the page', info() === 'Showing 11\u201320 of 22', info());
+
+    // Deleting down to fewer pages never strands the list on an empty page
+    pageBtn(3).click();
+    const lastTwo = w.eval("JSON.stringify((lsGet('readings:c1')||[]).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(20).map(r=>r.id))");
+    JSON.parse(lastTwo).forEach(id => w.eval("removeHistoryReport('c1', 'pool', " + JSON.stringify(id) + ");"));
+    check('emptying the last page steps back to the one before', bars().length === 10 && info() === 'Showing 11\u201320 of 20',
+          bars().length + ' / ' + info());
+
+    // A different body of water, customer or date starts on page 1
+    pageBtn(2).click();
+    Array.from(d.querySelectorAll('#historySegControl .history-type-btn')).find(b => /spa/i.test(b.textContent)).click();
+    check('switching to the spa starts on its page 1', info() === 'Showing 1\u201310 of 12', info());
+    pageBtn(2).click();
+    w.eval("viewCustomer(customers[1]); selectedHistoryType='pool'; showHistory('c2','Bravo Two');");
+    check('ten reports exactly: no page numbers', bars().length === 10 && !pager(), info());
+    openAlpha();
+    check('coming back to a customer starts on page 1', info() === 'Showing 1\u201310 of 20', info());
+    pageBtn(2).click();
+    const filter = d.getElementById('historyDateFilter');
+    filter.value = w.eval("(lsGet('readings:c1')||[])[0].date.slice(0,10)");
+    filter.dispatchEvent(new w.Event('change'));
+    check('a date typed in narrows to that report, with no page numbers', bars().length === 1 && !pager(),
+          bars().length + ' / ' + info());
+    filter.value = '';
+    filter.dispatchEvent(new w.Event('change'));
+    check('clearing the date starts back on page 1', info() === 'Showing 1\u201310 of 20', info());
+  }catch(e){ check('service report pages', false, e.message); }
 }
 
 
