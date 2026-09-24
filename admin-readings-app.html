@@ -11738,6 +11738,12 @@ async function finalizeVisitSend(){
     customer.lastServicedAt = visitTimestamp();
     if(elapsedMs !== null) customer.lastServiceDurationMs = elapsedMs;
     await saveCustomers();
+    // Now that they count as serviced, the route and the Serviced list are
+    // drawn again. The drawing above happens first so the visit screen doesn't
+    // flash on the way out, but it came before this, so the customer stayed on
+    // Today until something else redrew the list.
+    renderHomeList();
+    renderServicedList();
   }
 
   // Someone further down the route may want warning before you arrive
