@@ -938,7 +938,9 @@ async function walkVisit(w, d, maxPresses){
         await wait(60); };
       const picture = type => { w.eval("renderCustomPhotoBlocks('" + type + "', 'before')");
         const img = d.querySelector('#customPhotos_' + type + '_before img');
-        return img && img.style.display !== 'none' ? img.getAttribute('src').split(',')[1] : ''; };
+        // The picture sits in its own box now, which is what shows and hides
+        const shownNow = img && img.parentElement.style.display !== 'none' && img.getAttribute('src');
+        return shownNow ? img.getAttribute('src').split(',')[1] : ''; };
       await take('pool');
       check(file + ': taking it on the pool stores it for the pool', picture('pool') === 'pool', picture('pool'));
       check(file + ': but does not count for the spa',
@@ -1002,6 +1004,598 @@ async function walkVisit(w, d, maxPresses){
              w.eval("techOptionalPhoto('gate') && !gatePhotoApplies()")) === true);
       check(file + ': Everyone travels down with the company setup', /'photoDefaults', 'photoEveryone'\]/.test(src));
     }catch(e){ check(file + ': start, gate and skip', false, e.message); }
+    w.close();
+  }
+}
+
+
+// ---- Today's list, jobs and the job page (Sept 24) ----
+{
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const today = DAYS[new Date().getDay()];
+  const iso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const tomorrowIso = new Date(Date.now() + 86400000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const other = today === 'Wednesday' ? 'Tuesday' : 'Wednesday';
+  const seedJobs = {
+    customers: [
+      {id: 'a', name: 'Alpha Today', address: '1 A St', phone: '(623) 555-0101', gateCode: '4321', active: true, hasPool: true, hasSpa: true, day: today, technicianId: 't1'},
+      {id: 'b', name: 'Bravo Today', address: '2 B St', active: true, hasPool: true, day: today, technicianId: 't1'},
+      {id: 'w', name: 'Wendy Other', address: '9 W Ln', active: true, hasPool: true, day: other, technicianId: 't1'}],
+    tasks: [{id: 'k1', title: 'Check seal', details: 'Drips overnight.', technicianId: 't1', date: iso, customerIds: ['a'], done: false},
+            {id: 'k2', title: 'Not mine', technicianId: 't2', date: iso, customerIds: ['b'], done: false}],
+    scheduledWorkOrders: [{id: 'w1', customerId: 'w', technicianId: 't1', date: iso, title: 'Replace cartridge', notes: 'In the truck.', status: 'scheduled'},
+                          {id: 'w2', customerId: 'b', technicianId: 't1', date: tomorrowIso, title: 'Tomorrow job', status: 'scheduled'}],
+    chemConfig: {pool: {chemicals: [{key: 'chlorine', label: 'Chlorine'}], dosages: [{key: 'tabs', label: 'Tabs'}]},
+                 spa: {chemicals: [{key: 'chlorine', label: 'Chlorine'}], dosages: [{key: 'tabs', label: 'Tabs'}]},
+                 fountain: {chemicals: [], dosages: []}}
+  };
+  for(const file of ['technician-app.html', 'admin-readings-app.html']){
+    console.log('\n=== ' + file + ': jobs on Today, and the job page ===');
+    const dom = boot(file, seedFor(seedJobs));
+    await wait(1400);
+    const w = dom.window, d = w.document;
+    w.Element.prototype.scrollIntoView = function(){};
+    try{
+      w.eval("currentUser = {id: 't1', name: 'Pat', full_access: true, canReorderRoute: true};"
+        + " if(typeof adminViewTechId !== 'undefined'){ adminViewTechId = 't1'; adminRouteStarted = true; }"
+        + " window.__heads = []; dispatchHeadsUp = c => window.__heads.push(c.name);"
+        + " confirmDialog = () => Promise.resolve(true); alertDialog = () => Promise.resolve(); attemptAutoSend = async () => {};"
+        + " captureFromCamera = async () => 'data:image/jpeg;base64,job'; openPhotoFullSize = src => { window.__full = src; };"
+        + " switchView('home'); renderHomeList();");
+      await wait(500);   // taps are ignored for a moment after a screen change
+      const list = () => Array.from(d.getElementById('homeCustomerList').children).map(r => r.classList.contains('route-job')
+        ? 'job:' + Array.from(r.children).find(x => !x.classList.contains('route-grip')).textContent
+        : (r.classList.contains('cust-row') ? 'svc:' + r.querySelector('.cust-name').textContent.trim() : '')).filter(Boolean);
+      const order = list();
+      check(file + ': a job sits under its customer\u2019s service that day', order.indexOf('job:Alpha Today \u2013 Check seal') === order.indexOf('svc:Alpha Today') + 1, order.join(' | '));
+      check(file + ': a job whose customer is serviced another day goes at the bottom', order[order.length - 1] === 'job:Wendy Other \u2013 Replace cartridge', order.join(' | '));
+      check(file + ': and never brings their service onto the day', order.indexOf('svc:Wendy Other') === -1);
+      check(file + ': another technician\u2019s job is not shown', !order.some(x => /Not mine/.test(x)));
+      check(file + ': a job on another day is not shown today', !order.some(x => /Tomorrow job/.test(x)));
+      check(file + ': the jobs count counts each job', d.getElementById('homeJobCount').textContent === '2 of 2', d.getElementById('homeJobCount').textContent);
+      const jobRow = Array.from(d.querySelectorAll('#homeCustomerList .route-job'))[0];
+      check(file + ': a job row has a grip for rearranging', !!jobRow.querySelector('.route-grip'));
+      check(file + ': and is saved in the route order as a job', /^job:/.test(jobRow.dataset.reorderKey));
+      check(file + ': its arrow is styled like a service row\u2019s', jobRow.querySelector('.chev').getAttribute('style') === 'color: var(--gold);', jobRow.querySelector('.chev').getAttribute('style'));
+      Array.from(jobRow.querySelectorAll('button')).find(b => b.textContent === 'On my way').click();
+      check(file + ': On my way on a job goes to its customer', JSON.stringify(w.eval('window.__heads')) === '["Alpha Today"]', JSON.stringify(w.eval('window.__heads')));
+      jobRow.click();
+      const brief = d.querySelector('.route-job-brief');
+      check(file + ': the drop-down shows address, phone, gate and the office\u2019s details',
+            !!brief && /1 A St/.test(brief.textContent) && /555-0101/.test(brief.textContent) && /4321/.test(brief.textContent) && /Drips overnight/.test(brief.textContent));
+      const start = Array.from(brief.querySelectorAll('button')).find(b => b.classList.contains('btn-primary'));
+      check(file + ': with Directions and Start job', /Directions/.test(brief.textContent) && start.textContent === 'Start job');
+      start.click();
+      const page = d.getElementById('jobPage');
+      check(file + ': Start job opens the job page', !!page && /Alpha Today \u2013 Check seal/.test(page.textContent));
+      Array.from(page.querySelectorAll('button')).find(b => b.textContent === 'Take photo').click(); await wait(60);
+      const thumb = page.querySelector('img');
+      check(file + ': the job photo is a thumbnail', thumb.style.maxWidth === '25%' && thumb.parentElement.style.display === 'flex');
+      thumb.click();
+      check(file + ': tapping it opens it full size', w.eval('window.__full') === 'data:image/jpeg;base64,job');
+      page.querySelector('textarea').value = 'Tightened the union.';
+      Array.from(page.querySelectorAll('button')).find(b => /^Submit/.test(b.textContent)).click(); await wait(200);
+      const subs = JSON.parse(w.localStorage.getItem('weir:jobSubmissions') || '[]');
+      check(file + ': submitting keeps the notes and photo, filed under its day',
+            subs.length === 1 && subs[0].notes === 'Tightened the union.' && !!subs[0].photo && subs[0].date === iso, JSON.stringify(subs.map(x => [x.notes, x.date])));
+      check(file + ': the page closes and the job leaves the list', !d.getElementById('jobPage') && !list().some(x => /Check seal/.test(x)));
+      check(file + ': the jobs count goes down', d.getElementById('homeJobCount').textContent === '1 of 2', d.getElementById('homeJobCount').textContent);
+
+      // A job saved at the top of the route stays there
+      w.eval("fieldRouteOrder[orderKey(selectedHomeDay, isoForDay(selectedHomeDay))] = ['job:work order:w1', 'a', 'b']; renderHomeList();");
+      check(file + ': a job dragged to a new place stays there', list()[0] === 'job:Wendy Other \u2013 Replace cartridge', list().join(' | '));
+      w.eval("fieldRouteOrder = {}; saveFieldRouteOrder(); renderHomeList();");
+
+      // Submitting the service leaves the customer's jobs alone
+      w.eval("localStorage.setItem('weir:tasks', JSON.stringify([{id:'k3',title:'Second task',technicianId:'t1',date:'" + iso + "',customerIds:['a'],done:false}])); renderHomeList();");
+      w.eval("openVisit('a')"); await wait(400);
+      const set = (id, v) => { const e = d.getElementById(id); if(!e) return; e.value = v; e.dispatchEvent(new w.Event('input', {bubbles: true})); };
+      set('pool_chem_chlorine', '3'); set('pool_dose_tabs', '2'); d.getElementById('btnSaveReading').click(); await wait(700);
+      set('spa_chem_chlorine', '4'); set('spa_dose_tabs', '1'); d.getElementById('btnSaveSpaReading').click(); await wait(1200);
+      check(file + ': a finished customer leaves Today straight away', !list().some(x => x === 'svc:Alpha Today'), list().join(' | '));
+      check(file + ': but their job stays on the list, on its own', list().some(x => /Second task/.test(x)), list().join(' | '));
+
+      // Reschedule starts on today
+      w.eval("openRescheduleModal(customers.find(c => c.id === 'b'));");
+      check(file + ': Reschedule\u2019s New date starts on today', d.getElementById('rsDate').value === w.eval('todayDateStr()'));
+    }catch(e){ check(file + ': jobs', false, e.message); }
+    w.close();
+
+    // Another day's job: only the admin app lets it be started
+    const dom2 = boot(file, seedFor(seedJobs));
+    await wait(1400);
+    const w2 = dom2.window, d2 = w2.document;
+    w2.Element.prototype.scrollIntoView = function(){};
+    try{
+      const tomorrow = DAYS[(new Date().getDay() + 1) % 7];
+      w2.eval("currentUser = {id: 't1', name: 'Pat', full_access: true};"
+        + " if(typeof adminViewTechId !== 'undefined'){ adminViewTechId = 't1'; adminRouteStarted = true; }"
+        + " selectedHomeDay = '" + tomorrow + "'; switchView('home'); renderHomeList();");
+      await wait(500);
+      const row = Array.from(d2.querySelectorAll('#homeCustomerList .route-job')).find(r => /Tomorrow job/.test(r.textContent));
+      row.click();
+      const btn = d2.querySelector('.route-job-brief .btn-primary');
+      if(file === 'admin-readings-app.html'){
+        check(file + ': a job on another day can be started in the admin app', btn.textContent === 'Start job' && !btn.disabled);
+      } else {
+        check(file + ': but not in the technician app', btn.textContent === 'Not today\u2019s job' && btn.disabled);
+      }
+    }catch(e){ check(file + ': another day', false, e.message); }
+    w2.close();
+  }
+
+  // Extra photos: thumbnail, caption, and the red Skip button
+  for(const file of ['technician-app.html', 'admin-readings-app.html']){
+    console.log('\n=== ' + file + ': extra photo thumbnails, captions, and Skip ===');
+    const photo = {id: 'cp_17902', label: 'Filter gauge', when: {before: true}, required: true};
+    const dom = boot(file, seedFor({photoEveryone: {cp_17902: {pool: true}},
+      chemConfig: {pool: {chemicals: [], dosages: [], customPhotos: [photo]}, spa: {chemicals: [], dosages: [], customPhotos: [photo]}, fountain: {chemicals: [], dosages: []}},
+      customChemConfig: {a: {spa: {chemicals: [], dosages: [], customPhotos: [{id: 'cp_own', label: 'Heater panel', when: {after: true}, required: true}]}}}}));
+    await wait(1300);
+    const w = dom.window, d = w.document;
+    try{
+      w.eval("currentUser = {id: 't1', name: 'Pat'}; currentVisitCustomerId = null; captureFromCamera = async () => 'data:image/jpeg;base64,gauge'; openPhotoFullSize = s => { window.__full = s; };");
+      w.eval("renderCustomPhotoBlocks('pool', 'before')");
+      const host = d.getElementById('customPhotos_pool_before');
+      Array.from(host.querySelectorAll('button')).find(b => /Take photo/.test(b.textContent)).click(); await wait(60);
+      const img = host.querySelector('img');
+      check(file + ': an extra photo shows as a small centred thumbnail',
+            img.style.maxWidth === '25%' && img.style.minWidth === '96px' && img.parentElement.style.display === 'flex' && img.parentElement.style.justifyContent === 'center');
+      img.click();
+      check(file + ': tapping it opens it full size', w.eval('window.__full') === 'data:image/jpeg;base64,gauge');
+      const caps = JSON.parse(w.eval("JSON.stringify(collectReportPhotos([{label:'Pool', reading:{customPhotos:{cp_17902:'data:x', cp_own:'data:y'}}}, {label:'Spa', reading:{customPhotos:{cp_gone:'data:z'}}}]).map(p => p.caption))"));
+      check(file + ': emailed extra photos are captioned with their names',
+            caps[0] === 'Pool Filter gauge' && caps[1] === 'Pool Heater panel' && caps[2] === 'Spa extra photo', JSON.stringify(caps));
+      const skip = d.getElementById('btnPoolSkip');
+      check(file + ': Skip this pool is filled red', /background:\s*var\(--rust\)/.test(skip.getAttribute('style')) && /color:\s*var\(--card\)/.test(skip.getAttribute('style')));
+      check(file + ': and its row is centred', /justify-content:\s*center/.test(d.getElementById('poolSkipRow').getAttribute('style')));
+      const src = fs.readFileSync(file, 'utf8');
+      check(file + ': on the step\u2019s heading line it sits in the middle column',
+            /head\.style\.gridTemplateColumns = '1fr auto 1fr';/.test(src) && /skipBtn\.style\.justifySelf = 'center'/.test(src));
+    }catch(e){ check(file + ': thumbnails and captions', false, e.message); }
+    w.close();
+  }
+}
+
+
+// ---- Sept 24: jobs, the Today list, extra photos, rescheduling, Skip ----
+{
+  const isoToday = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const isoTomorrow = new Date(Date.now() + 86400000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const other = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][(new Date().getDay() + 3) % 7];
+  for(const file of ['technician-app.html', 'admin-readings-app.html']){
+    console.log('\n=== ' + file + ': work orders and tasks on the route ===');
+    const jobsSeed = seedFor({
+      customers: [
+        {id:'a', name:'Alpha One', day: today, active:true, technicianId:'t1', hasPool:true, hasSpa:true, address:'1 A St', phone:'555-0101', gateCode:'4321'},
+        {id:'b', name:'Bravo Two', day: today, active:true, technicianId:'t1', hasPool:true},
+        {id:'w', name:'Wendy Other', day: other, active:true, technicianId:'t1', hasPool:true}],
+      tasks: [{id:'k1', title:'Check seal', details:'Drips overnight.', technicianId:'t1', date: isoToday, customerIds:['a'], done:false},
+              {id:'k9', title:'Not mine', technicianId:'t2', date: isoToday, customerIds:['b'], done:false}],
+      scheduledWorkOrders: [
+        {id:'w1', customerId:'w', technicianId:'t1', date: isoToday, title:'Replace cartridge', notes:'In the truck.', status:'scheduled'},
+        {id:'w2', customerId:'b', technicianId:'t1', date: isoToday, title:'Fix light', status:'scheduled'},
+        {id:'w3', customerId:'a', technicianId:'t1', date: isoTomorrow, title:'Tomorrow job', status:'scheduled'}],
+      photoEveryone: {}
+    });
+    const dom = boot(file, jobsSeed);
+    await wait(1300);
+    const w = dom.window, d = w.document;
+    w.Element.prototype.scrollIntoView = function(){};
+    try{
+      w.eval("currentUser = {id:'t1', name:'Alex', full_access:true, canReorderRoute:true};"
+        + " if(typeof adminViewTechId !== 'undefined'){ adminViewTechId = 't1'; adminRouteStarted = true; }"
+        + " dispatchHeadsUp = c => (window.__heads = (window.__heads || [])).push(c.name);"
+        + " switchView('home'); renderHomeList();");
+      await wait(500);        // the app ignores taps for 0.4s after a screen change
+      const list = () => Array.from(d.getElementById('homeCustomerList').children)
+        .filter(e => e.classList.contains('cust-row') || e.classList.contains('route-job'))
+        .map(e => e.classList.contains('route-job')
+          ? 'job ' + Array.from(e.children).find(x => !x.classList.contains('route-grip')).textContent
+          : 'service ' + (e.querySelector('.cust-name') || e).textContent.trim());
+      const order = list();
+      check(file + ': each job is its own row, "Customer – title"', order.indexOf('job Alpha One \u2013 Check seal') !== -1
+            && order.indexOf('job Bravo Two \u2013 Fix light') !== -1, order.join(' | '));
+      check(file + ': a job sits just under its customer\u2019s service that day',
+            order.indexOf('job Alpha One \u2013 Check seal') === order.indexOf('service Alpha One') + 1
+            && order.indexOf('job Bravo Two \u2013 Fix light') === order.indexOf('service Bravo Two') + 1, order.join(' | '));
+      check(file + ': a job whose customer isn\u2019t serviced today goes at the bottom',
+            order[order.length - 1] === 'job Wendy Other \u2013 Replace cartridge', order.join(' | '));
+      check(file + ': and it never brings their service onto the day', order.indexOf('service Wendy Other') === -1);
+      check(file + ': another technician\u2019s job isn\u2019t shown', !order.some(x => /Not mine/.test(x)));
+      check(file + ': a job on another date isn\u2019t shown today', !order.some(x => /Tomorrow job/.test(x)));
+      const jobRow = Array.from(d.querySelectorAll('#homeCustomerList .route-job')).find(r => /Check seal/.test(r.textContent));
+      check(file + ': job text in the jobs-count gold', /var\(--gold\)/.test(jobRow.children[1].getAttribute('style') || jobRow.children[0].getAttribute('style')));
+      check(file + ': every job counts: "3 of 3"', d.getElementById('homeJobCount').textContent === '3 of 3',
+            d.getElementById('homeJobCount').textContent);
+      check(file + ': jobs have the grip when rearranging is allowed', !!jobRow.querySelector('.route-grip'));
+      const chev = jobRow.querySelector('.chev');
+      check(file + ': the job\u2019s arrow is styled like a service row\u2019s (no extra padding)',
+            !(chev.getAttribute('style') || '').includes('padding'), chev.getAttribute('style'));
+      const onWay = Array.from(jobRow.querySelectorAll('button')).find(b => b.textContent === 'On my way');
+      onWay.click();
+      check(file + ': a job\u2019s On my way goes to its customer', JSON.stringify(w.__heads) === '["Alpha One"]', JSON.stringify(w.__heads));
+
+      // The drop-down, the job page, Submit
+      jobRow.click();
+      const brief = d.querySelector('.route-job-brief');
+      check(file + ': pressing a job shows the customer\u2019s details and the job',
+            !!brief && /1 A St/.test(brief.textContent) && /555-0101/.test(brief.textContent) && /4321/.test(brief.textContent)
+            && /Drips overnight/.test(brief.textContent), brief && brief.textContent.slice(0, 80));
+      const start = Array.from(brief.querySelectorAll('button')).find(b => b.textContent === 'Start job');
+      check(file + ': with Directions and Start job', !!start && Array.from(brief.querySelectorAll('button')).some(b => b.textContent === 'Directions'));
+      start.click();
+      const page = d.getElementById('jobPage');
+      check(file + ': Start job opens the job page', !!page && /Alpha One \u2013 Check seal/.test(page.textContent));
+      w.eval("captureFromCamera = async ()=> 'data:image/jpeg;base64,job';");
+      Array.from(page.querySelectorAll('button')).find(b => b.textContent === 'Take photo').click();
+      await wait(80);
+      const thumb = page.querySelector('img');
+      check(file + ': its photo shows as a thumbnail', thumb.parentElement.style.display === 'flex' && thumb.style.maxWidth === '25%');
+      page.querySelector('textarea').value = 'Tightened it.';
+      Array.from(page.querySelectorAll('button')).find(b => /^Submit/.test(b.textContent)).click();
+      await wait(300);
+      const saved = JSON.parse(w.localStorage.getItem('weir:jobSubmissions') || '[]');
+      check(file + ': Submit keeps the notes and photo for that date', saved.length === 1 && saved[0].notes === 'Tightened it.'
+            && !!saved[0].photo && saved[0].date === isoToday, JSON.stringify(saved.map(x => [x.key, x.date])));
+      check(file + ': the job leaves the route', !d.getElementById('jobPage') && !list().some(x => /Check seal/.test(x)));
+      check(file + ': and the count reads "2 of 3"', d.getElementById('homeJobCount').textContent === '2 of 3',
+            d.getElementById('homeJobCount').textContent);
+
+      // A dragged job stays where it was left
+      w.eval("fieldRouteOrder[orderKey(selectedHomeDay, isoForDay(selectedHomeDay))] = ['job:work order:w1', 'a', 'b']; renderHomeList();");
+      check(file + ': a job saved at the top of the route is drawn there', list()[0] === 'job Wendy Other \u2013 Replace cartridge', list().join(' | '));
+      w.eval("fieldRouteOrder[orderKey(selectedHomeDay, isoForDay(selectedHomeDay))] = []; renderHomeList();");
+
+      // Another day's job: technician app refuses, admin app allows
+      w.eval("selectedHomeDay = '" + ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][(new Date().getDay() + 1) % 7] + "'; renderHomeList();");
+      await wait(450);
+      const tomorrowRow = d.querySelector('#homeCustomerList .route-job');
+      tomorrowRow.click();
+      const tStart = d.querySelector('.route-job-brief .btn-primary');
+      if(file === 'technician-app.html'){
+        check(file + ': tomorrow\u2019s job can\u2019t be started today', tStart.disabled && /Not today/.test(tStart.textContent));
+      } else {
+        check(file + ': the admin app can start a job on any day', !tStart.disabled && tStart.textContent === 'Start job');
+      }
+    }catch(e){ check(file + ': jobs on the route', false, e.message); }
+    w.close();
+
+    // Servicing a customer leaves Today at once, and leaves their jobs alone
+    console.log('\n=== ' + file + ': finishing a visit ===');
+    {
+      const dom2 = boot(file, seedFor({photoEveryone: {},
+        tasks: [{id:'k1', title:'Check seal', technicianId:'t1', date: isoToday, customerIds:['a'], done:false}]}));
+      await wait(1300);
+      const w2 = dom2.window, d2 = w2.document;
+      w2.Element.prototype.scrollIntoView = function(){};
+      try{
+        const set = (id, v)=>{ const e = d2.getElementById(id); if(!e) return; e.value = v; e.dispatchEvent(new w2.Event('input', {bubbles: true})); };
+        w2.eval("currentUser = {id:'t1', name:'Alex', full_access:true};"
+          + " if(typeof adminViewTechId !== 'undefined'){ adminViewTechId = 't1'; adminRouteStarted = true; }"
+          + " confirmDialog = ()=>Promise.resolve(true); alertDialog = ()=>Promise.resolve(); attemptAutoSend = async ()=>{};"
+          + " renderHomeList(); openVisit('a');");
+        await wait(400);
+        set('pool_chem_chlorine', '3'); set('pool_dose_tabs', '2');
+        d2.getElementById('btnSaveReading').click(); await wait(700);
+        set('spa_chem_chlorine', '4'); set('spa_dose_tabs', '1');
+        d2.getElementById('btnSaveSpaReading').click(); await wait(1200);
+        const text = d2.getElementById('homeCustomerList').textContent;
+        const customerRows = Array.from(d2.querySelectorAll('#homeCustomerList .cust-row')).map(r => r.textContent);
+        check(file + ': a finished customer leaves Today straight away', !customerRows.some(t => /Alpha One/.test(t)), customerRows.join(' | '));
+        check(file + ': but their job stays until it\u2019s submitted', /Alpha One \u2013 Check seal/.test(text));
+      }catch(e){ check(file + ': finishing a visit', false, e.message); }
+      w2.close();
+    }
+
+    // The reschedule window, extra photo thumbnail and labels, and Skip
+    console.log('\n=== ' + file + ': reschedule, extra photos, Skip ===');
+    {
+      const photo = {id:'cp_1', label:'Filter gauge', when:{before:true}, required:true};
+      const dom3 = boot(file, seedFor({photoEveryone: {cp_1: {pool: true}},
+        chemConfig: {pool:{chemicals:[], dosages:[], customPhotos:[photo]}, spa:{chemicals:[], dosages:[]}, fountain:{chemicals:[], dosages:[]}},
+        customChemConfig: {a: {spa: {chemicals:[], dosages:[], customPhotos:[{id:'cp_2', label:'Heater panel', when:{after:true}}]}}}}));
+      await wait(1300);
+      const w3 = dom3.window, d3 = w3.document;
+      try{
+        w3.eval("currentUser = {id:'t1', name:'Alex', isAdmin:true}; openRescheduleModal(customers[0]);");
+        check(file + ': Reschedule\u2019s New date starts on today', d3.getElementById('rsDate').value === w3.eval('todayDateStr()'),
+              d3.getElementById('rsDate').value);
+        d3.getElementById('rsCancel').click();
+
+        w3.eval("currentVisitCustomerId = null; captureFromCamera = async ()=> 'data:image/jpeg;base64,g';"
+          + " window.__opened = []; openPhotoFullSize = src => window.__opened.push(src); renderCustomPhotoBlocks('pool', 'before');");
+        const host = d3.getElementById('customPhotos_pool_before');
+        Array.from(host.querySelectorAll('button')).find(b => b.textContent === 'Take photo').click();
+        await wait(80);
+        const img = host.querySelector('img');
+        check(file + ': an extra photo shows as a small centred thumbnail',
+              img.parentElement.style.display === 'flex' && img.style.maxWidth === '25%' && img.style.minWidth === '96px');
+        img.click();
+        check(file + ': tapping it opens it full size', w3.eval("window.__opened.length") === 1);
+
+        const caps = JSON.parse(w3.eval("JSON.stringify(collectReportPhotos([{label:'Pool', reading:{customPhotos:{cp_1:'data:x'}}},"
+          + "{label:'Spa', reading:{customPhotos:{cp_2:'data:y', cp_gone:'data:z'}}}]).map(p => p.caption))"));
+        check(file + ': emailed extra photos are captioned with their name',
+              caps.join('|') === 'Pool Filter gauge|Spa Heater panel|Spa extra photo', caps.join('|'));
+        const src = fs.readFileSync(file, 'utf8');
+        check(file + ': Skip is the filled red button', /id="btnPoolSkip" type="button" style="width:auto;background:var\(--rust\);color:var\(--card\)/.test(src));
+        check(file + ': and sits in the middle of the heading line',
+              /head\.style\.gridTemplateColumns = '1fr auto 1fr';/.test(src) && /skipBtn\.style\.justifySelf = 'center';/.test(src));
+      }catch(e){ check(file + ': reschedule and photos', false, e.message); }
+      w3.close();
+    }
+  }
+}
+
+
+// ---- Sept 24: jobs on the route, the job page, the jobs count, and the rest ----
+{
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const iso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const tomorrow = new Date(Date.now() + 86400000);
+  const tomorrowIso = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const otherDay = DAYS[(new Date().getDay() + 2) % 7];
+  const jobsSeed = extra => seedFor(Object.assign({
+    customers: [
+      {id:'a', name:'Alpha One', address:'1 A St', phone:'(623) 555-0101', gateCode:'4321', dogs:[{name:'Rex'}],
+       day: today, active:true, technicianId:'t1', hasPool:true, hasSpa:true},
+      {id:'b', name:'Bravo Two', address:'2 B St', day: today, active:true, technicianId:'t1', hasPool:true},
+      {id:'w', name:'Wendy Other', address:'9 W Ln', day: otherDay, active:true, technicianId:'t1', hasPool:true}],
+    tasks: [{id:'k1', title:'Check seal', details:'Drips overnight.', technicianId:'t1', date: iso, customerIds:['a'], done:false},
+            {id:'k9', title:'Someone else', technicianId:'t2', date: iso, customerIds:['b'], done:false}],
+    scheduledWorkOrders: [
+      {id:'w1', customerId:'w', technicianId:'t1', date: iso, title:'Replace cartridge', notes:'In the truck.', status:'scheduled'},
+      {id:'w2', customerId:'a', technicianId:'t1', date: tomorrowIso, title:'Tomorrow job', status:'scheduled'}]
+  }, extra || {}));
+  const listOf = d => Array.from(d.getElementById('homeCustomerList').children).map(r =>
+    r.classList.contains('route-job') ? 'job:' + Array.from(r.children).find(x => !x.classList.contains('route-grip')).textContent
+    : r.dataset.customerRow ? 'service:' + r.dataset.customerRow : (r.className || 'other'));
+
+  for(const file of ['technician-app.html', 'admin-readings-app.html']){
+    console.log('\n=== ' + file + ': jobs on the route ===');
+    let dom = boot(file, jobsSeed());
+    await wait(1300);
+    let w = dom.window, d = w.document;
+    w.Element.prototype.scrollIntoView = function(){};
+    try{
+      w.eval("currentUser = {id:'t1', name:'Alex', full_access:true, canReorderRoute:true}; if(typeof adminViewTechId !== 'undefined'){ adminViewTechId = 't1'; adminRouteStarted = true; } renderHomeList();");
+      const order = listOf(d);
+      check(file + ': a job sits under its customer\u2019s service that day',
+            order.indexOf('job:Alpha One \u2013 Check seal') === order.indexOf('service:a') + 1, order.join(' | '));
+      check(file + ': a job whose customer isn\u2019t serviced that day goes at the bottom',
+            order[order.length - 1] === 'job:Wendy Other \u2013 Replace cartridge', order.join(' | '));
+      check(file + ': and doesn\u2019t bring their service onto the day', order.indexOf('service:w') === -1);
+      check(file + ': another technician\u2019s job isn\u2019t shown', !order.some(x => /Someone else/.test(x)));
+      check(file + ': a job on another date isn\u2019t shown today', !order.some(x => /Tomorrow job/.test(x)));
+      const jobRow = d.querySelector('#homeCustomerList .route-job');
+      const text = Array.from(jobRow.children).find(x => !x.classList.contains('route-grip'));
+      check(file + ': job rows are gold', /var\(--gold\)/.test(text.getAttribute('style')));
+      check(file + ': with the same grip as a customer', !!jobRow.querySelector('.route-grip'));
+      check(file + ': an On my way button', Array.from(jobRow.querySelectorAll('button')).some(b => b.textContent === 'On my way'));
+      check(file + ': and the arrow styled like a service row\u2019s',
+            !jobRow.querySelector('.chev').getAttribute('style') || !/padding/.test(jobRow.querySelector('.chev').getAttribute('style')));
+      check(file + ': the jobs count counts every work order and task',
+            d.getElementById('homeJobCount').textContent === '2 of 2', d.getElementById('homeJobCount').textContent);
+      check(file + ': a job saved in a new place is drawn there',
+            (w.eval("fieldRouteOrder[orderKey(selectedHomeDay, isoForDay(selectedHomeDay))] = ['job:work order:w1', 'a', 'b']; renderHomeList();"),
+             listOf(d)[0] === 'job:Wendy Other \u2013 Replace cartridge'), listOf(d).join(' | '));
+      w.eval("fieldRouteOrder = {}; renderHomeList();");
+
+      // The drop-down and the job page
+      await wait(500);
+      d.querySelectorAll('#homeCustomerList .route-job')[0].click();
+      const brief = d.querySelector('.route-job-brief');
+      check(file + ': a job opens with the customer\u2019s details',
+            !!brief && /1 A St/.test(brief.textContent) && /555-0101/.test(brief.textContent) && /4321/.test(brief.textContent)
+            && /Rex/.test(brief.textContent) && /Drips overnight/.test(brief.textContent), brief ? brief.textContent.slice(0, 80) : '');
+      check(file + ': with Directions and Start job',
+            Array.from(brief.querySelectorAll('button')).map(b => b.textContent).join('|') === 'Directions|Start job');
+      w.eval("captureFromCamera = async ()=> 'data:image/jpeg;base64,job';");
+      Array.from(brief.querySelectorAll('button')).find(b => b.textContent === 'Start job').click();
+      await wait(50);
+      const page = d.getElementById('jobPage');
+      check(file + ': Start job opens the job page', !!page && /Submit task/.test(page.textContent));
+      Array.from(page.querySelectorAll('button')).find(b => b.textContent === 'Take photo').click();
+      await wait(80);
+      const thumb = page.querySelector('img');
+      check(file + ': its photo is the small thumbnail', thumb.style.maxWidth === '25%' && thumb.parentElement.style.display === 'flex');
+      page.querySelector('textarea').value = 'Tightened it.';
+      Array.from(page.querySelectorAll('button')).find(b => /^Submit/.test(b.textContent)).click();
+      await wait(150);
+      const subs = JSON.parse(w.localStorage.getItem('weir:jobSubmissions') || '[]');
+      check(file + ': submitting keeps the notes and photo on this phone',
+            subs.length === 1 && subs[0].notes === 'Tightened it.' && !!subs[0].photo && subs[0].date === iso, JSON.stringify(subs).slice(0, 120));
+      check(file + ': and takes that job off the route', !listOf(d).some(x => /Check seal/.test(x)));
+      check(file + ': the count goes down', d.getElementById('homeJobCount').textContent === '1 of 2', d.getElementById('homeJobCount').textContent);
+    }catch(e){ check(file + ': jobs on the route', false, e.message); }
+    w.close();
+
+    // Another day's job: only the admin app can start it
+    dom = boot(file, jobsSeed());
+    await wait(1300);
+    w = dom.window; d = w.document;
+    try{
+      w.eval("currentUser = {id:'t1', name:'Alex', full_access:true}; if(typeof adminViewTechId !== 'undefined'){ adminViewTechId = 't1'; adminRouteStarted = true; }"
+        + " selectedHomeDay = '" + DAYS[tomorrow.getDay()] + "'; renderHomeList();");
+      await wait(500);
+      const row = Array.from(d.querySelectorAll('#homeCustomerList .route-job')).find(r => /Tomorrow job/.test(r.textContent));
+      row.click();
+      const start = d.querySelector('.route-job-brief .btn-primary');
+      if(file === 'admin-readings-app.html'){
+        check(file + ': another day\u2019s job can be started here', start.textContent === 'Start job' && !start.disabled);
+      } else {
+        check(file + ': another day\u2019s job can\u2019t be started here', start.textContent === 'Not today\u2019s job' && start.disabled);
+      }
+    }catch(e){ check(file + ': another day', false, e.message); }
+    w.close();
+
+    // Finishing a service keeps its jobs, and the customer leaves Today at once
+    console.log('\n=== ' + file + ': a service report doesn\u2019t touch jobs ===');
+    dom = boot(file, jobsSeed({scheduledWorkOrders: [{id:'w3', customerId:'a', technicianId:'t1', date: iso, title:'Fix light', status:'scheduled'}]}));
+    await wait(1300);
+    w = dom.window; d = w.document;
+    w.Element.prototype.scrollIntoView = function(){};
+    try{
+      w.eval("currentUser = {id:'t1', name:'Alex', full_access:true}; if(typeof adminViewTechId !== 'undefined'){ adminViewTechId = 't1'; adminRouteStarted = true; }"
+        + " confirmDialog = ()=>Promise.resolve(true); alertDialog = ()=>Promise.resolve(); attemptAutoSend = async ()=>{}; renderHomeList();");
+      const set = (id, v)=>{ const e = d.getElementById(id); if(e){ e.value = v; e.dispatchEvent(new w.Event('input', {bubbles: true})); } };
+      w.eval("openVisit('a')"); await wait(400);
+      set('pool_chem_chlorine', '3'); set('pool_dose_tabs', '2'); d.getElementById('btnSaveReading').click(); await wait(700);
+      set('spa_chem_chlorine', '4'); set('spa_dose_tabs', '1'); d.getElementById('btnSaveSpaReading').click(); await wait(1200);
+      const after = listOf(d);
+      check(file + ': the serviced customer leaves Today straight away', after.indexOf('service:a') === -1, after.join(' | '));
+      check(file + ': their jobs stay on the list', after.some(x => /Check seal/.test(x)) && after.some(x => /Fix light/.test(x)), after.join(' | '));
+      // This setup's work orders are only "Fix light", plus the task: two jobs
+      check(file + ': and in the count', /^2 of 2$/.test(d.getElementById('homeJobCount').textContent), d.getElementById('homeJobCount').textContent);
+    }catch(e){ check(file + ': service and jobs', false, e.message); }
+    w.close();
+
+    // The rest of the day's phone changes
+    console.log('\n=== ' + file + ': reschedule, extra photos and the skip button ===');
+    dom = boot(file, seedFor({chemConfig: {pool: {chemicals: [], dosages: [], customPhotos: [{id:'cp_9', label:'Filter gauge', when:{after:true}, required:true}]},
+                                          spa: {chemicals: [], dosages: []}, fountain: {chemicals: [], dosages: []}}}));
+    await wait(1300);
+    w = dom.window; d = w.document;
+    try{
+      w.eval("currentUser = {id:'t1', name:'Alex', isAdmin:true}; openRescheduleModal(customers[0]);");
+      check(file + ': the reschedule window starts on today', d.getElementById('rsDate').value === w.eval('todayDateStr()'), d.getElementById('rsDate').value);
+      d.getElementById('rsCancel').click();
+
+      w.eval("currentVisitCustomerId = null; localStorage.setItem('weir:photoEveryone', JSON.stringify({cp_9: {pool: true}}));"
+        + " captureFromCamera = async ()=> 'data:image/jpeg;base64,x'; window.__big = []; openPhotoFullSize = s => window.__big.push(s);"
+        + " renderCustomPhotoBlocks('pool', 'after');");
+      Array.from(d.querySelectorAll('#customPhotos_pool_after button')).find(b => /Take photo/.test(b.textContent)).click();
+      await wait(60);
+      const img = d.querySelector('#customPhotos_pool_after img');
+      check(file + ': an extra photo shows as a centred thumbnail',
+            img.style.maxWidth === '25%' && img.style.minWidth === '96px' && img.parentElement.style.display === 'flex'
+            && img.parentElement.style.justifyContent === 'center');
+      img.click();
+      check(file + ': and tapping it opens it full size', w.eval("window.__big.length") === 1);
+
+      const photos = JSON.parse(w.eval(`JSON.stringify(collectReportPhotos([{label:'Pool', reading:{customPhotos:{cp_9:'data:x', cp_gone:'data:y'}}}]).map(p => p.caption))`));
+      check(file + ': the report email labels an extra photo by its name', photos[0] === 'Pool Filter gauge', photos.join(' | '));
+      check(file + ': and one whose setup is gone as an extra photo', photos[1] === 'Pool extra photo', photos.join(' | '));
+
+      const skip = d.getElementById('btnPoolSkip');
+      check(file + ': Skip this pool is filled red', /background:\s*var\(--rust\)/.test(skip.getAttribute('style')));
+      const src = fs.readFileSync(file, 'utf8');
+      check(file + ': and sits in the middle of the heading line',
+            /head\.style\.gridTemplateColumns = '1fr auto 1fr';/.test(src) && /skipBtn\.style\.justifySelf = 'center'/.test(src));
+      check(file + ': a × button is drawn, not typed',
+            /function drawCloseMarks\(\)/.test(src) && /button\[data-x-drawn\] > svg/.test(src));
+    }catch(e){ check(file + ': reschedule, photos, skip', false, e.message); }
+    w.close();
+  }
+}
+
+
+// ---- Today's list: jobs as their own items, the job page, the count ----
+{
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const todayName = DAYS[new Date().getDay()];
+  const otherName = DAYS[(new Date().getDay() + 3) % 7];
+  const iso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const tomorrowIso = new Date(Date.now() + 86400000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  for(const file of ['technician-app.html', 'admin-readings-app.html']){
+    console.log('\n=== ' + file + ': jobs on Today ===');
+    const dom = boot(file, {
+      customers: [
+        {id: 'a', name: 'Alpha Smith', address: '1 A St', phone: '555 0101', gateCode: '4321', active: true, hasPool: true, hasSpa: true, day: todayName, technicianId: 't1'},
+        {id: 'b', name: 'Bravo Jones', address: '2 B St', active: true, hasPool: true, day: todayName, technicianId: 't1'},
+        {id: 'w', name: 'Wendy Later', address: '9 W Ln', active: true, hasPool: true, day: otherName, technicianId: 't1'}],
+      tasks: [{id: 'k1', title: 'Check seal', details: 'Drips overnight.', technicianId: 't1', date: iso, customerIds: ['a'], done: false},
+              {id: 'k2', title: 'Other tech', technicianId: 't2', date: iso, customerIds: ['b'], done: false}],
+      scheduledWorkOrders: [{id: 'w1', customerId: 'w', technicianId: 't1', date: iso, title: 'Replace cartridge', notes: 'In the truck.', status: 'scheduled'},
+                            {id: 'w2', customerId: 'b', technicianId: 't1', date: tomorrowIso, title: 'Tomorrow job', status: 'scheduled'}],
+      chemConfig: {pool: {chemicals: [{key: 'chlorine', label: 'Chlorine'}], dosages: [{key: 'tabs', label: 'Tabs'}]},
+                   spa: {chemicals: [{key: 'chlorine', label: 'Chlorine'}], dosages: [{key: 'tabs', label: 'Tabs'}]},
+                   fountain: {chemicals: [], dosages: []}}});
+    await wait(1300);
+    const w = dom.window, d = w.document;
+    w.Element.prototype.scrollIntoView = function(){};
+    try{
+      w.eval("currentUser = {id: 't1', name: 'Pat', full_access: true, canReorderRoute: true};"
+        + " if(typeof adminViewTechId !== 'undefined'){ adminViewTechId = 't1'; adminRouteStarted = true; }"
+        + " captureFromCamera = async ()=> 'data:image/jpeg;base64,job'; attemptAutoSend = async ()=>{};"
+        + " confirmDialog = ()=> Promise.resolve(true); alertDialog = ()=> Promise.resolve(); window.__heads = [];"
+        + " dispatchHeadsUp = c => window.__heads.push(c.name); selectedHomeDay = '" + todayName + "'; switchView('home'); renderHomeList();");
+      await wait(450);   // past the app's guard against a stray tap after a screen change
+      const list = () => Array.from(d.getElementById('homeCustomerList').children).map(r =>
+        r.classList.contains('route-job') ? 'job:' + Array.from(r.children).find(x => !x.classList.contains('route-grip')).textContent
+        : (r.classList.contains('cust-row') ? 'svc:' + r.querySelector('.cust-name').textContent.trim() : ''))
+        .filter(Boolean);
+      const order = list();
+      check(file + ': a job sits under its customer\u2019s service that day', order.indexOf('job:Alpha Smith \u2013 Check seal') === order.indexOf('svc:Alpha Smith') + 1, order.join(' | '));
+      check(file + ': a job whose customer isn\u2019t serviced that day goes at the bottom', order[order.length - 1] === 'job:Wendy Later \u2013 Replace cartridge', order.join(' | '));
+      check(file + ': and never brings their service onto the day', order.indexOf('svc:Wendy Later') === -1);
+      check(file + ': another technician\u2019s task is not shown', !order.some(x => /Other tech/.test(x)));
+      check(file + ': a job on another date is not shown', !order.some(x => /Tomorrow job/.test(x)));
+      check(file + ': the jobs count counts every job', d.getElementById('homeJobCount').textContent === '2 of 2', d.getElementById('homeJobCount').textContent);
+      const jobRow = Array.from(d.querySelectorAll('#homeCustomerList .route-job')).find(r => /Check seal/.test(r.textContent));
+      check(file + ': a job row has the grip for rearranging', !!jobRow.querySelector('.route-grip'));
+      const onWay = Array.from(jobRow.querySelectorAll('button')).find(b => b.textContent === 'On my way');
+      onWay.click();
+      check(file + ': On my way on a job goes to its customer', w.eval("window.__heads.join()") === 'Alpha Smith');
+      check(file + ': the job\u2019s arrow matches a service row\u2019s', jobRow.querySelector('.chev').getAttribute('style') === 'color: var(--gold);' || jobRow.querySelector('.chev').style.padding === '',
+            jobRow.querySelector('.chev').getAttribute('style'));
+
+      // The drop-down and the job page
+      jobRow.click(); await wait(50);
+      const brief = d.querySelector('.route-job-brief');
+      check(file + ': the job opens to the customer\u2019s details', !!brief && /12|1 A St/.test(brief.textContent) && /4321/.test(brief.textContent) && /Drips overnight/.test(brief.textContent));
+      const start = Array.from(brief.querySelectorAll('button')).find(b => /Start job/.test(b.textContent));
+      check(file + ': with Directions and Start job', !!start && Array.from(brief.querySelectorAll('button')).some(b => b.textContent === 'Directions'));
+      start.click(); await wait(50);
+      const page = d.getElementById('jobPage');
+      check(file + ': Start job opens the job page', !!page && /Check seal/.test(page.textContent));
+      Array.from(page.querySelectorAll('button')).find(b => b.textContent === 'Take photo').click(); await wait(60);
+      const thumb = page.querySelector('img');
+      check(file + ': the job photo is a thumbnail', thumb.style.maxWidth === '25%' && thumb.parentElement.style.display === 'flex');
+      page.querySelector('textarea').value = 'Tightened it.';
+      Array.from(page.querySelectorAll('button')).find(b => /^Submit/.test(b.textContent)).click(); await wait(300);
+      const saved = JSON.parse(w.localStorage.getItem('weir:jobSubmissions') || '[]');
+      check(file + ': submitting keeps the notes and photo, dated for the job', saved.length === 1 && saved[0].notes === 'Tightened it.' && !!saved[0].photo && saved[0].date === iso, JSON.stringify(saved));
+      check(file + ': the job leaves the list and the count goes down', !list().some(x => /Check seal/.test(x)) && d.getElementById('homeJobCount').textContent === '1 of 2',
+            d.getElementById('homeJobCount').textContent);
+
+      // Servicing a customer never touches their jobs, and they leave Today at once
+      w.eval("localStorage.setItem('weir:tasks', JSON.stringify([{id:'k3',title:'Swap valve',technicianId:'t1',date:'" + iso + "',customerIds:['a'],done:false}])); renderHomeList();");
+      w.eval("openVisit('a')"); await wait(400);
+      const set = (id, v)=>{ const e = d.getElementById(id); if(e){ e.value = v; e.dispatchEvent(new w.Event('input', {bubbles: true})); } };
+      set('pool_chem_chlorine', '3'); set('pool_dose_tabs', '1'); d.getElementById('btnSaveReading').click(); await wait(700);
+      set('spa_chem_chlorine', '3'); set('spa_dose_tabs', '1'); d.getElementById('btnSaveSpaReading').click(); await wait(1200);
+      const after = list();
+      check(file + ': a finished customer leaves Today straight away', after.indexOf('svc:Alpha Smith') === -1, after.join(' | '));
+      check(file + ': but their job stays until it\u2019s submitted', after.some(x => /Swap valve/.test(x)), after.join(' | '));
+
+      // A job dated another day
+      w.eval("selectedHomeDay = '" + DAYS[new Date(Date.now() + 86400000).getDay()] + "'; renderHomeList();"); await wait(450);
+      const tRow = Array.from(d.querySelectorAll('#homeCustomerList .route-job')).find(r => /Tomorrow job/.test(r.textContent));
+      tRow.click(); await wait(50);
+      const tStart = d.querySelector('.route-job-brief .btn-primary');
+      if(file === 'technician-app.html'){
+        check(file + ': a job on another day can\u2019t be started', tStart.disabled && /Not today/.test(tStart.textContent));
+      } else {
+        check(file + ': the admin app can start a job on any day', !tStart.disabled && tStart.textContent === 'Start job');
+      }
+
+      // Reschedule starts on today
+      w.eval("openRescheduleModal(customers.find(c => c.id === 'b'));");
+      check(file + ': Reschedule\u2019s New date starts on today', d.getElementById('rsDate').value === w.eval('todayDateStr()'));
+
+      // The Skip button is red, and extra photos are thumbnails and named in the email
+      const skip = d.getElementById('btnPoolSkip');
+      check(file + ': Skip this pool is filled red', /var\(--rust\)/.test(skip.getAttribute('style')));
+      w.eval("localStorage.setItem('weir:chemConfig', JSON.stringify({pool:{chemicals:[],dosages:[],customPhotos:[{id:'cp_9',label:'Filter gauge',when:{after:true},required:true}]},spa:{chemicals:[],dosages:[]},fountain:{chemicals:[],dosages:[]}})); chemConfig = JSON.parse(localStorage.getItem('weir:chemConfig'));"
+        + " localStorage.setItem('weir:photoEveryone', JSON.stringify({cp_9:{pool:true}})); currentVisitCustomerId = null; renderCustomPhotoBlocks('pool','after');");
+      Array.from(d.querySelectorAll('#customPhotos_pool_after button')).find(b => /Take photo/.test(b.textContent)).click(); await wait(60);
+      const eImg = d.querySelector('#customPhotos_pool_after img');
+      check(file + ': an extra photo shows as a thumbnail', eImg.style.maxWidth === '25%' && eImg.parentElement.style.display === 'flex');
+      const caps = JSON.parse(w.eval("JSON.stringify(collectReportPhotos([{label:'Pool', reading:{customPhotos:{cp_9:'data:x', cp_gone:'data:y'}}}]).map(p => p.caption))"));
+      check(file + ': the email labels an extra photo with its name', caps[0] === 'Pool Filter gauge' && caps[1] === 'Pool extra photo', JSON.stringify(caps));
+    }catch(e){ check(file + ': jobs on Today', false, e.message); }
     w.close();
   }
 }
