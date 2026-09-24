@@ -8167,30 +8167,37 @@ function renderRouteTasks(){
 // ---------- Tasks and work orders under their customer ----------
 // Each task or work order for a customer on the day shown gets its own row
 // straight under that customer: "Customer – what needs doing", in the same
-// gold as the jobs count at the top. Pressing it opens what the office wrote.
-// `techId` narrows to one technician; empty means everyone's.
+// gold as the jobs count at the top. `techId` narrows to one technician;
+// empty means everyone's. A job submitted on this phone leaves the route.
+function jobSubmissions(){ return lsGet('jobSubmissions') || []; }
+function jobSubmitted(key){ return jobSubmissions().some(s => s.key === key); }
 function routeJobsFor(customerId, dayISO, techId){
   const mine = x => !techId || String(x.technicianId) === String(techId);
   const tasks = (lsGet('tasks') || [])
     .filter(t => !t.done && t.date === dayISO && mine(t))
     .filter(t => (t.customerIds || []).indexOf(customerId) !== -1 || t.customerId === customerId)
-    .map(t => ({kind: 'task', title: t.title || 'Task', details: t.details || ''}));
+    .map(t => ({key: 'task:' + t.id + ':' + customerId, kind: 'task', id: t.id,
+                title: t.title || 'Task', details: t.details || ''}));
   const orders = (lsGet('scheduledWorkOrders') || [])
     .filter(j => j.status === 'scheduled' && j.date === dayISO && j.customerId === customerId && mine(j))
-    .map(j => ({kind: 'work order', title: j.title || 'Work order', details: j.notes || ''}));
-  return orders.concat(tasks);
+    .map(j => ({key: 'work order:' + j.id, kind: 'work order', id: j.id,
+                title: j.title || 'Work order', details: j.notes || ''}));
+  return orders.concat(tasks).filter(j => !jobSubmitted(j.key));
 }
-// Customers with a task or work order that day, so the job has somewhere to sit
+// Customers with a task or work order still to do that day, so it has somewhere to sit
 function routeJobCustomerIds(dayISO, techId){
   const ids = new Set();
   const mine = x => !techId || String(x.technicianId) === String(techId);
   (lsGet('tasks') || []).filter(t => !t.done && t.date === dayISO && mine(t))
-    .forEach(t => { (t.customerIds || []).forEach(id => ids.add(id)); if(t.customerId) ids.add(t.customerId); });
+    .forEach(t => {
+      (t.customerIds || []).concat(t.customerId ? [t.customerId] : [])
+        .forEach(id => { if(!jobSubmitted('task:' + t.id + ':' + id)) ids.add(id); });
+    });
   (lsGet('scheduledWorkOrders') || []).filter(j => j.status === 'scheduled' && j.date === dayISO && mine(j))
-    .forEach(j => ids.add(j.customerId));
+    .forEach(j => { if(!jobSubmitted('work order:' + j.id)) ids.add(j.customerId); });
   return ids;
 }
-function appendRouteJobRows(container, customer, jobs){
+function appendRouteJobRows(container, customer, jobs, dayISO){
   jobs.forEach(job=>{
     const row = document.createElement('div');
     row.className = 'route-job';
@@ -8206,19 +8213,194 @@ function appendRouteJobRows(container, customer, jobs){
     chev.style.cssText = 'flex-shrink:0;color:var(--gold);font-size:18px;padding:0 8px;';
     chev.textContent = '\u203A';
     row.appendChild(chev);
-    // Opens to what the office wrote; what else belongs here is still to decide
+
+    // Opens like a customer on the route: their details, Directions, and the
+    // job itself with Start job
     row.addEventListener('click', ()=>{
       const open = row.nextElementSibling && row.nextElementSibling.classList.contains('route-job-brief');
       if(open){ row.nextElementSibling.remove(); chev.textContent = '\u203A'; return; }
       const panel = document.createElement('div');
       panel.className = 'route-job-brief';
-      panel.style.cssText = 'padding:4px 12px 14px 12px;border-bottom:1px solid var(--line);font-size:13.5px;color:var(--ink);';
-      panel.textContent = job.details || ('No details for this ' + job.kind + '.');
+      panel.style.cssText = 'background:var(--surface-alt);border-radius:10px;padding:18px 20px;margin:0 0 14px;font-size:16px;line-height:1.85;animation:briefIn .16s ease;';
+      const line = (label, value, link)=>{
+        const el = document.createElement('div');
+        const strong = document.createElement('strong');
+        strong.textContent = label + ': ';
+        el.appendChild(strong);
+        if(link){
+          const a = document.createElement('a');
+          a.href = link; a.textContent = value;
+          a.style.cssText = 'color:var(--teal-deep);font-weight:700;text-decoration:underline;';
+          a.addEventListener('click', ev => ev.stopPropagation());
+          el.appendChild(a);
+        } else el.appendChild(document.createTextNode(value));
+        panel.appendChild(el);
+      };
+      line('\ud83d\udccd Address', customer.address || 'No address on file');
+      if(customer.phone) line('\ud83d\udcde Phone', customer.phone, 'tel:' + customer.phone.replace(/[^0-9+]/g, ''));
+      if(customer.neighborhoodGateCode) line('\ud83d\udd11 Neighborhood gate', customer.neighborhoodGateCode);
+      if(customer.gateCode) line('\ud83d\udd11 Yard gate', customer.gateCode);
+      const dogNames = (customer.dogs || []).map(d => d.name).filter(Boolean);
+      if(dogNames.length) line(dogNames.length === 1 ? '\ud83d\udc15 Dog' : '\ud83d\udc15 Dogs', dogNames.join(', '));
+      line(job.kind === 'task' ? '\ud83d\udccb Task' : '\ud83d\udee0 Work order', job.title);
+      if(job.details) line('Details', job.details);
+
+      const btnRow = document.createElement('div');
+      btnRow.className = 'btn-row';
+      btnRow.style.marginTop = '16px';
+      const directions = document.createElement('button');
+      directions.className = 'btn btn-ghost';
+      directions.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+      directions.textContent = 'Directions';
+      directions.addEventListener('click', e => { e.stopPropagation(); openDirections(customer); });
+      btnRow.appendChild(directions);
+      const start = document.createElement('button');
+      start.className = 'btn btn-primary';
+      start.style.cssText = 'flex:1;padding:10px 14px;font-size:14px;';
+      // Like a service, a job is done on its own day
+      const isToday = dayISO === todayDateStr();
+      start.textContent = isToday ? 'Start job' : 'Not today\u2019s job';
+      if(!isToday){ start.disabled = true; start.style.opacity = '0.45'; start.style.cursor = 'not-allowed'; }
+      start.addEventListener('click', e => { e.stopPropagation(); if(isToday) openJobPage(customer, job); });
+      btnRow.appendChild(start);
+      panel.appendChild(btnRow);
+      panel.addEventListener('click', e => e.stopPropagation());
+
       row.after(panel);
       chev.textContent = '\u2039';
     });
     container.appendChild(row);
   });
+}
+
+// ---------- The job page: a photo, notes, and Submit ----------
+// Laid over the route rather than added as another screen, so Back and the
+// phone's own back button keep working exactly as they do now. What's
+// submitted stays on this phone for now; a place to keep submissions on the
+// server comes later.
+function openJobPage(customer, job){
+  const old = document.getElementById('jobPage');
+  if(old) old.remove();
+  let photo = null;
+
+  const page = document.createElement('div');
+  page.id = 'jobPage';
+  page.style.cssText = 'position:fixed;inset:0;z-index:150;background:var(--surface);overflow-y:auto;padding:18px 16px 40px;';
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.style.cssText = 'max-width:560px;margin:0 auto;';
+
+  const head = document.createElement('div');
+  head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;';
+  const h = document.createElement('h2');
+  h.style.cssText = 'margin:0;min-width:0;';
+  h.textContent = job.kind === 'task' ? 'Task' : 'Work order';
+  const back = document.createElement('button');
+  back.className = 'btn btn-ghost';
+  back.style.cssText = 'width:auto;flex-shrink:0;padding:6px 12px;font-size:12.5px;';
+  back.textContent = '\u2190 Return to route';
+  head.appendChild(h); head.appendChild(back);
+  card.appendChild(head);
+
+  const who = document.createElement('div');
+  who.style.cssText = 'font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:17px;color:var(--gold);';
+  who.textContent = customer.name + ' \u2013 ' + job.title;
+  card.appendChild(who);
+  const where = document.createElement('div');
+  where.style.cssText = 'font-size:13px;color:var(--muted);margin:2px 0 12px;';
+  where.textContent = customer.address || 'No address on file';
+  card.appendChild(where);
+  if(job.details){
+    const said = document.createElement('div');
+    said.style.cssText = 'background:var(--teal-pale);border-radius:10px;padding:12px 14px;font-size:14px;margin-bottom:16px;';
+    said.textContent = job.details;
+    card.appendChild(said);
+  }
+
+  // A photo: the same thumbnail and tap-to-enlarge as the visit photos
+  const photoHead = document.createElement('div');
+  photoHead.style.cssText = 'font-size:13.5px;font-weight:700;color:var(--teal-deep);margin-bottom:8px;';
+  photoHead.textContent = 'Photo';
+  card.appendChild(photoHead);
+  const imgWrap = document.createElement('div');
+  imgWrap.style.cssText = 'display:none;justify-content:center;margin-bottom:8px;';
+  const img = document.createElement('img');
+  img.style.cssText = 'max-width:25%;min-width:96px;border-radius:10px;border:1px solid var(--line);display:block;cursor:zoom-in;';
+  img.title = 'Tap to see it full size';
+  img.addEventListener('click', ()=>{ if(photo) openPhotoFullSize(photo); });
+  imgWrap.appendChild(img);
+  card.appendChild(imgWrap);
+  const photoRow = document.createElement('div');
+  photoRow.className = 'btn-row';
+  photoRow.style.cssText = 'justify-content:center;margin-bottom:16px;';
+  const take = document.createElement('button');
+  take.type = 'button';
+  take.className = 'btn';
+  take.style.cssText = 'width:auto;padding:11px 20px;font-size:14px;background:var(--rust);color:var(--card);border:1.5px solid var(--rust);';
+  take.textContent = 'Take photo';
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'btn btn-ghost';
+  remove.style.cssText = 'width:auto;color:var(--rust);border-color:#EFC9BC;display:none;';
+  remove.textContent = 'Remove photo';
+  photoRow.appendChild(take); photoRow.appendChild(remove);
+  card.appendChild(photoRow);
+  const showPhoto = data=>{
+    photo = data || null;
+    if(photo){ img.src = photo; imgWrap.style.display = 'flex'; take.textContent = 'Retake photo'; remove.style.display = 'inline-flex'; }
+    else { img.removeAttribute('src'); imgWrap.style.display = 'none'; take.textContent = 'Take photo'; remove.style.display = 'none'; }
+  };
+  take.addEventListener('click', async ()=>{
+    try{ const data = await captureFromCamera(900, 0.5); if(data) showPhoto(data); }
+    catch(err){ showToast('Could not open the camera'); }
+  });
+  remove.addEventListener('click', ()=> showPhoto(null));
+
+  // Notes
+  const notesLabel = document.createElement('label');
+  notesLabel.style.cssText = 'display:block;font-size:13.5px;font-weight:700;color:var(--teal-deep);margin-bottom:6px;';
+  notesLabel.textContent = 'Notes';
+  card.appendChild(notesLabel);
+  const notes = document.createElement('textarea');
+  notes.rows = 4;
+  notes.placeholder = 'What was done, anything the office should know';
+  notes.style.cssText = 'width:100%;margin-bottom:16px;';
+  card.appendChild(notes);
+
+  const submit = document.createElement('button');
+  submit.className = 'btn btn-primary';
+  submit.style.cssText = 'width:100%;';
+  submit.textContent = 'Submit ' + job.kind;
+  card.appendChild(submit);
+
+  const close = ()=> page.remove();
+  back.addEventListener('click', async ()=>{
+    if((photo || notes.value.trim())){
+      const ok = await confirmDialog('Leave this ' + job.kind + '? The photo and notes will be lost.', 'Leave');
+      if(!ok) return;
+    }
+    close();
+  });
+  submit.addEventListener('click', async ()=>{
+    submit.disabled = true;
+    const stored = photo ? await storePhoto(photo, 'job') : null;
+    const list = jobSubmissions();
+    list.push({
+      key: job.key, kind: job.kind, sourceId: job.id,
+      customerId: customer.id, customerName: customer.name, title: job.title,
+      notes: notes.value.trim(), photo: stored,
+      technicianId: currentUser ? currentUser.id : '',
+      submittedAt: new Date().toISOString()
+    });
+    lsSet('jobSubmissions', list);
+    close();
+    renderHomeList();
+    showToast(customer.name + ' \u2013 ' + job.title + ' submitted');
+  });
+
+  page.appendChild(card);
+  document.body.appendChild(page);
+  page.scrollTop = 0;
 }
 
 // Tasks attached to one customer, shown on that stop
@@ -8568,7 +8750,7 @@ function renderHomeList(){
       row.after(panel);
     });
     container.appendChild(row);
-    appendRouteJobRows(container, c, routeJobsFor(c.id, selectedDayISO, adminViewTechId));
+    appendRouteJobRows(container, c, routeJobsFor(c.id, selectedDayISO, adminViewTechId), selectedDayISO);
   });
 }
 
