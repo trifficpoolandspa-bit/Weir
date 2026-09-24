@@ -33,6 +33,9 @@ function boot(file, seed){
   return new JSDOM(fs.readFileSync(file,'utf8'), {
     runScripts:'dangerously', pretendToBeVisual:true, url:'https://example.com/' + file,
     beforeParse(w){
+      // A company that has not ticked any photo for Everyone. New companies start
+      // with the pool after photo required; that start is tested on its own.
+      w.localStorage.setItem('weir:photoEveryone', '{}');
       w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
       w.scrollTo=()=>{}; w.scrollBy=()=>{}; w.alert=()=>{};
       w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){},fillRect(){}});
@@ -450,7 +453,8 @@ async function walkVisit(w, d, maxPresses){
     const site = fs.readFileSync('customer-intake.html', 'utf8');
     check('the website sets it on the Photo requirements tab',
           site.indexOf("{step: 'skip', label: 'Require a photo and note to skip") !== -1);
-    check('with one tick per technician', site.indexOf("step === 'skip' ? t.requireSkipProof === true") !== -1);
+    check('with one tick per technician, or Everyone',
+          site.indexOf("step === 'skip' ? (t.requireSkipProof === true || photoEveryoneOn('skip', 'skip'))") !== -1);
     const admin = fs.readFileSync('admin-readings-app.html', 'utf8');
     check('the app no longer offers its own tick for it', admin.indexOf('tcRequireSkipProof') === -1);
     check('but still holds a technician to it', admin.indexOf("techRequires('requireSkipProof')") !== -1);
@@ -670,8 +674,9 @@ async function walkVisit(w, d, maxPresses){
     check(file + ": a customer's own setup can ask for one too",
           /lists && lists\.requireBeforePhoto === true/.test(src)
           && /lists && lists\.requireAfterPhoto === true/.test(src));
-    check(file + ': and so can one of the company\u2019s own photos',
-          /customPhotosRequiredOf\(type, 'before'\)\.length > 0/.test(src));
+    check(file + ': and so can an extra photo, required or optional',
+          /customPhotosShownOf\(type, 'before'\)\.length > 0/.test(src)
+          && /customPhotosShownOf\(type, 'after'\)\.length > 0/.test(src));
   });
 }
 
@@ -875,6 +880,130 @@ async function walkVisit(w, d, maxPresses){
         /store\['day:' \+ techRouteDay \+ '\|' \+ selectedTechId\] = keys;/.test(src));
   check('and no longer under a key of its own',
         src.indexOf("store['tech:' + orderKeyName]") === -1);
+}
+
+
+// ---- Extra photos, Everyone and Optional on the phones ----
+{
+  const photo = {id: 'cp_1', label: 'Filter gauge', when: {before: true}, required: true};
+  const cfg = extra => ({
+    pool: Object.assign({chemicals: [], dosages: []}, extra), spa: Object.assign({chemicals: [], dosages: []}, extra),
+    fountain: Object.assign({chemicals: [], dosages: []}, extra)});
+  const startVisit = async (file, seedExtra, user)=>{
+    const dom = boot(file, seedFor(Object.assign({chemConfig: cfg({customPhotos: [photo]})}, seedExtra)));
+    await wait(1300);
+    const w = dom.window, d = w.document;
+    w.Element.prototype.scrollIntoView = function(){};
+    w.eval("currentUser = " + JSON.stringify(Object.assign({id: 't1', name: 'Alex'}, user || {})) + ";");
+    await w.eval("openVisit('a')");
+    await wait(250);
+    return {w, d};
+  };
+  const shown = el => !!el && !el.classList.contains('photo-part-off');
+
+  for(const file of ['technician-app.html', 'admin-readings-app.html']){
+    console.log('\n=== ' + file + ': extra photos and Everyone ===');
+
+    // Everyone on the extra photo, pool only
+    let {w, d} = await startVisit(file, {photoEveryone: {cp_1: {pool: true}}});
+    try{
+      const extra = d.getElementById('customPhotos_pool_before');
+      check(file + ': an extra photo set for before appears on the before page, by its name',
+            extra.style.display !== 'none' && /Filter gauge \(required\)/.test(extra.textContent), extra.textContent.slice(0, 40));
+      check(file + ': and not on the after page', d.getElementById('customPhotos_pool_after').style.display === 'none');
+      check(file + ': the regular before photo is not there when nobody asked for it',
+            !shown(d.getElementById('visitPoolBeforePhotoSection').querySelector('h2'))
+            && !shown(d.getElementById('btnTakePhotoBefore').parentElement));
+      check(file + ': the extra photo itself stays', shown(extra));
+      check(file + ': Everyone makes it required', w.eval("techWantsPhoto('cp_1', 'pool')") === true);
+      check(file + ': but only on the bodies ticked', w.eval("photoStepShows('cp_1', 'spa')") === false);
+
+    }catch(e){ check(file + ': extra photos', false, e.message); }
+    w.close();
+
+    // Each body keeps its own. Pressed on the photo blocks directly: inside a
+    // full visit the page is still settling in the background here, which
+    // swallows the press in this test setup (not on a phone).
+    {
+      const dom2 = boot(file, seedFor({chemConfig: cfg({customPhotos: [photo]}),
+                                       photoEveryone: {cp_1: {pool: true, spa: true, fountain: true}}}));
+      await wait(1300);
+      w = dom2.window; d = w.document;
+      w.eval("currentUser = {id: 't1', name: 'Alex'}; currentVisitCustomerId = null;");
+      w.eval("captureFromCamera = async ()=> 'data:image/jpeg;base64,' + (currentVisitFountainId || window.__body);");
+    }
+    try{
+      const take = async type => { w.__body = type; w.eval("renderCustomPhotoBlocks('" + type + "', 'before')");
+        Array.from(d.querySelectorAll('#customPhotos_' + type + '_before button')).find(b => /Take photo/.test(b.textContent)).click();
+        await wait(60); };
+      const picture = type => { w.eval("renderCustomPhotoBlocks('" + type + "', 'before')");
+        const img = d.querySelector('#customPhotos_' + type + '_before img');
+        return img && img.style.display !== 'none' ? img.getAttribute('src').split(',')[1] : ''; };
+      await take('pool');
+      check(file + ': taking it on the pool stores it for the pool', picture('pool') === 'pool', picture('pool'));
+      check(file + ': but does not count for the spa',
+            w.eval("missingCustomPhoto('spa', 'before')") === 'Filter gauge');
+      check(file + ': and the spa starts with no picture', picture('spa') === '');
+      await take('spa');
+      check(file + ': the spa then has its own, and the pool keeps its',
+            picture('spa') === 'spa' && picture('pool') === 'pool', picture('spa') + ' / ' + picture('pool'));
+      check(file + ': and it is no longer owed on the spa', w.eval("missingCustomPhoto('spa', 'before')") === '');
+      w.eval("currentVisitFountainId = 'f1';");
+      check(file + ': an extra body of water starts with no picture', picture('fountain') === '');
+      await take('fountain');
+      w.eval("currentVisitFountainId = 'f2';");
+      check(file + ': and a second extra body has its own too', picture('fountain') === '');
+      w.eval("currentVisitFountainId = 'f1';");
+      check(file + ': the first keeps its picture', picture('fountain') === 'f1');
+      const src = fs.readFileSync(file, 'utf8');
+      check(file + ': each report files only its own body\u2019s extra photos',
+            /customPhotoData\['pool'\] \|\| \{\}/.test(src) && /customPhotoData\['spa'\] \|\| \{\}/.test(src)
+            && /customPhotoData\['fountain:' \+ fountainId\] \|\| \{\}/.test(src));
+    }catch(e){ check(file + ': extra photos', false, e.message); }
+    w.close();
+
+    // Off: not ticked, not Optional
+    ({w, d} = await startVisit(file, {photoEveryone: {}}));
+    try{
+      check(file + ': an extra photo nobody is asked for does not appear',
+            d.getElementById('customPhotos_pool_before').style.display === 'none');
+      check(file + ': and brings up no before page of its own', w.eval("showsBeforePhotoStep('pool')") === false);
+    }catch(e){ check(file + ': off', false, e.message); }
+    w.close();
+
+    // Optional for this technician
+    ({w, d} = await startVisit(file, {photoEveryone: {}}, {photoOptional: {cp_1: true, before: true}}));
+    try{
+      const extra = d.getElementById('customPhotos_pool_before');
+      check(file + ': Optional shows it without "(required)"',
+            extra.style.display !== 'none' && /Filter gauge/.test(extra.textContent) && !/required/.test(extra.textContent));
+      check(file + ': and it is not owed', w.eval("missingCustomPhoto('pool', 'before')") === '');
+      check(file + ': a regular before photo on Optional shows',
+            shown(d.getElementById('visitPoolBeforePhotoSection').querySelector('h2')));
+      check(file + ': Optional for Everyone counts too',
+            (w.eval("currentUser.photoOptional = {}; localStorage.setItem('weir:photoEveryone', JSON.stringify({cp_1: {optional: true}}));"),
+             w.eval("photoStepShows('cp_1', 'pool') && !techWantsPhoto('cp_1', 'pool')")) === true);
+    }catch(e){ check(file + ': optional', false, e.message); }
+    w.close();
+
+    // The starting setting, the gate and the skip
+    ({w, d} = await startVisit(file, {}));
+    try{
+      w.eval("localStorage.removeItem('weir:photoEveryone');");
+      check(file + ': with nothing set, the pool after photo is required', w.eval("techWantsPhoto('after', 'pool')") === true);
+      check(file + ': and the spa one is not', w.eval("techWantsPhoto('after', 'spa')") === false);
+      w.eval("localStorage.setItem('weir:photoEveryone', JSON.stringify({gate: {gate: true}, skip: {skip: true}}));");
+      check(file + ': Everyone on the gate asks it of this technician', w.eval("gatePhotoApplies()") === true);
+      const src = fs.readFileSync(file, 'utf8');
+      check(file + ': Everyone on the skip asks for proof',
+            /if\(techRequires\('requireSkipProof'\) \|\| photoEveryoneOn\('skip', 'skip'\)\)\{/.test(src));
+      check(file + ': an optional gate photo is shown without being required',
+            (w.eval("localStorage.setItem('weir:photoEveryone', '{}'); currentUser.photoOptional = {gate: true};"),
+             w.eval("techOptionalPhoto('gate') && !gatePhotoApplies()")) === true);
+      check(file + ': Everyone travels down with the company setup', /'photoDefaults', 'photoEveryone'\]/.test(src));
+    }catch(e){ check(file + ': start, gate and skip', false, e.message); }
+    w.close();
+  }
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');

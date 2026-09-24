@@ -14,6 +14,9 @@ function boot(file, seed){
   return new JSDOM(fs.readFileSync(file, 'utf8'), {
     runScripts:'dangerously', pretendToBeVisual:true, url:'https://example.com/',
     beforeParse(w){
+      // A company that has not ticked any photo for Everyone. New companies start
+      // with the pool after photo required; that start is tested on its own.
+      w.localStorage.setItem('weir:photoEveryone', '{}');
       w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
       w.scrollTo=()=>{}; w.scrollBy=()=>{}; w.alert=()=>{};
       w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){},fillRect(){}});

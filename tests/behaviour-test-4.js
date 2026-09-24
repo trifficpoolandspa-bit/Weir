@@ -14,6 +14,9 @@ function load(file, opts = {}){
     runScripts: 'dangerously', pretendToBeVisual: true,
     url: opts.url || 'https://example.com/',
     beforeParse(w){
+      // A company that has not ticked any photo for Everyone. New companies start
+      // with the pool after photo required; that start is tested on its own.
+      w.localStorage.setItem('weir:photoEveryone', '{}');
       w.matchMedia = () => ({matches:false, addListener(){}, removeListener(){}, addEventListener(){}, removeEventListener(){}});
       w.scrollTo = () => {}; w.scrollBy = () => {}; w.alert = () => {};
       w.HTMLCanvasElement.prototype.getContext = () => ({drawImage(){}, fillRect(){}});
@@ -94,7 +97,10 @@ console.log('\n=== Tasks: several customers, and repeats ===');
     check('  several can be picked', w.eval('taskPicked.size') === 2);
 
     d.getElementById('taskTitle').value = 'Check the salt cell';
-    d.getElementById('taskTechnician').value = 't1';
+    // Chosen the way the owner does: the technicians button, a tick, Save
+    d.getElementById('taskTechnician').click();
+    Array.from(d.querySelectorAll('#techPickList input[type=checkbox]')).find(i => i.value === 't1').click();
+    d.getElementById('btnSaveTechPick').click();
     d.getElementById('taskDate').value = '2026-09-14';
     d.getElementById('taskRepeat').value = '2';
     d.getElementById('taskRepeat').dispatchEvent(new w.Event('change', {bubbles:true}));
@@ -120,7 +126,10 @@ console.log('\n=== Tasks: several customers, and repeats ===');
 
     // A one-off stays a one-off
     d.getElementById('taskTitle').value = 'One time only';
-    d.getElementById('taskTechnician').value = 't1';
+    // Chosen the way the owner does: the technicians button, a tick, Save
+    d.getElementById('taskTechnician').click();
+    Array.from(d.querySelectorAll('#techPickList input[type=checkbox]')).find(i => i.value === 't1').click();
+    d.getElementById('btnSaveTechPick').click();
     d.getElementById('taskDate').value = '2026-09-15';
     d.getElementById('btnSaveTask').click();
     const after = JSON.parse(w.eval("JSON.stringify(lsGet('tasks') || [])"));
@@ -873,7 +882,7 @@ console.log('\n=== A photo requirement survives a sync ===');
         /const copy = Object\.assign\(\{\}, t\);/.test(site));
   check('and only the password is held back', /delete copy\.password;/.test(site));
   check('the tick writes to the technician and saves',
-        /setTick\(t, key, box3\.checked\);\s*saveTechnicians\(\);/.test(site));
+        /setOwnTick\(t, key, box3\.checked\);[\s\S]{0,40}saveTechnicians\(\);/.test(site));
   check('and unticking writes false rather than removing the field',
         /if\(step === 'gate'\) cur\.requireGatePhoto = on;/.test(site)
         && /tech\.photoRules\[step\]\[bodyKey\] = !!on;/.test(site));
@@ -975,7 +984,8 @@ console.log('\n=== Photo requirements do not depend on Settings ===');
           /function showsAfterPhotoStep\(type\)\{[\s\S]{0,120}photoStepShows\('after', type\)/.test(src));
     check(file + ' with a technician asked by name counting as required',
           /if\(rules && rules\[step\] && rules\[step\]\[key\] === true\) return true;/.test(src));
-    check(file + ' and the gate step', /const stepOn = photoStepShows\('gate', 'pool'\);/.test(src));
+    check(file + ' and the gate step shows to anyone who must or may take it',
+          /const show = \(gatePhotoApplies\(\) \|\| \(optionalHere && notFilterClean\)\) && isLastSectionOfVisit\(\);/.test(src));
     check(file + ' with nothing left reading the old switches',
           !/appSettings\.show(Before|After)Photos !== false/.test(src)
           && !/appSettings\.showGatePhoto !== false/.test(src));
@@ -1370,6 +1380,7 @@ setTimeout(async ()=>{
   await serverAccounts();
   await serverTechniciansTab();
   await serverFieldSignIn();
+  await photoRequirementsPage();
   console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 }, 2500);
@@ -1707,6 +1718,9 @@ async function serverTechniciansTab(){
     const dom = new JSDOM(fs.readFileSync('customer-intake.html', 'utf8'), {
       runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://trifficpoolandspa-bit.github.io/Pool-Log/customer-intake.html',
       beforeParse(w){
+        // A company that has not ticked any photo for Everyone. New companies start
+        // with the pool after photo required; that start is tested on its own.
+        w.localStorage.setItem('weir:photoEveryone', '{}');
         w.matchMedia = () => ({matches:false, addListener(){}, removeListener(){}, addEventListener(){}, removeEventListener(){}});
         w.scrollTo = () => {}; w.scrollBy = () => {}; w.alert = () => {};
         w.HTMLCanvasElement.prototype.getContext = () => ({drawImage(){}, fillRect(){}});
@@ -2117,12 +2131,11 @@ async function serverTechniciansTab(){
       check('and no Technicians buttons any more',
             Array.from(d.querySelectorAll('#photoRequireRows button'))
               .filter(b => /Technicians/.test(b.textContent)).length === 0);
-      check('each row says what it is for everyone, and who differs',
-            /Switched off|Nobody has to|Everyone must|technician/.test(rowHeads()[0].textContent),
+      check('each row says who must and who may',
+            /Nobody yet|must|optional/.test(rowHeads()[0].textContent),
             rowHeads()[0].textContent);
-      check('and offers off, optional and required',
-            ['off', 'optional', 'required'].every(state =>
-              Array.from(rowHeads()[0].querySelectorAll('button')).some(b => b.textContent === state)),
+      check('and there are no Off / Optional / Required buttons on the row any more',
+            !Array.from(rowHeads()[0].querySelectorAll('button')).some(b => /^(off|optional|required)$/.test(b.textContent)),
             Array.from(rowHeads()[0].querySelectorAll('button')).map(b => b.textContent).join(','));
       const firstName = rowHeads()[0].querySelector('div').firstElementChild;
       const src2 = fs.readFileSync('customer-intake.html', 'utf8');
@@ -2158,7 +2171,7 @@ async function serverTechniciansTab(){
       rowHeads()[0].click(); await sleep(250);
       const listBox = rowHeads()[0].parentElement.querySelector('div:not([style*="flex-wrap"])');
       const opened = Array.from(rowHeads()[0].parentElement.children)
-        .find(el => el.style && el.style.maxWidth === '420px');
+        .find(el => el.style && el.style.maxWidth === '460px');
       check('the technicians are held to a middle column rather than stretched',
             !!opened && opened.style.margin.indexOf('auto') !== -1,
             opened ? opened.style.cssText : 'no list');
@@ -2293,8 +2306,9 @@ async function serverTechniciansTab(){
             && /Filter gauge/.test(allRows[4].textContent), allRows.map(r => r.textContent.slice(0, 24)).join(' | '));
       const crosses = Array.from(d.querySelectorAll('#photoRequireRows button')).filter(b => b.textContent === '\u00d7');
       check('only your own photo has an X beside it', crosses.length === 1);
-      check('and the X sits right after its name',
-            crosses[0].previousElementSibling && /Filter gauge/.test(crosses[0].previousElementSibling.textContent));
+      check('and the X sits after its name and its Edit button',
+            crosses[0].previousElementSibling && crosses[0].previousElementSibling.textContent === 'Edit'
+            && /Filter gauge/.test(crosses[0].previousElementSibling.previousElementSibling.textContent));
       check('it says when it is taken and where', /before readings and after readings/.test(allRows[4].textContent)
             && /Pool, Spa/.test(allRows[4].textContent), allRows[4].textContent.slice(0, 120));
 
@@ -2310,10 +2324,13 @@ async function serverTechniciansTab(){
       ownTicks[0].checked = true;
       ownTicks[0].dispatchEvent(new w.Event('change'));
       await sleep(250);
-      const taskId = w.eval("Object.keys(technicians[0].photoRules || {}).find(k => k.indexOf('cp_') === 0)");
-      check('ticking Everyone asks it of every technician',
-            w.eval("technicians.every(t => t.photoRules && t.photoRules['" + taskId + "'] && t.photoRules['" + taskId + "'].pool === true)"),
-            String(taskId));
+      // Everyone is a setting of its own now, so it covers technicians added later
+      const taskId = w.eval("photoTasks()[0].id");
+      check('ticking Everyone sets Everyone for that photo',
+            w.eval("photoEveryoneOn('" + taskId + "', 'pool')") === true, String(taskId));
+      check('and every technician shows ticked under it',
+            Array.from(d.querySelectorAll('#photoRequireRows input[type=checkbox]'))
+              .filter((x, i) => i % 2 === 0).every(x => x.checked));
 
       // Changing it
       // The name itself, which carries the hint that it can be changed
@@ -2673,6 +2690,9 @@ async function serverFieldSignIn(){
       runScripts: 'dangerously', pretendToBeVisual: true,
       url: 'https://trifficpoolandspa-bit.github.io/Pool-Log/' + file + (o.query || ''),
       beforeParse(w){
+        // A company that has not ticked any photo for Everyone. New companies start
+        // with the pool after photo required; that start is tested on its own.
+        w.localStorage.setItem('weir:photoEveryone', '{}');
         w.matchMedia = () => ({matches:false, addListener(){}, removeListener(){}, addEventListener(){}, removeEventListener(){}});
         w.scrollTo = () => {}; w.scrollBy = () => {}; w.alert = () => {};
         w.HTMLCanvasElement.prototype.getContext = () => ({drawImage(){}, fillRect(){}});
@@ -3787,4 +3807,144 @@ async function serverFieldSignIn(){
     }
     await pool.end();
   })();
+}
+
+
+// ======== The Photo requirements page, as restructured ========
+// Optional per technician, Everyone as a setting of its own, no Off / Optional /
+// Required on the rows, the after photo on pools to start with.
+async function photoRequirementsPage(){
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const open = async (seed, keepDefaults)=>{
+    const {dom} = load('customer-intake.html', {seed, beforeParse: w => {
+      if(keepDefaults) w.localStorage.removeItem('weir:photoEveryone');
+    }});
+    await sleep(1500);
+    const w = dom.window, d = w.document;
+    w.console.warn = ()=>{};
+    w.Element.prototype.scrollIntoView = function(){};
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); switchView('technicians'); renderPhotoRequirements();");
+    return {w, d};
+  };
+  const rowBlock = (d, step) => { let el = d.querySelector('#photoRequireRows [data-photo-step="' + step + '"]');
+    while(el && el.parentElement.id !== 'photoRequireRows') el = el.parentElement; return el; };
+  const count = (d, step) => d.querySelector('#photoRequireRows [data-photo-step="' + step + '"]').textContent.replace(/\s+[\u25b4\u25be]$/, '');
+  const lines = d => Array.from(d.querySelector('#photoRequireRows [data-tech-list]').children).slice(1);
+  const lineFor = (d, name) => lines(d).find(l => l.firstChild.textContent === name);
+  const optionalOf = (d, name) => lineFor(d, name).lastChild.firstChild.querySelector('button');
+  const boxOf = (d, name, i) => lineFor(d, name).lastChild.querySelectorAll('input[type=checkbox]')[i];
+  const lit = b => b.classList.contains('btn-primary');
+
+  console.log('\n=== Photo requirements: a new company starts with the pool after photo ===');
+  {
+    const {w, d} = await open({technicians: [{id: 't1', name: 'Pat'}, {id: 't2', name: 'Sam'}]}, true);
+    try{
+      check('the after photo on pools is ticked for Everyone', w.eval("photoEveryoneOn('after', 'pool')") === true);
+      check('and nothing else is', w.eval("photoEveryoneOn('after', 'spa') || photoEveryoneOn('before', 'pool')") === false);
+      check('so the row says both technicians must', count(d, 'after') === '2 technicians must', count(d, 'after'));
+      rowBlock(d, 'after').click(); await sleep(150);
+      check('and Everyone and each technician show Pool ticked',
+            ['Everyone', 'Pat', 'Sam'].every(n => boxOf(d, n, 0).checked));
+    }catch(e){ check('starting setting', false, e.message); }
+    w.close();
+  }
+
+  console.log('\n=== Photo requirements: the rows and the Optional buttons ===');
+  {
+    const {w, d} = await open({technicians: [{id: 't1', name: 'Pat'}, {id: 't2', name: 'Samantha Longname'}],
+      chemConfig: {pool: {chemicals: [], dosages: [], customPhotos: [{id: 'cp_1', label: 'Filter gauge', when: {before: true}, required: true}]},
+                   spa: {chemicals: [], dosages: []}, fountain: {chemicals: [], dosages: []}}});
+    try{
+      const names = Array.from(d.querySelectorAll('#photoRequireRows > div')).map(r => r.firstChild.firstChild.firstChild.textContent);
+      check('the rows read Before photo, After photo, Closed gate photo',
+            names[0] === 'Before photo' && names[1] === 'After photo' && names[2] === 'Closed gate photo', names.join(' | '));
+      check('the skip row keeps its full wording', names[3] === 'Require a photo and note to skip a body of water', names[3]);
+      const site = fs.readFileSync('customer-intake.html', 'utf8');
+      check('the line under the heading says what a tick does',
+            site.indexOf('Checking a box requires that technician to take the photo before moving on to the next step of the service report.') !== -1
+            && site.indexOf('Press a row to choose who it applies to') === -1);
+      check('no Off / Optional / Required on any row',
+            !Array.from(d.querySelectorAll('#photoRequireRows button')).some(b => /^(off|optional|required)$/.test(b.textContent)));
+      check('a row lights up under the pointer while closed', rowBlock(d, 'before').classList.contains('press-row'));
+
+      rowBlock(d, 'before').click(); await sleep(150);
+      check('an open row stops lighting as a whole', !rowBlock(d, 'before').classList.contains('press-row'));
+      check('each line in it lights up instead', lines(d).every(l => l.classList.contains('press-row')));
+      check('every line has an Optional button, Everyone included',
+            ['Everyone', 'Pat', 'Samantha Longname'].every(n => optionalOf(d, n) && optionalOf(d, n).textContent === 'Optional'));
+      check('in the same fixed column, whatever the name length',
+            lines(d).every(l => l.lastChild.firstChild.style.width === '84px'));
+      check('Optional starts off for everyone', ['Everyone', 'Pat', 'Samantha Longname'].every(n => !lit(optionalOf(d, n))));
+
+      optionalOf(d, 'Pat').click(); await sleep(50);
+      check('pressing it lights it for that technician only',
+            lit(optionalOf(d, 'Pat')) && !lit(optionalOf(d, 'Samantha Longname')) && !lit(optionalOf(d, 'Everyone')));
+      check('and saves it on them', w.eval("technicians.find(t => t.id === 't1').photoOptional.before") === true);
+      check('the row counts them as optional', count(d, 'before') === '1 optional', count(d, 'before'));
+      boxOf(d, 'Pat', 0).click(); await sleep(50);
+      check('a tick counts as must, over their Optional', count(d, 'before') === '1 technician must', count(d, 'before'));
+
+      optionalOf(d, 'Everyone').click(); await sleep(50);
+      check('Everyone Optional is a setting of its own', w.eval("photoEveryoneOn('before', 'optional')") === true);
+      check('and lights everybody', ['Pat', 'Samantha Longname'].every(n => lit(optionalOf(d, n))));
+      optionalOf(d, 'Samantha Longname').click(); await sleep(50);
+      check('turning one person off turns Everyone off', w.eval("photoEveryoneOn('before', 'optional')") === false && !lit(optionalOf(d, 'Everyone')));
+      check('and keeps it on for everybody else', lit(optionalOf(d, 'Pat')) && !lit(optionalOf(d, 'Samantha Longname')));
+
+      boxOf(d, 'Everyone', 1).click(); await sleep(50);
+      check('ticking Everyone on Spa sets Everyone', w.eval("photoEveryoneOn('before', 'spa')") === true);
+      boxOf(d, 'Pat', 1).click(); await sleep(50);
+      check('unticking one person turns Everyone off', w.eval("photoEveryoneOn('before', 'spa')") === false);
+      check('and keeps everybody else ticked on their own',
+            w.eval("technicians.find(t => t.id === 't2').photoRules.before.spa") === true && !boxOf(d, 'Pat', 1).checked);
+
+      boxOf(d, 'Everyone', 2).click(); await sleep(50);
+      w.eval("technicians.push({id: 't3', name: 'Lee'}); saveTechnicians(); renderPhotoRequirements();");
+      await sleep(100);
+      check('a technician added later is covered by Everyone', boxOf(d, 'Lee', 2).checked);
+
+      rowBlock(d, 'skip').click(); await sleep(100);
+      check('the skip row has no Optional', !Array.from(d.querySelector('#photoRequireRows [data-tech-list]').querySelectorAll('button')).some(b => b.textContent === 'Optional'));
+      rowBlock(d, 'gate').click(); await sleep(100);
+      check('the gate row has Optional', !!optionalOf(d, 'Pat'));
+
+      // Extra photos: Edit, and before or after, not both
+      const edit = Array.from(d.querySelectorAll('#photoRequireRows button')).find(b => b.textContent === 'Edit');
+      check('an extra photo has an Edit button beside its name',
+            !!edit && /Filter gauge/.test(edit.previousElementSibling.textContent));
+      check('and only extra photos have one', Array.from(d.querySelectorAll('#photoRequireRows button')).filter(b => b.textContent === 'Edit').length === 1);
+      const listOpenBefore = !!d.querySelector('#photoRequireRows [data-tech-list]');
+      edit.click(); await sleep(100);
+      check('Edit opens the window with its details',
+            d.getElementById('photoTaskOverlay').style.display === 'flex' && d.getElementById('photoTaskLabel').value === 'Filter gauge'
+            && d.getElementById('photoTaskHeading').textContent === 'Change this photo');
+      check('without opening or closing the row underneath', !!d.querySelector('#photoRequireRows [data-tech-list]') === listOpenBefore);
+      const before = d.getElementById('photoTaskBefore'), after = d.getElementById('photoTaskAfter');
+      after.click();
+      check('ticking After clears Before', after.checked && !before.checked);
+      before.click();
+      check('ticking Before clears After', before.checked && !after.checked);
+      d.getElementById('btnCancelPhotoTask').click();
+    }catch(e){ check('rows and Optional', false, e.message); }
+    w.close();
+  }
+
+  console.log('\n=== Photo requirements: settings from the old row buttons are carried over ===');
+  {
+    const {w, d} = await open({technicians: [{id: 't1', name: 'Pat', photoOptional: {before: true}}, {id: 't2', name: 'Sam'}],
+      photoDefaults: {after: 'required', gate: 'required', before: 'optional'}});
+    try{
+      check('a Required row becomes Everyone ticked on every body',
+            ['pool', 'spa', 'fountain'].every(k => w.eval("photoEveryoneOn('after', '" + k + "')")));
+      check('a Required gate row becomes Everyone on the gate', w.eval("photoEveryoneOn('gate', 'gate')") === true);
+      check('an Optional row is not carried: Optional starts off', w.eval("photoEveryoneOn('before', 'optional')") === false);
+      check('Optional switched on by the earlier version is cleared once',
+            !w.eval("technicians.some(t => t.photoOptional && t.photoOptional.before)"));
+      check('and the old row settings are put back to off',
+            JSON.parse(w.localStorage.getItem('weir:photoDefaults')).after === 'off');
+      check('everyone added to Everyone travels with the company setup',
+            /'photoDefaults', 'photoEveryone'\]/.test(fs.readFileSync('customer-intake.html', 'utf8')));
+    }catch(e){ check('carried over', false, e.message); }
+    w.close();
+  }
 }

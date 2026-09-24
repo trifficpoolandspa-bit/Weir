@@ -27,6 +27,9 @@ function boot(){
   return new JSDOM(fs.readFileSync('customer-intake.html','utf8'), {
     runScripts:'dangerously', pretendToBeVisual:true, url:'https://example.com/',
     beforeParse(w){
+      // A company that has not ticked any photo for Everyone. New companies start
+      // with the pool after photo required; that start is tested on its own.
+      w.localStorage.setItem('weir:photoEveryone', '{}');
       w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
       w.scrollTo=()=>{}; w.scrollBy=()=>{}; w.alert=()=>{};
       w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){},fillRect(){}});
@@ -198,6 +201,9 @@ function boot(){
     const dom = new JSDOM(fs.readFileSync('customer-intake.html','utf8'), {
       runScripts:'dangerously', pretendToBeVisual:true, url:'https://example.com/',
       beforeParse(w){
+        // A company that has not ticked any photo for Everyone. New companies start
+        // with the pool after photo required; that start is tested on its own.
+        w.localStorage.setItem('weir:photoEveryone', '{}');
         w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
         w.scrollTo=()=>{}; w.scrollBy=()=>{}; w.alert=()=>{};
         w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){},fillRect(){}});
@@ -282,6 +288,9 @@ function boot(){
     const dom = new JSDOM(fs.readFileSync('customer-intake.html','utf8'), {
       runScripts:'dangerously', pretendToBeVisual:true, url:'https://example.com/',
       beforeParse(w){
+        // A company that has not ticked any photo for Everyone. New companies start
+        // with the pool after photo required; that start is tested on its own.
+        w.localStorage.setItem('weir:photoEveryone', '{}');
         w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
         w.scrollTo=()=>{}; w.scrollBy=()=>{}; w.alert=()=>{};
         w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){},fillRect(){}});
@@ -517,6 +526,86 @@ function boot(){
           [].concat(...app.map(l => decodeURIComponent(l.split('bcc=')[1].split('&')[0]).split(','))).length === 400);
   }catch(e){ check('  batches', false, e.message); }
   w.close();
+}
+
+
+// ---- The send buttons: remembered, labelled, one filled ----
+{
+  console.log('\n=== broadcasts: the button last used comes first ===');
+  const row = d => Array.from(d.getElementById('wcBroadcastOpen').parentElement.children)
+    .filter(b => ['wcBroadcastOpen', 'wcBroadcastGmail', 'wcBroadcastOutlook'].indexOf(b.id) !== -1);
+  const openEmailTab = (w, d)=>{
+    w.eval("switchView('workcenter');");
+    Array.from(d.querySelectorAll('#workCenterTypeControl .history-type-btn')).find(b => b.dataset.type === 'broadcast').click();
+  };
+  {
+    const dom = boot();
+    await new Promise(r => setTimeout(r, 1500));
+    const w = dom.window, d = w.document;
+    try{
+      openEmailTab(w, d);
+      check('  before anything is used, the email app comes first', row(d)[0].id === 'wcBroadcastOpen');
+      check('  and is the only filled button of the three',
+            row(d).filter(b => b.classList.contains('btn-primary')).map(b => b.id).join() === 'wcBroadcastOpen');
+
+      // What the confirmation says for each
+      w.eval("window.__asks = []; confirmDialog = (msg, label)=>{ window.__asks.push({msg: msg, label: label}); return Promise.resolve(false); };");
+      d.getElementById('wcRecipientAll').click();
+      d.getElementById('wcBroadcastGmail').click(); await new Promise(r => setTimeout(r, 100));
+      d.getElementById('wcBroadcastOutlook').click(); await new Promise(r => setTimeout(r, 100));
+      d.getElementById('wcBroadcastOpen').click(); await new Promise(r => setTimeout(r, 100));
+      const asks = JSON.parse(w.eval("JSON.stringify(window.__asks)"));
+      check('  the confirmation button says Open Gmail, Open Outlook or Open email app',
+            asks.map(a => a.label).join('|') === 'Open Gmail|Open Outlook|Open email app', asks.map(a => a.label).join('|'));
+      check('  Gmail\u2019s confirmation says how to send if Send is off screen',
+            /zoom out with Ctrl \+ minus/.test(asks[0].msg) && /Ctrl \+ Enter/.test(asks[0].msg) && /Cmd \+ Enter/.test(asks[0].msg));
+      check('  and only Gmail\u2019s', !/Ctrl \+ Enter/.test(asks[1].msg) && !/Ctrl \+ Enter/.test(asks[2].msg));
+      check('  cancelling saves no preference', !w.localStorage.getItem('weir:broadcastRoute'));
+
+      // Accepting saves it and moves it to the front
+      w.eval("confirmDialog = ()=> Promise.resolve(true); openMailApp = ()=>{};");
+      d.getElementById('wcBroadcastOutlook').click(); await new Promise(r => setTimeout(r, 150));
+      check('  the one used moves to the front', row(d)[0].id === 'wcBroadcastOutlook', row(d).map(b => b.id).join());
+      check('  and becomes the filled button, the others outlined',
+            row(d)[0].classList.contains('btn-primary') && row(d).slice(1).every(b => b.classList.contains('btn-ghost')));
+      check('  saved on this computer', JSON.parse(w.localStorage.getItem('weir:broadcastRoute')) === 'outlook');
+    }catch(e){ check('  send buttons', false, e.message); }
+    w.close();
+  }
+  {
+    // A reload keeps the order
+    seed.broadcastRoute = 'gmail';
+    const dom = boot();
+    delete seed.broadcastRoute;
+    await new Promise(r => setTimeout(r, 1500));
+    const d = dom.window.document;
+    check('  after a reload the saved one is still first and filled',
+          row(d)[0].id === 'wcBroadcastGmail' && row(d)[0].classList.contains('btn-primary'));
+    dom.window.close();
+  }
+
+  console.log('\n=== broadcasts: coming back to the Email tab starts with nobody chosen ===');
+  {
+    const dom = boot();
+    await new Promise(r => setTimeout(r, 1500));
+    const w = dom.window, d = w.document;
+    try{
+      openEmailTab(w, d);
+      d.getElementById('wcRecipientAll').click();
+      const picked = () => w.eval('broadcastPicked.size');
+      check('  choosing everyone picks them', picked() > 0, String(picked()));
+      Array.from(d.querySelectorAll('#workCenterTypeControl .history-type-btn')).find(b => b.dataset.type === 'broadcast').click();
+      check('  pressing Email while on it keeps the choices', picked() > 0, String(picked()));
+      Array.from(d.querySelectorAll('#workCenterTypeControl .history-type-btn')).find(b => b.dataset.type === 'quotes').click();
+      Array.from(d.querySelectorAll('#workCenterTypeControl .history-type-btn')).find(b => b.dataset.type === 'broadcast').click();
+      check('  leaving for another WorkCenter tab and coming back clears them', picked() === 0, String(picked()));
+      d.getElementById('wcRecipientAll').click();
+      w.eval("switchView('customers');");
+      openEmailTab(w, d);
+      check('  and so does leaving for another page', picked() === 0, String(picked()));
+    }catch(e){ check('  coming back', false, e.message); }
+    w.close();
+  }
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');

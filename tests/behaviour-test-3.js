@@ -14,6 +14,9 @@ function load(file, opts = {}){
     runScripts: 'dangerously', pretendToBeVisual: true,
     url: opts.url || 'https://example.com/',
     beforeParse(w){
+      // A company that has not ticked any photo for Everyone. New companies start
+      // with the pool after photo required; that start is tested on its own.
+      w.localStorage.setItem('weir:photoEveryone', '{}');
       w.matchMedia = () => ({matches:false, addListener(){}, removeListener(){}, addEventListener(){}, removeEventListener(){}});
       w.scrollTo = () => {}; w.scrollBy = () => {}; w.alert = () => {};
       w.HTMLCanvasElement.prototype.getContext = () => ({drawImage(){}, fillRect(){}});
@@ -819,7 +822,7 @@ console.log('\n=== Tasks sent to a route ===');
       // Technicians are chosen in a window opened from one button
       d.getElementById('taskTechnician').click();
       check('  technicians are listed',
-            d.querySelectorAll('#techPickList input[type=checkbox]').length > 1);
+            d.querySelectorAll('#techPickList input[type=checkbox]').length > 0);
       check('  the customer label is just "Customer"',
             fs.readFileSync('customer-intake.html','utf8')
               .indexOf('<label>Customer <span') !== -1);
@@ -1507,6 +1510,132 @@ setTimeout(()=>{
   check('its pages are marked so they can be counted',
         /b\.dataset\.customerPage = String\(p\);/.test(src));
   check('and it already had arrows to press', /next\.textContent = '\u203a';/.test(src));
+}
+
+
+// ---- Several technicians on a task or work order ----
+{
+  console.log('\n=== WorkCenter: several technicians, one copy each ===');
+  const {dom} = load('customer-intake.html', {seed: {
+    customers: [{id: 'c1', name: 'Alpha One', active: true, hasPool: true}],
+    technicians: [{id: 't1', name: 'Pat'}, {id: 't2', name: 'Sam'}, {id: 't3', name: 'Lee'}]}});
+  const w = dom.window, d = w.document;
+  w.console.warn = ()=>{};
+  w.Element.prototype.scrollIntoView = function(){};
+  const toasts = [];
+  try{
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); switchView('workcenter');");
+    w.eval("window.__toasts = []; showToast = m => window.__toasts.push(m);");
+    const toastsNow = () => JSON.parse(w.eval("JSON.stringify(window.__toasts)"));
+    const type = t => d.querySelector('#wcTypeToggle [data-wctype="' + t + '"]').click();
+    const win = () => d.getElementById('techPickOverlay');
+    const boxes = () => Array.from(d.querySelectorAll('#techPickList input[type=checkbox]'));
+    const tick = id => boxes().find(b => b.value === id).click();
+    const today = w.eval('taskTodayStr()');
+
+    // The button and its window
+    type('Task');
+    const taskBtn = d.getElementById('taskTechnician');
+    check('Task has one technicians button', taskBtn.tagName === 'BUTTON' && /Choose technicians/.test(taskBtn.textContent), taskBtn.textContent);
+    const label = taskBtn.closest('.field').querySelector('label').textContent;
+    check('labelled Saved technician', label === 'Saved technician', label);
+    taskBtn.click();
+    check('pressing it opens the window', win().style.display === 'flex');
+    check('listing every technician, with no Unassigned', boxes().map(b => b.value).join() === 't1,t2,t3');
+    check('each as a list row that lights up under the pointer',
+          Array.from(d.querySelectorAll('#techPickList label')).every(l => l.classList.contains('pick-row') && l.classList.contains('press-row')));
+    d.getElementById('btnTechPickAll').click();
+    check('Select all ticks everyone', boxes().every(b => b.checked));
+    d.getElementById('btnTechPickNone').click();
+    check('Clear unticks everyone', boxes().every(b => !b.checked));
+    tick('t1');
+    d.getElementById('btnCancelTechPick').click();
+    check('Cancel closes it and changes nothing', win().style.display === 'none' && /Choose technicians/.test(taskBtn.textContent));
+    taskBtn.click(); tick('t1'); tick('t2');
+    d.getElementById('btnSaveTechPick').click();
+    check('Save shows who is chosen', /Pat and Sam/.test(taskBtn.textContent), taskBtn.textContent);
+
+    // A task for two: a copy each, and a repeating one repeats for each
+    d.getElementById('taskTitle').value = 'Check pump';
+    d.getElementById('btnSaveTask').click();
+    const tasks = () => JSON.parse(w.eval("JSON.stringify(tasks)"));
+    const pump = tasks().filter(t => t.title === 'Check pump');
+    check('a task for two technicians is saved as a copy for each',
+          pump.length === 2 && pump.map(t => t.technicianId).sort().join() === 't1,t2', JSON.stringify(pump.map(t => t.technicianId)));
+    check('the button is back to Choose technicians afterwards', /Choose technicians/.test(taskBtn.textContent));
+
+    d.getElementById('taskTitle').value = 'Clean filter';
+    d.getElementById('taskRepeat').value = '2';
+    d.getElementById('taskRepeat').dispatchEvent(new w.Event('change'));
+    taskBtn.click(); tick('t1'); tick('t3'); d.getElementById('btnSaveTechPick').click();
+    d.getElementById('btnSaveTask').click();
+    const clean = tasks().filter(t => t.title === 'Clean filter');
+    const series = [...new Set(clean.map(t => t.seriesId))];
+    check('a repeating task repeats for each technician', clean.filter(t => t.technicianId === 't1').length > 1
+          && clean.filter(t => t.technicianId === 't1').length === clean.filter(t => t.technicianId === 't3').length,
+          clean.length + ' saved');
+    check('as a series of their own each, so deleting one leaves the other',
+          series.length === 2 && series.every(id => clean.filter(t => t.seriesId === id).every((t, i, a) => t.technicianId === a[0].technicianId)));
+
+    // Nobody chosen
+    toasts.length = 0;
+    d.getElementById('taskTitle').value = 'Nobody';
+    d.getElementById('taskRepeat').value = 'none';
+    d.getElementById('btnSaveTask').click();
+    check('a task with nobody chosen is not saved', !tasks().some(t => t.title === 'Nobody') && toastsNow().indexOf('Choose a technician') !== -1, toastsNow().join(' | '));
+
+    // Editing: its technician ticked; ticking another gives them a copy of that date
+    w.eval("document.getElementById('taskTitle').value=''; clearTaskForm();");
+    w.eval("editingTaskId = tasks.find(t => t.title === 'Check pump' && t.technicianId === 't1').id;"
+      + " setPickedTechIds(document.getElementById('taskTechnician'), ['t1']);"
+      + " document.getElementById('taskTitle').value = 'Check pump';");
+    taskBtn.click();
+    check('editing shows its technician ticked', boxes().find(b => b.value === 't1').checked);
+    tick('t3'); d.getElementById('btnSaveTechPick').click();
+    d.getElementById('btnSaveTask').click();
+    check('ticking another as well gives them their own copy',
+          tasks().filter(t => t.title === 'Check pump').map(t => t.technicianId).sort().join() === 't1,t2,t3');
+
+    // Work orders: a separate job each
+    type('Work Order');
+    const woBtn = d.getElementById('wcTechnician');
+    check('Work Order has the same button, labelled Saved technician',
+          woBtn.tagName === 'BUTTON' && woBtn.closest('.field').querySelector('label').textContent === 'Saved technician');
+    woBtn.click();
+    check('with no Unassigned in its window either', boxes().map(b => b.value).join() === 't1,t2,t3');
+    tick('t2'); tick('t3'); d.getElementById('btnSaveTechPick').click();
+    w.eval("wcSelectedCustomerIds.push('c1'); renderWcCustomerChips();"
+      + " currentLineItems = [{description: 'Replace pump seal', qty: 1, price: 40}]; renderLineItems();");
+    d.getElementById('btnSendWorkOrder').click();
+    const jobs = JSON.parse(w.localStorage.getItem('weir:scheduledWorkOrders') || '[]');
+    check('a work order for two technicians puts a separate job on each route',
+          jobs.length === 2 && jobs.map(j => j.technicianId).sort().join() === 't2,t3', JSON.stringify(jobs.map(j => j.technicianId)));
+    const wo = JSON.parse(w.localStorage.getItem('weir:workOrders') || '[]').slice(-1)[0] || {};
+    check('the saved work order remembers them all', (wo.technicianIds || []).join() === 't2,t3', JSON.stringify(wo.technicianIds));
+    toasts.length = 0;
+    w.eval("wcSelectedCustomerIds.push('c1'); renderWcCustomerChips();"
+      + " currentLineItems = [{description: 'Again', qty: 1, price: 1}]; renderLineItems();");
+    d.getElementById('btnSendWorkOrder').click();
+    check('a work order with nobody chosen is not finalised', toastsNow().indexOf('Assign a technician') !== -1, toastsNow().join(' | '));
+
+    // Dates start on today, whichever way in
+    const wc = () => d.getElementById('wcDate').value, tk = () => d.getElementById('taskDate').value;
+    d.getElementById('wcDate').value = '2027-01-05';
+    type('Quote');
+    check('changing to Quote puts the date back to today', wc() === today, wc());
+    d.getElementById('wcDate').value = '2027-01-05';
+    type('Task');
+    d.getElementById('taskDate').value = '2027-02-02';
+    type('Work Order'); type('Task');
+    check('coming back to Task puts its date back to today', tk() === today, tk());
+    Array.from(d.querySelectorAll('#workCenterTypeControl .history-type-btn')).find(b => b.dataset.type === 'broadcast').click();
+    d.getElementById('wcDate').value = '2027-01-05';
+    Array.from(d.querySelectorAll('#workCenterTypeControl .history-type-btn')).find(b => b.dataset.type === 'quotes').click();
+    check('and after another WorkCenter tab', wc() === today, wc());
+    d.getElementById('wcDate').value = '2027-01-05';
+    w.eval("switchView('customers'); switchView('workcenter');");
+    check('and after another page', wc() === today, wc());
+  }catch(e){ check('several technicians', false, e.message); }
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');

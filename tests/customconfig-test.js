@@ -27,6 +27,9 @@ function boot(file){
   return new JSDOM(fs.readFileSync(file,'utf8'),{
     runScripts:'dangerously',pretendToBeVisual:true,url:'https://example.com/',
     beforeParse(w){
+      // A company that has not ticked any photo for Everyone. New companies start
+      // with the pool after photo required; that start is tested on its own.
+      w.localStorage.setItem('weir:photoEveryone', '{}');
       w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
       w.scrollTo=()=>{};w.scrollBy=()=>{};w.alert=()=>{};
       w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){},fillRect(){}});
@@ -218,7 +221,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     w.close();
   }
 
-  console.log('\n=== starting a new custom setup ===');
+  console.log('\n=== starting on another customer ===');
   const dom = boot('customer-intake.html');
   const w = dom.window, d = w.document;
   await wait(1300);
@@ -227,20 +230,23 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
       + " customers=[{id:'c1', name:'Alpha One', hasPool:true, active:true}]; saveCustomers();"
       + " switchView('customerconfig');");
     await wait(250);
-    const btn = d.getElementById('btnNewCustomSetup');
-    check('there is a button to start one', !!btn);
-    // load somebody, then press it
+    check('there is no "+ New customer setup" button any more', !d.getElementById('btnNewCustomSetup'));
+    const group = d.getElementById('btnNewCustomerGroup');
+    check('"+ New group" is the filled button in its place',
+          !!group && group.classList.contains('btn-primary') && group.textContent.trim() === '+ New group');
+    check('and the only filled button in that row',
+          Array.from(group.parentElement.querySelectorAll('button.btn-primary')).length === 1);
+    const site = fs.readFileSync('customer-intake.html', 'utf8');
+    check('nothing is left behind from the old button', !/startNewCustomSetup|btnNewCustomSetup/.test(site));
+    // load somebody, then clear the search with its x
     w.eval("openCustomSetup(customers[0], bodiesForCustomer(customers[0]));");
     await wait(200);
     check('a customer can be loaded', w.eval('customCustomerId') === 'c1', String(w.eval('customCustomerId')));
-    btn.click();
+    d.getElementById('customCustClear').click();
     await wait(200);
-    check('pressing it clears whoever was loaded', !w.eval('customCustomerId'), String(w.eval('customCustomerId')));
+    check('the x in the search clears whoever was loaded', !w.eval('customCustomerId'), String(w.eval('customCustomerId')));
     check('and empties the search box', d.getElementById('customCustSearch').value === '',
           d.getElementById('customCustSearch').value);
-    check('with the cursor in it, ready to type a name',
-          d.activeElement === d.getElementById('customCustSearch'),
-          d.activeElement ? d.activeElement.id : 'nothing focused');
   }catch(e){ check('starting a custom setup', false, e.message); }
   w.close();
 }
@@ -322,6 +328,9 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   const dom = new JSDOM(fs.readFileSync('customer-intake.html','utf8'),{
     runScripts:'dangerously',pretendToBeVisual:true,url:'https://example.com/',
     beforeParse(w){
+      // A company that has not ticked any photo for Everyone. New companies start
+      // with the pool after photo required; that start is tested on its own.
+      w.localStorage.setItem('weir:photoEveryone', '{}');
       w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
       w.scrollTo=()=>{};w.scrollBy=()=>{};w.alert=()=>{};
       w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){},fillRect(){}});
@@ -352,29 +361,98 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     check('and the page is working from the synced list, not a stale copy',
           w.eval("customerGroups.map(g=>g.id).join()") === 'g1,g2,g4', w.eval("customerGroups.map(g=>g.id).join()"));
 
-    // Spacing: each group name sits the same distance from the line above as
-    // from the line below, including the last one
-    const rows = Array.from(d.querySelectorAll('#customGroupList > div'));
+    // Spacing, matched to "Customers with a custom setup": no line over the
+    // first group, 12px above and below each name, a line between groups, and
+    // the line above the next section closing off the last one
+    const rows = Array.from(d.querySelectorAll('#customGroupList > div'))
+      .filter(r => !r.querySelector('[data-list-page]'));
     const pad = (el, side)=> parseFloat(el.style['padding' + side] || '0');
-    check('each group has as much room below its name as above',
-          rows.length === 3 && rows.every(r => pad(r, 'Top') > 0 && pad(r, 'Top') === pad(r, 'Bottom')),
+    check('each group has 12px above and below its name',
+          rows.length === 3 && rows.every(r => pad(r, 'Top') === 12 && pad(r, 'Bottom') === 12),
           rows.map(r => pad(r, 'Top') + '/' + pad(r, 'Bottom')).join(' '));
-    check('every group has a line above it', rows.every(r => /1px solid/.test(r.style.borderTop)));
+    check('no line between the heading and the first group', !/1px solid/.test(rows[0].style.borderTop || ''));
+    check('a line under every group but the last',
+          rows.slice(0, -1).every(r => /1px solid/.test(r.style.borderBottom))
+          && !/1px solid/.test(rows[rows.length - 1].style.borderBottom || ''));
     const existing = d.getElementById('customExistingWrap');
-    check('the next line comes straight after the last group, so it is spaced like the rest',
+    check('the next section\u2019s line closes off the last group',
           parseFloat(existing.style.marginTop || '0') === 0 && /1px solid/.test(existing.style.borderTop),
           existing.style.marginTop);
     const list = d.getElementById('customGroupList');
     const wrap = d.getElementById('customGroupWrap');
-    check('the Groups heading sits as far below its line as above the first group',
-          parseFloat(wrap.style.paddingTop) === parseFloat(list.style.marginTop),
-          wrap.style.paddingTop + ' / ' + list.style.marginTop);
+    check('8px under the Groups heading, as under the custom-setup heading',
+          parseFloat(list.style.marginTop) === 8, list.style.marginTop);
+    check('group names line up with the heading (no side padding)',
+          rows.every(r => pad(r, 'Left') === 0 && pad(r, 'Right') === 0));
+    check('a group row lights up under the pointer', rows.every(r => r.classList.contains('press-row')));
+    const hover = fs.readFileSync('customer-intake.html', 'utf8');
+    check('with the site\u2019s pale teal', /\.press-row:hover\{background:var\(--teal-pale\);\}/.test(hover));
 
     // With no groups, the section beneath keeps its usual gap
     w.eval("syncApplyRecord('setup', 'customerGroups', {value: []}, false);");
     check('with no groups the heading is hidden', wrap.style.display === 'none');
     check('and the section below keeps its own space', parseFloat(existing.style.marginTop) > 0, existing.style.marginTop);
   }catch(e){ check('groups on arrival', false, e.message); }
+  w.close();
+}
+
+
+// ---- Groups and custom setups, ten to a page, each with its own pages ----
+{
+  console.log('\n=== customer-intake.html — ten groups and ten custom setups to a page ===');
+  const custs = Array.from({length: 14}, (_, i) => ({id: 'k' + i, name: 'Cust ' + String(i).padStart(2, '0'), active: true, hasPool: true}));
+  const cfg = {}; custs.forEach(c => cfg[c.id] = {pool: {chemicals: [], dosages: []}});
+  const groups = Array.from({length: 23}, (_, i) => ({id: 'g' + i, name: 'Group ' + i, customerIds: [], config: {}}));
+  const dom = new JSDOM(fs.readFileSync('customer-intake.html','utf8'),{
+    runScripts:'dangerously',pretendToBeVisual:true,url:'https://example.com/',
+    beforeParse(w){
+      w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
+      w.scrollTo=()=>{};w.scrollBy=()=>{};w.alert=()=>{};
+      w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){},fillRect(){}});
+      w.console.warn=()=>{};w.console.error=()=>{};
+      w.indexedDB=global.indexedDB;w.IDBKeyRange=global.IDBKeyRange;
+      w.localStorage.setItem('weir:customers', JSON.stringify(custs));
+      w.localStorage.setItem('weir:customChemConfig', JSON.stringify(cfg));
+      w.localStorage.setItem('weir:customerGroups', JSON.stringify(groups));
+    }});
+  await wait(1500);
+  const w = dom.window, d = w.document;
+  try{
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); switchView('customerconfig');");
+    const gRows = ()=> Array.from(d.querySelectorAll('#customGroupList > div')).filter(r => !r.querySelector('[data-list-page]'));
+    const cRows = ()=> Array.from(d.querySelectorAll('#customExistingList > div')).filter(r => !r.querySelector('[data-list-page]'));
+    const pageBtn = (id, n) => d.querySelector('#' + id + ' [data-list-page="' + n + '"]');
+    const info = id => { const b = pageBtn(id, 1); return b ? b.parentElement.lastChild.textContent : '(none)'; };
+
+    check('ten groups on the first page', gRows().length === 10, String(gRows().length));
+    check('ten custom setups on the first page', cRows().length === 10, String(cRows().length));
+    check('the group pages say which ten', info('customGroupList') === 'Showing 1\u201310 of 23', info('customGroupList'));
+    check('the custom-setup pages say which ten', info('customExistingList') === 'Showing 1\u201310 of 14', info('customExistingList'));
+    const gPager = pageBtn('customGroupList', 1).parentElement;
+    check('the group page numbers come after the last group', d.getElementById('customGroupList').lastElementChild === gPager);
+    check('with a line above them and room below, before the next section',
+          /1px solid/.test(gPager.style.borderTop) && parseFloat(gPager.style.paddingTop) === 14 && parseFloat(gPager.style.paddingBottom) === 14);
+    const cPager = pageBtn('customExistingList', 1).parentElement;
+    check('the custom-setup page numbers come under the last customer', d.getElementById('customExistingList').lastElementChild === cPager);
+
+    pageBtn('customGroupList', 3).click();
+    check('the last group page holds what is left', gRows().length === 3 && info('customGroupList') === 'Showing 21\u201323 of 23', info('customGroupList'));
+    check('and paging the groups leaves the custom setups alone', info('customExistingList') === 'Showing 1\u201310 of 14', info('customExistingList'));
+    pageBtn('customExistingList', 2).click();
+    check('paging the custom setups works', cRows().length === 4 && info('customExistingList') === 'Showing 11\u201314 of 14', info('customExistingList'));
+    check('and leaves the groups where they were', info('customGroupList') === 'Showing 21\u201323 of 23', info('customGroupList'));
+
+    const row = cRows()[0];
+    const nameEl = row.firstChild.firstChild;
+    check('custom-setup names are the same dark colour as group names', /var\(--ink\)/.test(nameEl.getAttribute('style')), nameEl.getAttribute('style'));
+    check('custom-setup rows light up under the pointer', cRows().every(r => r.classList.contains('press-row')));
+    check('custom-setup rows are the taller height, like the groups',
+          cRows().every(r => r.style.paddingTop === '12px' && r.style.paddingBottom === '12px'));
+
+    // Ten or fewer: no page numbers
+    w.eval("customerGroups = customerGroups.slice(0, 10); saveCustomerGroups(); renderGroupList();");
+    check('ten groups or fewer: no page numbers', !pageBtn('customGroupList', 1) && gRows().length === 10);
+  }catch(e){ check('groups and custom setups in pages', false, e.message); }
   w.close();
 }
 

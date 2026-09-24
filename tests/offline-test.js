@@ -28,13 +28,16 @@ console.log('\n=== the service worker ===');
           .every(p => sw.indexOf(p) !== -1));
   // A fresh name is what forces every device off the previous worker
   check('  the cache name is newer than the one that shipped',
-        /poollog-cache-v([6-9]|[1-9][0-9])/.test(sw), (sw.match(/poollog-cache-v\d+/)||[''])[0]);
+        /weir-cache-v([8-9]|[1-9][0-9])/.test(sw), (sw.match(/(weir|poollog)-cache-v\d+/)||[''])[0]);
 }
 
 function boot(file){
   return new JSDOM(fs.readFileSync(file, 'utf8'), {
     runScripts:'dangerously', pretendToBeVisual:true, url:'https://example.com/',
     beforeParse(w){
+      // A company that has not ticked any photo for Everyone. New companies start
+      // with the pool after photo required; that start is tested on its own.
+      w.localStorage.setItem('weir:photoEveryone', '{}');
       w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
       w.scrollTo=()=>{}; w.scrollBy=()=>{}; w.alert=()=>{};
       w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){},fillRect(){}});
@@ -276,6 +279,9 @@ async function serverCustomerSync(){
     const dom = new JSDOM(fs.readFileSync('customer-intake.html', 'utf8'), {
       runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.com/',
       beforeParse(w){
+        // A company that has not ticked any photo for Everyone. New companies start
+        // with the pool after photo required; that start is tested on its own.
+        w.localStorage.setItem('weir:photoEveryone', '{}');
         w.matchMedia = () => ({matches:false, addListener(){}, removeListener(){}, addEventListener(){}, removeEventListener(){}});
         w.scrollTo = () => {}; w.scrollBy = () => {}; w.alert = () => {};
         w.HTMLCanvasElement.prototype.getContext = () => ({drawImage(){}, fillRect(){}});
@@ -1235,6 +1241,9 @@ async function websiteCompanyRecords(){
     const dom = new JSDOM(fs.readFileSync('customer-intake.html', 'utf8'), {
       runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.com/',
       beforeParse(w){
+        // A company that has not ticked any photo for Everyone. New companies start
+        // with the pool after photo required; that start is tested on its own.
+        w.localStorage.setItem('weir:photoEveryone', '{}');
         w.matchMedia = () => ({matches:false, addListener(){}, removeListener(){}, addEventListener(){}, removeEventListener(){}});
         w.scrollTo = () => {}; w.scrollBy = () => {}; w.alert = () => {};
         w.HTMLCanvasElement.prototype.getContext = () => ({drawImage(){}, fillRect(){}});
