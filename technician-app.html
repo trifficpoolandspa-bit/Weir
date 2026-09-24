@@ -1560,7 +1560,19 @@ function resetDoseRuleTracking(){
 // ---------- Photos the user defined themselves ----------
 // Each is rendered as its own capture block, placed with the before or after
 // photos depending on how it was set up. Their data rides along on the reading.
-const customPhotoData = {};       // photoId -> data url, for this visit
+// Kept per body of water: {section: {photoId: data url}}, where the section is
+// 'pool', 'spa', or 'fountain:<id>' for each extra body. One store for the
+// whole visit meant a photo taken on the pool was filed on the spa and every
+// extra too, and the spa counted it as already taken.
+const customPhotoData = {};
+
+function customPhotoSection(type){
+  return type === 'fountain' ? 'fountain:' + (currentVisitFountainId || '') : type;
+}
+function customPhotosTakenFor(type){
+  const key = customPhotoSection(type);
+  return customPhotoData[key] || (customPhotoData[key] = {});
+}
 
 function customPhotosFor(type){
   const cid = currentVisitCustomerId;
@@ -1586,8 +1598,8 @@ function renderCustomPhotoBlocks(type, when){
   if(!host) return;
   host.innerHTML = '';
 
-  const wanted = customPhotosFor(type).filter(p =>
-    (p.when === 'before' ? 'before' : 'after') === when);
+  // Only what the Photo requirements tab lets show here: off is not drawn
+  const wanted = customPhotosShownOf(type, when);
   if(!wanted.length){ host.style.display = 'none'; return; }
   host.style.display = 'block';
 
@@ -1598,7 +1610,8 @@ function renderCustomPhotoBlocks(type, when){
 
     const title = document.createElement('div');
     title.style.cssText = 'font-size:13.5px;font-weight:700;color:var(--teal-deep);margin-bottom:8px;';
-    title.textContent = p.label + (p.required ? ' (required)' : '');
+    // Said only when this technician actually has to take it
+    title.textContent = p.label + (techWantsPhoto(p.id, type) ? ' (required)' : '');
     block.appendChild(title);
 
     const img = document.createElement('img');
@@ -1620,7 +1633,7 @@ function renderCustomPhotoBlocks(type, when){
     block.appendChild(remove);
 
     function show(data){
-      customPhotoData[p.id] = data || null;
+      customPhotosTakenFor(type)[p.id] = data || null;
       if(data){
         img.src = data; img.style.display = 'block';
         take.textContent = 'Retake photo';
@@ -1644,7 +1657,7 @@ function renderCustomPhotoBlocks(type, when){
     });
     remove.addEventListener('click', ()=> show(null));
 
-    show(customPhotoData[p.id] || null);
+    show(customPhotosTakenFor(type)[p.id] || null);
     host.appendChild(block);
   });
 }
@@ -1662,7 +1675,8 @@ function missingCustomPhoto(type, when){
     // Nobody ticked means nobody is asked.
     return techWantsPhoto(p.id, type);
   });
-  const missing = wanted.find(p => !customPhotoData[p.id]);
+  const taken = customPhotosTakenFor(type);
+  const missing = wanted.find(p => !taken[p.id]);
   return missing ? missing.label : '';
 }
 
@@ -2697,7 +2711,7 @@ const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGateP
   'showWaterBalance', 'autoNotifyAll', 'autoNotifyAllLead', 'showPoolSizeInProfile',
   'applyPoolDosagesToAll', 'applyPoolChemicalsToAll'];
 const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'routeOrders',
-                         'reportEmailStyle', 'customerGroups', 'photoDefaults'];
+                         'reportEmailStyle', 'customerGroups', 'photoDefaults', 'photoEveryone'];
 const SYNC_COMPANY_DETAIL_KEYS = ['companyName', 'ownerName', 'licenseNumber', 'serviceArea',
   'accountEmail', 'accountPhone', 'businessAddress', 'businessCity', 'businessState',
   'businessZip', 'businessWebsite'];
@@ -4484,32 +4498,59 @@ function photoStepState(step){
   return (state === 'optional' || state === 'required') ? state : 'off';
 }
 
+// Everyone, set at the office: covers every technician, including new ones.
+// Until the company sets anything, the after photo is required on pools.
+function photoEveryoneOn(step, key){
+  const saved = lsGet('photoEveryone');
+  const all = saved && typeof saved === 'object' ? saved : {after: {pool: true}};
+  return !!(all[step] && all[step][key] === true);
+}
+
 // Does this technician have to take it?
 function techWantsPhoto(step, type){
   const key = type === 'spa' ? 'spa' : (type === 'pool' ? 'pool' : 'fountain');
   const rules = currentUser && currentUser.photoRules;
-  // Asked of them by name, whatever the row says
+  // Asked of them by name, or of everyone
   if(rules && rules[step] && rules[step][key] === true) return true;
-  // Otherwise they follow the row
+  if(photoEveryoneOn(step, key)) return true;
+  // Otherwise they follow the row (only set by older versions of the website)
   return photoStepState(step) === 'required';
+}
+
+// Set for this technician on the website: they see the photo and may walk
+// past it. A tick on a body of water still makes it required there.
+function techOptionalPhoto(step){
+  const opt = currentUser && currentUser.photoOptional;
+  return !!(opt && opt[step] === true) || photoEveryoneOn(step, 'optional');
 }
 
 // Does the step appear at all? Required means yes; optional means yes but it
 // can be walked past; off means it is not there.
 function photoStepShows(step, type){
   if(techWantsPhoto(step, type)) return true;
+  if(techOptionalPhoto(step)) return true;
   return photoStepState(step) === 'optional';
+}
+
+// Is this photo taken before the readings, after, or both? The website saves
+// a tick for each; older setups saved a single word.
+function customPhotoAt(p, when){
+  return p.when && typeof p.when === 'object'
+    ? !!p.when[when]
+    : (p.when === 'before' ? 'before' : 'after') === when;
 }
 
 // Which of the company's own photos this technician must take here
 function customPhotosRequiredOf(type, when){
   return customPhotosFor(type).filter(p =>{
     if(p.required !== true) return false;
-    const at = p.when && typeof p.when === 'object'
-      ? !!p.when[when]
-      : (p.when === 'before' ? 'before' : 'after') === when;
-    return at && techWantsPhoto(p.id, type);
+    return customPhotoAt(p, when) && techWantsPhoto(p.id, type);
   });
+}
+
+// Which of them appear here at all: required or optional, never off
+function customPhotosShownOf(type, when){
+  return customPhotosFor(type).filter(p => customPhotoAt(p, when) && photoStepShows(p.id, type));
 }
 
 // A customer configured to need a gate photo still needs one when the
@@ -4527,7 +4568,7 @@ function customerWantsGatePhoto(){
 function gatePhotoApplies(){
   // Set per technician or per body of water — there is no app-wide tick to
   // fall back on now that Settings only turns the step on and off.
-  const required = techRequires('requireGatePhoto')
+  const required = techRequires('requireGatePhoto') || photoEveryoneOn('gate', 'gate')
     || customerWantsGatePhoto();
   if(!required) return false;
   if(typeof isFilterCleanVisit !== 'undefined' && isFilterCleanVisit) return false;
@@ -4570,8 +4611,11 @@ function syncGatePhotoBlock(){
   // The whole step can be switched off in Settings, in which case it never
   // appears regardless of any requirement set elsewhere.
   // Off, optional or required, with anyone asked by name counting as required
-  const stepOn = photoStepShows('gate', 'pool');
-  const show = stepOn && gatePhotoApplies() && isLastSectionOfVisit();
+  // Shown to anyone who must take it, or may. It used to wait on the row's
+  // own switch at the office, which no longer exists.
+  const optionalHere = techOptionalPhoto('gate') || photoStepState('gate') === 'optional';
+  const notFilterClean = !(typeof isFilterCleanVisit !== 'undefined' && isFilterCleanVisit);
+  const show = (gatePhotoApplies() || (optionalHere && notFilterClean)) && isLastSectionOfVisit();
   block.style.display = show ? 'block' : 'none';
   if(!show) return;
 
@@ -5455,7 +5499,7 @@ document.getElementById('btnSaveReading').addEventListener('click', async ()=>{
     beforePhoto: appSettings.storePhotos === false ? null : (beforeControllerFor('pool').getData() || null),
     isFilterClean: isFilterCleanVisit,
     isRedo: !!(customers.find(x => x.id === customerId) || {}).pendingRedo,
-    customPhotos: appSettings.storePhotos === false ? {} : Object.assign({}, customPhotoData),
+    customPhotos: appSettings.storePhotos === false ? {} : Object.assign({}, customPhotoData['pool'] || {}),
     gatePhoto: appSettings.storePhotos === false ? null : (gatePhotoController.getData() || null),
     filterBackwashed: (document.getElementById('chkBackwashed') || {}).dataset ? document.getElementById('chkBackwashed').dataset.on === 'true' : false,
     saltCellCleaned: (document.getElementById('chkSaltCell') || {}).dataset ? document.getElementById('chkSaltCell').dataset.on === 'true' : false
@@ -5507,7 +5551,7 @@ document.getElementById('btnSaveSpaReading').addEventListener('click', async ()=
   const reading = {
     id: 'spa_' + Date.now(),
     isRedo: !!(customers.find(x => x.id === customerId) || {}).pendingRedo,
-    customPhotos: appSettings.storePhotos === false ? {} : Object.assign({}, customPhotoData),
+    customPhotos: appSettings.storePhotos === false ? {} : Object.assign({}, customPhotoData['spa'] || {}),
     date: new Date().toISOString(),
     notes: document.getElementById('inSpaNotes').value.trim(),
     photo: appSettings.storePhotos === false ? null : (spaPhotoController.getData() || null),
@@ -5548,7 +5592,7 @@ document.getElementById('btnSaveFountainReading').addEventListener('click', asyn
   const reading = {
     id: 'fountain_' + Date.now(),
     isRedo: !!(customers.find(x => x.id === customerId) || {}).pendingRedo,
-    customPhotos: appSettings.storePhotos === false ? {} : Object.assign({}, customPhotoData),
+    customPhotos: appSettings.storePhotos === false ? {} : Object.assign({}, customPhotoData['fountain:' + fountainId] || {}),
     date: new Date().toISOString(),
     notes: document.getElementById('inFountainNotes').value.trim(),
     photo: appSettings.storePhotos === false ? null : (fountainPhotoController.getData() || null),
@@ -8335,7 +8379,7 @@ function showsAfterPhotoStep(type){
   if(photoStepShows('after', type)) return true;
   const lists = photoListsFor(type);
   if(lists && lists.requireAfterPhoto === true) return true;
-  return customPhotosRequiredOf(type, 'after').length > 0;
+  return customPhotosShownOf(type, 'after').length > 0;
 }
 
 // The photo steps always exist. Who has to take which is set on the website,
@@ -8361,7 +8405,7 @@ function showsBeforePhotoStep(type){
   const lists = photoListsFor(type);
   if(lists && lists.requireBeforePhoto === true) return true;
   // One of the company's own photos that belongs before the readings
-  return customPhotosRequiredOf(type, 'before').length > 0;
+  return customPhotosShownOf(type, 'before').length > 0;
 }
 
 function visitStepCardsFor(type){
@@ -9791,7 +9835,7 @@ async function skipBodyOfWater(type){
   // Some technicians must justify a skip with a photo and a note. Set per
   // technician on the Technicians page.
   let proof = null;
-  if(techRequires('requireSkipProof')){
+  if(techRequires('requireSkipProof') || photoEveryoneOn('skip', 'skip')){
     proof = await askSkipProof(label);
     if(!proof) return;                      // backed out
   } else {

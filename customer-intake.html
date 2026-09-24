@@ -700,7 +700,7 @@ input::placeholder{color:#A9BCB9;}
 
     <div class="card" id="photoRequireCard" style="display:none;">
       <h2 style="margin:0 0 4px;">Photos a technician must take</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:0 0 6px;">Press a row to choose who it applies to. A technician cannot move past the step without it.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 6px;">Checking a box requires that technician to take the photo before moving on to the next step of the service report.</p>
       <p style="font-size:12.5px;color:var(--muted);margin:0 0 22px;">A report carries up to ten photos. Anything past that is taken and kept, but not sent with the report.</p>
 
       <!-- The gap belongs above this line, not below it: every line sits the
@@ -5095,6 +5095,25 @@ function broadcastNoteFor(via, count, copied){
   return text;
 }
 
+// Whichever way the owner last opened a broadcast comes first, as the filled
+// button; the other two follow, outlined. Kept on this device, since it is
+// about this computer's email setup.
+const BROADCAST_BUTTONS = {app: 'wcBroadcastOpen', gmail: 'wcBroadcastGmail', outlook: 'wcBroadcastOutlook'};
+function arrangeBroadcastButtons(){
+  const saved = lsGet('broadcastRoute');
+  const first = BROADCAST_BUTTONS[saved] ? saved : 'app';
+  const order = [first].concat(['app', 'gmail', 'outlook'].filter(v => v !== first));
+  const firstBtn = document.getElementById(BROADCAST_BUTTONS.app);
+  const row = firstBtn && firstBtn.parentElement;
+  if(!row) return;
+  order.slice().reverse().forEach(v=>{
+    const b = document.getElementById(BROADCAST_BUTTONS[v]);
+    if(!b) return;
+    b.className = v === first ? 'btn btn-primary' : 'btn btn-ghost';
+    row.insertBefore(b, row.firstChild);
+  });
+}
+
 async function startBroadcast(via){
   const route = BROADCAST_ROUTES[via];
   const note = document.getElementById('wcBroadcastNote');
@@ -5133,6 +5152,10 @@ async function startBroadcast(via){
       : ''),
     via === 'app' ? 'Open email app' : 'Open ' + route.name);
   if(!ok) return;
+
+  // Remembered, and moved to the front for next time
+  lsSet('broadcastRoute', via);
+  arrangeBroadcastButtons();
 
   const batches = broadcastBatches(route, addresses, subject, body);
   const copied = via === 'outlook' ? await copyBroadcastAddresses(batches[0]) : false;
@@ -5192,6 +5215,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 document.getElementById('wcBroadcastOpen').addEventListener('click', ()=> startBroadcast('app'));
 document.getElementById('wcBroadcastGmail').addEventListener('click', ()=> startBroadcast('gmail'));
 document.getElementById('wcBroadcastOutlook').addEventListener('click', ()=> startBroadcast('outlook'));
+arrangeBroadcastButtons();
 
 // Every WorkCenter mode in one place. Both the tab buttons and the reset on
 // entry go through this, so a new mode can't be added to one and forgotten in
@@ -7209,7 +7233,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 // while anything about a phone itself — its camera, its storage, who is signed
 // in on it, which tabs that person wants — stays on that phone.
 const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'routeOrders',
-                         'reportEmailStyle', 'customerGroups', 'photoDefaults'];
+                         'reportEmailStyle', 'customerGroups', 'photoDefaults', 'photoEveryone'];
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
   'requireSkipPhoto', 'requireSkipReason', 'allowRouteReorder', 'showDosageSuggestions',
   'showWaterBalance', 'autoNotifyAll', 'autoNotifyAllLead', 'showPoolSizeInProfile',
@@ -11555,6 +11579,73 @@ function photoRuleFor(tech, step, bodyKey){
   return !!(rules && rules[step] && rules[step][bodyKey] === true);
 }
 
+// ---------- Everyone ----------
+// A company setting, not a shortcut: it covers every technician, including
+// ones added later. {step: {pool, spa, fountain, gate, skip, optional}}.
+// Until the company sets anything, the after photo is required on pools.
+const PHOTO_EVERYONE_START = {after: {pool: true}};
+function photoEveryone(){
+  const saved = lsGet('photoEveryone');
+  return saved && typeof saved === 'object' ? saved : JSON.parse(JSON.stringify(PHOTO_EVERYONE_START));
+}
+function photoEveryoneOn(step, key){
+  const all = photoEveryone();
+  return !!(all[step] && all[step][key] === true);
+}
+function setPhotoEveryone(step, key, on){
+  const all = photoEveryone();
+  all[step] = all[step] || {};
+  if(on) all[step][key] = true; else delete all[step][key];
+  lsSet('photoEveryone', all);
+}
+
+// Optional, per technician per row: they see the photo and may walk past it.
+// A tick on a body of water makes it required there, whatever this says.
+function photoOptionalFor(tech, step){
+  return !!(tech && tech.photoOptional && tech.photoOptional[step] === true);
+}
+function setPhotoOptional(tech, step, on){
+  if(!tech) return;
+  tech.photoOptional = tech.photoOptional || {};
+  if(on) tech.photoOptional[step] = true;
+  else delete tech.photoOptional[step];
+}
+
+// The rows used to carry their own Off / Optional / Required. Those buttons are
+// gone, so anything still set that way is handed to the technicians: Required
+// becomes everyone ticked on every body of water in the row, Optional becomes
+// everyone on Optional. Then the row goes back to off, so nothing is applied
+// twice. Safe to run any number of times.
+function movePhotoDefaultsToTechnicians(){
+  const all = photoDefaults();
+  const steps = Object.keys(all).filter(k => all[k] === 'required' || all[k] === 'optional');
+  if(!steps.length || !technicians.length) return false;
+  const tasks = photoTasks();
+  steps.forEach(step=>{
+    const task = tasks.find(t => t.id === step);
+    const bodies = task ? task.bodies : {pool: true, spa: true, fountain: true};
+    // Required becomes Everyone, so technicians added later are covered too.
+    // Optional starts off under the new buttons, so it is not carried.
+    if(all[step] === 'required'){
+      if(step === 'gate' || step === 'skip') setPhotoEveryone(step, step, true);
+      else PHOTO_BODIES.forEach(([k])=>{ if(bodies[k]) setPhotoEveryone(step, k, true); });
+    }
+    all[step] = 'off';
+  });
+  lsSet('photoDefaults', all);
+  return true;
+}
+
+// Optional was switched on for whole rows when these buttons first arrived.
+// It starts off: cleared once, and never again.
+function clearFirstOptionals(){
+  if(lsGet('photoOptionalCleared')) return;
+  let changed = false;
+  technicians.forEach(t=>{ if(t && t.photoOptional){ delete t.photoOptional; changed = true; } });
+  lsSet('photoOptionalCleared', true);
+  if(changed) saveTechnicians();
+}
+
 // ---------- What a photo is for everyone, before exceptions ----------
 // Three states rather than two:
 //   off       the step never appears
@@ -11639,120 +11730,202 @@ function photoTechnicianList(step, bodies){
   // Held to a comfortable width and centred, so names and ticks sit near each
   // other instead of at opposite edges of a wide screen
   box.dataset.techList = 'true';
-  box.style.cssText = 'margin:12px auto 0;max-width:420px;cursor:default;';
+  box.style.cssText = 'margin:12px auto 0;max-width:460px;cursor:default;';
   if(!technicians.length){
     box.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:6px 0;">'
       + 'No technicians yet. Add one on the Technicians tab.</div>';
     return box;
   }
-  // The gate is one photo for the visit, so it has a single column with no
-  // heading to label; everything else is per body of water.
   // The gate and the skip rule are one each per person; the rest are per body
   const columns = (step === 'gate' || step === 'skip')
     ? [[step, '']]
     : PHOTO_BODIES.filter(([key]) => bodies[key]);
-
-  const header = document.createElement('div');
-  header.style.cssText = 'display:flex;align-items:center;justify-content:flex-end;gap:14px;'
-    + 'font-size:11.5px;color:var(--muted);padding:0 0 6px;';
-  columns.forEach(([, shown])=>{
-    const h = document.createElement('span');
-    h.style.cssText = 'width:52px;flex:0 0 52px;text-align:center;';
-    h.textContent = shown;
-    header.appendChild(h);
-  });
-  box.appendChild(header);
+  // Skipping has its own rules on the phone, so it has no Optional
+  const offersOptional = step !== 'skip';
 
   // Always the technician as they are in the list right now. A sync replaces
   // the whole list with fresh objects, so the one captured when this was drawn
   // can be an orphan: writing to it changed nothing that gets saved.
   const live = t => technicians.find(x => x && String(x.id) === String(t.id)) || t;
 
-  const tickFor = (t, key)=>{
+  // A person's own tick, and Everyone's, which covers them too
+  const ownTick = (t, key)=>{
     const cur = live(t);
     return step === 'gate' ? cur.requireGatePhoto === true
       : step === 'skip' ? cur.requireSkipProof === true
       : photoRuleFor(cur, step, key) === true;
   };
-  const setTick = (t, key, on)=>{
+  const setOwnTick = (t, key, on)=>{
     const cur = live(t);
     if(step === 'gate') cur.requireGatePhoto = on;
     else if(step === 'skip') cur.requireSkipProof = on;
     else setPhotoRule(cur, step, key, on);
   };
+  const everyoneKey = key => (step === 'gate' || step === 'skip') ? step : key;
+  const tickFor = (t, key)=> ownTick(t, key) || photoEveryoneOn(step, everyoneKey(key));
+  const optionalFor = t => photoOptionalFor(live(t), step) || photoEveryoneOn(step, 'optional');
 
-  // Kept so a tick can update what changed without rebuilding the list
-  // underneath the press: rebuilding mid-click is what made a tick need two
+  // Kept so a press updates what changed without rebuilding the list under
+  // the pointer: rebuilding mid-click is what made a tick need two
   const everyoneBoxes = {};
   const ownBoxes = [];
+  const optionalButtons = [];      // {t, btn}; t is null for Everyone
+  const paintOptional = (btn, on)=>{
+    btn.classList.toggle('btn-primary', on);
+    btn.classList.toggle('btn-ghost', !on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  };
   const refresh = ()=>{
     Object.keys(everyoneBoxes).forEach(key=>{
-      everyoneBoxes[key].checked = technicians.length > 0 && technicians.every(t => tickFor(t, key));
+      everyoneBoxes[key].checked = photoEveryoneOn(step, everyoneKey(key));
     });
     ownBoxes.forEach(entry => { entry.box.checked = tickFor(entry.t, entry.key); });
+    optionalButtons.forEach(({t, btn}) =>
+      paintOptional(btn, t ? optionalFor(t) : photoEveryoneOn(step, 'optional')));
     updatePhotoRowCounts();
   };
 
-  // Everyone at once
-  const all = document.createElement('div');
-  all.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;'
-    + 'padding:7px 0;border-top:1px solid var(--line);';
-  const allName = document.createElement('div');
-  allName.style.cssText = 'font-size:13.5px;font-weight:600;';
-  allName.textContent = 'Everyone';
-  all.appendChild(allName);
-  const allTicks = document.createElement('div');
-  allTicks.style.cssText = 'display:flex;align-items:center;gap:14px;flex-shrink:0;';
-  columns.forEach(([key])=>{
-    const wrap = document.createElement('label');
-    wrap.style.cssText = 'width:52px;flex:0 0 52px;display:flex;justify-content:center;cursor:pointer;';
-    const box2 = document.createElement('input');
-    box2.type = 'checkbox';
-    box2.style.margin = '0';
-    box2.checked = technicians.length > 0 && technicians.every(t => tickFor(t, key));
-    everyoneBoxes[key] = box2;
-    box2.addEventListener('change', ()=>{
-      technicians.forEach(t => setTick(t, key, box2.checked));
+  // One fixed-width slot for Optional, then one per tick, the same on every
+  // line, so the buttons and boxes stand in straight columns
+  const SLOT = 'width:52px;flex:0 0 52px;display:flex;justify-content:center;';
+  const OPT_SLOT = 'width:84px;flex:0 0 84px;display:flex;justify-content:center;';
+  const line = (nameEl, fill)=>{
+    const row = document.createElement('div');
+    row.className = 'press-row';     // pale teal under the pointer, like every list on the site
+    row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:7px 0;border-top:1px solid var(--line);';
+    nameEl.style.flex = '1';
+    nameEl.style.minWidth = '0';
+    row.appendChild(nameEl);
+    const right = document.createElement('div');
+    right.style.cssText = 'display:flex;align-items:center;gap:14px;flex-shrink:0;';
+    fill(right);
+    row.appendChild(right);
+    return row;
+  };
+
+  const optionalButton = (t)=>{
+    const slot = document.createElement('div');
+    slot.style.cssText = OPT_SLOT;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-ghost';
+    btn.style.cssText = 'width:auto;padding:4px 10px;font-size:11.5px;';
+    btn.textContent = 'Optional';
+    btn.title = 'They see this photo and may take it. A tick on a body of water makes it required there.';
+    paintOptional(btn, t ? optionalFor(t) : photoEveryoneOn(step, 'optional'));
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      if(!t){
+        setPhotoEveryone(step, 'optional', !photoEveryoneOn(step, 'optional'));
+      } else if(photoEveryoneOn(step, 'optional')){
+        // Turning one person off while Everyone is on: Everyone goes off and
+        // everybody else keeps it as their own
+        setPhotoEveryone(step, 'optional', false);
+        technicians.forEach(x => setPhotoOptional(live(x), step, String(x.id) !== String(t.id)));
+      } else {
+        setPhotoOptional(live(t), step, !photoOptionalFor(live(t), step));
+      }
       saveTechnicians();
       refresh();
     });
-    wrap.appendChild(box2);
-    allTicks.appendChild(wrap);
+    slot.appendChild(btn);
+    optionalButtons.push({t: t, btn: btn});
+    return slot;
+  };
+
+  // Headings over the ticks
+  const header = document.createElement('div');
+  header.style.cssText = 'display:flex;align-items:center;gap:12px;font-size:11.5px;color:var(--muted);padding:0 0 6px;';
+  const spacer = document.createElement('div');
+  spacer.style.flex = '1';
+  header.appendChild(spacer);
+  const heads = document.createElement('div');
+  heads.style.cssText = 'display:flex;align-items:center;gap:14px;flex-shrink:0;';
+  if(offersOptional){
+    const h = document.createElement('span');
+    h.style.cssText = OPT_SLOT;
+    heads.appendChild(h);
+  }
+  columns.forEach(([, shown])=>{
+    const h = document.createElement('span');
+    h.style.cssText = SLOT;
+    h.textContent = shown;
+    heads.appendChild(h);
   });
-  all.appendChild(allTicks);
-  box.appendChild(all);
+  header.appendChild(heads);
+  box.appendChild(header);
 
-  technicians.forEach(t=>{
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;'
-      + 'padding:7px 0;border-top:1px solid var(--line);';
-    const who = document.createElement('div');
-    who.style.cssText = 'font-size:13.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;';
-    who.textContent = t.name || 'Unnamed';
-    row.appendChild(who);
-
-    const ticks = document.createElement('div');
-    ticks.style.cssText = 'display:flex;align-items:center;gap:14px;flex-shrink:0;';
+  // Everyone: a setting of its own, which covers technicians added later
+  const allName = document.createElement('div');
+  allName.style.cssText = 'font-size:13.5px;font-weight:600;';
+  allName.textContent = 'Everyone';
+  box.appendChild(line(allName, right=>{
+    if(offersOptional) right.appendChild(optionalButton(null));
     columns.forEach(([key])=>{
       const wrap = document.createElement('label');
-      wrap.style.cssText = 'width:52px;flex:0 0 52px;display:flex;justify-content:center;cursor:pointer;';
-      const box3 = document.createElement('input');
-      box3.type = 'checkbox';
-      box3.style.margin = '0';
-      box3.checked = tickFor(t, key);
-      ownBoxes.push({t: t, key: key, box: box3});
-      box3.addEventListener('change', ()=>{
-        setTick(t, key, box3.checked);
-        saveTechnicians();
+      wrap.style.cssText = SLOT + 'cursor:pointer;';
+      const box2 = document.createElement('input');
+      box2.type = 'checkbox';
+      box2.style.margin = '0';
+      box2.checked = photoEveryoneOn(step, everyoneKey(key));
+      everyoneBoxes[key] = box2;
+      box2.addEventListener('change', ()=>{
+        setPhotoEveryone(step, everyoneKey(key), box2.checked);
         refresh();
       });
-      wrap.appendChild(box3);
-      ticks.appendChild(wrap);
+      wrap.appendChild(box2);
+      right.appendChild(wrap);
     });
-    row.appendChild(ticks);
-    box.appendChild(row);
+  }));
+
+  technicians.forEach(t=>{
+    const who = document.createElement('div');
+    who.style.cssText = 'font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    who.textContent = t.name || 'Unnamed';
+    box.appendChild(line(who, right=>{
+      if(offersOptional) right.appendChild(optionalButton(t));
+      columns.forEach(([key])=>{
+        const wrap = document.createElement('label');
+        wrap.style.cssText = SLOT + 'cursor:pointer;';
+        const box3 = document.createElement('input');
+        box3.type = 'checkbox';
+        box3.style.margin = '0';
+        box3.checked = tickFor(t, key);
+        ownBoxes.push({t: t, key: key, box: box3});
+        box3.addEventListener('change', ()=>{
+          if(!box3.checked && photoEveryoneOn(step, everyoneKey(key))){
+            // Unticking one person while Everyone is on: Everyone goes off and
+            // everybody else keeps the tick as their own
+            setPhotoEveryone(step, everyoneKey(key), false);
+            technicians.forEach(x => setOwnTick(x, key, String(x.id) !== String(t.id)));
+          } else {
+            setOwnTick(t, key, box3.checked);
+          }
+          saveTechnicians();
+          refresh();
+        });
+        wrap.appendChild(box3);
+        right.appendChild(wrap);
+      });
+    }));
   });
   return box;
+}
+
+// "2 must · 1 optional", read as a sentence. Anyone ticked counts as must,
+// even if their Optional is also on.
+function photoRowCountText(step, bodies){
+  const must = technicians.filter(t=>
+    step === 'gate' ? (t.requireGatePhoto === true || photoEveryoneOn('gate', 'gate'))
+    : step === 'skip' ? (t.requireSkipProof === true || photoEveryoneOn('skip', 'skip'))
+    : PHOTO_BODIES.some(([k]) => bodies[k] && (photoRuleFor(t, step, k) || photoEveryoneOn(step, k)))
+  );
+  const optional = technicians.filter(t => must.indexOf(t) === -1
+    && (photoOptionalFor(t, step) || photoEveryoneOn(step, 'optional'))).length;
+  const parts = [];
+  if(must.length) parts.push(must.length + (must.length === 1 ? ' technician must' : ' technicians must'));
+  if(optional) parts.push(optional + ' optional');
+  return parts.length ? parts.join(' \u00b7 ') : 'Nobody yet';
 }
 
 // The count beside each requirement, written into rows already on screen
@@ -11762,12 +11935,7 @@ function updatePhotoRowCounts(){
     const step = el.dataset.photoStep;
     const task = tasks.find(t => t.id === step);
     const bodies = task ? task.bodies : {pool: true, spa: true, fountain: true};
-    const count = technicians.filter(t=>
-      step === 'gate' ? t.requireGatePhoto === true
-      : step === 'skip' ? t.requireSkipProof === true
-      : PHOTO_BODIES.some(([k]) => bodies[k] && photoRuleFor(t, step, k))
-    ).length;
-    el.textContent = (count ? count + (count === 1 ? ' technician' : ' technicians') : 'Nobody yet')
+    el.textContent = photoRowCountText(step, bodies)
       + (photoStepOpen === step ? '  \u25b4' : '  \u25be');
   });
 }
@@ -11776,16 +11944,17 @@ function renderPhotoRequirements(){
   const card = document.getElementById('photoRequireCard');
   const rows = document.getElementById('photoRequireRows');
   if(!card || !rows) return;
+  movePhotoDefaultsToTechnicians();
 
   // Nothing here depends on Settings any more: the photo steps always exist,
   // and this tab is the only thing that decides who must take what.
   const built = [
-    {step: 'before', label: 'Require a before photo', off: false, why: '',
+    {step: 'before', label: 'Before photo', off: false, why: '',
      bodies: {pool: true, spa: true, fountain: true}},
-    {step: 'after', label: 'Require an after photo', off: false, why: '',
+    {step: 'after', label: 'After photo', off: false, why: '',
      bodies: {pool: true, spa: true, fountain: true}},
     // One photo for the whole visit, so its list is a single tick per person
-    {step: 'gate', label: 'Require a closed gate photo', off: false, why: '',
+    {step: 'gate', label: 'Closed gate photo', off: false, why: '',
      bodies: {}, oneTick: true},
     // Not a photo step of its own: what a technician must do before skipping
     {step: 'skip', label: 'Require a photo and note to skip a body of water', off: false,
@@ -11822,6 +11991,19 @@ function renderPhotoRequirements(){
     }
     left.appendChild(name);
 
+    // Photos the company added can be changed from a button as well as the name
+    if(entry.task){
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'btn btn-ghost';
+      edit.textContent = 'Edit';
+      edit.title = 'Change this photo';
+      edit.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;';
+      edit.dataset.keepsClick = 'edit';
+      edit.addEventListener('click', ()=> openPhotoTask(entry.task));
+      left.appendChild(edit);
+    }
+
     // Only photos the company added can be taken away
     if(entry.task){
       const x = document.createElement('button');
@@ -11843,48 +12025,18 @@ function renderPhotoRequirements(){
     }
     head.appendChild(left);
 
-    // What this photo is for everyone, before any exception
-    const pick = document.createElement('div');
-    pick.dataset.keepsClick = 'default';
-    pick.style.cssText = 'display:flex;gap:4px;flex-shrink:0;';
-    PHOTO_STATES.forEach(state=>{
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'btn btn-ghost';
-      const on = photoDefaultFor(entry.step) === state;
-      b.style.cssText = 'width:auto;padding:4px 10px;font-size:11.5px;text-transform:capitalize;'
-        + (on ? 'background:var(--teal-deep);color:#fff;border-color:var(--teal-deep);' : '');
-      b.textContent = state;
-      b.title = state === 'off' ? 'Nobody sees this step'
-        : state === 'optional' ? 'Everyone sees it, nobody has to do it'
-        : 'Everyone must do it';
-      b.addEventListener('click', (e)=>{
-        e.stopPropagation();
-        setPhotoDefault(entry.step, state);
-        renderPhotoRequirements();
-      });
-      pick.appendChild(b);
-    });
-    head.appendChild(pick);
 
     const open = document.createElement('span');
     open.dataset.photoStep = entry.step;
     open.style.cssText = 'font-size:12.5px;color:var(--muted);flex-shrink:0;';
-    const count = technicians.filter(t=>
-      entry.step === 'gate' ? t.requireGatePhoto === true
-      : entry.step === 'skip' ? t.requireSkipProof === true
-      : PHOTO_BODIES.some(([k]) => entry.bodies[k] && photoRuleFor(t, entry.step, k))
-    ).length;
-    const base = photoDefaultFor(entry.step);
-    open.textContent = (count
-        ? count + (count === 1 ? ' technician' : ' technicians') + ' must'
-        : (base === 'required' ? 'Everyone must' : base === 'optional' ? 'Nobody has to' : 'Switched off'))
+    open.textContent = photoRowCountText(entry.step, entry.bodies)
       + (photoStepOpen === entry.step ? '  \u25b4' : '  \u25be');
     head.appendChild(open);
 
     // The whole band between the lines is the press, not just where the words
     // sit, so a thumb anywhere in the row opens that row's technicians
     if(!entry.off){
+      if(photoStepOpen !== entry.step) block.className = 'press-row';
       block.style.cursor = 'pointer';
       block.style.userSelect = 'none';
       block.style.webkitUserSelect = 'none';
@@ -11960,6 +12112,14 @@ function closePhotoTask(){
 document.addEventListener('DOMContentLoaded', ()=>{
   const add = document.getElementById('btnAddCustomPhoto');
   if(add) add.addEventListener('click', ()=> openPhotoTask(null));
+
+  // Before or after the readings, not both: ticking one clears the other
+  const beforeBox = document.getElementById('photoTaskBefore');
+  const afterBox = document.getElementById('photoTaskAfter');
+  if(beforeBox && afterBox){
+    beforeBox.addEventListener('change', ()=>{ if(beforeBox.checked) afterBox.checked = false; });
+    afterBox.addEventListener('change', ()=>{ if(afterBox.checked) beforeBox.checked = false; });
+  }
 
   const cancel = document.getElementById('btnCancelPhotoTask');
   if(cancel) cancel.addEventListener('click', closePhotoTask);
@@ -12328,6 +12488,8 @@ function saveCustomers(){
 
 let technicians = lsGet('technicians') || [];
 let editingTechId = null;
+movePhotoDefaultsToTechnicians();
+clearFirstOptionals();
 
 // Admin access carries rearranging with it, so the box follows the moment the
 // admin tick is set rather than only once the form is saved
