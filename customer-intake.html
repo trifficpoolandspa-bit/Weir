@@ -874,6 +874,38 @@ input::placeholder{color:#A9BCB9;}
     </div>
   </div>
 
+  <div id="quoteEmailOverlay" style="display:none;position:fixed;inset:0;z-index:320;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
+    <div style="background:var(--card);border-radius:14px;padding:22px;max-width:480px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);max-height:88vh;overflow-y:auto;">
+      <h2 style="font-size:18px;margin:0 0 4px;">Quote email</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 16px;">What goes at the top and the bottom of every quote you send. The colour comes from your report email settings.</p>
+      <div class="field">
+        <label>Header</label>
+        <input id="qeHeader" placeholder="Your company name">
+      </div>
+      <div class="field">
+        <label>Line under the header (optional)</label>
+        <input id="qeSubheader" placeholder="e.g. Licensed & insured · Serving Buckeye since 2010">
+      </div>
+      <div class="field">
+        <label>Closing line</label>
+        <textarea id="qeClosing" rows="2"></textarea>
+      </div>
+      <div class="field">
+        <label>Sign-off</label>
+        <input id="qeSignoff">
+      </div>
+      <label style="display:flex;align-items:center;gap:10px;font-size:13.5px;cursor:pointer;margin:4px 0 16px;">
+        <input type="checkbox" id="qeContact" style="margin:0;"> Show phone, email and website
+      </label>
+      <div class="btn-row" style="margin-bottom:12px;">
+        <button class="btn btn-ghost" id="btnQePreview" type="button" style="width:auto;padding:6px 12px;font-size:12px;">Preview</button>
+        <button class="btn btn-ghost" id="btnQeReset" type="button" style="width:auto;padding:6px 12px;font-size:12px;">Reset to default</button>
+      </div>
+      <button class="btn btn-primary" id="btnSaveQuoteEmail" style="width:100%;">Save</button>
+      <button class="btn btn-ghost" id="btnCancelQuoteEmail" style="width:100%;margin-top:8px;">Cancel</button>
+    </div>
+  </div>
+
   <div id="techPickOverlay" style="display:none;position:fixed;inset:0;z-index:320;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
     <div style="background:var(--card);border-radius:14px;padding:22px;max-width:460px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);max-height:85vh;overflow-y:auto;">
       <h2 style="font-size:18px;margin:0 0 4px;">Technicians</h2>
@@ -1161,6 +1193,7 @@ input::placeholder{color:#A9BCB9;}
       </div>
       <div class="btn-row">
         <button class="btn btn-primary" id="btnSendWorkOrder" style="width:auto;">Send to customer</button>
+        <button class="btn btn-ghost" id="btnCustomizeQuoteEmail" type="button" style="width:auto;">Customize email</button>
         <button class="btn btn-ghost" id="btnClearWorkOrder">Clear</button>
       </div>
         <div id="wcTaskSection" style="display:none;">
@@ -7257,7 +7290,9 @@ const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'r
                          'reportEmailStyle', 'customerGroups', 'photoDefaults', 'photoEveryone',
                          // Kept only in the browser they were typed into until
                          // now, so prices set on one device never reached another
-                         'productsServices'];
+                         'productsServices',
+                         // What goes at the top and bottom of a quote email
+                         'quoteEmailStyle'];
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
   'requireSkipPhoto', 'requireSkipReason', 'allowRouteReorder', 'showDosageSuggestions',
   'showWaterBalance', 'autoNotifyAll', 'autoNotifyAllLead', 'showPoolSizeInProfile',
@@ -9187,12 +9222,20 @@ function renderLineItems(){
     descInput.setAttribute('list', 'wcProductSuggestions');
     descInput.addEventListener('input', ()=>{
       item.description = descInput.value;
-      const match = productsServices.find(p => p.name === descInput.value);
-      if(match && (item.price === '' || item.price === undefined)){
-        item.price = match.price;
-        priceInput.value = match.price;
-        recalcWorkOrderTotal();
+      // Anything entered starts with a quantity of one
+      if(descInput.value.trim() && (item.qty === '' || item.qty === undefined || item.qty === null
+         || parseFloat(item.qty) === 0)){
+        item.qty = 1;
+        qtyInput.value = 1;
       }
+      // Choosing a product or service puts its price in, replacing whatever the
+      // previous item left there
+      const match = productsServices.find(p => p.name === descInput.value);
+      if(match){
+        item.price = match.price === undefined || match.price === null ? '' : match.price;
+        priceInput.value = item.price;
+      }
+      recalcWorkOrderTotal();
     });
 
     const qtyInput = document.createElement('input');
@@ -9206,12 +9249,22 @@ function renderLineItems(){
       recalcWorkOrderTotal();
     });
 
+    // The price box shows a $ in front; the box itself still holds just the
+    // number, so totals work as before
+    const priceWrap = document.createElement('div');
+    priceWrap.style.cssText = 'position:relative;flex:1;min-width:0;display:flex;';
+    const dollar = document.createElement('span');
+    dollar.textContent = '$';
+    dollar.style.cssText = 'position:absolute;left:11px;top:50%;transform:translateY(-50%);'
+      + 'color:var(--muted);font-size:14px;pointer-events:none;';
     const priceInput = document.createElement('input');
     priceInput.type = 'number';
     priceInput.step = 'any';
     priceInput.value = item.price;
-    priceInput.placeholder = 'Price ($)';
-    priceInput.style.flex = '1';
+    priceInput.placeholder = 'Price';
+    priceInput.style.cssText = 'flex:1;width:100%;min-width:0;padding-left:24px;';
+    priceWrap.appendChild(dollar);
+    priceWrap.appendChild(priceInput);
     priceInput.addEventListener('input', ()=>{
       item.price = priceInput.value;
       recalcWorkOrderTotal();
@@ -9229,7 +9282,7 @@ function renderLineItems(){
 
     row.appendChild(descInput);
     row.appendChild(qtyInput);
-    row.appendChild(priceInput);
+    row.appendChild(priceWrap);
     row.appendChild(removeBtn);
     container.appendChild(row);
   });
@@ -9483,6 +9536,8 @@ function applyWorkOrderType(){
   }
 
   document.getElementById('btnSendWorkOrder').textContent = isWO ? 'Finalize' : 'Send to customer';
+  // Only quotes are emailed, so only Quote offers to customise the email
+  document.getElementById('btnCustomizeQuoteEmail').style.display = isWO ? 'none' : '';
 
   // Scheduling fields are work-order only; the date line shows on both
   ['wcTechField','wcRepeatField'].forEach(id=>{
@@ -9847,8 +9902,10 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
     message += `\nTOTAL: $${total.toFixed(2)}`;
     if(notes) message += `\n\nNotes: ${notes}`;
 
-    const subject = type + ' from Triffic Pool & Spa — ' + customer.name;
-    const sent = await sendCustomerEmail(customer.email, subject, message);
+    // The company's own name, not one written into the page
+    const subject = type + ' from ' + companyName() + ' — ' + customer.name;
+    const sent = await sendQuoteEmail(customer, subject,
+      quoteEmailHtml(customer, type, quoteDateText, validItems, total, notes), message);
     if(sent) sentCount++;
 
     workOrders.push({
@@ -9872,6 +9929,190 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
     : type + ' saved — ' + sentCount + ' of ' + picked.length + ' emailed');
 });
 
+
+// ---------- Quotes by email, in the service report's style ----------
+// Built the same way as the emailed service report: tables and inline styles,
+// the company's colour and sign-off from the report settings, and the contact
+// line at the foot. Sent through the same server function as reports, so it
+// arrives from the company's name with replies going to the company.
+// What the company set for the top and bottom of a quote email
+const QUOTE_EMAIL_DEFAULTS = {
+  header: '',          // blank means the company name
+  subheader: '',
+  closing: 'Questions, or ready to go ahead? Just reply to this email.',
+  signoff: null,       // null means the report's sign-off
+  showContact: true
+};
+function loadQuoteEmailStyle(){
+  return Object.assign({}, QUOTE_EMAIL_DEFAULTS, lsGet('quoteEmailStyle') || {});
+}
+
+function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOverride){
+  const style = lsGet('reportEmailStyle') || {};
+  const q = styleOverride || loadQuoteEmailStyle();
+  const colour = style.colour || '#134E4A';
+  const company = companyName();
+  const headerText = (q.header || '').trim() || company;
+  const money = n => '$' + (Number(n) || 0).toFixed(2);
+  const cell = 'padding:9px 10px;border-bottom:1px solid #E6E9E8;font-size:14px;';
+  const head = 'padding:8px 10px;border-bottom:2px solid #E6E9E8;font-size:11.5px;font-weight:700;'
+    + 'color:#0F766E;text-transform:uppercase;letter-spacing:0.05em;';
+
+  const rows = items.map(item=>{
+    const qty = parseFloat(item.qty) || 0;
+    const price = parseFloat(item.price) || 0;
+    return '<tr>'
+      + '<td style="' + cell + 'color:#16302E;">' + esc(item.description) + '</td>'
+      + '<td style="' + cell + 'color:#4A5A58;text-align:center;white-space:nowrap;">' + esc(String(qty)) + '</td>'
+      + '<td style="' + cell + 'color:#4A5A58;text-align:right;white-space:nowrap;">' + money(price) + '</td>'
+      + '<td style="' + cell + 'color:#16302E;font-weight:600;text-align:right;white-space:nowrap;">' + money(qty * price) + '</td>'
+      + '</tr>';
+  }).join('');
+
+  const bits = [];
+  const plain = t => '<span style="color:#4A5A58;text-decoration:none;">' + esc(t) + '</span>';
+  if(q.showContact !== false){
+    if(lsGet('accountPhone')) bits.push(plain(lsGet('accountPhone')));
+    if(lsGet('accountEmail')) bits.push(plain(lsGet('accountEmail')));
+    if(lsGet('businessWebsite')) bits.push(plain(lsGet('businessWebsite')));
+  }
+  const signoff = q.signoff !== null && q.signoff !== undefined ? q.signoff
+    : (style.signoff !== undefined ? style.signoff : 'Thank you for your business.');
+
+  return '<!DOCTYPE html><html><head><meta charset="utf-8">'
+    + '<meta name="format-detection" content="telephone=no,address=no,email=no,date=no">'
+    + '<style>a[href^="tel"],a[href^="mailto"],a[href^="http"],a[x-apple-data-detectors]{'
+    + 'color:inherit !important;text-decoration:none !important;font-size:inherit !important;'
+    + 'font-family:inherit !important;font-weight:inherit !important;}</style>'
+    + '</head><body style="margin:0;padding:0;background:#F4F6F5;">'
+    + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F4F6F5;padding:24px 12px;">'
+    + '<tr><td align="center">'
+    + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+    + 'style="max-width:580px;background:#FFFFFF;border-radius:12px;overflow:hidden;'
+    + 'font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Arial,sans-serif;">'
+    // Header
+    + '<tr><td style="background:' + esc(colour) + ';padding:22px 26px;">'
+    + '<div style="font-size:19px;font-weight:700;color:#FFFFFF;">' + esc(headerText) + '</div>'
+    + ((q.subheader || '').trim() ? '<div style="font-size:13px;color:#FFFFFF;opacity:0.85;margin-top:4px;">'
+        + esc(q.subheader.trim()) + '</div>' : '')
+    + '</td></tr>'
+    // What, who and when
+    + '<tr><td style="padding:24px 26px 0;">'
+    + '<div style="font-size:12px;font-weight:700;color:#0F766E;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">'
+    + esc(type) + '</div>'
+    + '<div style="font-size:17px;font-weight:700;color:#16302E;">' + esc(customer.name) + '</div>'
+    + (customer.address ? '<div style="font-size:13.5px;color:#6B7B79;margin-top:3px;">' + esc(customer.address) + '</div>' : '')
+    + '<div style="font-size:13.5px;color:#6B7B79;margin-top:3px;">' + esc(dateText) + '</div>'
+    + '</td></tr>'
+    // The items
+    + '<tr><td style="padding:20px 26px 0;">'
+    + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">'
+    + '<tr><td style="' + head + '">Item</td><td style="' + head + 'text-align:center;">Qty</td>'
+    + '<td style="' + head + 'text-align:right;">Price</td><td style="' + head + 'text-align:right;">Amount</td></tr>'
+    + rows
+    + '<tr><td colspan="3" style="padding:12px 10px 0;font-size:14.5px;font-weight:700;color:#16302E;text-align:right;">Total</td>'
+    + '<td style="padding:12px 10px 0;font-size:16px;font-weight:700;color:#16302E;text-align:right;white-space:nowrap;">' + money(total) + '</td></tr>'
+    + '</table></td></tr>'
+    // Notes
+    + (notes ? '<tr><td style="padding:20px 26px 0;">'
+        + '<div style="font-size:12px;font-weight:700;color:#0F766E;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Notes</div>'
+        + '<div style="font-size:14px;color:#4A5A58;line-height:1.5;white-space:pre-wrap;">' + esc(notes) + '</div></td></tr>' : '')
+    // Footer
+    + '<tr><td style="padding:26px;">'
+    + (((q.closing || '').trim() || signoff) ? '<div style="font-size:14px;color:#4A5A58;padding-top:18px;border-top:1px solid #E6E9E8;white-space:pre-wrap;">'
+        + esc((q.closing || '').trim())
+        + ((q.closing || '').trim() && signoff ? '<br>' : '') + (signoff ? esc(signoff) : '') + '</div>' : '')
+    + '<div style="font-size:13.5px;font-weight:600;color:#16302E;margin-top:10px;">' + esc(company) + '</div>'
+    + (bits.length ? '<div style="font-size:12.5px;color:#4A5A58;margin-top:4px;">' + bits.join(' &nbsp;&middot;&nbsp; ') + '</div>' : '')
+    + (lsGet('licenseNumber') ? '<div style="font-size:11.5px;color:#8A9997;margin-top:3px;">License ' + esc(lsGet('licenseNumber')) + '</div>' : '')
+    + '</td></tr>'
+    + '</table></td></tr></table></body></html>';
+}
+
+// ---------- Customize email: the window ----------
+function quoteEmailFormValues(){
+  return {
+    header: document.getElementById('qeHeader').value,
+    subheader: document.getElementById('qeSubheader').value,
+    closing: document.getElementById('qeClosing').value,
+    signoff: document.getElementById('qeSignoff').value,
+    showContact: document.getElementById('qeContact').checked
+  };
+}
+function fillQuoteEmailForm(q){
+  const report = lsGet('reportEmailStyle') || {};
+  document.getElementById('qeHeader').value = q.header || '';
+  document.getElementById('qeHeader').placeholder = companyName();
+  document.getElementById('qeSubheader').value = q.subheader || '';
+  document.getElementById('qeClosing').value = q.closing || '';
+  document.getElementById('qeSignoff').value = q.signoff !== null && q.signoff !== undefined ? q.signoff
+    : (report.signoff !== undefined ? report.signoff : 'Thank you for your business.');
+  document.getElementById('qeContact').checked = q.showContact !== false;
+}
+(function wireQuoteEmailWindow(){
+  const overlay = document.getElementById('quoteEmailOverlay');
+  const close = ()=>{ overlay.style.display = 'none'; };
+  document.getElementById('btnCustomizeQuoteEmail').addEventListener('click', ()=>{
+    fillQuoteEmailForm(loadQuoteEmailStyle());
+    overlay.style.display = 'flex';
+  });
+  document.getElementById('btnCancelQuoteEmail').addEventListener('click', close);
+  document.getElementById('btnSaveQuoteEmail').addEventListener('click', ()=>{
+    lsSet('quoteEmailStyle', quoteEmailFormValues());
+    close();
+    showToast('Quote email saved');
+  });
+  // Asks first: confirming puts the defaults back and saves them there and then
+  document.getElementById('btnQeReset').addEventListener('click', async ()=>{
+    const ok = await confirmDialog(
+      'Reset the quote email to its default? This will permanently delete your edits to the email.',
+      'Reset');
+    if(!ok) return;
+    const defaults = Object.assign({}, QUOTE_EMAIL_DEFAULTS);
+    lsSet('quoteEmailStyle', defaults);
+    fillQuoteEmailForm(defaults);
+    showToast('Quote email reset to default');
+  });
+  // What it looks like with what's in the boxes now, before saving
+  document.getElementById('btnQePreview').addEventListener('click', ()=>{
+    const sample = {name: 'Sample Customer', address: '123 Example St'};
+    const items = [{description: 'Acid wash', qty: 1, price: 250}, {description: 'Filter clean', qty: 2, price: 85}];
+    const html = quoteEmailHtml(sample, 'Quote', new Date().toLocaleDateString(undefined, {month:'long', day:'numeric', year:'numeric'}),
+      items, 420, 'Notes you add to a quote appear here.', quoteEmailFormValues());
+    const view = document.createElement('div');
+    view.style.cssText = 'position:fixed;inset:0;z-index:330;background:rgba(9,32,34,0.55);display:flex;align-items:center;justify-content:center;padding:18px;';
+    const card = document.createElement('div');
+    card.style.cssText = 'background:var(--card);border-radius:14px;padding:16px;max-width:640px;width:100%;max-height:88vh;display:flex;flex-direction:column;';
+    card.innerHTML = '<h2 style="margin:0 0 10px;">What your customer sees</h2>';
+    const frame = document.createElement('iframe');
+    frame.style.cssText = 'flex:1;min-height:440px;width:100%;border:1px solid var(--line);border-radius:10px;background:#F4F6F5;';
+    card.appendChild(frame);
+    const shut = document.createElement('button');
+    shut.className = 'btn btn-primary';
+    shut.style.cssText = 'width:auto;align-self:flex-end;margin-top:12px;';
+    shut.textContent = 'Close';
+    card.appendChild(shut);
+    view.appendChild(card);
+    document.body.appendChild(view);
+    const doc = frame.contentDocument || frame.contentWindow.document;
+    doc.open(); doc.write(html); doc.close();
+    const done = ()=>{ if(view.parentNode) view.remove(); };
+    shut.addEventListener('click', done);
+    view.addEventListener('click', e => { if(e.target === view) done(); });
+  });
+})();
+
+// Through the report function; the plain-text email is kept as a fallback so a
+// quote still goes out if that can't be reached
+async function sendQuoteEmail(customer, subject, html, plainText){
+  if(!customer.email){ showToast('This customer has no email on file'); return false; }
+  const res = await sbFetch('/functions/v1/send-report', {
+    method: 'POST',
+    body: JSON.stringify({to: customer.email, subject: subject, html: html})
+  });
+  if(res.ok) return true;
+  return sendCustomerEmail(customer.email, subject, plainText);
+}
 
 // Reopens an existing quote or work order in the WorkCenter form for editing
 function loadWorkOrderIntoForm(w){
