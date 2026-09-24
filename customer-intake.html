@@ -1097,6 +1097,11 @@ input::placeholder{color:#A9BCB9;}
         <button type="button" class="btn" id="btnTypeWorkOrder" data-wctype="Work Order" style="flex:1;">Work Order</button>
         <button type="button" class="btn" id="btnTypeTask" data-wctype="Task" style="flex:1;">Task</button>
       </div>
+      <!-- Each kind has its own two tabs: the kind itself, and its History -->
+      <div class="seg-control" id="wcViewControl" style="margin:-8px 0 22px;">
+        <button type="button" class="history-type-btn active" id="btnWcViewMain" data-wcview="main">Quote</button>
+        <button type="button" class="history-type-btn" data-wcview="history">History</button>
+      </div>
       <select id="wcType" style="display:none;">
         <option value="Quote">Quote</option>
         <option value="Work Order">Work Order</option>
@@ -1229,7 +1234,7 @@ input::placeholder{color:#A9BCB9;}
 
     <div class="card" id="wcQuotesHistoryCard">
       <div class="section-head">
-        <h2>Sent history</h2>
+        <h2 id="wcHistoryHeading">Sent history</h2>
         <span class="section-count" id="wcHistoryCount"></span>
       </div>
       <div style="position:relative;margin-bottom:12px;">
@@ -1237,6 +1242,14 @@ input::placeholder{color:#A9BCB9;}
         <button type="button" id="wcHistorySearchClear" style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);height:26px;width:26px;padding:0;border:none;background:none;color:var(--muted);font-size:17px;line-height:1;cursor:pointer;">×</button>
       </div>
       <div id="wcHistoryList"></div>
+    </div>
+
+    <div class="card" id="wcSubmittedCard" style="display:none;">
+      <div class="section-head">
+        <h2>Submitted from the field</h2>
+        <span class="section-count" id="wcSubmittedCount"></span>
+      </div>
+      <div id="wcSubmittedList"></div>
     </div>
 
     <div class="card" id="wcCallsSection" style="display:none;">
@@ -5232,7 +5245,7 @@ function resetScheduleDates(){
 function applyWorkCenterMode(mode){
   const cameFrom = workCenterMode;
   workCenterMode = mode;
-  if(mode === 'quotes' && cameFrom !== 'quotes') resetScheduleDates();
+  if(mode === 'quotes' && cameFrom !== 'quotes'){ resetScheduleDates(); wcView = 'main'; }
   // Coming into Email from anywhere else starts with nobody chosen, so a list
   // picked for an earlier message can't be sent a new one by mistake.
   // Pressing Email while already on it keeps the choices.
@@ -7233,7 +7246,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
 // while anything about a phone itself — its camera, its storage, who is signed
 // in on it, which tabs that person wants — stays on that phone.
 const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'routeOrders',
-                         'reportEmailStyle', 'customerGroups', 'photoDefaults', 'photoEveryone'];
+                         'reportEmailStyle', 'customerGroups', 'photoDefaults', 'photoEveryone',
+                         // Kept only in the browser they were typed into until
+                         // now, so prices set on one device never reached another
+                         'productsServices'];
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
   'requireSkipPhoto', 'requireSkipReason', 'allowRouteReorder', 'showDosageSuggestions',
   'showWaterBalance', 'autoNotifyAll', 'autoNotifyAllLead', 'showPoolSizeInProfile',
@@ -7290,6 +7306,18 @@ function refreshSyncedWorkingCopy(id){
   if(id === 'chemConfig') chemConfig = loadChemConfig();
   if(id === 'customChemConfig') customConfig = lsGet('customChemConfig') || {};
   if(id === 'routeOrders'){ routeOrders = lsGet('routeOrders') || {}; return; }
+  if(id === 'productsServices'){
+    productsServices = lsGet('productsServices') || [];
+    const box = document.getElementById('productsServicesList');
+    const active = document.activeElement;
+    // Redrawn when not being typed in; otherwise once the box is left
+    if(box && active && box.contains(active)){
+      active.addEventListener('blur', ()=> setTimeout(renderProductsServicesList, 0), {once: true});
+    } else if(typeof renderProductsServicesList === 'function'){
+      renderProductsServicesList();
+    }
+    return;
+  }
   const lists = ['chemConfigChemicalsList', 'chemConfigDosagesList', 'customExistingList']
     .map(x => document.getElementById(x)).filter(Boolean);
   const active = document.activeElement;
@@ -7347,7 +7375,7 @@ function syncApplyRecord(kind, id, data, deleted){
     // The same for the other settings the page keeps a working copy of. A
     // dosage added on another device was saved here but never reached the
     // copy the page edits, so the next save on this computer deleted it.
-    if(id === 'chemConfig' || id === 'customChemConfig' || id === 'routeOrders'){
+    if(id === 'chemConfig' || id === 'customChemConfig' || id === 'routeOrders' || id === 'productsServices'){
       try{ refreshSyncedWorkingCopy(id); }catch(e){}
     }
     return true;
@@ -9252,6 +9280,13 @@ function resetWorkOrderForm(backToQuote){
 
 document.getElementById('btnClearWorkOrder').addEventListener('click', resetWorkOrderForm);
 
+document.querySelectorAll('#wcViewControl [data-wcview]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    wcView = btn.dataset.wcview;
+    applyWorkOrderType();
+  });
+});
+
 let wcHistorySearchTerm = '';
 
 function renderWorkOrderHistory(){
@@ -9264,9 +9299,12 @@ function renderWorkOrderHistory(){
     return;
   }
 
+  // Only the kind being looked at: quotes on the Quote history, work orders on
+  // the Work Order history
+  const kindNow = document.getElementById('wcType').value === 'Work Order' ? 'Work Order' : 'Quote';
   // Narrow to one customer's records when searching
   const term = wcHistorySearchTerm.trim().toLowerCase();
-  const visible = workOrders.filter(wo=>{
+  const visible = workOrders.filter(wo => (wo.type === 'Work Order' ? 'Work Order' : 'Quote') === kindNow).filter(wo=>{
     if(!term) return true;
     const cust = customers.find(c => c.id === wo.customerId);
     if(!cust) return false;
@@ -9349,6 +9387,46 @@ document.getElementById('wcHistorySearchClear').addEventListener('click', ()=>{
 });
 
 // Work Order shows scheduling fields and finalizes; Quote just emails
+// The first tab or History, for whichever of Quote / Work Order / Task is chosen.
+// var, not let: this is read as the page first loads.
+var wcView = 'main';
+
+// Field submissions of one kind only, so a work order never lands in the task
+// history or the other way round. Kept on the phone for now; once they are
+// stored on the server they arrive here under 'jobSubmissions'.
+function renderSubmittedHistory(kind){
+  const box = document.getElementById('wcSubmittedList');
+  const countEl = document.getElementById('wcSubmittedCount');
+  if(!box) return;
+  const list = (lsGet('jobSubmissions') || []).filter(sub => sub && sub.kind === kind)
+    .sort((a, b) => String(b.submittedAt || '').localeCompare(String(a.submittedAt || '')));
+  countEl.textContent = list.length ? String(list.length) : '';
+  if(!list.length){
+    box.innerHTML = emptyState('Nothing submitted from the field yet. A ' + kind
+      + ' a technician submits will show up here.');
+    return;
+  }
+  box.innerHTML = '';
+  list.forEach(sub=>{
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:12px 0;border-bottom:1px solid var(--line);';
+    const title = document.createElement('div');
+    title.style.cssText = 'font-weight:700;font-size:14px;';
+    title.textContent = (sub.customerName || 'Customer') + ' \u2013 ' + (sub.title || kind);
+    const when = document.createElement('div');
+    when.style.cssText = 'font-size:12px;color:var(--muted);margin-top:2px;';
+    when.textContent = sub.submittedAt ? new Date(sub.submittedAt).toLocaleString() : '';
+    row.appendChild(title); row.appendChild(when);
+    if(sub.notes){
+      const notes = document.createElement('div');
+      notes.style.cssText = 'font-size:13px;margin-top:6px;';
+      notes.textContent = sub.notes;
+      row.appendChild(notes);
+    }
+    box.appendChild(row);
+  });
+}
+
 function applyWorkOrderType(){
   const chosen = document.getElementById('wcType').value;
   const isTask = chosen === 'Task';
@@ -9358,17 +9436,37 @@ function applyWorkOrderType(){
     btn.className = btn.dataset.wctype === chosen ? 'btn btn-primary' : 'btn btn-ghost';
   });
 
-  // Tasks have their own form, so the quote fields step aside entirely
+  // The two tabs: named for the kind chosen, then History
+  const history = wcView === 'history';
+  const mainTab = document.getElementById('btnWcViewMain');
+  if(mainTab) mainTab.textContent = chosen;
+  document.querySelectorAll('#wcViewControl [data-wcview]').forEach(b=>{
+    b.classList.toggle('active', b.dataset.wcview === (history ? 'history' : 'main'));
+  });
+
+  // Tasks have their own form, so the quote fields step aside entirely; and on
+  // History no form shows at all
   const quoteBits = document.getElementById('wcQuotesSection');
   Array.from(quoteBits.children).forEach(el=>{
-    if(el.id === 'wcFormHeading' || el.id === 'wcTypeToggle' || el.id === 'wcType') return;
-    el.style.display = isTask ? 'none' : '';
+    if(el.id === 'wcFormHeading' || el.id === 'wcTypeToggle' || el.id === 'wcType' || el.id === 'wcViewControl') return;
+    el.style.display = (isTask || history) ? 'none' : '';
   });
   // The heading only appears while editing something, so leave it as it is
-  if(isTask) document.getElementById('wcFormHeading').style.display = 'none';
-  document.getElementById('wcQuotesHistoryCard').style.display = isTask ? 'none' : 'block';
-  document.getElementById('wcTaskSection').style.display = isTask ? 'block' : 'none';
-  document.getElementById('wcTaskListCard').style.display = isTask ? 'block' : 'none';
+  if(isTask || history) document.getElementById('wcFormHeading').style.display = 'none';
+  // Quotes sent and work orders finalised now live on History, each on its own
+  document.getElementById('wcQuotesHistoryCard').style.display = (history && !isTask) ? 'block' : 'none';
+  document.getElementById('wcSubmittedCard').style.display = (history && chosen !== 'Quote') ? 'block' : 'none';
+  document.getElementById('wcTaskSection').style.display = (isTask && !history) ? 'block' : 'none';
+  document.getElementById('wcTaskListCard').style.display = (isTask && !history) ? 'block' : 'none';
+
+  if(history){
+    if(!isTask){
+      document.getElementById('wcHistoryHeading').textContent = isWO ? 'Work orders finalized' : 'Quotes sent';
+      renderWorkOrderHistory();
+    }
+    if(chosen !== 'Quote') renderSubmittedHistory(isTask ? 'task' : 'work order');
+    return;
+  }
 
   if(isTask){
     renderTaskForm();
@@ -9404,8 +9502,9 @@ document.querySelectorAll('#wcTypeToggle [data-wctype]').forEach(btn=>{
     if(btn.dataset.wctype === 'Task' && document.getElementById('wcType').value !== 'Task'){
       setPickedTechIds(document.getElementById('taskTechnician'), []);
     }
-    // Coming to any of the three from another starts on today's date
-    if(btn.dataset.wctype !== document.getElementById('wcType').value) resetScheduleDates();
+    // Coming to any of the three from another starts on today's date, and on
+    // its own tab rather than its History
+    if(btn.dataset.wctype !== document.getElementById('wcType').value){ resetScheduleDates(); wcView = 'main'; }
     document.getElementById('wcType').value = btn.dataset.wctype;
     applyWorkOrderType();
   });

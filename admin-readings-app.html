@@ -8563,10 +8563,10 @@ function renderHomeList(){
     .filter(c => !movedAway.has(c.id))
     .filter(c => !adminViewTechId || c.technicianId === adminViewTechId);
 
-  // Anyone with a task or work order that day, for whoever is being looked at
-  const jobCustomerIds = routeJobCustomerIds(selectedDayISO, adminViewTechId);
+  // Only a reschedule brings a customer onto a day here; a work order or task
+  // is its own item and never adds their service
   const movedInCustomers = customers.filter(c =>
-    (movedHere.has(c.id) || jobCustomerIds.has(c.id)) && c.active !== false &&
+    movedHere.has(c.id) && c.active !== false &&
     // Once serviced they drop off, exactly as a customer whose regular day it is
     !servicedOnDate(c, selectedDayISO) &&
     !baseCustomers.some(b => b.id === c.id));
@@ -8629,11 +8629,10 @@ function renderHomeList(){
   const dateStr = d ? d.toLocaleDateString(undefined, {month:'long', day:'numeric', year:'numeric'}) : selectedHomeDay;
   dateInfo.textContent = dateStr + ' · ' + stopText;
 
-  // Jobs whose customer has already been serviced, or who isn't on the route:
-  // they stay until the job itself is submitted
-  const onRouteIds = new Set(todaysCustomers.map(c => c.id));
+  // Work orders and tasks are items of their own on the day they're scheduled,
+  // not tied to anyone's service: listed after the service stops (or wherever
+  // they were dragged), and gone only when the job itself is submitted
   const jobsOnTheirOwn = Array.from(routeJobCustomerIds(selectedDayISO, adminViewTechId))
-    .filter(id => !onRouteIds.has(id))
     .map(id => customers.find(c => c.id === id))
     .filter(c => c && c.active !== false);
 
@@ -8824,7 +8823,6 @@ function renderHomeList(){
       row.after(panel);
     });
     container.appendChild(row);
-    appendRouteJobRows(container, c, routeJobsFor(c.id, selectedDayISO, adminViewTechId), selectedDayISO, canReorder);
   });
   jobsOnTheirOwn.forEach(c =>
     appendRouteJobRows(container, c, routeJobsFor(c.id, selectedDayISO, adminViewTechId), selectedDayISO, canReorder));
