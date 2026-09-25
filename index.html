@@ -138,6 +138,9 @@ input:focus{
     <button class="btn btn-ghost" id="btnChooseWebsite" style="width:100%;">Open the website</button>
   </div>
 
+  <!-- Back to the question, from any step of the app's sign-in -->
+  <button class="btn btn-ghost" id="btnBackToChoice" type="button" style="display:none;width:auto;padding:6px 12px;font-size:12.5px;margin:0 0 12px;">&larr; Back</button>
+
   <div id="appSignIn" style="display:none;">
   <div class="error" id="loginError"></div>
 
@@ -757,6 +760,7 @@ document.getElementById('loginUsername').addEventListener('keydown', (e)=>{
 function showAppSignIn(){
   document.getElementById('whereChoice').style.display = 'none';
   document.getElementById('appSignIn').style.display = 'block';
+  document.getElementById('btnBackToChoice').style.display = 'inline-flex';
   const sub = document.querySelector('.brand .sub');
   if(sub) sub.textContent = 'Sign in to get to your route.';
   const u = document.getElementById('loginUsername');
@@ -767,6 +771,10 @@ document.getElementById('btnChooseApp').addEventListener('click', ()=>{
   const tech = fieldCurrentUser();
   if(tech){ goTo(routeFor(tech)); return; }
   showAppSignIn();
+});
+// Fresh page, so whichever sign-in step was showing, it's back to the two choices
+document.getElementById('btnBackToChoice').addEventListener('click', ()=>{
+  window.location.href = window.location.pathname;
 });
 document.getElementById('btnChooseWebsite').addEventListener('click', ()=>{
   goTo('./customer-intake.html');
