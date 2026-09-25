@@ -7421,6 +7421,11 @@ function foldInArrivedCopy(id){
       });
     });
     saveChemConfig();
+  } else if(id === 'productsServices' && Array.isArray(arrived)){
+    arrived.forEach(item=>{
+      if(item && item.key && !productsServices.some(x => x && x.key === item.key)) productsServices.push(item);
+    });
+    saveProductsServices();
   } else if(id === 'customChemConfig'){
     Object.keys(arrived).forEach(cid=>{
       customConfig[cid] = customConfig[cid] || {};
@@ -7432,8 +7437,19 @@ function foldInArrivedCopy(id){
   }
 }
 
+// Working in a field on the pages that edit these lists counts as busy too: a
+// fresh copy swapped in under the typing lost what was typed, and the redraw
+// that followed ate the click on the next field
+function editingSyncedLists(){
+  if(document.querySelector('.confirm-overlay')) return true;
+  const el = document.activeElement;
+  if(!el || !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return false;
+  // Readings & dosages and Customer Customization share one page
+  return !!el.closest('#view-chemconfig, #view-productsservices');
+}
+
 function takeWaitingSyncedCopies(){
-  if(document.querySelector('.confirm-overlay')) return;
+  if(editingSyncedLists()) return;
   clearInterval(syncCopiesTimer); syncCopiesTimer = null;
   const ids = Array.from(syncCopiesWaiting);
   syncCopiesWaiting.clear();
@@ -7441,9 +7457,9 @@ function takeWaitingSyncedCopies(){
 }
 
 function refreshSyncedWorkingCopy(id){
-  if((id === 'chemConfig' || id === 'customChemConfig') && document.querySelector('.confirm-overlay')){
+  if((id === 'chemConfig' || id === 'customChemConfig' || id === 'productsServices') && editingSyncedLists()){
     syncCopiesWaiting.add(id);
-    syncCopiesArrived[id] = JSON.parse(JSON.stringify(lsGet(id) || {}));
+    syncCopiesArrived[id] = JSON.parse(JSON.stringify(lsGet(id) || (id === 'productsServices' ? [] : {})));
     if(!syncCopiesTimer) syncCopiesTimer = setInterval(takeWaitingSyncedCopies, 500);
     return;
   }

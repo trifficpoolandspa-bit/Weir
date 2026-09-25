@@ -10759,7 +10759,6 @@ function syncStepChrome(){
   const card = document.getElementById(cardId);
   if(!card) return;
   const h = card.querySelector('h2');
-  if(!h) return;
 
   const back = document.createElement('button');
   back.type = 'button';
@@ -10770,19 +10769,39 @@ function syncStepChrome(){
       goToVisitStep(currentVisitStep - 1);
       return;
     }
-    // Leaving by this button is a deliberate exit, so the whole report goes —
-    // including any section already saved during this visit
-    if(visitHasAnything()){
+    // Leaving by this button is a deliberate exit, so the whole report goes,
+    // on any body of water — including a body already skipped or saved during
+    // this visit. It asks first if anything at all was entered or skipped.
+    const view = document.getElementById('view-visit');
+    const typedSomething = !!view && Array.from(view.querySelectorAll('input, textarea')).some(el =>
+      el.type !== 'file' && (el.type === 'checkbox' ? el.checked : String(el.value || '').trim() !== ''));
+    const skippedOrDone = !!(pendingVisit && pendingVisit.customerId === currentVisitCustomerId
+      && Object.keys(pendingVisit.doneSections || {}).length);
+    if(visitHasAnything() || typedSomething || skippedOrDone){
       const ok = await confirmDialog(
         "This will remove all readings taken. Are you sure you'd like to cancel the report?",
         'Cancel report');
       if(!ok) return;
-      await discardVisitInProgress();
     }
+    await discardVisitInProgress();
     visitDraft = {customerId: null, values: {}, section: null, step: 1};
   visitLeftOpenFor = null;
     switchView('home');
   });
+
+  // A page with no heading (the notes page, when no after photo is asked for)
+  // still gets its Back: on a line of its own at the top, where Back sits
+  if(!h){
+    let solo = card.querySelector(':scope > [data-step-head-solo]');
+    if(!solo){
+      solo = document.createElement('div');
+      solo.dataset.stepHeadSolo = 'true';
+      solo.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:14px;';
+      card.insertBefore(solo, card.firstChild);
+    }
+    solo.appendChild(back);
+    return;
+  }
 
   // Sit the heading and the button on one line
   let head;
