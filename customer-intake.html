@@ -1147,6 +1147,7 @@ input::placeholder{color:#A9BCB9;}
       <!-- Each kind has its own two tabs: the kind itself, and its History -->
       <div class="seg-control" id="wcViewControl" style="margin:-8px 0 22px;">
         <button type="button" class="history-type-btn active" id="btnWcViewMain" data-wcview="main">Quote</button>
+        <button type="button" class="history-type-btn" data-wcview="current">Current</button>
         <button type="button" class="history-type-btn" data-wcview="history">History</button>
       </div>
       <select id="wcType" style="display:none;">
@@ -1292,6 +1293,19 @@ input::placeholder{color:#A9BCB9;}
       <div id="wcHistoryList"></div>
     </div>
 
+    <div class="card" id="wcCurrentCard" style="display:none;">
+      <div class="section-head">
+        <h2 id="wcCurrentHeading">Current</h2>
+        <span class="section-count" id="wcCurrentCount"></span>
+      </div>
+      <p id="wcCurrentNote" style="font-size:12.5px;color:var(--muted);margin:-8px 0 12px;"></p>
+      <div id="wcCurrentFilters" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <select id="wcCurrentTech" aria-label="Technician" style="width:auto;min-width:170px;"></select>
+        <input id="wcCurrentSearch" placeholder="Search customer or work" autocomplete="off" style="flex:1;min-width:180px;">
+      </div>
+      <div id="wcCurrentList"></div>
+    </div>
+
     <div class="card" id="wcSubmittedCard" style="display:none;">
       <div class="section-head">
         <h2>Submitted from the field</h2>
@@ -1336,6 +1350,16 @@ input::placeholder{color:#A9BCB9;}
       </div>
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Group customers together, give the group a date and a technician, then finalize to push it onto that technician's route.</p>
       <div id="filterGroupList"></div>
+    </div>
+
+    <!-- Filter cleans on routes that no group on this computer accounts for -->
+    <div class="card" id="wcFilterStrayCard" style="display:none;">
+      <div class="section-head">
+        <h2>Filter cleans not in a group on this computer</h2>
+        <button class="btn btn-ghost" id="btnRemoveStrayCleans" type="button" style="width:auto;margin-left:auto;color:var(--rust);border-color:#EFC9BC;">Remove all</button>
+      </div>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">These are on technicians&rsquo; routes, but none of the filter groups here made them &mdash; left over from a group made in another browser, one since deleted, or an older date. Groups are only kept in the browser they were made in. Removing one takes it off every route at the next sync.</p>
+      <div id="wcFilterStrayList"></div>
     </div>
   </div>
 
@@ -5357,7 +5381,7 @@ function applyWorkCenterMode(mode){
   const sections = {
     quotes:    ['wcQuotesSection', 'wcQuotesHistoryCard'],
     calls:     ['wcCallsSection', 'wcCallsListCard'],
-    filters:   ['wcFiltersSection'],
+    filters:   ['wcFiltersSection', 'wcFilterStrayCard'],
     broadcast: ['wcBroadcastSection']
   };
 
@@ -5381,6 +5405,64 @@ function applyWorkCenterMode(mode){
     });
   }
 }
+
+// Scheduled filter cleans that no finalized group here accounts for: its
+// group isn't on this computer, or the group's date or customers have moved on
+function strayFilterCleans(){
+  return (lsGet('scheduledFilterCleans') || []).filter(sc=>{
+    if(!sc || sc.status === 'done') return false;
+    const g = filterGroups.find(x => x.id === sc.groupId);
+    return !(g && g.finalized && g.date === sc.date && (g.customerIds || []).indexOf(sc.customerId) !== -1);
+  });
+}
+
+function renderStrayFilterCleans(){
+  const card = document.getElementById('wcFilterStrayCard');
+  const box = document.getElementById('wcFilterStrayList');
+  if(!card || !box) return;
+  const stray = strayFilterCleans().sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  // Only shown when there's something to tidy, and only on the Filters tab
+  card.style.display = (stray.length && workCenterMode === 'filters') ? '' : 'none';
+  box.innerHTML = '';
+  stray.forEach((sc, i)=>{
+    const c = customers.find(x => x.id === sc.customerId);
+    const tech = technicians.find(t => String(t.id) === String(sc.technicianId));
+    const when = sc.date ? new Date(sc.date + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'long', month: 'short', day: 'numeric'}) : 'No date';
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;'
+      + (i === stray.length - 1 ? '' : 'border-bottom:1px solid var(--line);');
+    const t = document.createElement('div');
+    t.style.cssText = 'min-width:0;';
+    t.innerHTML = '<div style="font-size:13.5px;font-weight:600;"></div><div style="font-size:12px;color:var(--muted);"></div>';
+    t.children[0].textContent = c ? displayName(c.name) : 'A customer no longer on file';
+    t.children[1].textContent = when + ' \u00b7 ' + (tech ? tech.name : 'no technician') + (sc.groupName ? ' \u00b7 from \u201c' + sc.groupName + '\u201d' : '');
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'btn btn-ghost fountain-remove';
+    x.style.cssText = 'width:24px;height:26px;font-size:13px;border-radius:7px;';
+    x.textContent = '\u00d7';
+    x.title = 'Take this filter clean off the route';
+    x.addEventListener('click', ()=>{
+      lsSet('scheduledFilterCleans', (lsGet('scheduledFilterCleans') || []).filter(y => y.id !== sc.id));
+      renderStrayFilterCleans();
+      showToast('Filter clean removed');
+    });
+    row.appendChild(t); row.appendChild(x);
+    box.appendChild(row);
+  });
+}
+
+document.getElementById('btnRemoveStrayCleans').addEventListener('click', async ()=>{
+  const stray = strayFilterCleans();
+  if(!stray.length) return;
+  const ok = await confirmDialog('Take all ' + stray.length + (stray.length === 1 ? ' of these filter cleans' : ' of these filter cleans')
+    + ' off the technicians\u2019 routes?', 'Remove all');
+  if(!ok) return;
+  const ids = new Set(stray.map(x => x.id));
+  lsSet('scheduledFilterCleans', (lsGet('scheduledFilterCleans') || []).filter(y => !ids.has(y.id)));
+  renderStrayFilterCleans();
+  showToast('Removed');
+});
 
 function renderFilterGroups(){
   const container = document.getElementById('filterGroupList');
@@ -5559,6 +5641,7 @@ function renderFilterGroups(){
     card.appendChild(actions);
     container.appendChild(card);
   });
+  renderStrayFilterCleans();
 }
 
 async function finalizeFilterGroup(g){
@@ -8789,9 +8872,7 @@ function renderTaskList(){
       // Editing changes this one occurrence, not the whole series
       document.getElementById('taskRepeat').value = 'none';
       applyTaskRepeat();
-      const h = document.getElementById('wcTaskHeading');
-      h.textContent = 'Editing "' + t.title + '"';
-      h.style.display = '';
+      // No "Editing …" heading (it only took up space); Save changes says it
       document.getElementById('btnSaveTask').textContent = 'Save changes';
       document.getElementById('wcTaskSection').scrollIntoView({behavior:'smooth', block:'start'});
     });
@@ -9467,8 +9548,12 @@ function resetWorkOrderForm(backToQuote){
 
 document.getElementById('btnClearWorkOrder').addEventListener('click', resetWorkOrderForm);
 
+document.getElementById('wcCurrentTech').addEventListener('change', ()=>{ wcCurrentPage = 1; renderCurrentList(document.getElementById('wcType').value); });
+document.getElementById('wcCurrentSearch').addEventListener('input', ()=>{ wcCurrentPage = 1; renderCurrentList(document.getElementById('wcType').value); });
+
 document.querySelectorAll('#wcViewControl [data-wcview]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
+    wcCurrentPage = 1;
     wcView = btn.dataset.wcview;
     applyWorkOrderType();
   });
@@ -9509,15 +9594,33 @@ function renderWorkOrderHistory(){
   }
 
   container.innerHTML = '';
-  visible
-    .slice()
-    .sort((a,b)=> b.createdAt.localeCompare(a.createdAt))
+  const histKey = 'history:' + kindNow;
+  const sortedHist = visible.slice().sort((a,b)=> b.createdAt.localeCompare(a.createdAt));
+  container.appendChild(selectionBar(histKey, sortedHist.map(w => w.id), kindNow === 'Quote' ? 'quote' : 'work order', ids=>{
+    const set = new Set(ids);
+    workOrders = workOrders.filter(x => !set.has(x.id));
+    saveWorkOrders();
+    // Their scheduled visits go too
+    lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !set.has(j.workOrderId)));
+    if(editingId) renderCustomerWorkOrders(editingId);
+  }, renderWorkOrderHistory));
+  sortedHist
     .forEach(wo=>{
       const customer = customers.find(c => c.id === wo.customerId);
       const row = document.createElement('div');
       row.className = 'cust-row';
       const dateStr = new Date(wo.createdAt).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'});
       row.innerHTML = `<div><div class="cust-name">${wo.type} — ${customer ? displayName(customer.name) : 'Unknown customer'}</div><div class="cust-meta">${dateStr} · $${wo.total.toFixed(2)}</div></div>`;
+      const histTick = selectionTick(histKey, wo.id, renderWorkOrderHistory);
+      if(histTick){
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'display:flex;align-items:center;min-width:0;';
+        wrap.appendChild(histTick);
+        wrap.appendChild(row.firstElementChild);
+        row.insertBefore(wrap, row.firstChild);
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', e=>{ if(e.target.closest('button')) return; toggleSelected(histKey, wo.id, renderWorkOrderHistory); });
+      }
 
       const rightWrap = document.createElement('div');
       rightWrap.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
@@ -9541,11 +9644,9 @@ function renderWorkOrderHistory(){
         if(!ok) return;
         workOrders = workOrders.filter(x => x.id !== wo.id);
         saveWorkOrders();
-        if(wo.status === 'finalized'){
-          let jobs = lsGet('scheduledWorkOrders') || [];
-          jobs = jobs.filter(j => j.workOrderId !== wo.id);
-          lsSet('scheduledWorkOrders', jobs);
-        }
+        // Its scheduled visits always go too, whatever it's marked as; a work
+        // order saved without "finalized" used to leave them on the routes
+        lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => j.workOrderId !== wo.id));
         renderWorkOrderHistory();
         if(editingId) renderCustomerWorkOrders(editingId);
         showToast('Record deleted');
@@ -9574,6 +9675,251 @@ document.getElementById('wcHistorySearchClear').addEventListener('click', ()=>{
 });
 
 // Work Order shows scheduling fields and finalizes; Quote just emails
+// ---------- Selecting several to delete at once ----------
+// A list gets a bar: "Select" puts a tick on each row; then "Select all",
+// "Delete N selected" (one confirmation) and "Done". The single delete
+// buttons on each row keep working as before.
+const listSelections = {};
+function listSel(key){ return listSelections[key] || (listSelections[key] = {on: false, ids: new Set()}); }
+function selectionBar(key, visibleIds, noun, onDelete, redraw){
+  const st = listSel(key);
+  // Anything no longer on the list isn't selected any more
+  st.ids.forEach(id => { if(visibleIds.indexOf(id) === -1) st.ids.delete(id); });
+  const bar = document.createElement('div');
+  bar.style.cssText = 'display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin:0 0 6px;';
+  const b = (text, extra) => {
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'btn btn-ghost';
+    x.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;' + (extra || '');
+    x.textContent = text;
+    return x;
+  };
+  if(!st.on){
+    const sel = b('Select');
+    sel.title = 'Choose several to delete at once';
+    sel.addEventListener('click', ()=>{ st.on = true; redraw(); });
+    bar.appendChild(sel);
+    return bar;
+  }
+  const all = b('Select all');
+  all.addEventListener('click', ()=>{ visibleIds.forEach(id => st.ids.add(id)); redraw(); });
+  const del = b('Delete ' + st.ids.size + ' selected', 'color:var(--rust);border-color:#EFC9BC;');
+  del.disabled = !st.ids.size;
+  if(!st.ids.size) del.style.opacity = '0.5';
+  del.addEventListener('click', async ()=>{
+    const ids = Array.from(st.ids);
+    if(!ids.length) return;
+    const ok = await confirmDialog('Delete ' + ids.length + ' ' + noun + (ids.length === 1 ? '' : 's') + '? This cannot be undone.',
+      'Delete ' + ids.length);
+    if(!ok) return;
+    await onDelete(ids);
+    st.ids.clear(); st.on = false;
+    redraw();
+    showToast('Deleted ' + ids.length);
+  });
+  const done = b('Done');
+  done.addEventListener('click', ()=>{ st.on = false; st.ids.clear(); redraw(); });
+  bar.appendChild(all); bar.appendChild(del); bar.appendChild(done);
+  return bar;
+}
+// The tick at the start of a row while selecting (null when not selecting)
+function selectionTick(key, id, redraw){
+  const st = listSel(key);
+  if(!st.on) return null;
+  const tick = document.createElement('input');
+  tick.type = 'checkbox';
+  tick.checked = st.ids.has(id);
+  tick.style.cssText = 'margin:0 10px 0 0;flex-shrink:0;width:18px;height:18px;cursor:pointer;';
+  tick.addEventListener('click', e=>{
+    e.stopPropagation();
+    if(tick.checked) st.ids.add(id); else st.ids.delete(id);
+    redraw();
+  });
+  return tick;
+}
+function toggleSelected(key, id, redraw){
+  const st = listSel(key);
+  if(st.ids.has(id)) st.ids.delete(id); else st.ids.add(id);
+  redraw();
+}
+
+// ---------- Current: what's still to be done, and removing what isn't needed ----------
+let wcCurrentPage = 1;
+function wcShortDate(iso){
+  return iso ? new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'}) : 'No date';
+}
+function renderCurrentList(kind){
+  const box = document.getElementById('wcCurrentList');
+  const count = document.getElementById('wcCurrentCount');
+  const heading = document.getElementById('wcCurrentHeading');
+  const note = document.getElementById('wcCurrentNote');
+  const techSel = document.getElementById('wcCurrentTech');
+  const filters = document.getElementById('wcCurrentFilters');
+  if(!box) return;
+  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const term = (document.getElementById('wcCurrentSearch').value || '').trim().toLowerCase();
+  const custName = id => { const c = customers.find(x => String(x.id) === String(id)); return c ? displayName(c.name) : 'A customer no longer on file'; };
+
+  // The technician filter (not for quotes)
+  const keepTech = techSel.value;
+  techSel.innerHTML = '';
+  [['', 'All technicians']].concat(technicians.map(t => [String(t.id), t.name || 'Technician'])).forEach(([v, t])=>{
+    const o = document.createElement('option'); o.value = v; o.textContent = t; techSel.appendChild(o);
+  });
+  techSel.value = keepTech && technicians.some(t => String(t.id) === keepTech) ? keepTech : '';
+  techSel.style.display = kind === 'Quote' ? 'none' : '';
+  const tech = techSel.value;
+
+  let rows = [];
+  if(kind === 'Work Order'){
+    heading.textContent = 'Scheduled work orders';
+    note.textContent = 'Every visit still on a technician\u2019s route, soonest first. Take off any that no longer need doing.';
+    const woIds = new Set(workOrders.map(w => w.id));
+    const jobs = (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'scheduled');
+    rows = jobs.filter(j => !tech || String(j.technicianId) === tech).map(j => ({
+      id: j.id, date: j.date, who: custName(j.customerId), what: j.title || 'Work order',
+      techName: technicianNameById(j.technicianId) || 'No technician',
+      orphan: !!j.workOrderId && !woIds.has(j.workOrderId),
+      group: j.workOrderId, groupLeft: jobs.filter(x => x.workOrderId && x.workOrderId === j.workOrderId).length
+    }));
+  } else if(kind === 'Task'){
+    heading.textContent = 'Scheduled tasks';
+    note.textContent = 'Every task not yet done, soonest first. Take off any that no longer need doing.';
+    const open = tasks.filter(t => t && !t.done);
+    rows = open.filter(t => !tech || String(t.technicianId) === tech).map(t => {
+      const names = (t.customerIds || []).map(custName);
+      return {id: t.id, date: t.date, what: t.title || 'Task',
+        who: names.length ? names.slice(0, 2).join(', ') + (names.length > 2 ? ' +' + (names.length - 2) : '') : 'No customer',
+        techName: technicianNameById(t.technicianId) || 'No technician',
+        group: t.seriesId || '', groupLeft: t.seriesId ? open.filter(x => x.seriesId === t.seriesId).length : 1};
+    });
+  } else {
+    heading.textContent = 'Open quotes';
+    note.textContent = 'Quotes sent and not yet closed, newest first. Close one once it\u2019s been answered or no longer needs following up \u2014 it stays in History.';
+    rows = workOrders.filter(w => (w.type || 'Quote') === 'Quote' && !w.closed).map(w => ({
+      id: w.id, date: w.date || (w.createdAt || '').slice(0, 10), who: custName(w.customerId),
+      what: (w.lineItems || []).map(li => li.description).filter(Boolean).join(', ') || 'Quote',
+      total: w.total
+    }));
+  }
+  rows = rows.filter(r => !term || r.who.toLowerCase().includes(term) || r.what.toLowerCase().includes(term));
+  rows.sort((a, b) => kind === 'Quote' ? String(b.date).localeCompare(String(a.date)) : String(a.date).localeCompare(String(b.date)));
+
+  count.textContent = rows.length ? String(rows.length) : '';
+  box.innerHTML = '';
+  if(!rows.length){
+    box.innerHTML = emptyState(kind === 'Quote' ? 'No open quotes.' : 'Nothing scheduled' + (tech ? ' for ' + technicianNameById(tech) : '') + '.');
+    return;
+  }
+  const pages = Math.max(1, Math.ceil(rows.length / CUSTOM_PER_PAGE));
+  wcCurrentPage = Math.min(pages, Math.max(1, wcCurrentPage));
+  const pageRows = rows.slice((wcCurrentPage - 1) * CUSTOM_PER_PAGE, wcCurrentPage * CUSTOM_PER_PAGE);
+  const selKey = 'current:' + kind;
+  const redrawCur = () => renderCurrentList(kind);
+  box.appendChild(selectionBar(selKey, pageRows.map(r => r.id),
+    kind === 'Task' ? 'task' : (kind === 'Quote' ? 'quote' : 'scheduled visit'), ids=>{
+      const set = new Set(ids);
+      if(kind === 'Task'){ tasks = tasks.filter(t => !set.has(t.id)); saveTasks(); }
+      else if(kind === 'Quote'){ workOrders = workOrders.filter(w => !set.has(w.id)); saveWorkOrders(); }
+      else lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !set.has(j.id)));
+    }, redrawCur));
+  pageRows.forEach((r, i, shown)=>{
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:11px 0;'
+      + (i === shown.length - 1 ? '' : 'border-bottom:1px solid var(--line);');
+    const tick = selectionTick(selKey, r.id, redrawCur);
+    if(tick){ row.appendChild(tick); row.style.cursor = 'pointer'; row.addEventListener('click', e=>{ if(e.target.closest('button')) return; toggleSelected(selKey, r.id, redrawCur); }); }
+    const when = document.createElement('div');
+    when.style.cssText = 'flex:0 0 118px;font-size:12.5px;font-weight:600;';
+    when.textContent = wcShortDate(r.date);
+    if(kind !== 'Quote' && r.date && r.date < today){
+      const od = document.createElement('div');
+      od.style.cssText = 'font-size:11px;font-weight:700;color:var(--rust);';
+      od.textContent = 'Overdue';
+      when.appendChild(od);
+    }
+    const mid = document.createElement('div');
+    mid.style.cssText = 'flex:1;min-width:0;';
+    const l1 = document.createElement('div');
+    l1.style.cssText = 'font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    l1.textContent = r.who + ' \u2013 ' + r.what;
+    const l2 = document.createElement('div');
+    l2.style.cssText = 'font-size:12px;color:var(--muted);';
+    const bits = [];
+    if(kind === 'Quote') bits.push('$' + (Number(r.total) || 0).toFixed(2));
+    else bits.push(r.techName);
+    if(kind === 'Task' && r.group) bits.push('Repeats');
+    l2.textContent = bits.join(' \u00b7 ');
+    if(r.orphan){
+      const tag = document.createElement('span');
+      tag.style.cssText = 'color:var(--rust);font-weight:600;margin-left:6px;';
+      tag.textContent = '\u00b7 Work order deleted';
+      l2.appendChild(tag);
+    }
+    mid.appendChild(l1); mid.appendChild(l2);
+    row.appendChild(when); row.appendChild(mid);
+
+    const acts = document.createElement('div');
+    acts.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
+    if(kind === 'Quote'){
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'btn btn-ghost';
+      close.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;';
+      close.textContent = '\u2713 Close';
+      close.title = 'Answered, or no longer needs following up \u2014 it stays in History';
+      close.addEventListener('click', ()=>{
+        const w = workOrders.find(x => x.id === r.id);
+        if(!w) return;
+        w.closed = true;
+        saveWorkOrders();
+        renderCurrentList(kind);
+        showToast('Quote closed \u2014 still in History');
+      });
+      acts.appendChild(close);
+    } else {
+      if(r.groupLeft > 1){
+        const all = document.createElement('button');
+        all.type = 'button';
+        all.className = 'btn btn-ghost';
+        all.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;color:var(--rust);border-color:#EFC9BC;';
+        all.textContent = 'Remove all ' + r.groupLeft;
+        all.title = kind === 'Task' ? 'Every date still to come in this repeating task' : 'Every visit still to come for this work order';
+        all.addEventListener('click', async ()=>{
+          const ok = await confirmDialog('Take all ' + r.groupLeft + (kind === 'Task' ? ' remaining dates of \u201c' + r.what + '\u201d' : ' remaining visits of this work order') + ' off the routes?', 'Remove all ' + r.groupLeft);
+          if(!ok) return;
+          if(kind === 'Task'){ tasks = tasks.filter(t => !(t.seriesId === r.group && !t.done)); saveTasks(); }
+          else lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !(j.workOrderId === r.group && j.status === 'scheduled')));
+          renderCurrentList(kind);
+          showToast('Removed ' + r.groupLeft);
+        });
+        acts.appendChild(all);
+      }
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'btn btn-ghost fountain-remove';
+      x.style.cssText = 'width:24px;height:26px;font-size:13px;border-radius:7px;';
+      x.textContent = '\u00d7';
+      x.title = 'Take this one off the route';
+      x.addEventListener('click', async ()=>{
+        const ok = await confirmDialog('Take \u201c' + r.who + ' \u2013 ' + r.what + '\u201d on ' + wcShortDate(r.date) + ' off ' + r.techName + '\u2019s route?', 'Remove');
+        if(!ok) return;
+        if(kind === 'Task'){ tasks = tasks.filter(t => t.id !== r.id); saveTasks(); }
+        else lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => j.id !== r.id));
+        renderCurrentList(kind);
+        showToast('Removed');
+      });
+      acts.appendChild(x);
+    }
+    row.appendChild(acts);
+    box.appendChild(row);
+  });
+  if(pages > 1){
+    box.appendChild(buildListPager(wcCurrentPage, pages, rows.length, pg => { wcCurrentPage = pg; renderCurrentList(kind); }, 'padding-top:14px;'));
+  }
+}
+
 // The first tab or History, for whichever of Quote / Work Order / Task is chosen.
 // var, not let: this is read as the page first loads.
 var wcView = 'main';
@@ -9594,9 +9940,18 @@ function renderSubmittedHistory(kind){
     return;
   }
   box.innerHTML = '';
+  const subKey = 'submitted:' + kind;
+  const redrawSub = () => renderSubmittedHistory(kind);
+  box.appendChild(selectionBar(subKey, list.map(x => x.key), 'submitted ' + kind, ids=>{
+    const set = new Set(ids);
+    lsSet('jobSubmissions', (lsGet('jobSubmissions') || []).filter(x => !(x && x.kind === kind && set.has(x.key))));
+  }, redrawSub));
   list.forEach(sub=>{
     const row = document.createElement('div');
     row.style.cssText = 'padding:12px 0;border-bottom:1px solid var(--line);';
+    const subTick = selectionTick(subKey, sub.key, redrawSub);
+    if(subTick){ row.style.display = 'flex'; row.style.alignItems = 'flex-start'; row.style.cursor = 'pointer';
+      row.appendChild(subTick); row.addEventListener('click', e=>{ if(e.target.tagName === 'INPUT') return; toggleSelected(subKey, sub.key, redrawSub); }); }
     const title = document.createElement('div');
     title.style.cssText = 'font-weight:700;font-size:14px;';
     title.textContent = (sub.customerName || 'Customer') + ' \u2013 ' + (sub.title || kind);
@@ -9625,26 +9980,33 @@ function applyWorkOrderType(){
 
   // The two tabs: named for the kind chosen, then History
   const history = wcView === 'history';
+  const current = wcView === 'current';
   const mainTab = document.getElementById('btnWcViewMain');
   if(mainTab) mainTab.textContent = chosen;
   document.querySelectorAll('#wcViewControl [data-wcview]').forEach(b=>{
-    b.classList.toggle('active', b.dataset.wcview === (history ? 'history' : 'main'));
+    b.classList.toggle('active', b.dataset.wcview === (wcView || 'main'));
   });
+  document.getElementById('wcCurrentCard').style.display = current ? 'block' : 'none';
 
   // Tasks have their own form, so the quote fields step aside entirely; and on
   // History no form shows at all
   const quoteBits = document.getElementById('wcQuotesSection');
   Array.from(quoteBits.children).forEach(el=>{
     if(el.id === 'wcFormHeading' || el.id === 'wcTypeToggle' || el.id === 'wcType' || el.id === 'wcViewControl') return;
-    el.style.display = (isTask || history) ? 'none' : '';
+    el.style.display = (isTask || history || current) ? 'none' : '';
   });
   // The heading only appears while editing something, so leave it as it is
-  if(isTask || history) document.getElementById('wcFormHeading').style.display = 'none';
+  if(isTask || history || current) document.getElementById('wcFormHeading').style.display = 'none';
   // Quotes sent and work orders finalised now live on History, each on its own
   document.getElementById('wcQuotesHistoryCard').style.display = (history && !isTask) ? 'block' : 'none';
   document.getElementById('wcSubmittedCard').style.display = (history && chosen !== 'Quote') ? 'block' : 'none';
-  document.getElementById('wcTaskSection').style.display = (isTask && !history) ? 'block' : 'none';
-  document.getElementById('wcTaskListCard').style.display = (isTask && !history) ? 'block' : 'none';
+  document.getElementById('wcTaskSection').style.display = (isTask && !history && !current) ? 'block' : 'none';
+  document.getElementById('wcTaskListCard').style.display = (isTask && !history && !current) ? 'block' : 'none';
+
+  if(current){
+    renderCurrentList(chosen);
+    return;
+  }
 
   if(history){
     if(!isTask){
@@ -10269,11 +10631,7 @@ function loadWorkOrderIntoForm(w){
       if(box) box.style.display = repeatEl.value === 'custom' ? 'flex' : 'none';
     }
 
-    const heading = document.getElementById('wcFormHeading');
-    if(heading){
-      heading.textContent = 'Editing a saved ' + (w.type || 'record').toLowerCase();
-      heading.style.display = '';
-    }
+    // No "Editing a saved …" heading: it only took up space
 
     window.scrollTo({top: 0, behavior: 'smooth'});
     showToast('Loaded — make your changes, then send or finalize');
@@ -10394,11 +10752,7 @@ function renderCustomerWorkOrders(customerId){
       if(!ok) return;
       workOrders = workOrders.filter(x => x.id !== w.id);
       saveWorkOrders();
-      if(w.status === 'finalized'){
-        let jobs = lsGet('scheduledWorkOrders') || [];
-        jobs = jobs.filter(j => j.workOrderId !== w.id);
-        lsSet('scheduledWorkOrders', jobs);
-      }
+      lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => j.workOrderId !== w.id));
       renderCustomerWorkOrders(customerId);
       renderWorkOrderHistory();
       showToast('Record deleted');
@@ -15153,7 +15507,7 @@ async function deleteHistoryReport(customerId, type, reading){
 }
 
 // The removal itself, once it has been agreed to
-function removeHistoryReport(customerId, type, readingId){
+function removeHistoryReport(customerId, type, readingId, quiet){
   const key = historyStorageKey(customerId, type);
   const list = (lsGet(key) || []).filter(r => r && r.id !== readingId);
   if(!lsSet(key, list)){
@@ -15168,6 +15522,7 @@ function removeHistoryReport(customerId, type, readingId){
   lsSet('visitDeletesToSend', waiting);
   sendVisitDeletes();
   if(historyOpenId === readingId) historyOpenId = null;
+  if(quiet) return true;
   const cust = customers.find(c => c.id === customerId);
   showHistory(customerId, cust ? cust.name : '');
   showToast('Report deleted');
@@ -15273,6 +15628,93 @@ async function deleteHistoryVisit(customerId, visit){
   visit.parts.forEach(p => removeHistoryReport(customerId, p.type, p.r.id));
 }
 
+// ---------- Where the technician started and finished ----------
+// Shown in the report on the website and in the apps, never in the customer's
+// email. Two pins on a map: where the phone was when the report was started,
+// and when its last page was reached.
+function metresBetween(a, b){
+  const R = 6371000, rad = x => x * Math.PI / 180;
+  const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.sqrt(h)));
+}
+function distanceText(m){
+  const ft = Math.round(m * 3.28084);
+  return ft < 1000 ? ft + ' ft' : (m / 1609.34).toFixed(1) + ' mi';
+}
+function ensureMapLibrary(){
+  if(window.L && window.L.map) return Promise.resolve(true);
+  return new Promise(resolve=>{
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+    document.head.appendChild(css);
+    const js = document.createElement('script');
+    js.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js';
+    js.onload = ()=> resolve(!!(window.L && window.L.map));
+    js.onerror = ()=> resolve(false);
+    document.head.appendChild(js);
+  });
+}
+function visitLocationButton(customer, loc){
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-ghost';
+  btn.style.cssText = 'width:auto;padding:6px 12px;font-size:12.5px;margin-top:8px;';
+  btn.textContent = 'Show start and end on a map';
+  btn.title = 'Where the technician started and finished \u2014 not in the customer\u2019s email';
+  btn.addEventListener('click', e=>{ e.stopPropagation(); openVisitLocationMap(customer, loc); });
+  return btn;
+}
+async function openVisitLocationMap(customer, loc){
+  const start = loc && loc.start, end = loc && loc.end;
+  const home = customer && typeof customer.lat === 'number' && typeof customer.lng === 'number'
+    ? {lat: customer.lat, lng: customer.lng} : null;
+  const time = p => p && p.at ? new Date(p.at).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) : '';
+  const lines = [];
+  if(start) lines.push('Started ' + time(start) + (home ? ' \u00b7 ' + distanceText(metresBetween(start, home)) + ' from the address' : ''));
+  else lines.push('No start location (the phone gave none)');
+  if(end) lines.push('Finished ' + time(end) + (home ? ' \u00b7 ' + distanceText(metresBetween(end, home)) + ' from the address' : ''));
+  else lines.push('No finish location (the phone gave none)');
+  if(start && end){
+    const mins = Math.round((new Date(end.at) - new Date(start.at)) / 60000);
+    if(mins >= 0) lines.push('On site about ' + mins + ' min');
+  }
+  const worst = Math.max(start ? start.acc || 0 : 0, end ? end.acc || 0 : 0);
+  if(worst) lines.push('GPS accurate to about ' + distanceText(worst));
+
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:560px;width:100%;">'
+    + '<h3 style="font-size:16px;margin:0 0 4px;">Start and finish</h3>'
+    + '<p style="font-size:12px;color:var(--muted);margin:0 0 10px;">' + (customer ? customer.name : '') + ' \u00b7 internal only, not emailed</p>'
+    + '<div data-map style="height:300px;border-radius:10px;border:1px solid var(--line);background:var(--surface);"></div>'
+    + '<div data-lines style="font-size:13px;margin:10px 0 12px;line-height:1.6;"></div>'
+    + '<button class="btn btn-primary" type="button" data-close style="width:100%;">Close</button></div>';
+  document.body.appendChild(overlay);
+  overlay.querySelector('[data-lines]').innerHTML = lines.map(t => '<div>' + t + '</div>').join('');
+  overlay.querySelector('[data-close]').addEventListener('click', ()=> overlay.remove());
+  const box = overlay.querySelector('[data-map]');
+  const points = [start, end].filter(Boolean);
+  if(!points.length){ box.innerHTML = '<div style="padding:20px;font-size:13px;color:var(--muted);">No locations for this visit.</div>'; return; }
+  const ok = await ensureMapLibrary();
+  if(!ok){
+    box.innerHTML = '<div style="padding:16px;font-size:13px;">The map couldn\u2019t load (no signal?).<br>'
+      + points.map((p, i) => (p === start ? 'Start' : 'Finish') + ': ' + p.lat.toFixed(5) + ', ' + p.lng.toFixed(5)).join('<br>') + '</div>';
+    return;
+  }
+  const map = L.map(box, {zoomControl: true});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '&copy; OpenStreetMap'}).addTo(map);
+  const pin = (p, colour, label)=> L.circleMarker([p.lat, p.lng], {radius: 9, color: '#fff', weight: 2, fillColor: colour, fillOpacity: 1})
+    .addTo(map).bindTooltip(label + (p.at ? ' ' + time(p) : ''), {permanent: true, direction: 'top', offset: [0, -8]});
+  const all = [];
+  if(home){ L.circleMarker([home.lat, home.lng], {radius: 6, color: '#fff', weight: 2, fillColor: '#5E7371', fillOpacity: 1}).addTo(map).bindTooltip('Address'); all.push([home.lat, home.lng]); }
+  if(start){ pin(start, '#3E8F5F', 'Start'); all.push([start.lat, start.lng]); }
+  if(end){ pin(end, '#B8492E', 'Finish'); all.push([end.lat, end.lng]); }
+  if(all.length === 1) map.setView(all[0], 18); else map.fitBounds(all, {padding: [40, 40], maxZoom: 19});
+  setTimeout(()=> map.invalidateSize(), 60);
+}
+
 // The report for one body of water, as it has always looked
 function buildReportDoc(customerId, name, customer, type, r, onDelete){
   const label = historyTypeLabel(customer, type);
@@ -15366,6 +15808,11 @@ function buildReportDoc(customerId, name, customer, type, r, onDelete){
     footer.appendChild(delOpen);
     doc.appendChild(footer);
 
+  // Start and finish on a map, for the office only (never emailed)
+  if(r && r.visitLocation && (r.visitLocation.start || r.visitLocation.end)){
+    const headText = doc.querySelector('.report-head > div') || doc;
+    headText.appendChild(visitLocationButton(customer, r.visitLocation));
+  }
   return doc;
 }
 
@@ -15407,9 +15854,18 @@ function showHistory(customerId, name){
   const fullCount = list.length;
   list = list.slice(pageStart, pageStart + HISTORY_PER_PAGE);
 
+  const repKey = 'reports:' + customerId;
+  const redrawRep = () => showHistory(selectedHistoryCustomerId, name);
+  const byId = {};
+  list.forEach(v => { byId[v.id] = v; });
+  histList.appendChild(selectionBar(repKey, list.map(v => v.id), 'service report', ids=>{
+    ids.forEach(id => { const v = byId[id]; if(v) v.parts.forEach(pt => removeHistoryReport(customerId, pt.type, pt.r.id, true)); });
+  }, redrawRep));
+
   list.forEach(v=>{
     const bar = document.createElement('div');
     const isOpen = historyOpenId === v.id;
+    const repTick = selectionTick(repKey, v.id, redrawRep);
     bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;'
       + 'padding:11px 12px;border:1px solid var(--line);border-radius:10px;margin-top:8px;'
       + 'cursor:pointer;user-select:none;background:' + (isOpen ? 'var(--teal-pale)' : 'var(--card)') + ';';
@@ -15437,9 +15893,16 @@ function showHistory(customerId, name){
       deleteHistoryVisit(customerId, v);
     });
     right.appendChild(del);
-    bar.appendChild(when);
+    if(repTick){
+      const lead = document.createElement('div');
+      lead.style.cssText = 'display:flex;align-items:center;min-width:0;';
+      lead.appendChild(repTick); lead.appendChild(when);
+      bar.appendChild(lead);
+    } else bar.appendChild(when);
     bar.appendChild(right);
     bar.addEventListener('click', ()=>{
+      // While selecting, a press ticks the visit instead of opening it
+      if(listSel(repKey).on){ toggleSelected(repKey, v.id, redrawRep); return; }
       historyOpenId = isOpen ? null : v.id;
       historyOpenBody = null;
       showHistory(selectedHistoryCustomerId, name);

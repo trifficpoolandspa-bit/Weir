@@ -8716,6 +8716,8 @@ function renderHomeList(){
   // is its own item and never adds their service
   const movedInCustomers = customers.filter(c =>
     movedHere.has(c.id) && c.active !== false &&
+    // Only for the technician being looked at (everyone under All customers)
+    (!adminViewTechId || c.technicianId === adminViewTechId) &&
     // Once serviced they drop off, exactly as a customer whose regular day it is
     !servicedOnDate(c, selectedDayISO) &&
     !baseCustomers.some(b => b.id === c.id));
@@ -10758,6 +10760,15 @@ function syncStepChrome(){
   const cardId = Array.isArray(entry) ? entry[0] : entry;
   const card = document.getElementById(cardId);
   if(!card) return;
+  // Reaching the last page of the visit: where the phone is as it finishes.
+  // Taken now so pressing Submit never waits on the GPS.
+  if(pendingVisit && pendingVisit.customerId === currentVisitCustomerId && currentVisitStep === steps.length
+     && visitLocation.customerId === currentVisitCustomerId){
+    const here = pendingVisit.neededSections.indexOf(currentVisibleSection) !== -1 ? currentVisibleSection : currentVisitFountainId;
+    const left = pendingVisit.neededSections.filter(id => pendingVisit.doneSections[id] === undefined);
+    if(left.length === 1 && left[0] === here
+       && (!visitLocation.end || Date.now() - new Date(visitLocation.end.at).getTime() > 120000)) grabVisitLocation('end');
+  }
   const h = card.querySelector('h2');
 
   const back = document.createElement('button');
@@ -11932,6 +11943,9 @@ async function openVisit(customerId){
         sectionsAlreadyDoneToday(customer),
         heldSectionsFor(customerId))
     };
+    // Where the phone is as the report starts
+    visitLocation = {customerId: customerId, start: null, end: null};
+    grabVisitLocation('start');
     visitStepBySection = {};
     fountainDraftValues = {};
     // Also clear the live step, otherwise showVisitSection saves the previous
@@ -12259,9 +12273,12 @@ async function commitVisitPackage(customerId){
   if(!pkg) return [];
   const committed = [];
 
+  const where = visitLocation.customerId === customerId && (visitLocation.start || visitLocation.end)
+    ? {start: visitLocation.start, end: visitLocation.end} : null;
   for(const sectionId of Object.keys(pkg.sections)){
     const reading = pkg.sections[sectionId];
     if(!reading) continue;
+    if(where) reading.visitLocation = where;
     if(sectionId === 'pool'){
       const list = await loadReadings(customerId, 'pool');
       list.unshift(reading);
@@ -12281,6 +12298,7 @@ async function commitVisitPackage(customerId){
   }
 
   clearVisitPackage(customerId);
+  if(visitLocation.customerId === customerId) visitLocation = {customerId: null, start: null, end: null};
   return committed;
 }
 
@@ -12590,6 +12608,111 @@ function collectReportPhotos(sections){
   return out;
 }
 
+// ---------- Where the technician started and finished ----------
+// Shown in the report on the website and in the apps, never in the customer's
+// email. Two pins on a map: where the phone was when the report was started,
+// and when its last page was reached.
+function metresBetween(a, b){
+  const R = 6371000, rad = x => x * Math.PI / 180;
+  const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.sqrt(h)));
+}
+function distanceText(m){
+  const ft = Math.round(m * 3.28084);
+  return ft < 1000 ? ft + ' ft' : (m / 1609.34).toFixed(1) + ' mi';
+}
+function ensureMapLibrary(){
+  if(window.L && window.L.map) return Promise.resolve(true);
+  return new Promise(resolve=>{
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+    document.head.appendChild(css);
+    const js = document.createElement('script');
+    js.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js';
+    js.onload = ()=> resolve(!!(window.L && window.L.map));
+    js.onerror = ()=> resolve(false);
+    document.head.appendChild(js);
+  });
+}
+function visitLocationButton(customer, loc){
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-ghost';
+  btn.style.cssText = 'width:auto;padding:6px 12px;font-size:12.5px;margin-top:8px;';
+  btn.textContent = 'Show start and end on a map';
+  btn.title = 'Where the technician started and finished \u2014 not in the customer\u2019s email';
+  btn.addEventListener('click', e=>{ e.stopPropagation(); openVisitLocationMap(customer, loc); });
+  return btn;
+}
+async function openVisitLocationMap(customer, loc){
+  const start = loc && loc.start, end = loc && loc.end;
+  const home = customer && typeof customer.lat === 'number' && typeof customer.lng === 'number'
+    ? {lat: customer.lat, lng: customer.lng} : null;
+  const time = p => p && p.at ? new Date(p.at).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) : '';
+  const lines = [];
+  if(start) lines.push('Started ' + time(start) + (home ? ' \u00b7 ' + distanceText(metresBetween(start, home)) + ' from the address' : ''));
+  else lines.push('No start location (the phone gave none)');
+  if(end) lines.push('Finished ' + time(end) + (home ? ' \u00b7 ' + distanceText(metresBetween(end, home)) + ' from the address' : ''));
+  else lines.push('No finish location (the phone gave none)');
+  if(start && end){
+    const mins = Math.round((new Date(end.at) - new Date(start.at)) / 60000);
+    if(mins >= 0) lines.push('On site about ' + mins + ' min');
+  }
+  const worst = Math.max(start ? start.acc || 0 : 0, end ? end.acc || 0 : 0);
+  if(worst) lines.push('GPS accurate to about ' + distanceText(worst));
+
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:560px;width:100%;">'
+    + '<h3 style="font-size:16px;margin:0 0 4px;">Start and finish</h3>'
+    + '<p style="font-size:12px;color:var(--muted);margin:0 0 10px;">' + (customer ? customer.name : '') + ' \u00b7 internal only, not emailed</p>'
+    + '<div data-map style="height:300px;border-radius:10px;border:1px solid var(--line);background:var(--surface);"></div>'
+    + '<div data-lines style="font-size:13px;margin:10px 0 12px;line-height:1.6;"></div>'
+    + '<button class="btn btn-primary" type="button" data-close style="width:100%;">Close</button></div>';
+  document.body.appendChild(overlay);
+  overlay.querySelector('[data-lines]').innerHTML = lines.map(t => '<div>' + t + '</div>').join('');
+  overlay.querySelector('[data-close]').addEventListener('click', ()=> overlay.remove());
+  const box = overlay.querySelector('[data-map]');
+  const points = [start, end].filter(Boolean);
+  if(!points.length){ box.innerHTML = '<div style="padding:20px;font-size:13px;color:var(--muted);">No locations for this visit.</div>'; return; }
+  const ok = await ensureMapLibrary();
+  if(!ok){
+    box.innerHTML = '<div style="padding:16px;font-size:13px;">The map couldn\u2019t load (no signal?).<br>'
+      + points.map((p, i) => (p === start ? 'Start' : 'Finish') + ': ' + p.lat.toFixed(5) + ', ' + p.lng.toFixed(5)).join('<br>') + '</div>';
+    return;
+  }
+  const map = L.map(box, {zoomControl: true});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '&copy; OpenStreetMap'}).addTo(map);
+  const pin = (p, colour, label)=> L.circleMarker([p.lat, p.lng], {radius: 9, color: '#fff', weight: 2, fillColor: colour, fillOpacity: 1})
+    .addTo(map).bindTooltip(label + (p.at ? ' ' + time(p) : ''), {permanent: true, direction: 'top', offset: [0, -8]});
+  const all = [];
+  if(home){ L.circleMarker([home.lat, home.lng], {radius: 6, color: '#fff', weight: 2, fillColor: '#5E7371', fillOpacity: 1}).addTo(map).bindTooltip('Address'); all.push([home.lat, home.lng]); }
+  if(start){ pin(start, '#3E8F5F', 'Start'); all.push([start.lat, start.lng]); }
+  if(end){ pin(end, '#B8492E', 'Finish'); all.push([end.lat, end.lng]); }
+  if(all.length === 1) map.setView(all[0], 18); else map.fitBounds(all, {padding: [40, 40], maxZoom: 19});
+  setTimeout(()=> map.invalidateSize(), 60);
+}
+
+// The phone's position when the report is started and when its last page is
+// reached, kept with the visit and saved on each of its reports. Asked for in
+// the background so nothing waits on it; no permission or no fix just means
+// that point is missing.
+let visitLocation = {customerId: null, start: null, end: null};
+function grabVisitLocation(kind){
+  if(!navigator.geolocation || !visitLocation.customerId) return;
+  const forCustomer = visitLocation.customerId;
+  try{
+    navigator.geolocation.getCurrentPosition(pos=>{
+      if(visitLocation.customerId !== forCustomer) return;
+      visitLocation[kind] = {lat: pos.coords.latitude, lng: pos.coords.longitude,
+        acc: Math.round(pos.coords.accuracy || 0), at: new Date().toISOString()};
+    // The finish must be where the phone is now, not a remembered position
+    }, ()=>{}, {enableHighAccuracy: true, timeout: 20000, maximumAge: kind === 'end' ? 0 : 60000});
+  }catch(e){}
+}
+
 async function renderFullCombinedReport(customerId, poolReadingId, spaReadingId, fountainReadingRefs){
   fountainReadingRefs = fountainReadingRefs || [];
   const customer = customers.find(c=>c.id===customerId);
@@ -12692,6 +12815,12 @@ async function renderFullCombinedReport(customerId, poolReadingId, spaReadingId,
       ${sectionsHtml}
     </div>
   `;
+  // Start and finish on a map, for the office only
+  const whereAt = (sections.find(x => x.reading && x.reading.visitLocation) || {}).reading;
+  if(whereAt && whereAt.visitLocation){
+    const headText = out.querySelector('.report-head > div');
+    if(headText) headText.appendChild(visitLocationButton(customer, whereAt.visitLocation));
+  }
 
   const wasRedone = sections.some(s => s.reading && s.reading.isRedo);
   currentReportText = `${reportLabel.toUpperCase()} SERVICE REPORT${wasRedone ? ' (REDONE)' : ''}\n${customer.name}${customer.address ? ' — '+customer.address : ''}\nServiced: ${fmtDateTime(sections[0].reading.date)}\n${sectionsText}`;
