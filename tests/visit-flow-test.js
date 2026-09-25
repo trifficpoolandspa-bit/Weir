@@ -1600,6 +1600,94 @@ async function walkVisit(w, d, maxPresses){
   }
 }
 
+
+// ---- Admin app: route order, Just today / Every week, and the website ----
+{
+  console.log('\n=== admin-readings-app.html: route order and the website ===');
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const day = DAYS[new Date().getDay()];
+  const custs = [['a','Alpha'],['b','Bravo'],['c','Charlie'],['d','Delta']].map(([id, n], k) =>
+    ({id, name: n, address: k + ' Main', active: true, hasPool: true, day, routeId: 'r1', technicianId: 't1'}));
+  custs.push({id: 'h', name: 'Hidden', address: '9 Main', active: true, hasPool: true, day, routeId: 'r1', technicianId: 't9'});
+  custs.push({id: 'z', name: 'Zed', address: '8 Main', active: true, hasPool: true, day, routeId: 'r2', technicianId: 't2'});
+  const start = async ()=>{
+    const dom = boot('admin-readings-app.html', {customers: custs,
+      routeOrders: {[day]: {r1: ['a','b','h','c','d'], r2: ['z']}}});
+    await wait(1300);
+    const w = dom.window, d = w.document;
+    w.eval("currentUser = {id: 't1', name: 'Pat', full_access: true, canReorderRoute: true, isAdmin: true};"
+      + " adminViewTechId = 't1'; adminRouteStarted = true; confirmDialog = ()=> Promise.resolve(true);"
+      + " window.__sent = []; fieldAuthed = async (path, o)=>{ window.__sent.push(JSON.parse(o.body)); return window.__reply || {ok: true, status: 200, body: {result: 'saved'}}; };"
+      + " selectedHomeDay = '" + day + "'; switchView('home'); renderHomeList();");
+    await wait(450);
+    return {w, d, order: () => Array.from(d.querySelectorAll('#homeCustomerList .cust-row')).map(r => r.dataset.reorderKey).join(''),
+            company: () => JSON.parse(w.localStorage.getItem('weir:routeOrders'))[day]};
+  };
+  // What a drag does when it's let go: the same as the page's own drag
+  const drop = (w, ids) => w.eval("fieldRouteOrder[orderKey(selectedHomeDay, isoForDay(selectedHomeDay))] = " + JSON.stringify(ids)
+    + "; saveFieldRouteOrder(); orderBeforeDrag = ['a','b','c','d']; showOrderBanner(" + JSON.stringify(ids) + ");");
+  try{
+    let {w, d, order, company} = await start();
+    check('the admin app opens in the company\u2019s route order', order() === 'abcd', order());
+    const src = fs.readFileSync('admin-readings-app.html', 'utf8');
+    check('a drag shows the Just today / Every week bar', /fieldRouteOrder\[orderKey\(selectedHomeDay, isoForDay\(selectedHomeDay\)\)\] = ids;\s*saveFieldRouteOrder\(\);\s*showOrderBanner\(ids\);/.test(src));
+
+    // Just today
+    drop(w, ['b','c','d','a']);
+    d.getElementById('orderTempBtn').click(); await wait(150);
+    check('Just today keeps the new order on the phone', order() === 'bcda', order());
+    check('and leaves the company\u2019s route order alone', company().r1.join('') === 'abhcd' && w.eval("window.__sent.length") === 0, company().r1.join(''));
+    w.eval("localStorage.setItem('weir:routeOrders', JSON.stringify({'" + day + "': {r1: ['d','c','b','a','h'], r2: ['z']}})); renderHomeList();");
+    check('today\u2019s own order wins for today over a change from the website', order() === 'bcda', order());
+    w.close();
+
+    // Every week
+    ({w, d, order, company} = await start());
+    drop(w, ['c','a','job:work order:w1','b','d']);
+    d.getElementById('orderPermBtn').click(); await wait(200);
+    check('Every week makes it the company\u2019s route order', company().r1.join('') === 'cabdh', company().r1.join(''));
+    check('keeping anyone who wasn\u2019t on screen after them, and other routes untouched', company().r2.join('') === 'z');
+    const sent = JSON.parse(w.eval("JSON.stringify(window.__sent)"));
+    check('and sends it to the office as the setup record the website reads',
+          sent.length === 1 && sent[0].p_kind === 'setup' && sent[0].p_id === 'routeOrders' && sent[0].p_changes.value.v[day].r1.join('') === 'cabdh');
+    check('jobs are left out of route scheduling', !JSON.stringify(company()).includes('job:'));
+    check('nothing is left waiting once it\u2019s gone', !JSON.parse(w.localStorage.getItem('weir:routeOrdersToSend')));
+    w.eval("localStorage.setItem('weir:routeOrders', JSON.stringify({'" + day + "': {r1: ['d','c','b','a','h'], r2: ['z']}})); renderHomeList();");
+    check('afterwards the admin app follows a change made on the website', order() === 'dcba', order());
+    // No signal: held and sent with the next sync
+    w.eval("window.__reply = {ok: false, status: 0, body: null, offline: true};");
+    drop(w, ['a','b','c','d']); d.getElementById('orderPermBtn').click(); await wait(200);
+    check('with no signal it\u2019s held', !!JSON.parse(w.localStorage.getItem('weir:routeOrdersToSend')));
+    w.eval("window.__reply = null;"); await w.eval("pushCompanyRouteOrder()");
+    check('and sent once there\u2019s signal', !JSON.parse(w.localStorage.getItem('weir:routeOrdersToSend')));
+    check('every sync tries anything waiting', /await pushCompanyRouteOrder\(\);\s*\n\s*\/\/ Tasks ticked off and visits moved here/.test(src));
+    w.close();
+
+    // Remove changes
+    ({w, d, order, company} = await start());
+    drop(w, ['b','c','d','a']);
+    d.getElementById('orderCloseBtn').click(); await wait(150);
+    check('Remove changes puts the route back', order() === 'abcd' && w.eval("window.__sent.length") === 0, order());
+    w.eval("localStorage.setItem('weir:routeOrders', JSON.stringify({'" + day + "': {r1: ['d','c','b','a','h'], r2: ['z']}})); renderHomeList();");
+    check('and it goes back to following the website', order() === 'dcba', order());
+    w.close();
+
+    // The technician app keeps a technician\u2019s order to their own phone
+    const tech = fs.readFileSync('technician-app.html', 'utf8');
+    check('the technician app never changes the company\u2019s route order', !/saveCompanyRouteOrder|pushCompanyRouteOrder/.test(tech));
+  }catch(e){ check('admin route order', false, e.message); }
+
+  // Dragging: side by side only when items really sit on one line
+  for(const file of ['technician-app.html', 'admin-readings-app.html', 'customer-intake.html']){
+    const src = fs.readFileSync(file, 'utf8');
+    check(file + ': a wide list row is treated as a list row, so the last place can be reached',
+          src.indexOf('const horizontal = sideBySide;') !== -1 && src.indexOf('b.width > b.height * 1.6') === -1);
+  }
+  // The website redraws its route scheduling when an order arrives from a phone
+  check('the website redraws route scheduling when a new order arrives',
+        /routeOrders = lsGet\('routeOrders'\) \|\| \{\};[\s\S]{0,300}renderRoutesList\(\)/.test(fs.readFileSync('customer-intake.html', 'utf8')));
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();
