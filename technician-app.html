@@ -6029,12 +6029,39 @@ document.getElementById('orderTempBtn').addEventListener('click', async ()=>{
   renderHomeList();
 });
 
+// Rearranging part of a route: the customers that were on screen swap among
+// the places they already held in the whole route, and everyone else keeps
+// their exact place. Putting the on-screen ones first instead moved the last
+// few stops of a nearly finished day to the top of next week's route.
+function mergeVisibleOrder(base, visible){
+  const seen = new Set();
+  const full = (base || []).filter(id => { if(seen.has(id)) return false; seen.add(id); return true; });
+  const onScreen = new Set(visible);
+  const slots = [];
+  full.forEach((id, i) => { if(onScreen.has(id)) slots.push(i); });
+  const out = full.slice();
+  const queue = visible.slice();
+  slots.forEach(i => { out[i] = queue.shift(); });
+  // anything new to this route goes at the end, in the order it was left
+  return out.concat(queue.filter(id => !full.includes(id)));
+}
+
+// The whole weekly order for a day as this phone knows it: its own weekly
+// order, then the office's, so nobody is missing when part of it is moved
+function fullWeeklyOrder(day){
+  const seen = new Set(); const out = [];
+  [].concat(fieldRouteOrder[orderKey(day)] || [], fieldRouteOrder[day] || [], websiteOrderForDay(day))
+    .forEach(id => { if(!seen.has(id)){ seen.add(id); out.push(id); } });
+  return out;
+}
+
 document.getElementById('orderPermBtn').addEventListener('click', async ()=>{
   if(!pendingOrderIds) return hideOrderBanner();
   const ok = await confirmDialog('Use this order every ' + selectedHomeDay +
     ' from now on?', 'Yes, every week');
   if(!ok) return;
-  fieldRouteOrder[orderKey(selectedHomeDay)] = pendingOrderIds;
+  // Only the customers on screen change places; the rest of the week's route stays
+  fieldRouteOrder[orderKey(selectedHomeDay)] = mergeVisibleOrder(fullWeeklyOrder(selectedHomeDay), pendingOrderIds);
   // Drop any one-off order for today so the weekly one takes effect
   delete fieldRouteOrder[orderKey(selectedHomeDay, isoForDay(selectedHomeDay))];
   saveFieldRouteOrder();
