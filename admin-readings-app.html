@@ -1852,6 +1852,8 @@ function customPhotosFor(type){
 
   return defs.filter(p=>{
     if(!p || !p.label) return false;
+    // Limited to some customers: only at their visits
+    if(Array.isArray(p.customerIds) && p.customerIds.length && p.customerIds.indexOf(cid) === -1) return false;
     // No technicians chosen means everyone
     if(!Array.isArray(p.techIds) || p.techIds.length === 0) return true;
     return !!(currentUser && p.techIds.indexOf(currentUser.id) !== -1);
@@ -7294,7 +7296,7 @@ function renderTechRoute(){
 
   const base = customers.filter(cst =>
     cst.technicianId === selectedTechId
-    && cst.day === techRouteDay
+    && customerServicedOn(cst, techRouteDay)
     && cst.active !== false
     && !movedAway.has(cst.id));
 
@@ -7939,7 +7941,7 @@ function saveCompanyRouteOrder(day, ids){
     if(String(id).indexOf('job:') === 0) return;
     const c = customers.find(x => String(x.id) === String(id));
     if(!c) return;
-    const key = c.routeId || 'unassigned';
+    const key = c.technicianId ? String(c.technicianId) : 'unassigned';   // a route is a technician's customers
     (byRoute[key] = byRoute[key] || []).push(c.id);
   });
   Object.keys(byRoute).forEach(key=>{
@@ -8612,6 +8614,12 @@ function servicedOnDate(c, iso){
   return (lsGet(skippedVisitsStorageKey(c.id)) || []).some(s => s && s.date === iso);
 }
 
+// A customer's service days: their main day, and any extra days for customers
+// serviced more than once a week
+function customerServicedOn(c, day){
+  return !!c && !!day && (c.day === day || (Array.isArray(c.extraDays) && c.extraDays.indexOf(day) !== -1));
+}
+
 function renderHomeList(){
   renderDayTabs();
   renderWeekLabel();
@@ -8665,7 +8673,7 @@ function renderHomeList(){
 
   // Anyone finished on the day being viewed drops off — today, or any day before
   const baseCustomers = customers
-    .filter(c => c.day === selectedHomeDay && c.active !== false)
+    .filter(c => customerServicedOn(c, selectedHomeDay) && c.active !== false)
     .filter(c => !servicedOnDate(c, selectedDayISO))
     .filter(c => !movedAway.has(c.id))
     .filter(c => !adminViewTechId || c.technicianId === adminViewTechId);
@@ -8689,7 +8697,7 @@ function renderHomeList(){
   // The route list hides finished customers, so count those separately.
   const doneToday = customers.filter(cust =>
     cust.active !== false &&
-    cust.day === selectedHomeDay &&
+    customerServicedOn(cust, selectedHomeDay) &&
     servicedOnDate(cust, selectedDayISO)
   ).length;
   const remaining = todaysCustomers.length;
@@ -9221,7 +9229,7 @@ function routeOrderToday(){
   const movedAway = new Set(reschedules.filter(r => r.fromDate === iso).map(r => r.customerId));
 
   const base = customers
-    .filter(c => c.day === selectedHomeDay && c.active !== false)
+    .filter(c => customerServicedOn(c, selectedHomeDay) && c.active !== false)
     .filter(c => currentUser ? c.technicianId === currentUser.id : false)
     .filter(c => !movedAway.has(c.id));
 

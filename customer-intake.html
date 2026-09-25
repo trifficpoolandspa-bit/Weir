@@ -562,6 +562,7 @@ input::placeholder{color:#A9BCB9;}
       <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:2px;">
         <h2 id="profileName">Customer</h2>
         <span class="pill" id="profileDayPill" style="font-size:12.5px;padding:3px 10px;margin-left:4px;"></span>
+        <span id="profileExtraDays" style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;"></span>
         <span id="profileTechWrap" style="margin-left:auto;margin-right:9%;display:inline-flex;flex-direction:column;align-items:flex-start;align-self:flex-start;margin-top:-1px;cursor:pointer;white-space:nowrap;">
           <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Technician</span>
           <span id="profileTechName" style="font-size:15.5px;font-weight:700;color:var(--teal-deep);"></span>
@@ -685,7 +686,7 @@ input::placeholder{color:#A9BCB9;}
         <span class="section-count" id="listCount"></span>
       </div>
       <div style="position:relative;">
-        <input id="customerSearch" placeholder="Search by name, address, phone, or email" style="margin-bottom:14px;padding-right:34px;">
+        <input id="customerSearch" autocomplete="off" placeholder="Search by name, address, phone, or email" style="margin-bottom:14px;padding-right:34px;">
         <button type="button" id="btnClearCustomerSearch" style="display:none;position:absolute;right:8px;top:0;bottom:14px;margin:auto 0;height:24px;width:24px;padding:0;border:none;background:none;color:var(--muted);font-size:16px;line-height:1;cursor:pointer;">×</button>
         <div id="customerSearchSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:20;background:#fff;border:1px solid var(--line);border-radius:9px;margin-top:-8px;box-shadow:0 4px 14px rgba(11,36,34,0.12);max-height:260px;overflow-y:auto;"></div>
       </div>
@@ -953,6 +954,12 @@ input::placeholder{color:#A9BCB9;}
           <input type="checkbox" id="photoTaskExtra" style="margin:0;"> Extra
         </label>
       </div>
+      <div style="margin:0 0 14px;">
+        <div style="font-size:12.5px;color:var(--muted);margin:0 0 6px;">Which customers <span id="photoTaskCustCount" style="font-weight:600;color:var(--teal-deep);margin-left:4px;"></span></div>
+        <input id="photoTaskCustSearch" placeholder="Search customers" autocomplete="off" style="margin-bottom:6px;">
+        <div id="photoTaskCustList" style="max-height:180px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:0 8px;"></div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:5px;">Leave everyone unticked and it applies to all customers.</div>
+      </div>
       <p id="photoTaskError" style="display:none;font-size:12.5px;color:var(--rust);margin:0 0 10px;"></p>
       <button class="btn btn-primary" id="btnSavePhotoTask" style="width:100%;">Save</button>
       <button class="btn btn-ghost" id="btnCancelPhotoTask" style="width:100%;margin-top:8px;">Cancel</button>
@@ -1085,7 +1092,7 @@ input::placeholder{color:#A9BCB9;}
       <div class="field" id="wcRecipientPicker">
         <label>Send to</label>
         <div style="display:flex;gap:8px;margin-bottom:8px;">
-          <input id="wcRecipientSearch" placeholder="Search customers" style="flex:1;">
+          <input id="wcRecipientSearch" autocomplete="off" placeholder="Search customers" style="flex:1;">
           <button class="btn btn-primary" id="wcRecipientAll" type="button" style="width:auto;padding:7px 14px;font-size:12.5px;font-weight:700;flex-shrink:0;">Select all</button>
           <button class="btn btn-secondary" id="wcRecipientNone" type="button" style="width:auto;padding:7px 14px;font-size:12.5px;font-weight:700;flex-shrink:0;">Clear</button>
         </div>
@@ -1691,7 +1698,7 @@ input::placeholder{color:#A9BCB9;}
   </div>
 
   <div class="view" id="view-map">
-    <div class="card">
+    <div class="card" style="display:none;">
       <div class="section-head">
         <h2>Routes</h2>
         <span class="section-count" id="routesCount"></span>
@@ -1703,8 +1710,9 @@ input::placeholder{color:#A9BCB9;}
 
     <div class="card">
       <h2>Route Scheduling</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Pick a day, then pick a route — each route gets its own visiting order for that day. Drag customers into whatever order makes sense for their drive.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Pick a day, then a technician — each technician has their own visiting order for that day, which is the order their phone shows. Drag customers into whatever order makes sense for the drive.</p>
       <div class="btn-row" id="mapDayFilter" style="margin-bottom:12px;flex-wrap:wrap;"></div>
+      <div style="font-size:12px;font-weight:600;color:var(--muted);margin:0 0 6px;">Technician</div>
       <div class="btn-row" id="mapRouteFilter" style="margin-bottom:12px;flex-wrap:wrap;"></div>
       <div id="mapLegend" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;font-size:11.5px;color:var(--muted);"></div>
 
@@ -1724,6 +1732,7 @@ input::placeholder{color:#A9BCB9;}
       </div>
       <p style="font-size:11px;color:var(--muted);margin-top:10px;">Uses a free public map/location service (OpenStreetMap). Locating a lot of new addresses at once can take a little while, since that service limits how fast it accepts requests.</p>
     </div>
+
   </div>
 
   <div class="view" id="view-route-detail">
@@ -2359,18 +2368,36 @@ function saveRouteOrders(dayJustChanged){
   }
 }
 
+// A route is a technician's customers for that day: each technician has their
+// own visiting order for each day, which is what their phone follows
+// A customer's service days: their main day, and any extra days for customers
+// serviced more than once a week
+function customerServicedOn(c, day){
+  return !!c && !!day && (c.day === day || (Array.isArray(c.extraDays) && c.extraDays.indexOf(day) !== -1));
+}
+
+// All of a customer's days, in week order, for showing ("Monday + Thursday")
+function customerDaysText(c){
+  const days = [c.day].concat(Array.isArray(c.extraDays) ? c.extraDays : []).filter(Boolean);
+  const order = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  return days.length ? days.sort((a, b) => order.indexOf(a) - order.indexOf(b)).join(' + ') : '';
+}
+
 function routeKeyFor(c){
-  return c.routeId || 'unassigned';
+  return c.technicianId ? String(c.technicianId) : 'unassigned';
 }
 
 function routeLabelFor(key){
   if(key === 'unassigned') return 'Unassigned';
-  const route = routes.find(r => r.id === key);
-  return route ? route.name : 'Unassigned';
+  const tech = (typeof technicians !== 'undefined' ? technicians : []).find(t => String(t.id) === String(key));
+  return tech ? (tech.name || 'Technician') : 'Unassigned';
 }
 
+// Every technician, whether or not they have customers that day, and
+// Unassigned when some of the day's customers have no technician
 function routesForDay(day){
-  const keys = [...new Set(customers.filter(c => c.day === day && c.active !== false).map(routeKeyFor))];
+  const keys = (typeof technicians !== 'undefined' ? technicians : []).map(t => String(t.id));
+  if(customers.some(c => customerServicedOn(c, day) && c.active !== false && !c.technicianId)) keys.push('unassigned');
   return keys
     .map(key => ({ key, label: routeLabelFor(key) }))
     .sort((a,b)=>{
@@ -2381,15 +2408,31 @@ function routesForDay(day){
 }
 
 function dayOrdersFor(day){
-  // Defends against the older flat-array/technician-keyed shapes from before routes existed
-  if(!routeOrders[day] || Array.isArray(routeOrders[day])){
-    routeOrders[day] = {};
+  if(!routeOrders[day]) routeOrders[day] = {};
+  // An order saved under named routes (or the older single list) is split by
+  // technician, keeping everyone's order relative to each other, so nobody's
+  // route is shuffled by the change
+  const techKeys = new Set((typeof technicians !== 'undefined' ? technicians : []).map(t => String(t.id)).concat('unassigned'));
+  const saved = routeOrders[day];
+  const oldShape = Array.isArray(saved) || Object.keys(saved).some(k => !techKeys.has(k));
+  if(oldShape){
+    const flat = Array.isArray(saved) ? saved.slice()
+      : Object.keys(saved).reduce((all, k) => all.concat(Array.isArray(saved[k]) ? saved[k] : []), []);
+    const byTech = {};
+    flat.forEach(id=>{
+      const c = customers.find(x => x.id === id);
+      if(!c) return;
+      const key = routeKeyFor(c);
+      (byTech[key] = byTech[key] || []).push(id);
+    });
+    routeOrders[day] = byTech;
+    saveRouteOrders();
   }
   return routeOrders[day];
 }
 
 function getOrderedCustomersForDay(day, routeKey){
-  const dayRouteCustomers = customers.filter(c => c.day === day && c.active !== false && routeKeyFor(c) === routeKey);
+  const dayRouteCustomers = customers.filter(c => customerServicedOn(c, day) && c.active !== false && routeKeyFor(c) === routeKey);
   const dayIds = dayRouteCustomers.map(c => c.id);
   const dayOrders = dayOrdersFor(day);
   let order = (dayOrders[routeKey] || []).filter(id => dayIds.includes(id));
@@ -2578,7 +2621,7 @@ function renderMapDayFilter(){
     }
     btn.addEventListener('click', ()=>{
       selectedMapDay = day;
-      selectedRoute = null;
+      // The technician picked stays picked on the new day
       renderMapDayFilter();
       renderRouteFilter();
       renderRouteOrderList();
@@ -2595,29 +2638,24 @@ function renderRouteFilter(){
     selectedRoute = options.length ? options[0].key : null;
   }
   container.innerHTML = '';
-  if(options.length === 0){
-    container.innerHTML = '';
-    return;
-  }
+  if(options.length === 0) return;
+  // A dropdown of technicians (and Unassigned when that day has any)
+  const pick = document.createElement('select');
+  pick.id = 'mapTechnicianSelect';
+  pick.setAttribute('aria-label', 'Technician');
+  pick.style.cssText = 'width:auto;min-width:200px;padding:7px 10px;font-size:13.5px;';
   options.forEach(opt=>{
-    const btn = document.createElement('button');
-    btn.className = 'btn btn-secondary';
-    btn.style.width = 'auto';
-    btn.style.padding = '6px 12px';
-    btn.style.fontSize = '12px';
-    btn.textContent = opt.label;
-    if(opt.key === selectedRoute){
-      btn.style.background = 'var(--gold)';
-      btn.style.color = '#fff';
-    }
-    btn.addEventListener('click', ()=>{
-      selectedRoute = opt.key;
-      renderRouteFilter();
-      renderRouteOrderList();
-      renderRouteMapPins();
-    });
-    container.appendChild(btn);
+    const o = document.createElement('option');
+    o.value = opt.key; o.textContent = opt.label;
+    pick.appendChild(o);
   });
+  pick.value = selectedRoute;
+  pick.addEventListener('change', ()=>{
+    selectedRoute = pick.value;
+    renderRouteOrderList();
+    renderRouteMapPins();
+  });
+  container.appendChild(pick);
 }
 
 function renderMapLegend(){
@@ -7966,7 +8004,7 @@ async function openDeletedCustomers(){
     <div class="confirm-box" style="max-width:520px;max-height:85vh;display:flex;flex-direction:column;">
       <h2 style="margin:0 0 6px;font-size:17px;">Deleted customers</h2>
       <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Everyone deleted since customer sync was turned on, newest first. Restoring brings them back on every device. Customers deleted before sync are only in your backups.</p>
-      <input id="deletedSearch" placeholder="Search by name or address" style="margin-bottom:10px;">
+      <input id="deletedSearch" autocomplete="off" placeholder="Search by name or address" style="margin-bottom:10px;">
       <div id="deletedList" style="overflow-y:auto;flex:1;min-height:80px;">Loading\u2026</div>
       <div class="btn-row" style="margin-top:12px;">
         <button class="btn btn-ghost" id="deletedClose">Close</button>
@@ -12335,9 +12373,10 @@ function photoTasks(){
     (photoBodyConfig(key).customPhotos || []).forEach(item=>{
       if(!item || !item.id) return;
       const at = seen[item.id] || (seen[item.id] = {
-        id: item.id, label: item.label || '', when: item.when || {}, bodies: {}
+        id: item.id, label: item.label || '', when: item.when || {}, bodies: {}, customerIds: []
       });
       at.label = item.label || at.label;
+      if(Array.isArray(item.customerIds) && item.customerIds.length) at.customerIds = item.customerIds.slice();
       at.when = item.when || at.when;
       at.bodies[key] = true;
     });
@@ -12351,7 +12390,10 @@ function savePhotoTask(task){
     const cfg = photoBodyConfig(key);
     cfg.customPhotos = (cfg.customPhotos || []).filter(p => p && p.id !== task.id);
     if(task.bodies[key]){
-      cfg.customPhotos.push({id: task.id, label: task.label, when: task.when, required: true});
+      const item = {id: task.id, label: task.label, when: task.when, required: true};
+      // Only these customers; none means everyone
+      if(Array.isArray(task.customerIds) && task.customerIds.length) item.customerIds = task.customerIds.slice();
+      cfg.customPhotos.push(item);
     }
   });
   saveChemConfig();
@@ -12650,10 +12692,11 @@ function renderPhotoRequirements(){
     // Only photos the company added can be taken away
     if(entry.task){
       const x = document.createElement('button');
-      x.className = 'btn btn-ghost';
+      x.className = 'btn btn-ghost fountain-remove';   // the red × in a red square, like the rest
       x.textContent = '\u00d7';
       x.title = 'Remove this photo';
-      x.style.cssText = 'width:auto;padding:0 7px;font-size:16px;line-height:1.2;color:var(--muted);';
+      // The same red style, a size down to suit the row
+      x.style.cssText = 'width:24px;height:26px;font-size:13px;border-radius:7px;';
       x.dataset.keepsClick = 'remove';
       x.addEventListener('click', async ()=>{
         const sure = await confirmDialog('Remove "' + escapeSyncText(entry.label)
@@ -12706,8 +12749,10 @@ function renderPhotoRequirements(){
       const bodies = PHOTO_BODIES.filter(([k]) => entry.bodies[k]).map(([, shown]) => shown);
       const sub = document.createElement('div');
       sub.style.cssText = 'font-size:11.5px;color:var(--muted);margin-top:3px;';
+      const forWho = (entry.task.customerIds || []).length;
       sub.textContent = (when.length ? when.join(' and ') : 'no step chosen')
-        + ' \u00b7 ' + (bodies.length ? bodies.join(', ') : 'no body of water chosen');
+        + ' \u00b7 ' + (bodies.length ? bodies.join(', ') : 'no body of water chosen')
+        + ' \u00b7 ' + (forWho ? forWho + (forWho === 1 ? ' customer' : ' customers') : 'all customers');
       block.appendChild(sub);
     }
 
@@ -12730,6 +12775,40 @@ function renderPhotoRequirements(){
 
 // The window for adding one, or changing one that exists
 let photoTaskEditing = null;
+const photoTaskCustomers = new Set();
+
+function renderPhotoTaskCustomers(){
+  const box = document.getElementById('photoTaskCustList');
+  const count = document.getElementById('photoTaskCustCount');
+  if(!box) return;
+  if(count) count.textContent = photoTaskCustomers.size ? photoTaskCustomers.size + ' chosen' : 'All customers';
+  const term = (document.getElementById('photoTaskCustSearch').value || '').trim().toLowerCase();
+  const list = customers.filter(c => c.active !== false)
+    .filter(c => !term || (c.name || '').toLowerCase().includes(term) || (c.address || '').toLowerCase().includes(term))
+    .sort((a, b) => sortKeyName(a.name).localeCompare(sortKeyName(b.name)));
+  box.innerHTML = '';
+  if(!list.length){
+    box.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:8px 0;">No customer matches that search.</div>';
+    return;
+  }
+  list.forEach((c, i)=>{
+    const row = document.createElement('label');
+    row.className = 'pick-row press-row';
+    if(i === list.length - 1) row.style.borderBottom = 'none';
+    const tick = document.createElement('input');
+    tick.type = 'checkbox';
+    tick.style.margin = '0';
+    tick.checked = photoTaskCustomers.has(c.id);
+    tick.addEventListener('change', ()=>{
+      if(tick.checked) photoTaskCustomers.add(c.id); else photoTaskCustomers.delete(c.id);
+      if(count) count.textContent = photoTaskCustomers.size ? photoTaskCustomers.size + ' chosen' : 'All customers';
+    });
+    const nm = document.createElement('span');
+    nm.textContent = displayName(c.name);
+    row.appendChild(tick); row.appendChild(nm);
+    box.appendChild(row);
+  });
+}
 
 function openPhotoTask(task){
   photoTaskEditing = task || null;
@@ -12740,6 +12819,10 @@ function openPhotoTask(task){
   document.getElementById('photoTaskPool').checked = task ? !!task.bodies.pool : true;
   document.getElementById('photoTaskSpa').checked = task ? !!task.bodies.spa : false;
   document.getElementById('photoTaskExtra').checked = task ? !!task.bodies.fountain : false;
+  photoTaskCustomers.clear();
+  ((task && task.customerIds) || []).forEach(id => photoTaskCustomers.add(id));
+  document.getElementById('photoTaskCustSearch').value = '';
+  renderPhotoTaskCustomers();
   const err = document.getElementById('photoTaskError');
   err.style.display = 'none';
   document.getElementById('photoTaskOverlay').style.display = 'flex';
@@ -12766,6 +12849,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
   const cancel = document.getElementById('btnCancelPhotoTask');
   if(cancel) cancel.addEventListener('click', closePhotoTask);
+  const custSearch = document.getElementById('photoTaskCustSearch');
+  if(custSearch) custSearch.addEventListener('input', renderPhotoTaskCustomers);
   const overlay = document.getElementById('photoTaskOverlay');
 
   // Enter saves, the same as pressing the button
@@ -12796,6 +12881,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
     task.label = label;
     task.when = when;
     task.bodies = bodies;
+    // Only the customers ticked; none ticked means everyone
+    task.customerIds = Array.from(photoTaskCustomers);
     savePhotoTask(task);
 
     // A body of water no longer ticked should not leave requirements behind
@@ -13913,7 +14000,7 @@ function renderTechAssignedList(techId){
     // Every day is listed, even with nobody on it: leaving empty days out meant
     // Saturday and Sunday disappeared, so a customer could not be moved to one
     DAYS_OF_WEEK.forEach(d=>{
-      const n = assigned.filter(x => (x.day || '') === d).length;
+      const n = assigned.filter(x => customerServicedOn(x, d)).length;
       const o = document.createElement('option');
       o.value = d;
       o.textContent = d + ' (' + n + ')';
@@ -13935,7 +14022,7 @@ function renderTechAssignedList(techId){
   const shown = assigned.filter(c=>{
     if(techAssignedDayFilter === '__none__'){
       if(DAYS_OF_WEEK.includes(c.day || '')) return false;
-    } else if(techAssignedDayFilter && (c.day || '') !== techAssignedDayFilter){
+    } else if(techAssignedDayFilter && !customerServicedOn(c, techAssignedDayFilter)){
       return false;
     }
     if(!needle) return true;
@@ -14439,7 +14526,7 @@ function openMultiReportPicker(){
       <h3 style="font-size:15px;margin:0 0 4px;">Download multiple reports</h3>
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 12px;">Add each visit you want by picking its date. They'll be compiled oldest to newest into one document.</p>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-        <input type="date" id="mrDateSearch" style="flex:1;" title="Pick a visit date to add">
+        <input type="date" id="mrDateSearch" autocomplete="off" style="flex:1;" title="Pick a visit date to add">
         <button type="button" class="btn btn-ghost" id="mrDateSearchClear" style="width:auto;padding:9px 12px;">Reset</button>
       </div>
       <label style="display:flex;align-items:center;gap:9px;font-size:13px;margin-bottom:12px;cursor:pointer;">
@@ -15069,9 +15156,13 @@ function removeHistoryReport(customerId, type, readingId){
 
 // Reports deleted here, sent to the server (office only, snippet 08). Held
 // and tried again with each sync until the server has them.
+let visitDeletesSending = false;
 async function sendVisitDeletes(){
+  // One send at a time; anything added meanwhile goes on the next pass
+  if(visitDeletesSending){ visitDeletesSending = 'again'; return; }
   const waiting = lsGet('visitDeletesToSend') || [];
   if(!waiting.length || typeof sbFetch !== 'function') return;
+  visitDeletesSending = true;
   const left = [];
   for(const d of waiting){
     try{
@@ -15080,7 +15171,14 @@ async function sendVisitDeletes(){
       if(!res || !res.ok) left.push(d);
     }catch(e){ left.push(d); }
   }
-  lsSet('visitDeletesToSend', left);
+  // Keep whatever was added while this pass was running
+  const sent = waiting.filter(d => !left.includes(d));
+  const now = (lsGet('visitDeletesToSend') || []).filter(d =>
+    !sent.some(x => x.customerId === d.customerId && x.body === d.body && x.id === d.id));
+  lsSet('visitDeletesToSend', now);
+  const again = visitDeletesSending === 'again';
+  visitDeletesSending = false;
+  if(again && now.length) sendVisitDeletes();
 }
 function visitDeleteWaiting(customerId, body, id){
   return (lsGet('visitDeletesToSend') || []).some(d =>
@@ -15104,94 +15202,63 @@ function renderHistorySegControl(customer){
   });
 }
 
-function showHistory(customerId, name){
-  selectedHistoryCustomerId = customerId;
-  const customer = customers.find(c => c.id === customerId);
-  if(!customer) return;
-  const type = selectedHistoryType;
-  if(!type) return;
+// ---------- Service reports: one row per visit ----------
+// A visit's reports are saved one per body of water, each timed as that body
+// was finished. Reports for a customer on the same day, close together and
+// without two for the same body, are one visit; a second pool report that day
+// (a redo) starts a new one. Nothing is merged or moved in storage.
+const VISIT_GAP_MS = 3 * 60 * 60 * 1000;
+let historyOpenBody = null;
 
-  document.getElementById('historyTitle').textContent = 'Service reports';
+function reportVisitsFor(customer){
+  const all = [];
+  historySections(customer).forEach(sec=>{
+    (lsGet(historyStorageKey(customer.id, sec.type)) || []).forEach(r=>{
+      if(r && r.id) all.push({type: sec.type, label: sec.label, r: r});
+    });
+  });
+  all.sort((a, b) => String(a.r.date || '').localeCompare(String(b.r.date || '')));
+  const visits = [];
+  let cur = null;
+  all.forEach(x=>{
+    const t = new Date(x.r.date || 0).getTime();
+    const day = String(x.r.date || '').slice(0, 10);
+    if(!cur || cur.day !== day || t - cur.last > VISIT_GAP_MS || cur.parts.some(p => p.type === x.type)){
+      cur = {day: day, first: t, last: t, parts: []};
+      visits.push(cur);
+    }
+    cur.parts.push(x);
+    cur.last = Math.max(cur.last, t);
+  });
+  // An id and a date for each visit; its bodies in the customer's own order
+  const order = historySections(customer).map(sec => sec.type);
+  visits.forEach(v=>{
+    v.parts.sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
+    v.id = v.parts.map(p => p.r.id).join('+');
+    v.date = v.parts.reduce((m, p) => String(p.r.date || '') > m ? String(p.r.date || '') : m, '');
+  });
+  return visits.reverse();
+}
 
-  const headEl0 = document.getElementById('historyHead');
-  if(headEl0) headEl0.style.display = 'none';
+// One confirmation, then every body's report in the visit goes (each sent to
+// the office as before)
+async function deleteHistoryVisit(customerId, visit){
+  const bodies = visit.parts.map(p => p.label).join(' and ');
+  const sure = await confirmDialog(
+    'Delete the service report from ' + fmtDate(visit.date) + (visit.parts.length > 1 ? ' (' + bodies + ')' : '') + '?\n\n'
+    + 'It is removed for good from the website and the office\u2019s records, and cannot be brought back. '
+    + 'The copy on the technician\u2019s phone and the one already emailed to the customer are not affected.',
+    'Delete for good');
+  if(!sure) return;
+  visit.parts.forEach(p => removeHistoryReport(customerId, p.type, p.r.id));
+}
 
-  // Every report is listed as a bar, newest first. A date still narrows it,
-  // but it is no longer the only way to see anything: the list used to stay
-  // empty until a date was typed in.
-  let list = (lsGet(historyStorageKey(customerId, type)) || []).slice();
-  if(historyDateFilter){
-    list = list.filter(r => (r.date || '').slice(0,10) === historyDateFilter);
-  }
-  list.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-
+// The report for one body of water, as it has always looked
+function buildReportDoc(customerId, name, customer, type, r, onDelete){
   const label = historyTypeLabel(customer, type);
   const cfgType = type === 'spa' ? 'spa' : (type === 'pool' ? 'pool' : 'fountain');
   const chemList = chemListFor(cfgType);
   const doseList = dosageListFor(cfgType);
-
-  // The old grid header isn't used by this layout
-  const headEl = document.getElementById('historyHead');
-  if(headEl) headEl.style.display = 'none';
-
-  const histList = document.getElementById('historyList');
-  if(list.length === 0){
-    histList.innerHTML = emptyState(historyDateFilter
-      ? 'No ' + label.toLowerCase() + ' report on that date.'
-      : 'No ' + label.toLowerCase() + ' readings logged yet for this customer.');
-    return;
-  }
-
-  histList.innerHTML = '';
-  // Only the one opened last time survives a redraw
-  if(historyOpenId && !list.some(x => x.id === historyOpenId)) historyOpenId = null;
-
-  const pageKey = customerId + '|' + type + '|' + (historyDateFilter || '');
-  if(pageKey !== historyPageKey){ historyPageKey = pageKey; historyPage = 1; }
-  const totalPages = Math.max(1, Math.ceil(list.length / HISTORY_PER_PAGE));
-  historyPage = Math.min(totalPages, Math.max(1, historyPage));
-  const pageStart = (historyPage - 1) * HISTORY_PER_PAGE;
-  const fullCount = list.length;
-  list = list.slice(pageStart, pageStart + HISTORY_PER_PAGE);
-
-  list.forEach(r=>{
-    const bar = document.createElement('div');
-    const isOpen = historyOpenId === r.id;
-    bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;'
-      + 'padding:11px 12px;border:1px solid var(--line);border-radius:10px;margin-top:8px;'
-      + 'cursor:pointer;user-select:none;background:' + (isOpen ? 'var(--teal-pale)' : '#fff') + ';';
-    const when = document.createElement('div');
-    when.style.cssText = 'font-size:13.5px;font-weight:600;color:var(--ink);';
-    when.textContent = fmtDate(r.date);
-    const right = document.createElement('div');
-    right.style.cssText = 'display:flex;align-items:center;gap:10px;flex-shrink:0;';
-    const ago = document.createElement('div');
-    ago.style.cssText = 'font-size:12px;color:var(--muted);';
-    ago.textContent = howLongAgo(r.date) + (isOpen ? '  \u25b4' : '  \u25be');
-    right.appendChild(ago);
-
-    const del = document.createElement('button');
-    del.className = 'btn btn-ghost';
-    del.type = 'button';
-    del.textContent = 'Delete';
-    del.title = 'Delete this report for good';
-    del.style.cssText = 'width:auto;padding:4px 10px;font-size:11.5px;color:var(--rust);border-color:#EFC0B4;';
-    del.addEventListener('click', (e)=>{
-      e.stopPropagation();                 // not a press on the bar
-      deleteHistoryReport(customerId, type, r);
-    });
-    right.appendChild(del);
-
-    bar.appendChild(when);
-    bar.appendChild(right);
-    bar.addEventListener('click', ()=>{
-      historyOpenId = isOpen ? null : r.id;
-      showHistory(selectedHistoryCustomerId, name);
-    });
-    histList.appendChild(bar);
-
-    if(!isOpen) return;
-
     const doc = document.createElement('div');
     doc.className = 'report-doc';
     doc.style.marginTop = '8px';
@@ -15273,13 +15340,115 @@ function showHistory(customerId, name){
     const delOpen = document.createElement('button');
     delOpen.className = 'btn btn-ghost';
     delOpen.type = 'button';
-    delOpen.textContent = 'Delete this report';
+    delOpen.textContent = 'Delete this visit';
     delOpen.style.cssText = 'width:auto;color:var(--rust);border-color:#EFC0B4;';
-    delOpen.addEventListener('click', ()=> deleteHistoryReport(customerId, type, r));
+    delOpen.addEventListener('click', ()=> onDelete());
     footer.appendChild(delOpen);
     doc.appendChild(footer);
 
-    histList.appendChild(doc);
+  return doc;
+}
+
+function showHistory(customerId, name){
+  selectedHistoryCustomerId = customerId;
+  const customer = customers.find(c => c.id === customerId);
+  if(!customer) return;
+
+  document.getElementById('historyTitle').textContent = 'Service reports';
+  const headEl = document.getElementById('historyHead');
+  if(headEl) headEl.style.display = 'none';
+  // One list for every body of water: no tabs above it
+  const seg = document.getElementById('historySegControl');
+  if(seg) seg.style.display = 'none';
+
+  let list = reportVisitsFor(customer);
+  if(historyDateFilter){
+    list = list.filter(v => v.parts.some(p => (p.r.date || '').slice(0, 10) === historyDateFilter));
+  }
+
+  const histList = document.getElementById('historyList');
+  if(list.length === 0){
+    histList.innerHTML = emptyState(historyDateFilter
+      ? 'No service report on that date.'
+      : 'No service reports yet for this customer.');
+    return;
+  }
+
+  histList.innerHTML = '';
+  // Only the one opened last time survives a redraw
+  if(historyOpenId && !list.some(v => v.id === historyOpenId)) historyOpenId = null;
+
+  const type = 'visits';
+  const pageKey = customerId + '|' + type + '|' + (historyDateFilter || '');
+  if(pageKey !== historyPageKey){ historyPageKey = pageKey; historyPage = 1; }
+  const totalPages = Math.max(1, Math.ceil(list.length / HISTORY_PER_PAGE));
+  historyPage = Math.min(totalPages, Math.max(1, historyPage));
+  const pageStart = (historyPage - 1) * HISTORY_PER_PAGE;
+  const fullCount = list.length;
+  list = list.slice(pageStart, pageStart + HISTORY_PER_PAGE);
+
+  list.forEach(v=>{
+    const bar = document.createElement('div');
+    const isOpen = historyOpenId === v.id;
+    bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;'
+      + 'padding:11px 12px;border:1px solid var(--line);border-radius:10px;margin-top:8px;'
+      + 'cursor:pointer;user-select:none;background:' + (isOpen ? 'var(--teal-pale)' : 'var(--card)') + ';';
+    const when = document.createElement('div');
+    when.style.cssText = 'font-size:13.5px;font-weight:600;color:var(--ink);min-width:0;';
+    when.textContent = fmtDate(v.date);
+    const which = document.createElement('span');
+    which.style.cssText = 'font-weight:500;color:var(--muted);margin-left:10px;font-size:12.5px;';
+    which.textContent = v.parts.map(p => p.label).join(' \u00b7 ');
+    when.appendChild(which);
+    const right = document.createElement('div');
+    right.style.cssText = 'display:flex;align-items:center;gap:10px;flex-shrink:0;';
+    const ago = document.createElement('div');
+    ago.style.cssText = 'font-size:12px;color:var(--muted);';
+    ago.textContent = howLongAgo(v.date) + (isOpen ? '  \u25b4' : '  \u25be');
+    right.appendChild(ago);
+    const del = document.createElement('button');
+    del.className = 'btn btn-ghost';
+    del.type = 'button';
+    del.textContent = 'Delete';
+    del.title = 'Delete this report for good';
+    del.style.cssText = 'width:auto;padding:4px 10px;font-size:11.5px;color:var(--rust);border-color:#EFC0B4;';
+    del.addEventListener('click', (e)=>{
+      e.stopPropagation();                 // not a press on the bar
+      deleteHistoryVisit(customerId, v);
+    });
+    right.appendChild(del);
+    bar.appendChild(when);
+    bar.appendChild(right);
+    bar.addEventListener('click', ()=>{
+      historyOpenId = isOpen ? null : v.id;
+      historyOpenBody = null;
+      showHistory(selectedHistoryCustomerId, name);
+    });
+    histList.appendChild(bar);
+
+    if(!isOpen) return;
+
+    // Inside the report: a tab for each body of water in this visit
+    const part = v.parts.find(p => p.type === historyOpenBody) || v.parts[0];
+    if(v.parts.length > 1){
+      const tabs = document.createElement('div');
+      tabs.className = 'seg-control';
+      tabs.style.marginTop = '8px';
+      v.parts.forEach(p=>{
+        const t = document.createElement('button');
+        t.type = 'button';
+        t.className = 'history-type-btn' + (p === part ? ' active' : '');
+        t.textContent = p.label;
+        t.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          historyOpenBody = p.type;
+          showHistory(selectedHistoryCustomerId, name);
+        });
+        tabs.appendChild(t);
+      });
+      histList.appendChild(tabs);
+    }
+    histList.appendChild(buildReportDoc(customerId, name, customer, part.type, part.r, ()=> deleteHistoryVisit(customerId, v)));
   });
 
   // Page numbers, only once there's more than one page. Built the same way as
@@ -15807,7 +15976,7 @@ function openDeleteEquipmentModal(typeName){
 
         <div id="delEqPickArea" style="display:none;margin-top:12px;flex:1;overflow-y:auto;">
           <div style="display:flex;gap:8px;margin-bottom:8px;">
-            <input id="delEqSearch" placeholder="Search customers" style="flex:1;font-size:13px;padding:7px 9px;">
+            <input id="delEqSearch" autocomplete="off" placeholder="Search customers" style="flex:1;font-size:13px;padding:7px 9px;">
             <button class="btn btn-ghost" id="delEqAll" style="width:auto;padding:6px 11px;font-size:12px;">Select all</button>
           </div>
           <div id="delEqList" style="border:1px solid var(--line);border-radius:10px;padding:4px 10px;max-height:230px;overflow-y:auto;"></div>
@@ -16345,7 +16514,7 @@ function openAddToCustomersModal(typeName){
         <h3 style="font-size:15px;margin:0 0 4px;">Add ${typeName} to other customers?</h3>
         <p style="font-size:11.5px;color:var(--muted);margin:0 0 10px;">It has already been added to this customer. Tick anyone else who has one.</p>
         <div style="display:flex;gap:8px;margin-bottom:10px;">
-          <input id="addEqSearch" placeholder="Search customers" style="flex:1;font-size:13px;padding:7px 9px;">
+          <input id="addEqSearch" autocomplete="off" placeholder="Search customers" style="flex:1;font-size:13px;padding:7px 9px;">
           <button class="btn btn-ghost" id="addEqAll" style="width:auto;padding:6px 11px;font-size:12px;">Select all</button>
         </div>
         <div id="addEqList" style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:4px 10px;"></div>
@@ -17452,6 +17621,66 @@ function refreshCustomerStepButtons(){
   next.title = atEnd ? 'Last customer' : 'Go to ' + displayName(list[i+1].name);
 }
 
+// Extra service days, beside the main day in the profile, each with an × to
+// take it off, then "+ Add a day"
+function renderProfileExtraDays(c){
+  const box = document.getElementById('profileExtraDays');
+  if(!box) return;
+  box.innerHTML = '';
+  const order = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  const extras = (Array.isArray(c.extraDays) ? c.extraDays : []).filter(d => d && d !== c.day)
+    .sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  extras.forEach(d=>{
+    const pill = document.createElement('span');
+    pill.className = 'pill';
+    pill.style.cssText = 'font-size:12.5px;padding:3px 4px 3px 10px;display:inline-flex;align-items:center;gap:4px;';
+    const t = document.createElement('span');
+    t.textContent = d;
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'btn btn-ghost';
+    x.style.cssText = 'width:18px;height:18px;min-width:18px;padding:0;font-size:11px;border:none;background:transparent;color:inherit;';
+    x.textContent = '\u00d7';
+    x.title = 'Take ' + d + ' off';
+    x.addEventListener('click', ()=>{
+      c.extraDays = extras.filter(e => e !== d);
+      saveCustomerField();
+      renderProfileExtraDays(c);
+      showToast(d + ' taken off');
+    });
+    pill.appendChild(t); pill.appendChild(x);
+    box.appendChild(pill);
+  });
+  const free = order.filter(d => d !== c.day && extras.indexOf(d) === -1);
+  if(!c.day || !free.length) return;
+  // The button opens the list of days straight away
+  const add = document.createElement('span');
+  add.className = 'btn btn-ghost';
+  add.style.cssText = 'position:relative;width:auto;padding:3px 10px;font-size:12px;cursor:pointer;';
+  add.textContent = '+ Add a day';
+  add.title = 'For a customer serviced more than once a week';
+  const pick = document.createElement('select');
+  pick.setAttribute('aria-label', 'Add a service day');
+  pick.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;margin:0;padding:0;border:0;';
+  const first = document.createElement('option');
+  first.value = ''; first.textContent = 'Add a day\u2026';
+  pick.appendChild(first);
+  free.forEach(d=>{
+    const o = document.createElement('option');
+    o.value = d; o.textContent = d;
+    pick.appendChild(o);
+  });
+  pick.addEventListener('change', ()=>{
+    if(!pick.value) return;
+    c.extraDays = extras.concat(pick.value);
+    saveCustomerField();
+    renderProfileExtraDays(c);
+    showToast(displayName(c.name) + ' also on ' + pick.value);
+  });
+  add.appendChild(pick);
+  box.appendChild(add);
+}
+
 function viewCustomer(c){
   profileCustomerId = c.id;
   editingId = c.id;
@@ -17495,54 +17724,35 @@ function viewCustomer(c){
     input.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); input.blur(); } });
   };
 
-  // Service day pill — click to change
+  // Service day pill — press it to change. The pill always stays on show: an
+  // unseen menu lies over it and opens at once, so choosing the day it already
+  // says (or nothing) simply leaves the pill as it was, instead of leaving a
+  // bare menu behind
   const dayPill = document.getElementById('profileDayPill');
   dayPill.textContent = c.day || 'No day set';
   dayPill.title = 'Tap to change service day';
-  dayPill.onclick = ()=>{
-    if(dayPill.dataset.editing === 'true') return;
-    dayPill.dataset.editing = 'true';
-    const sel = document.createElement('select');
-    sel.className = 'profile-inline-input';
-    sel.style.cssText = 'width:auto;font-size:13px;padding:4px 8px;';
-    DAYS_OF_WEEK.forEach(d=>{
-      const o = document.createElement('option');
-      o.value = d; o.textContent = d;
-      if((c.day || 'Monday') === d) o.selected = true;
-      sel.appendChild(o);
-    });
-    dayPill.style.display = 'none';
-    dayPill.after(sel);
-    sel.focus();
-
-    // Open the list straight away. Focusing alone left a closed dropdown sitting
-    // there, so changing a day took two taps instead of one. showPicker is the
-    // supported way to do it; older browsers fall back to a synthetic tap,
-    // which most of them honour while the element already has focus.
-    try{
-      if(typeof sel.showPicker === 'function'){
-        sel.showPicker();
-      } else {
-        sel.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
-      }
-    }catch(e){
-      // Refused — the technician can still tap it, exactly as before
-    }
-
-    let committed = false;
-    const commit = ()=>{
-      if(committed) return;
-      committed = true;
-      c.day = sel.value;
-      saveCustomerField();
-      sel.remove();
-      dayPill.style.display = '';
-      dayPill.dataset.editing = 'false';
-      viewCustomer(c);
-    };
-    sel.addEventListener('change', commit);
-    sel.addEventListener('blur', commit);
-  };
+  dayPill.onclick = null;
+  dayPill.style.position = 'relative';
+  dayPill.style.cursor = 'pointer';
+  const dayPick = document.createElement('select');
+  dayPick.setAttribute('aria-label', 'Service day');
+  dayPick.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;margin:0;padding:0;border:0;';
+  const extrasNow = Array.isArray(c.extraDays) ? c.extraDays : [];
+  DAYS_OF_WEEK.filter(d => d === c.day || extrasNow.indexOf(d) === -1).forEach(d=>{
+    const o = document.createElement('option');
+    o.value = d; o.textContent = d;
+    dayPick.appendChild(o);
+  });
+  dayPick.value = c.day || 'Monday';
+  dayPick.addEventListener('change', ()=>{
+    if(dayPick.value === c.day) return;
+    c.day = dayPick.value;
+    if(Array.isArray(c.extraDays)) c.extraDays = c.extraDays.filter(d => d !== c.day);
+    saveCustomerField();
+    viewCustomer(c);
+  });
+  dayPill.appendChild(dayPick);
+  renderProfileExtraDays(c);
 
   // Technician — sits on the name line, tap to reassign
   const techEl = document.getElementById('profileTechName');
@@ -18021,9 +18231,8 @@ function renderList(){
     .forEach(c=>{
       const row = document.createElement('div');
       row.className = 'cust-row';
-      const dayLabel = c.day ? c.day : 'No day set';
       const techName = technicianNameById(c.technicianId);
-      row.innerHTML = `<div class="cust-left"><div class="cust-avatar">${initialOf(c.name)}</div><div class="cust-info"><div class="cust-name">${displayName(c.name)}</div><div class="cust-meta"><span class="pill">${dayLabel}</span>${c.address || 'No address on file'}</div></div></div>`;
+      row.innerHTML = `<div class="cust-left"><div class="cust-avatar">${initialOf(c.name)}</div><div class="cust-info"><div class="cust-name">${displayName(c.name)}</div><div class="cust-meta">${c.address || 'No address on file'}</div></div></div>`;
       row.style.cursor = 'pointer';
       row.addEventListener('click', ()=>viewCustomer(c));
       const rightWrap = document.createElement('div');
@@ -18032,17 +18241,107 @@ function renderList(){
       rightWrap.style.gap = '10px';
       rightWrap.style.flexShrink = '0';
 
-      const techBlock = document.createElement('div');
-      techBlock.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0;line-height:1.25;margin-right:2px;';
-      const techEyebrow = document.createElement('span');
-      techEyebrow.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;";
-      techEyebrow.textContent = 'Technician';
-      const techValue = document.createElement('span');
-      techValue.style.cssText = 'font-size:13px;font-weight:600;color:' + (techName ? 'var(--teal-deep)' : 'var(--muted)') + ';white-space:nowrap;';
-      techValue.textContent = techName || 'Unassigned';
-      techBlock.appendChild(techEyebrow);
-      techBlock.appendChild(techValue);
-      rightWrap.appendChild(techBlock);
+      // Day and Technician, each changed right here: pressing one opens its
+      // menu without opening the customer
+      const pickBlock = (eyebrowText, valueText, set, options, current, onPick)=>{
+        const block = document.createElement('div');
+        block.style.cssText = 'position:relative;display:flex;flex-direction:column;align-items:flex-end;'
+          + 'flex-shrink:0;line-height:1.25;margin-right:2px;cursor:pointer;';
+        block.title = 'Change ' + eyebrowText.toLowerCase();
+        const eyebrow = document.createElement('span');
+        eyebrow.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;";
+        eyebrow.textContent = eyebrowText;
+        const value = document.createElement('span');
+        value.style.cssText = 'font-size:13px;font-weight:600;color:' + (set ? 'var(--teal-deep)' : 'var(--muted)') + ';white-space:nowrap;';
+        value.textContent = valueText + ' \u25be';
+        // The real menu lies over the block, unseen, so a press opens it at once
+        const pick = document.createElement('select');
+        pick.setAttribute('aria-label', eyebrowText + ' for ' + displayName(c.name));
+        pick.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;margin:0;padding:0;border:0;';
+        options.forEach(([v, t])=>{
+          const o = document.createElement('option');
+          o.value = v; o.textContent = t;
+          pick.appendChild(o);
+        });
+        pick.value = current;
+        ['click', 'mousedown', 'touchstart'].forEach(ev => pick.addEventListener(ev, e => e.stopPropagation(), {passive: true}));
+        pick.addEventListener('change', ()=> onPick(pick.value));
+        block.appendChild(eyebrow);
+        block.appendChild(value);
+        block.appendChild(pick);
+        block.addEventListener('click', e => e.stopPropagation());
+        return block;
+      };
+      // Day: each of the customer's days is its own part, changed on its own
+      const WEEK_ORDER = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+      const extras = (Array.isArray(c.extraDays) ? c.extraDays : []).filter(d => d && d !== c.day)
+        .sort((x, y) => WEEK_ORDER.indexOf(x) - WEEK_ORDER.indexOf(y));
+      const dayBlock = document.createElement('div');
+      dayBlock.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0;line-height:1.25;';
+      dayBlock.addEventListener('click', e => e.stopPropagation());
+      const dayEyebrow = document.createElement('span');
+      dayEyebrow.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;";
+      dayEyebrow.textContent = 'Day';
+      const dayLine = document.createElement('div');
+      dayLine.style.cssText = 'display:flex;align-items:center;gap:4px;white-space:nowrap;';
+      const saveDays = msg => { saveCustomers(); renderList(); showToast(msg); };
+      const dayPart = (current, isMain)=>{
+        const part = document.createElement('span');
+        part.style.cssText = 'position:relative;font-size:13px;font-weight:600;cursor:pointer;color:'
+          + (current ? 'var(--teal-deep)' : 'var(--muted)') + ';';
+        part.textContent = (current || 'Not scheduled') + ' \u25be';
+        part.title = isMain ? 'Change the service day' : 'Change or remove this extra day';
+        const pick = document.createElement('select');
+        pick.setAttribute('aria-label', (isMain ? 'Service day' : 'Extra day ' + current) + ' for ' + displayName(c.name));
+        pick.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;margin:0;padding:0;border:0;';
+        // The other days, leaving out any this customer already has
+        const taken = [c.day].concat(extras).filter(d => d && d !== current);
+        const opts = WEEK_ORDER.filter(d => taken.indexOf(d) === -1).map(d => [d, d]);
+        (isMain ? [['', 'Not scheduled']] : [['__remove', 'Remove this day']]).concat(opts).forEach(([v, t])=>{
+          const o = document.createElement('option');
+          o.value = v; o.textContent = t;
+          pick.appendChild(o);
+        });
+        pick.value = current || '';
+        ['click', 'mousedown', 'touchstart'].forEach(ev => pick.addEventListener(ev, e => e.stopPropagation(), {passive: true}));
+        pick.addEventListener('change', ()=>{
+          const v = pick.value;
+          if(isMain){
+            c.day = v;
+            saveDays(displayName(c.name) + (v ? ' now on ' + v : ' is not scheduled'));
+          } else if(v === '__remove'){
+            c.extraDays = extras.filter(d => d !== current);
+            saveDays(current + ' taken off');
+          } else {
+            c.extraDays = extras.map(d => d === current ? v : d);
+            saveDays(displayName(c.name) + ': ' + current + ' changed to ' + v);
+          }
+        });
+        part.appendChild(pick);
+        return part;
+      };
+      dayLine.appendChild(dayPart(c.day || '', true));
+      extras.forEach(d=>{
+        const plus = document.createElement('span');
+        plus.style.cssText = 'font-size:12px;color:var(--muted);';
+        plus.textContent = '+';
+        dayLine.appendChild(plus);
+        dayLine.appendChild(dayPart(d, false));
+      });
+      dayBlock.appendChild(dayEyebrow);
+      dayBlock.appendChild(dayLine);
+      dayBlock.style.marginRight = '12px';     // 10px further left of Technician
+      rightWrap.appendChild(dayBlock);
+      rightWrap.appendChild(pickBlock('Technician', techName || 'Unassigned', !!techName,
+        [['', 'Unassigned']].concat(technicians.map(t => [String(t.id), t.name || 'Technician'])),
+        c.technicianId ? String(c.technicianId) : '', v=>{
+          // The technician's own id, as everywhere else stores it
+          const t = technicians.find(x => String(x.id) === v);
+          c.technicianId = t ? t.id : '';
+          saveCustomers();
+          renderList();
+          showToast(displayName(c.name) + ' \u2192 ' + (v ? technicianNameById(v) : 'Unassigned'));
+        }));
 
       const activeLabel = document.createElement('label');
       activeLabel.className = 'toggle-switch';
@@ -18657,6 +18956,23 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
       }, 250);
     });
   });
+})();
+</script>
+<script>
+// Search boxes show only Weir's own suggestions (customers, and products on a
+// quote or work order line), never the browser's list of things typed before
+(function noBrowserSuggestionsInSearch(){
+  const isSearch = el => el && el.tagName === 'INPUT'
+    && el.getAttribute('list') !== 'wcProductSuggestions'
+    && (/search/i.test(el.id || '') || el.type === 'search'
+        || /^(search|start typing)/i.test(el.placeholder || ''));
+  const quiet = el => { if(isSearch(el) && el.getAttribute('autocomplete') !== 'off') el.setAttribute('autocomplete', 'off'); };
+  const sweep = root => { if(root && root.querySelectorAll) root.querySelectorAll('input').forEach(quiet); };
+  sweep(document);
+  new MutationObserver(list => list.forEach(m => m.addedNodes.forEach(n=>{
+    if(n.nodeType !== 1) return;
+    if(n.tagName === 'INPUT') quiet(n); else sweep(n);
+  }))).observe(document.body, {childList: true, subtree: true});
 })();
 </script>
 </body>

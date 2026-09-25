@@ -1620,6 +1620,8 @@ function customPhotosFor(type){
 
   return defs.filter(p=>{
     if(!p || !p.label) return false;
+    // Limited to some customers: only at their visits
+    if(Array.isArray(p.customerIds) && p.customerIds.length && p.customerIds.indexOf(cid) === -1) return false;
     // No technicians chosen means everyone
     if(!Array.isArray(p.techIds) || p.techIds.length === 0) return true;
     return !!(currentUser && p.techIds.indexOf(currentUser.id) !== -1);
@@ -6637,6 +6639,12 @@ function tasksForCustomer(customerId){
     (t.customerIds || []).indexOf(customerId) !== -1 || t.customerId === customerId);
 }
 
+// A customer's service days: their main day, and any extra days for customers
+// serviced more than once a week
+function customerServicedOn(c, day){
+  return !!c && !!day && (c.day === day || (Array.isArray(c.extraDays) && c.extraDays.indexOf(day) !== -1));
+}
+
 function renderHomeList(){
   renderDayTabs();
   renderWeekLabel();
@@ -6649,7 +6657,7 @@ function renderHomeList(){
     : '';
   // Regular route: customers whose service day matches
   const routeCustomers = customers
-    .filter(c => c.day === selectedHomeDay && c.active !== false)
+    .filter(c => customerServicedOn(c, selectedHomeDay) && c.active !== false)
     // Only customers assigned to the signed-in technician appear on their route
     .filter(c => currentUser ? c.technicianId === currentUser.id : false)
     // Done on that day, or since: a Friday customer caught up on Monday drops
@@ -6699,7 +6707,7 @@ function renderHomeList(){
   const doneToday = customers.filter(cust =>
     cust.active !== false &&
     cust.lastServicedDate === today &&
-    cust.day === selectedHomeDay
+    customerServicedOn(cust, selectedHomeDay)
   ).length;
   const remaining = todaysCustomers.length;
   const totalStops = remaining + (weekOffset === 0 ? doneToday : 0);
@@ -7229,7 +7237,7 @@ function routeOrderToday(){
   const movedAway = new Set(reschedules.filter(r => r.fromDate === iso).map(r => r.customerId));
 
   const base = customers
-    .filter(c => c.day === selectedHomeDay && c.active !== false)
+    .filter(c => customerServicedOn(c, selectedHomeDay) && c.active !== false)
     .filter(c => currentUser ? c.technicianId === currentUser.id : false)
     .filter(c => !movedAway.has(c.id));
 
