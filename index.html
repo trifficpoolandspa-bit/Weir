@@ -132,16 +132,6 @@ input:focus{
     </div>
   </div>
 
-  <!-- Every time: the app, or the website -->
-  <div id="whereChoice" style="margin:0 0 6px;">
-    <button class="btn btn-primary" id="btnChooseApp" style="width:100%;margin-bottom:10px;">Open the app</button>
-    <button class="btn btn-ghost" id="btnChooseWebsite" style="width:100%;">Open the website</button>
-  </div>
-
-  <!-- Back to the question, from any step of the app's sign-in -->
-  <button class="btn btn-ghost" id="btnBackToChoice" type="button" style="display:none;width:auto;padding:6px 12px;font-size:12.5px;margin:0 0 12px;">&larr; Back</button>
-
-  <div id="appSignIn" style="display:none;">
   <div class="error" id="loginError"></div>
 
   <div class="field">
@@ -154,6 +144,15 @@ input:focus{
   </div>
 
   <button class="btn btn-primary" id="btnLogin">Sign in</button>
+
+  <!-- The office site is where customers, routes and settings are managed.
+       It is shown because a technician signing in here needs somewhere to go
+       to set the company up; it is not a shortcut past the sign-in. -->
+  <div class="devbar" id="officeBar">
+    <p>Setting up, or managing customers?</p>
+    <div class="row">
+      <button class="btn btn-ghost" id="btnOfficeSite">Open the office site</button>
+    </div>
   </div>
 </div>
 
@@ -742,41 +741,28 @@ document.getElementById('loginUsername').addEventListener('keydown', (e)=>{
 // service app (?app=service); anything else, an owner goes to the office site.
 // Without that, both Home Screen icons landed in the same place — the owner
 // redirect hijacked the service icon too.
-// This page no longer decides where to go: it asks, every time, whether to
-// open the app or the website (the two buttons above)
 (function(){
-  const sub = document.querySelector('.brand .sub');
-  if(sub) sub.textContent = 'Where would you like to go?';
-  fieldRenderLogin();
-  // A setup link (a new technician's invitation) goes straight to the app's
-  // sign-in, as before
-  if(new URLSearchParams(window.location.search).get('company')){
-    showAppSignIn();
-    fieldHandleSetupLink();
+  const wantsService = new URLSearchParams(window.location.search).get('app') === 'service';
+
+  if(!wantsService){
+    const owner = lsGet('ownerAccount');
+    if(lsGet('ownerSession') && owner && owner.username){
+      goTo('./customer-intake.html');
+      return;
+    }
   }
+
+  fieldRenderLogin();
+  // A setup link is handled here and stays on this page to sign in
+  if(new URLSearchParams(window.location.search).get('company')){
+    fieldHandleSetupLink();
+    return;
+  }
+  const tech = fieldCurrentUser();
+  if(tech) goTo(routeFor(tech));
 })();
 
-// The two choices at the top of the page
-function showAppSignIn(){
-  document.getElementById('whereChoice').style.display = 'none';
-  document.getElementById('appSignIn').style.display = 'block';
-  document.getElementById('btnBackToChoice').style.display = 'inline-flex';
-  const sub = document.querySelector('.brand .sub');
-  if(sub) sub.textContent = 'Sign in to get to your route.';
-  const u = document.getElementById('loginUsername');
-  if(u) u.focus();
-}
-document.getElementById('btnChooseApp').addEventListener('click', ()=>{
-  // Already signed in on this phone: straight in. Otherwise, the sign-in.
-  const tech = fieldCurrentUser();
-  if(tech){ goTo(routeFor(tech)); return; }
-  showAppSignIn();
-});
-// Fresh page, so whichever sign-in step was showing, it's back to the two choices
-document.getElementById('btnBackToChoice').addEventListener('click', ()=>{
-  window.location.href = window.location.pathname;
-});
-document.getElementById('btnChooseWebsite').addEventListener('click', ()=>{
+document.getElementById('btnOfficeSite').addEventListener('click', ()=>{
   goTo('./customer-intake.html');
 });
 
