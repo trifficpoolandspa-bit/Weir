@@ -2372,12 +2372,17 @@ document.addEventListener('visibilitychange', ()=>{
 
 // Shuts any customer briefing open on the route
 function closeRouteBriefs(){
-  document.querySelectorAll('.route-brief').forEach(p => p.remove());
+  document.querySelectorAll('.route-brief, .route-job-brief').forEach(p => p.remove());
   document.querySelectorAll('.chev').forEach(x => { x.textContent = '\u203A'; });
 }
 
+// Leaving Today for any reason — another tab, a visit or report, the app put in
+// the background — closes any open row, so Today always comes back tidy
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden) closeRouteBriefs(); });
+
 function switchView(view, opts){
   opts = opts || {};
+  if(view !== 'home' && currentViewName === 'home') closeRouteBriefs();
 
   // Leaving an open report to another tab — remember it so Today can bring it
   // back. Going to the route itself means they are done with it.
