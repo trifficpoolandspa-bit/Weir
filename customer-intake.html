@@ -6995,6 +6995,8 @@ async function syncCustomers(){
 
     // Everything else the phones need: technician profiles, company details,
     // setup and the company-wide settings
+    // Any report deleted here goes to the server first
+    await sendVisitDeletes();
     const visits = await syncPullVisits(state, companyId);
     result.visits = visits.applied || 0;
     if(!visits.ok && !visits.offline) result.failed++;
@@ -7714,6 +7716,9 @@ function syncApplyVisit(row){
        : 'fountainReadings:' + row.customer_id + ':' + String(row.body).slice('fountain:'.length));
   const list = lsGet(key) || [];
   const i = list.findIndex(x => x && String(x.id) === String(row.id));
+  // Deleted here and not yet confirmed by the server: it stays deleted
+  if(!row.deleted && row.kind !== 'skip' && typeof visitDeleteWaiting === 'function'
+     && visitDeleteWaiting(row.customer_id, row.body, row.id)) return true;
   if(row.deleted){
     if(i === -1) return true;
     list.splice(i, 1);
@@ -13209,12 +13214,20 @@ function confirmDialog(message, confirmLabel){
       </div>
     `;
     document.body.appendChild(overlay);
+    // Enter presses the confirm button (e.g. "Delete for good"); Escape cancels
+    const keys = e=>{
+      if(e.key === 'Enter'){ e.preventDefault(); e.stopPropagation(); cleanup(true); }
+      else if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); cleanup(false); }
+    };
     const cleanup = (result)=>{
-      document.body.removeChild(overlay);
+      document.removeEventListener('keydown', keys, true);
+      if(overlay.parentNode) document.body.removeChild(overlay);
       resolve(result);
     };
+    document.addEventListener('keydown', keys, true);
     overlay.querySelector('#confirmCancel').addEventListener('click', ()=>cleanup(false));
     overlay.querySelector('#confirmOk').addEventListener('click', ()=>cleanup(true));
+    try{ overlay.querySelector('#confirmOk').focus(); }catch(e){}
   });
 }
 
@@ -15024,8 +15037,8 @@ async function deleteHistoryReport(customerId, type, reading){
   const when = fmtDate(reading.date);
   const sure = await confirmDialog(
     'Delete the service report from ' + when + '?\n\n'
-    + 'It is removed for good, on every device, and cannot be brought back. '
-    + 'The copy already emailed to the customer is not affected.',
+    + 'It is removed for good from the website and the office\u2019s records, and cannot be brought back. '
+    + 'The copy on the technician\u2019s phone and the one already emailed to the customer are not affected.',
     'Delete for good');
   if(!sure) return;
 
@@ -15040,11 +15053,38 @@ function removeHistoryReport(customerId, type, readingId){
     showToast('Could not delete — storage may be full');
     return false;
   }
+  // Removed on the server too, so it's gone on every device and a later sync
+  // can't bring it back (a phone still updating today's report used to)
+  const body = type === 'pool' ? 'pool' : (type === 'spa' ? 'spa' : 'fountain:' + type);
+  const waiting = lsGet('visitDeletesToSend') || [];
+  waiting.push({customerId: customerId, body: body, id: String(readingId)});
+  lsSet('visitDeletesToSend', waiting);
+  sendVisitDeletes();
   if(historyOpenId === readingId) historyOpenId = null;
   const cust = customers.find(c => c.id === customerId);
   showHistory(customerId, cust ? cust.name : '');
   showToast('Report deleted');
   return true;
+}
+
+// Reports deleted here, sent to the server (office only, snippet 08). Held
+// and tried again with each sync until the server has them.
+async function sendVisitDeletes(){
+  const waiting = lsGet('visitDeletesToSend') || [];
+  if(!waiting.length || typeof sbFetch !== 'function') return;
+  const left = [];
+  for(const d of waiting){
+    try{
+      const res = await sbFetch('/rest/v1/rpc/amend_visit', {method: 'POST', body: JSON.stringify({
+        p_customer_id: d.customerId, p_kind: 'reading', p_body: d.body, p_id: d.id, p_data: null, p_deleted: true})});
+      if(!res || !res.ok) left.push(d);
+    }catch(e){ left.push(d); }
+  }
+  lsSet('visitDeletesToSend', left);
+}
+function visitDeleteWaiting(customerId, body, id){
+  return (lsGet('visitDeletesToSend') || []).some(d =>
+    d.customerId === customerId && d.body === body && d.id === String(id));
 }
 
 function renderHistorySegControl(customer){
