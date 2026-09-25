@@ -7732,15 +7732,32 @@ function saveFieldRouteOrder(){
 
 // The website saves route order under 'routeOrders', keyed by day then route.
 // Flatten that into a plain id list so the field apps inherit the same order.
+// Which keys of a day's saved order are technicians' routes (or Unassigned),
+// as opposed to the named routes used before routes became technicians
+function technicianRouteKeys(){
+  const keys = new Set(['unassigned']);
+  customers.forEach(c => { if(c && c.technicianId) keys.add(String(c.technicianId)); });
+  return keys;
+}
+
 function websiteOrderForDay(day){
   const ro = lsGet('routeOrders') || {};
   const forDay = ro[day];
   if(!forDay) return [];
-  if(Array.isArray(forDay)) return forDay;           // older flat shape
-  return Object.keys(forDay).reduce((acc, routeKey)=>{
-    const arr = forDay[routeKey];
-    return Array.isArray(arr) ? acc.concat(arr) : acc;
-  }, []);
+  let all;
+  if(Array.isArray(forDay)){
+    all = forDay;                                      // older flat shape
+  } else {
+    // Once a day has technicians' routes, only those count: an older
+    // named-route order left beside them listed every customer twice
+    const techKeys = technicianRouteKeys();
+    const keys = Object.keys(forDay);
+    const use = keys.some(k => techKeys.has(k)) ? keys.filter(k => techKeys.has(k)) : keys;
+    all = use.reduce((acc, k) => Array.isArray(forDay[k]) ? acc.concat(forDay[k]) : acc, []);
+  }
+  // Never the same customer twice, whatever is saved
+  const seen = new Set();
+  return all.filter(id => { if(seen.has(id)) return false; seen.add(id); return true; });
 }
 
 
@@ -7935,7 +7952,24 @@ document.getElementById('orderTempBtn').addEventListener('click', async ()=>{
 // their exact place. Jobs aren't part of a route, so they're left out.
 function saveCompanyRouteOrder(day, ids){
   const ro = lsGet('routeOrders') || {};
-  if(!ro[day] || Array.isArray(ro[day])) ro[day] = {};
+  // A day still saved under named routes (or the older single list) is turned
+  // into technicians' routes first, so the two never sit side by side
+  const techKeys = technicianRouteKeys();
+  if(!ro[day] || Array.isArray(ro[day]) || Object.keys(ro[day]).some(k => !techKeys.has(k))){
+    const flat = websiteOrderForDay(day);
+    const kept = {};
+    Object.keys(ro[day] && !Array.isArray(ro[day]) ? ro[day] : {}).forEach(k=>{ if(techKeys.has(k)) kept[k] = ro[day][k]; });
+    const old = Array.isArray(ro[day]) ? ro[day]
+      : Object.keys(ro[day] || {}).filter(k => !techKeys.has(k)).reduce((a, k) => a.concat(ro[day][k] || []), []);
+    old.forEach(id=>{
+      const c = customers.find(x => String(x.id) === String(id));
+      if(!c) return;
+      const key = c.technicianId ? String(c.technicianId) : 'unassigned';
+      kept[key] = kept[key] || [];
+      if(kept[key].indexOf(c.id) === -1) kept[key].push(c.id);
+    });
+    ro[day] = kept;
+  }
   const byRoute = {};
   ids.forEach(id=>{
     if(String(id).indexOf('job:') === 0) return;

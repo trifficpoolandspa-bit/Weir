@@ -2423,7 +2423,8 @@ function dayOrdersFor(day){
       const c = customers.find(x => x.id === id);
       if(!c) return;
       const key = routeKeyFor(c);
-      (byTech[key] = byTech[key] || []).push(id);
+      byTech[key] = byTech[key] || [];
+      if(byTech[key].indexOf(id) === -1) byTech[key].push(id);   // never twice
     });
     routeOrders[day] = byTech;
     saveRouteOrders();
