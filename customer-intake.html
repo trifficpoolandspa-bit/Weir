@@ -526,11 +526,6 @@ input::placeholder{color:#A9BCB9;}
     </header>
 
     <main>
-  <div class="notice">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;"><circle cx="12" cy="12" r="10" stroke="#0A3739" stroke-width="2"/><path d="M12 8V13" stroke="#0A3739" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16.2" r="1.1" fill="#0A3739"/></svg>
-    <span>Customers added here appear automatically in the main Weir app — both pages share the same on-device storage. Add a test customer, then check the main app to confirm before relying on this for real customers.</span>
-  </div>
-
   <div class="view active" id="view-customers">
     <div class="card" id="addCustomerCard">
       <div class="btn-row">
@@ -9946,7 +9941,20 @@ function renderSubmittedHistory(kind){
   const box = document.getElementById('wcSubmittedList');
   const countEl = document.getElementById('wcSubmittedCount');
   if(!box) return;
-  const list = (lsGet('jobSubmissions') || []).filter(sub => sub && sub.kind === kind)
+  // Finished in the field: tasks ticked done and work order visits marked done
+  // on the phone (sent with their notes, snippet 16), plus any submissions
+  // kept on this device from before that
+  const nameOf = id => { const c = customers.find(x => String(x.id) === String(id)); return c ? displayName(c.name) : ''; };
+  const fromServer = kind === 'task'
+    ? tasks.filter(t => t && t.done).map(t => ({key: 'task:' + t.id, sourceId: t.id, title: t.title || 'Task',
+        customerName: (t.customerIds || []).map(nameOf).filter(Boolean).join(', '),
+        submittedAt: t.doneAt || '', notes: t.doneNotes || '', by: technicianNameById(t.doneBy || t.technicianId) || ''}))
+    : (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'done').map(j => ({key: 'wo:' + j.id, sourceId: j.id,
+        title: j.title || 'Work order', customerName: nameOf(j.customerId),
+        submittedAt: j.doneAt || '', notes: j.doneNotes || '', by: technicianNameById(j.doneBy || j.technicianId) || ''}));
+  const seen = new Set(fromServer.map(x => String(x.sourceId)));
+  const list = fromServer.concat((lsGet('jobSubmissions') || [])
+      .filter(sub => sub && sub.kind === kind && !seen.has(String(sub.sourceId))))
     .sort((a, b) => String(b.submittedAt || '').localeCompare(String(a.submittedAt || '')));
   countEl.textContent = list.length ? String(list.length) : '';
   if(!list.length){
@@ -9959,6 +9967,8 @@ function renderSubmittedHistory(kind){
   const redrawSub = () => renderSubmittedHistory(kind);
   box.appendChild(selectionBar(subKey, list.map(x => x.key), 'submitted ' + kind, ids=>{
     const set = new Set(ids);
+    tasks = tasks.filter(t => !set.has('task:' + t.id)); saveTasks();
+    lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !set.has('wo:' + j.id)));
     lsSet('jobSubmissions', (lsGet('jobSubmissions') || []).filter(x => !(x && x.kind === kind && set.has(x.key))));
   }, redrawSub));
   list.forEach(sub=>{
@@ -9967,19 +9977,24 @@ function renderSubmittedHistory(kind){
     const subTick = selectionTick(subKey, sub.key, redrawSub);
     if(subTick){ row.style.display = 'flex'; row.style.alignItems = 'flex-start'; row.style.cursor = 'pointer';
       row.appendChild(subTick); row.addEventListener('click', e=>{ if(e.target.tagName === 'INPUT') return; toggleSelected(subKey, sub.key, redrawSub); }); }
+    // The lines stack together, beside the tick when selecting
+    const body = document.createElement('div');
+    body.style.cssText = 'flex:1;min-width:0;';
     const title = document.createElement('div');
     title.style.cssText = 'font-weight:700;font-size:14px;';
-    title.textContent = (sub.customerName || 'Customer') + ' \u2013 ' + (sub.title || kind);
+    title.textContent = (sub.customerName ? sub.customerName + ' \u2013 ' : '') + (sub.title || kind);
     const when = document.createElement('div');
     when.style.cssText = 'font-size:12px;color:var(--muted);margin-top:2px;';
-    when.textContent = sub.submittedAt ? new Date(sub.submittedAt).toLocaleString() : '';
-    row.appendChild(title); row.appendChild(when);
+    when.textContent = [sub.submittedAt ? new Date(sub.submittedAt).toLocaleString() : '', sub.by ? 'by ' + sub.by : '']
+      .filter(Boolean).join(' \u00b7 ');
+    body.appendChild(title); body.appendChild(when);
     if(sub.notes){
       const notes = document.createElement('div');
-      notes.style.cssText = 'font-size:13px;margin-top:6px;';
+      notes.style.cssText = 'font-size:13px;margin-top:6px;white-space:pre-line;';
       notes.textContent = sub.notes;
-      row.appendChild(notes);
+      body.appendChild(notes);
     }
+    row.appendChild(body);
     box.appendChild(row);
   });
 }

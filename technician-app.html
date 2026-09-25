@@ -3438,8 +3438,11 @@ const SYNC_WORK_LISTS = [
   ['scheduledWorkOrders', 'work_order'],
   ['rescheduledVisits', 'reschedule']
 ];
-const SYNC_WORK_SENDABLE = ['task', 'reschedule'];
-const SYNC_TASK_FIELDS = ['done', 'doneAt', 'doneBy'];
+// Finishing a task or a work order visit goes back too: done, when, by whom
+// and the notes (snippet 16 lets a technician change exactly these on their own)
+const SYNC_WORK_SENDABLE = ['task', 'reschedule', 'work_order'];
+const SYNC_TASK_FIELDS = ['done', 'doneAt', 'doneBy', 'doneNotes'];
+const SYNC_WORK_ORDER_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes'];
 
 function syncWorkLocal(){
   const out = {};
@@ -3471,6 +3474,7 @@ function syncScanWork(state, now){
       if(k && k.f && k.f[field] === f[field]){ delete e[field]; return; }
       // Only the fields the server will accept are ever sent
       if(key.indexOf('task\u0002') === 0 && SYNC_TASK_FIELDS.indexOf(field) === -1) return;
+      if(key.indexOf('work_order\u0002') === 0 && SYNC_WORK_ORDER_FIELDS.indexOf(field) === -1) return;
       const noticed = prev && prev[field] === f[field];
       if(!noticed || !e[field]) e[field] = stamp;
     });
@@ -6662,6 +6666,41 @@ function openJobPage(customer, job){
       submittedAt: new Date().toISOString()
     });
     lsSet('jobSubmissions', list);
+
+    // Done, and sent to the office with the notes, so it leaves Current and
+    // shows in History on the website. A task for several customers is done
+    // once every one of them has been submitted.
+    const stamp = new Date().toISOString();
+    const noteText = notes.value.trim();
+    if(job.kind === 'task'){
+      const all = lsGet('tasks') || [];
+      const t = all.find(x => x.id === job.id);
+      if(t){
+        const who = (t.customerIds || []).length ? t.customerIds.map(id => 'task:' + t.id + ':' + id) : ['task:' + t.id + ':none'];
+        const subs = jobSubmissions();
+        if(who.every(k => subs.some(x => x.key === k))){
+          t.done = true;
+          t.doneAt = stamp;
+          t.doneBy = currentUser ? currentUser.id : '';
+          t.doneNotes = who.map(k=>{
+            const x = subs.find(y => y.key === k);
+            if(!x || !x.notes) return '';
+            return (x.customerName && who.length > 1 ? x.customerName + ': ' : '') + x.notes;
+          }).filter(Boolean).join('\n');
+          lsSet('tasks', all);
+        }
+      }
+    } else {
+      const jobs = lsGet('scheduledWorkOrders') || [];
+      const j = jobs.find(x => x.id === job.id);
+      if(j){
+        j.status = 'done';
+        j.doneAt = stamp;
+        j.doneBy = currentUser ? currentUser.id : '';
+        j.doneNotes = noteText;
+        lsSet('scheduledWorkOrders', jobs);
+      }
+    }
     close();
     renderHomeList();
     showToast((customer ? customer.name + ' \u2013 ' : '') + job.title + ' submitted');
