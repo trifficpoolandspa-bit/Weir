@@ -6296,7 +6296,10 @@ function renderRouteTasks(){
   const list = document.getElementById('routeTaskList');
   if(!box || !list) return;
 
-  // Only the ones not tied to a particular stop show at the top
+  // A task with no customer is now its own row on the day, like the other
+  // jobs, opened and submitted the same way; this old list isn't shown
+  box.style.display = 'none';
+  return;
   const loose = tasksForToday().filter(t => !(t.customerIds || []).length && !t.customerId);
   if(!loose.length){ box.style.display = 'none'; return; }
 
@@ -6354,13 +6357,23 @@ function routeJobsFor(customerId, dayISO, techId){
     .filter(t => !t.done && t.date === dayISO && mine(t))
     .filter(t => (t.customerIds || []).indexOf(customerId) !== -1 || t.customerId === customerId)
     .map(t => ({key: 'task:' + t.id + ':' + customerId, kind: 'task', id: t.id,
-                title: t.title || 'Task', details: t.details || ''}));
+                title: t.title || 'Task', details: t.details || '', photoRequired: !!t.photoRequired}));
   const orders = (lsGet('scheduledWorkOrders') || [])
     .filter(j => j.status === 'scheduled' && j.date === dayISO && j.customerId === customerId && mine(j))
     .map(j => ({key: 'work order:' + j.id, kind: 'work order', id: j.id,
                 title: j.title || 'Work order', details: j.notes || ''}));
   return orders.concat(tasks).filter(j => !jobSubmitted(j.key));
 }
+// Tasks with no customer that day, as jobs of their own
+function routeLooseTasks(dayISO, techId){
+  const mine = x => !techId || String(x.technicianId) === String(techId);
+  return (lsGet('tasks') || [])
+    .filter(t => t && !t.done && t.date === dayISO && mine(t) && !(t.customerIds || []).length && !t.customerId)
+    .map(t => ({key: 'task:' + t.id + ':none', kind: 'task', id: t.id, title: t.title || 'Task',
+                details: t.details || '', photoRequired: !!t.photoRequired}))
+    .filter(j => !jobSubmitted(j.key));
+}
+
 // Customers with a task or work order still to do that day, so it has somewhere to sit
 function routeJobCustomerIds(dayISO, techId){
   const ids = new Set();
@@ -6381,7 +6394,8 @@ function routeJobCounts(dayISO, techId){
   // Every open job that day, including ones whose customer has already been
   // serviced: a job is its own piece of work, finished only when submitted
   const open = Array.from(routeJobCustomerIds(dayISO, techId))
-    .reduce((n, id)=> n + routeJobsFor(id, dayISO, techId).length, 0);
+    .reduce((n, id)=> n + routeJobsFor(id, dayISO, techId).length, 0)
+    + routeLooseTasks(dayISO, techId).length;
   const localDay = iso => { const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
   const done = jobSubmissions().filter(s =>
     (s.date ? s.date === dayISO : (s.submittedAt && localDay(s.submittedAt) === dayISO))
@@ -6438,7 +6452,7 @@ function appendRouteJobRows(container, customer, jobs, dayISO, canReorder){
     const text = document.createElement('div');
     text.style.cssText = 'min-width:0;flex:1 1 auto;font-family:\'Space Grotesk\',sans-serif;font-weight:700;'
       + 'font-size:14.5px;color:var(--gold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-    text.textContent = customer.name + ' \u2013 ' + job.title;
+    text.textContent = customer ? customer.name + ' \u2013 ' + job.title : job.title;
     row.appendChild(text);
     const right = document.createElement('div');
     right.style.cssText = 'display:flex;align-items:center;gap:10px;flex-shrink:0;';
@@ -6451,6 +6465,8 @@ function appendRouteJobRows(container, customer, jobs, dayISO, canReorder){
       + 'display:flex;align-items:center;justify-content:center;';
     onWay.textContent = 'On my way';
     onWay.addEventListener('click', e => { e.stopPropagation(); dispatchHeadsUp(customer); });
+    // No customer, nobody to tell; the space is kept so the arrows line up
+    if(!customer) onWay.style.visibility = 'hidden';
     right.appendChild(onWay);
     const chev = document.createElement('div');
     chev.className = 'chev';
@@ -6483,14 +6499,15 @@ function appendRouteJobRows(container, customer, jobs, dayISO, canReorder){
         } else el.appendChild(document.createTextNode(value));
         panel.appendChild(el);
       };
-      line('\ud83d\udccd Address', customer.address || 'No address on file');
-      if(customer.phone) line('\ud83d\udcde Phone', customer.phone, 'tel:' + customer.phone.replace(/[^0-9+]/g, ''));
-      if(customer.neighborhoodGateCode) line('\ud83d\udd11 Neighborhood gate', customer.neighborhoodGateCode);
-      if(customer.gateCode) line('\ud83d\udd11 Yard gate', customer.gateCode);
-      const dogNames = (customer.dogs || []).map(d => d.name).filter(Boolean);
+      if(customer) line('\ud83d\udccd Address', customer.address || 'No address on file');
+      if(customer && customer.phone) line('\ud83d\udcde Phone', customer.phone, 'tel:' + customer.phone.replace(/[^0-9+]/g, ''));
+      if(customer && customer.neighborhoodGateCode) line('\ud83d\udd11 Neighborhood gate', customer.neighborhoodGateCode);
+      if(customer && customer.gateCode) line('\ud83d\udd11 Yard gate', customer.gateCode);
+      const dogNames = ((customer && customer.dogs) || []).map(d => d.name).filter(Boolean);
       if(dogNames.length) line(dogNames.length === 1 ? '\ud83d\udc15 Dog' : '\ud83d\udc15 Dogs', dogNames.join(', '));
       line(job.kind === 'task' ? '\ud83d\udccb Task' : '\ud83d\udee0 Work order', job.title);
       if(job.details) line('Details', job.details);
+      if(job.photoRequired) line('\ud83d\udcf7 Photo', 'Required');
 
       const btnRow = document.createElement('div');
       btnRow.className = 'btn-row';
@@ -6500,7 +6517,7 @@ function appendRouteJobRows(container, customer, jobs, dayISO, canReorder){
       directions.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
       directions.textContent = 'Directions';
       directions.addEventListener('click', e => { e.stopPropagation(); openDirections(customer); });
-      btnRow.appendChild(directions);
+      if(customer) btnRow.appendChild(directions);
       const start = document.createElement('button');
       start.className = 'btn btn-primary';
       start.style.cssText = 'flex:1;padding:10px 14px;font-size:14px;';
@@ -6550,11 +6567,12 @@ function openJobPage(customer, job){
 
   const who = document.createElement('div');
   who.style.cssText = 'font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:17px;color:var(--gold);';
-  who.textContent = customer.name + ' \u2013 ' + job.title;
+  who.textContent = customer ? customer.name + ' \u2013 ' + job.title : job.title;
   card.appendChild(who);
   const where = document.createElement('div');
   where.style.cssText = 'font-size:13px;color:var(--muted);margin:2px 0 12px;';
-  where.textContent = customer.address || 'No address on file';
+  where.textContent = customer ? (customer.address || 'No address on file') : '';
+  if(!customer) where.style.display = 'none';
   card.appendChild(where);
   if(job.details){
     const said = document.createElement('div');
@@ -6566,7 +6584,7 @@ function openJobPage(customer, job){
   // A photo: the same thumbnail and tap-to-enlarge as the visit photos
   const photoHead = document.createElement('div');
   photoHead.style.cssText = 'font-size:13.5px;font-weight:700;color:var(--teal-deep);margin-bottom:8px;';
-  photoHead.textContent = 'Photo';
+  photoHead.textContent = job.photoRequired ? 'Photo \u00b7 Required' : 'Photo';
   card.appendChild(photoHead);
   const imgWrap = document.createElement('div');
   imgWrap.style.cssText = 'display:none;justify-content:center;margin-bottom:8px;';
@@ -6628,12 +6646,17 @@ function openJobPage(customer, job){
     close();
   });
   submit.addEventListener('click', async ()=>{
+    // A task marked "Photo required" can't go without one
+    if(job.photoRequired && !photo){
+      showToast('Take the photo first \u2014 this task needs one');
+      return;
+    }
     submit.disabled = true;
     const stored = photo ? await storePhoto(photo, 'job') : null;
     const list = jobSubmissions();
     list.push({
       key: job.key, kind: job.kind, sourceId: job.id,
-      customerId: customer.id, customerName: customer.name, title: job.title,
+      customerId: customer ? customer.id : null, customerName: customer ? customer.name : '', title: job.title,
       notes: notes.value.trim(), photo: stored, date: job.dayISO || todayDateStr(),
       technicianId: currentUser ? currentUser.id : '',
       submittedAt: new Date().toISOString()
@@ -6641,7 +6664,7 @@ function openJobPage(customer, job){
     lsSet('jobSubmissions', list);
     close();
     renderHomeList();
-    showToast(customer.name + ' \u2013 ' + job.title + ' submitted');
+    showToast((customer ? customer.name + ' \u2013 ' : '') + job.title + ' submitted');
   });
 
   page.appendChild(card);
@@ -6776,7 +6799,8 @@ function renderHomeList(){
     .map(id => customers.find(c => c.id === id))
     .filter(c => c && c.active !== false);
 
-  if(todaysCustomers.length === 0 && !jobsOnTheirOwn.length){
+  const looseTasks = routeLooseTasks(selectedDayISO, currentUser ? currentUser.id : '__none__');
+  if(todaysCustomers.length === 0 && !jobsOnTheirOwn.length && !looseTasks.length){
     container.innerHTML = `<div class="empty">No remaining customers for today.</div>`;
     return;
   }
@@ -6989,6 +7013,7 @@ function renderHomeList(){
     let anchor = service;
     added.forEach(r => { anchor.after(r); anchor = r; });
   });
+  if(looseTasks.length) appendRouteJobRows(container, null, looseTasks, selectedDayISO, canReorder);
   placeMovedJobs(container, selectedHomeDay);
 }
 

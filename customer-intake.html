@@ -1219,6 +1219,9 @@ input::placeholder{color:#A9BCB9;}
         <label>Scheduled date</label>
         <div style="display:flex;align-items:center;gap:12px;">
           <input type="date" id="taskDate" style="width:auto;min-width:0;padding-right:12px;">
+          <label style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
+            <input type="checkbox" id="taskPhotoRequired" style="margin:0;"> Photo required
+          </label>
           <button class="btn btn-primary" id="btnTaskTemplates" style="width:auto;margin-left:auto;flex:0 0 auto;">Saved tasks</button>
         </div>
       </div>
@@ -8791,6 +8794,7 @@ function clearTaskForm(){
   document.getElementById('taskTitle').value = '';
   document.getElementById('taskDetails').value = '';
   document.getElementById('taskDate').value = taskTodayStr();
+  document.getElementById('taskPhotoRequired').checked = false;
   document.getElementById('taskRepeat').value = 'none';
   document.getElementById('taskRepeatUntil').value = '';
   document.getElementById('taskCustomerSearch').value = '';
@@ -8866,6 +8870,7 @@ function renderTaskList(){
       document.getElementById('taskDetails').value = t.details || '';
       setPickedTechIds(document.getElementById('taskTechnician'), t.technicianId ? [String(t.technicianId)] : []);
       document.getElementById('taskDate').value = t.date || '';
+      document.getElementById('taskPhotoRequired').checked = !!t.photoRequired;
       taskPicked.clear();
       (t.customerIds || (t.customerId ? [t.customerId] : [])).forEach(id => taskPicked.add(id));
       renderTaskChips();
@@ -8939,12 +8944,14 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
     const t = tasks.find(x => x.id === editingTaskId);
     if(t){
       Object.assign(t, {title, details, technicianId: techIds[0], date,
-                        customerIds, everyWeeks, until, done: false});
+                        customerIds, everyWeeks, until, done: false,
+                        photoRequired: document.getElementById('taskPhotoRequired').checked});
       techIds.slice(1).forEach(techId=>{
         tasks.push({
           id: 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2,9),
           title, details, technicianId: techId, date, customerIds,
           everyWeeks: 0, seriesId: '', done: false,
+          photoRequired: document.getElementById('taskPhotoRequired').checked,
           createdAt: new Date().toISOString()
         });
       });
@@ -8987,6 +8994,7 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
         customerIds,
         everyWeeks,
         seriesId: series,
+        photoRequired: document.getElementById('taskPhotoRequired').checked,
         done: false,
         createdAt: new Date().toISOString()
       });
@@ -9012,12 +9020,18 @@ document.getElementById('btnSaveTaskTemplate').addEventListener('click', async (
   if(!name || !name.trim()) return;
 
   const list = loadTaskTemplates();
-  list.push({
-    id: 'tt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-    name: name.trim(),
-    title,
-    details: document.getElementById('taskDetails').value.trim()
-  });
+  const entry = {name: name.trim(), title, details: document.getElementById('taskDetails').value.trim()};
+  // One saved task per name: the same name again asks to overwrite
+  const same = list.findIndex(x => (x.name || '').trim().toLowerCase() === entry.name.toLowerCase());
+  if(same !== -1){
+    const ok = await confirmDialog('A saved task called "' + list[same].name + '" already exists. Overwrite it?', 'Overwrite');
+    if(!ok) return;
+    list[same] = Object.assign({id: list[same].id}, entry);
+    saveTaskTemplates(list);
+    showToast('Overwrote "' + entry.name + '"');
+    return;
+  }
+  list.push(Object.assign({id: 'tt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7)}, entry));
   saveTaskTemplates(list);
   showToast('Saved \u2014 find it under Saved tasks');
 });
@@ -9069,10 +9083,11 @@ document.getElementById('btnTaskTemplates').addEventListener('click', ()=>{
     row.appendChild(pick);
 
     const del = document.createElement('button');
-    del.className = 'btn btn-ghost';
-    del.style.cssText = 'width:auto;padding:6px 10px;font-size:11.5px;flex-shrink:0;'
-      + 'color:var(--rust);border-color:#EFC9BC;';
+    del.type = 'button';
+    del.className = 'btn btn-ghost fountain-remove';   // the red × in a red square, like the rest
+    del.style.cssText = 'width:24px;height:26px;font-size:13px;border-radius:7px;';
     del.textContent = '\u00d7';
+    del.title = 'Delete this saved task';
     del.addEventListener('click', async ()=>{
       const ok = await confirmDialog('Delete the saved task "' + t.name + '"?', 'Delete');
       if(!ok) return;
@@ -10001,7 +10016,8 @@ function applyWorkOrderType(){
   document.getElementById('wcQuotesHistoryCard').style.display = (history && !isTask) ? 'block' : 'none';
   document.getElementById('wcSubmittedCard').style.display = (history && chosen !== 'Quote') ? 'block' : 'none';
   document.getElementById('wcTaskSection').style.display = (isTask && !history && !current) ? 'block' : 'none';
-  document.getElementById('wcTaskListCard').style.display = (isTask && !history && !current) ? 'block' : 'none';
+  // "Tasks on the schedule" is no longer shown; Task → Current lists them
+  document.getElementById('wcTaskListCard').style.display = 'none';
 
   if(current){
     renderCurrentList(chosen);
@@ -10062,6 +10078,7 @@ function captureWcDraft(type){
       title: document.getElementById('taskTitle').value,
       details: document.getElementById('taskDetails').value,
       date: document.getElementById('taskDate').value,
+      photoRequired: document.getElementById('taskPhotoRequired').checked,
       repeat: document.getElementById('taskRepeat').value,
       until: document.getElementById('taskRepeatUntil').value,
       search: document.getElementById('taskCustomerSearch').value,
@@ -10107,6 +10124,7 @@ function restoreWcDraft(type){
     document.getElementById('taskTitle').value = st.title;
     document.getElementById('taskDetails').value = st.details;
     document.getElementById('taskDate').value = st.date;
+    document.getElementById('taskPhotoRequired').checked = !!st.photoRequired;
     document.getElementById('taskRepeat').value = st.repeat;
     document.getElementById('taskRepeatUntil').value = st.until;
     document.getElementById('taskCustomerSearch').value = st.search;
