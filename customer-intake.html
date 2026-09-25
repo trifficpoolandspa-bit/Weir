@@ -16717,11 +16717,16 @@ function profileRow(container, opts){
   if(editor){
     const open = ()=>{
       if(row.dataset.editing === 'true') return;
+      // The press has done its job: without clearing it, closing this row
+      // rebuilt the profile and the rebuilt row opened itself straight away,
+      // so Done needed pressing twice
+      if(profileRowWanted === label) profileRowWanted = null;
       row.dataset.editing = 'true';
       row.classList.remove('editable');
       valueEl.style.display = 'none';
       const done = ()=>{
         row.dataset.editing = 'false';
+        if(profileRowWanted === label) profileRowWanted = null;
         const cust = customers.find(x => x.id === editingId);
         if(cust) viewCustomer(cust);
       };

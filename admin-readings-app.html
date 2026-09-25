@@ -9343,6 +9343,7 @@ function askHeadsUpWay(customer){
     const overlay = document.createElement('div');
     overlay.className = 'confirm-overlay';
     overlay.innerHTML = '<div class="confirm-box" style="max-width:340px;">'
+      + '<h2 style="font-size:18px;margin:0 0 10px;">On my way</h2>'
       + '<h3 style="font-size:15px;margin:0 0 4px;">Tell ' + escapeHtmlForEmail(customer.name) + ' how?</h3>'
       + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">'
       + 'An email goes from the office. A text opens on this phone for you to send.</p>'
@@ -10774,6 +10775,47 @@ function syncStepChrome(){
     if(skipBtn) skipBtn.style.justifySelf = 'center';
     back.style.justifySelf = 'end';
   }
+
+  // Save report: on the last page of the visit only — the final page (after
+  // photos, when asked for) of the last body of water still to do — between the
+  // heading and Back.
+  // Finishes the visit exactly as Submit does, without sending the report.
+  const headEl = h.parentElement;
+  if(headEl) headEl.querySelectorAll('.save-report-btn').forEach(b => b.remove());
+  // The last page of a body of water is its after-photos page when photos are
+  // asked for, otherwise its save page: whichever is the final step
+  const SUBMIT_FOR = {pool: 'btnSaveReading', spa: 'btnSaveSpaReading', fountain: 'btnSaveFountainReading'};
+  const kind = currentVisibleSection === 'pool' || currentVisibleSection === 'spa' ? currentVisibleSection : 'fountain';
+  const submitId = currentVisitStep === steps.length ? SUBMIT_FOR[kind] : null;
+  if(submitId && headEl && pendingVisit && pendingVisit.customerId === currentVisitCustomerId){
+    const here = pendingVisit.neededSections.indexOf(currentVisibleSection) !== -1
+      ? currentVisibleSection : currentVisitFountainId;
+    const left = pendingVisit.neededSections.filter(id => pendingVisit.doneSections[id] === undefined);
+    if(left.length === 1 && left[0] === here){
+      const save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'btn btn-ghost save-report-btn';
+      save.style.cssText = 'width:auto;flex-shrink:0;padding:6px 12px;font-size:12.5px;justify-self:center;';
+      save.textContent = 'Save report';
+      save.addEventListener('click', async ()=>{
+        const ok = await confirmDialog('This will not send it to the customer. Are you sure you would like to save it?',
+          'Save report');
+        if(!ok) return;
+        visitSaveOnly = true;
+        const submit = document.getElementById(submitId);
+        if(submit) submit.click();
+        // If the page couldn't finish (a required photo missing, say), the next
+        // normal Submit still sends as usual
+        setTimeout(()=>{ visitSaveOnly = false; }, 4000);
+      });
+      headEl.insertBefore(save, back);
+      headEl.style.display = 'grid';
+      headEl.style.gridTemplateColumns = '1fr auto 1fr';
+      h.style.minWidth = '0';
+      h.style.justifySelf = 'start';
+      back.style.justifySelf = 'end';
+    }
+  }
 }
 
 
@@ -12176,8 +12218,14 @@ async function commitVisitPackage(customerId){
   return committed;
 }
 
+// Set by Save report: this visit is finished like any other, but no report
+// goes to the customer
+let visitSaveOnly = false;
+
 async function finalizeVisitSend(){
   if(!pendingVisit) return;
+  const saveOnly = visitSaveOnly;
+  visitSaveOnly = false;
   const { customerId, doneSections } = pendingVisit;
   const poolReadingId = doneSections['pool'] || null;
   const spaReadingId = doneSections['spa'] || null;
@@ -12252,6 +12300,11 @@ async function finalizeVisitSend(){
   visitLeftOpenFor = null;
 
   const who = customer ? customer.name : 'Customer';
+  if(saveOnly){
+    // Saved to the report history like a sent one; nothing goes to the customer
+    showToast(who + ' saved — report not sent');
+    return;
+  }
   showToast(who + ' done — sending report');
 
   Promise.resolve()
