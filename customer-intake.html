@@ -7352,7 +7352,60 @@ function syncLocalRecords(){
 // that show it. Not while someone is typing in those lists: the redraw waits
 // until they leave the box, so it never swallows a keystroke.
 let syncRedrawWaiting = false;
+// A window editing these lists (dosage rules, quick buttons, a customer's
+// setup...) holds the objects it was opened with. Swapping in a fresh copy under
+// it sent every change after that to a copy nobody saves: a rule's dosage went
+// back to the first in the list. So while any window is open the fresh copy
+// waits, and it's taken in as soon as the window closes.
+const syncCopiesWaiting = new Set();
+const syncCopiesArrived = {};
+let syncCopiesTimer = null;
+
+// What arrived while the window was open is folded in, not dropped: any reading
+// or dosage (or customer setup) the other device added that this one lacks is
+// added, and the edits made in the window are kept
+function foldInArrivedCopy(id){
+  const arrived = syncCopiesArrived[id];
+  delete syncCopiesArrived[id];
+  if(!arrived || typeof arrived !== 'object') return;
+  if(id === 'chemConfig'){
+    ['pool', 'spa', 'fountain'].forEach(t=>{
+      if(!arrived[t]) return;
+      chemConfig[t] = chemConfig[t] || {chemicals: [], dosages: []};
+      ['chemicals', 'dosages'].forEach(list=>{
+        const mine = chemConfig[t][list] = chemConfig[t][list] || [];
+        (arrived[t][list] || []).forEach(item=>{
+          if(item && !mine.some(x => x && x.key === item.key)) mine.push(item);
+        });
+      });
+    });
+    saveChemConfig();
+  } else if(id === 'customChemConfig'){
+    Object.keys(arrived).forEach(cid=>{
+      customConfig[cid] = customConfig[cid] || {};
+      Object.keys(arrived[cid] || {}).forEach(body=>{
+        if(!customConfig[cid][body]) customConfig[cid][body] = arrived[cid][body];
+      });
+    });
+    saveCustomConfig();
+  }
+}
+
+function takeWaitingSyncedCopies(){
+  if(document.querySelector('.confirm-overlay')) return;
+  clearInterval(syncCopiesTimer); syncCopiesTimer = null;
+  const ids = Array.from(syncCopiesWaiting);
+  syncCopiesWaiting.clear();
+  ids.forEach(id=>{ foldInArrivedCopy(id); refreshSyncedWorkingCopy(id); });
+}
+
 function refreshSyncedWorkingCopy(id){
+  if((id === 'chemConfig' || id === 'customChemConfig') && document.querySelector('.confirm-overlay')){
+    syncCopiesWaiting.add(id);
+    syncCopiesArrived[id] = JSON.parse(JSON.stringify(lsGet(id) || {}));
+    if(!syncCopiesTimer) syncCopiesTimer = setInterval(takeWaitingSyncedCopies, 500);
+    return;
+  }
   if(id === 'chemConfig') chemConfig = loadChemConfig();
   if(id === 'customChemConfig') customConfig = lsGet('customChemConfig') || {};
   if(id === 'routeOrders'){
@@ -10432,6 +10485,17 @@ const RULE_OPS = [
 ];
 
 
+// A dosage's name, looked up in the list a rule comes from first, then in the
+// list being edited, then in every list, so a borrowed rule never shows a code
+function doseNameFor(doseKey, fromType, ownDoses){
+  const find = list => ((list || []).find(d => d && d.key === doseKey) || {}).label;
+  return (fromType && find((chemConfig[fromType] || {}).dosages))
+    || find(ownDoses)
+    || find((chemConfig.pool || {}).dosages) || find((chemConfig.spa || {}).dosages)
+    || find((chemConfig.fountain || {}).dosages)
+    || doseKey;
+}
+
 // The rules actually in force for a chemical: its own, or another list's if
 // it has been set to follow one.
 function rulesFromSource(sourceType, chemKey){
@@ -10595,7 +10659,7 @@ function openDoseRulesModal(item){
       srcRules.forEach(r=>{
         const label = ({eq:'is exactly', lte:'is at or below', gte:'is at or above',
                         lt:'is below', gt:'is above', between:'is between'})[r.op] || r.op;
-        const dose = (doses.find(d => d.key === r.doseKey) || {}).label || r.doseKey;
+        const dose = doseNameFor(r.doseKey, item.doseRulesFrom, doses);
         const line = document.createElement('div');
         line.style.cssText = 'font-size:13px;padding:8px 0;border-bottom:1px solid var(--line);color:var(--muted);';
         line.textContent = 'When ' + label + ' ' + r.value
@@ -10622,7 +10686,7 @@ function openDoseRulesModal(item){
         inherited.forEach(r=>{
           const label = ({eq:'is exactly', lte:'is at or below', gte:'is at or above',
                           lt:'is below', gt:'is above', between:'is between'})[r.op] || r.op;
-          const dose = (doses.find(d => d.key === r.doseKey) || {}).label || r.doseKey;
+          const dose = doseNameFor(r.doseKey, customBodyKey === 'pool' ? 'pool' : (customBodyKey === 'spa' ? 'spa' : 'fountain'), doses);
           const line = document.createElement('div');
           line.style.cssText = 'font-size:13px;padding:8px 0;border-bottom:1px solid var(--line);color:var(--muted);';
           line.textContent = 'When ' + label + ' ' + r.value
