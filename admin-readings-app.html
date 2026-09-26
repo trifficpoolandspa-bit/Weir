@@ -9124,13 +9124,20 @@ function renderServicedList(){
   const heading = document.getElementById('servicedHeading');
   if(heading) heading.textContent = servicedDayOffset === 0 ? 'Serviced today' : 'Serviced that day';
   const today = servicedDateStr();
-  const servicedCustomers = customers
-    .filter(c => c.lastServicedDate === today && c.active !== false)
-    .slice()
+  // One row per service done that day: a customer serviced for two of their
+  // days (Wednesday and Thursday) shows twice, each with the day it was for,
+  // and each Reservice brings back only its own day
+  const servicedRows = [];
+  customers.filter(c => c.active !== false).forEach(c=>{
+    const done = (Array.isArray(c.servicedFor) ? c.servicedFor : []).filter(x => x && x.on === today);
+    if(done.length) done.forEach(x => servicedRows.push({c, day: x.day}));
+    else if(c.lastServicedDate === today) servicedRows.push({c, day: null});
+  });
+  const servicedCustomers = servicedRows
     // Most recently serviced at the top, the longest ago at the bottom. Anything
     // logged before visit times were tracked has none, so it sits at the very
     // bottom rather than disappearing.
-    .sort((a,b)=> (b.lastServicedAt || '').localeCompare(a.lastServicedAt || ''));
+    .sort((a,b)=> (b.c.lastServicedAt || '').localeCompare(a.c.lastServicedAt || '') || String(b.day || '').localeCompare(String(a.day || '')));
   if(servicedCustomers.length === 0){
     container.innerHTML = '<div class="empty">'
       + (servicedDayOffset === 0 ? 'No one\'s been serviced yet today.' : 'Nobody was serviced that day.')
@@ -9138,13 +9145,18 @@ function renderServicedList(){
     return;
   }
   container.innerHTML = '';
-  servicedCustomers.forEach(c=>{
+  const showsDay = servicedCustomers.some(x => x.day);
+  servicedCustomers.forEach(entry=>{
+    const c = entry.c;
+    const forDay = entry.day
+      ? 'For ' + new Date(entry.day + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'}) + ' \u00b7 '
+      : '';
     const row = document.createElement('div');
     row.className = 'cust-row';
     const durationBadge = c.lastServiceDurationMs
       ? `<span class="mono" style="background:var(--teal-pale);color:var(--teal-deep);font-weight:700;font-size:11px;padding:3px 8px;border-radius:20px;margin-left:8px;">${formatDuration(c.lastServiceDurationMs)}</span>`
       : '';
-    row.innerHTML = `<div style="min-width:0;"><div class="cust-name">${c.name}${durationBadge}</div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.address || 'No address on file'}</div></div>`;
+    row.innerHTML = `<div style="min-width:0;"><div class="cust-name">${c.name}${durationBadge}</div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${showsDay ? forDay : ''}${c.address || 'No address on file'}</div></div>`;
     const reserviceBtn = document.createElement('button');
     reserviceBtn.className = 'btn btn-secondary';
     reserviceBtn.style.width = 'auto';
@@ -9153,7 +9165,7 @@ function renderServicedList(){
     reserviceBtn.textContent = 'Reservice';
     reserviceBtn.addEventListener('click', (e)=>{
       e.stopPropagation();
-      reserviceCustomer(c);
+      reserviceCustomer(c, entry.day);
     });
     row.appendChild(reserviceBtn);
 
@@ -9199,17 +9211,26 @@ function renderServicedList(){
   });
 }
 
-async function reserviceCustomer(customer){
+async function reserviceCustomer(customer, forDay){
   // The original report stays exactly as it was. This flag marks the NEXT
   // report as a redo so the two can be told apart.
   customer.pendingRedo = true;
-  customer.lastServicedDate = null;
-  // Only the latest service's day comes back, not every day they're on
+  // Only that service's day comes back (the latest, if no day is given); a
+  // customer still serviced today for another of their days stays under
+  // Serviced today
+  const doneToday = todayDateStr();
   if(Array.isArray(customer.servicedFor) && customer.servicedFor.length){
-    customer.servicedFor = customer.servicedFor.slice(0, -1);
+    let at = -1;
+    customer.servicedFor.forEach((x, i) => { if(x && (forDay ? x.day === forDay : true)) at = i; });
+    if(at !== -1) customer.servicedFor = customer.servicedFor.filter((x, i) => i !== at);
   }
-  delete customer.lastServiceDurationMs;
-  delete customer.lastServicedAt;
+  const stillToday = (customer.servicedFor || []).some(x => x && x.on === doneToday);
+  customer.lastServicedDate = stillToday ? doneToday : null;
+  // Their other serviced day keeps its time and duration
+  if(!stillToday){
+    delete customer.lastServiceDurationMs;
+    delete customer.lastServicedAt;
+  }
   await saveCustomers();
 
   const today = todayDateStr();

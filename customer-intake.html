@@ -3142,8 +3142,21 @@ function attachTouchReorder(handle, item, container, itemSelector, onReorder){
      'transition','boxShadow','transform'].forEach(p => { item.style[p] = ''; });
     siblings().forEach(el => { el.style.transition = ''; });
 
-    const keys = Array.from(container.querySelectorAll(itemSelector))
-      .map(el => el.dataset.reorderKey).filter(k => k !== undefined);
+    // Each row counts once. If the list was redrawn while dragging (a sync
+    // arriving, say), an old copy of a row can still be in it: the row being
+    // dragged counts where it was dropped, and any leftover copy is taken out.
+    // Read twice, a row was saved twice ("a whole extra row appears").
+    const seen = new Set();
+    const itemKey = item.dataset.reorderKey;
+    const keys = [];
+    Array.from(container.querySelectorAll(itemSelector)).forEach(el=>{
+      const k = el.dataset.reorderKey;
+      if(k === undefined) return;
+      if(el !== item && k === itemKey && item.parentNode){ el.remove(); return; }
+      if(seen.has(k)){ if(el !== item) el.remove(); return; }
+      seen.add(k);
+      keys.push(k);
+    });
     // Only report a change if the order actually differs
     if(keys.length && onReorder && keys.join('\u0000') !== orderAtLift.join('\u0000')){
       onReorder(keys);
@@ -3304,6 +3317,12 @@ function loadChemConfig(){
   // Filled in on the page only (see above); with nothing stored yet, the
   // defaults are used until the company's lists arrive, and never saved over them
   seedButtonSets(cfg);
+  // A row copied by an earlier drag shows once (on the page only; the next real
+  // change saves the lists without it)
+  ['pool','spa','fountain'].forEach(t => ['chemicals','dosages'].forEach(k=>{
+    const seen = new Set();
+    if(Array.isArray(cfg[t][k])) cfg[t][k] = cfg[t][k].filter(i => !i || !i.key || (seen.has(i.key) ? false : (seen.add(i.key), true)));
+  }));
   return cfg;
 }
 
@@ -11699,7 +11718,12 @@ function makeConfigRow(item, listKey){
       if(!lists) return;
       const byKey = {};
       lists[listKey].forEach(i => { byKey[i.key] = i; });
-      lists[listKey] = keys.map(k => byKey[k]).filter(Boolean);
+      // Each item once, in the new order; anything not in it is kept at the end
+      const used = new Set();
+      const next = [];
+      keys.forEach(k => { if(byKey[k] && !used.has(k)){ used.add(k); next.push(byKey[k]); } });
+      lists[listKey].forEach(i => { if(!used.has(i.key)){ used.add(i.key); next.push(i); } });
+      lists[listKey] = next;
       saveActiveConfig();
       renderChemConfigLists();
     });
