@@ -3280,6 +3280,13 @@ function seedButtonSets(cfg){
   return changed;
 }
 
+// Housekeeping the page does by itself as it loads (filling in missing
+// buttons, starter products) only changes the lists in use on this page; it is
+// never stored. Stored, it differed from the server's copy, so sync sent it as
+// the newest edit and it replaced lists changed elsewhere: a Sodium Bicarbonate
+// added to the spa kept vanishing the day after a page load somewhere saved an
+// older or default copy. A real edit saves the lists as they are on the page.
+
 function loadChemConfig(){
   const stored = lsGet('chemConfig');
   const cfg = !stored
@@ -3289,7 +3296,9 @@ function loadChemConfig(){
         spa: stored.spa || JSON.parse(JSON.stringify(DEFAULT_CHEM_CONFIG.spa)),
         fountain: stored.fountain || JSON.parse(JSON.stringify(DEFAULT_CHEM_CONFIG.fountain))
       };
-  if(seedButtonSets(cfg)) lsSet('chemConfig', cfg);
+  // Filled in on the page only (see above); with nothing stored yet, the
+  // defaults are used until the company's lists arrive, and never saved over them
+  seedButtonSets(cfg);
   return cfg;
 }
 
@@ -3326,12 +3335,16 @@ function cloneList(list){
 function saveChemConfig(){
   // Each list tracks the pool only if its own checkbox is on
   if(selectedChemConfigType === 'pool'){
+    // The pool's list is copied across, but anything only the spa or extra body
+    // has (a Sodium Bicarbonate added to the spa) is kept, not wiped
+    const poolPlus = (poolList, ownList) => cloneList(poolList).concat(
+      (ownList || []).filter(x => x && !poolList.some(pz => pz && pz.key === x.key)));
     ['spa','fountain'].forEach(t=>{
       if(appSettings.applyPoolChemicalsToAll){
-        chemConfig[t].chemicals = cloneList(chemConfig.pool.chemicals);
+        chemConfig[t].chemicals = poolPlus(chemConfig.pool.chemicals, chemConfig[t].chemicals);
       }
       if(appSettings.applyPoolDosagesToAll){
-        chemConfig[t].dosages = cloneList(chemConfig.pool.dosages);
+        chemConfig[t].dosages = poolPlus(chemConfig.pool.dosages, chemConfig[t].dosages);
       }
     });
   }
@@ -3453,8 +3466,7 @@ const DEFAULT_REPAIR_PRODUCTS = [
       extraCharge: false
     });
   });
-  lsSet('productsServices', productsServices);
-  lsSet('chemProductsSeeded', true);
+  // On the page only (see above)
 })();
 
 (function seedRepairProducts(){
@@ -3472,8 +3484,7 @@ const DEFAULT_REPAIR_PRODUCTS = [
       extraCharge: false
     });
   });
-  lsSet('productsServices', productsServices);
-  lsSet('repairProductsSeeded', true);
+  // On the page only (see above)
 })();
 
 function saveProductsServices(){
