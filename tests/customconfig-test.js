@@ -796,7 +796,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); window.__asked=[]; confirmDialog=(m)=>{ window.__asked.push(m); return Promise.resolve(true); };"
       + " window.__sent=[]; sbFetch = async (path, o)=>{ if(path.indexOf('amend_visit')!==-1) window.__sent.push(JSON.parse(o.body)); return {ok:true,status:200,body:{result:'saved'}}; };");
     check('the out-of-date blue note is gone', !/appear automatically in the main Weir app/.test(d.body.textContent));
-    check('search boxes show no browser suggestions', Array.from(d.querySelectorAll('input')).filter(i => /search/i.test(i.id || '')).every(i => i.getAttribute('autocomplete') === 'off'));
+    check('search boxes show no browser suggestions', Array.from(d.querySelectorAll('input')).filter(i => /search/i.test(i.id || '')).every(i => ['off', 'weir-search'].indexOf(i.getAttribute('autocomplete')) !== -1));
     check('the website\u2019s sign-in can go back to the app\u2019s sign-in', /index\.html\?app=service/.test(d.getElementById('btnLoginBack').getAttribute('onclick')));
     // Route Scheduling by technician; an old named-route order is split by technician once
     check('a route is a technician\u2019s customers', w.eval("routeKeyFor(customers[0])") === 't1');

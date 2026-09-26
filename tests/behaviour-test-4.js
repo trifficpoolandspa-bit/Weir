@@ -1668,7 +1668,8 @@ async function serverTechniciansTab(){
     set_technician_password: [['p_technician_id', 'text'], ['p_password', 'text']],
     remove_technician_account: [['p_technician_id', 'text']],
     set_company_code: [['p_code', 'text']],
-    push_customer_fields: [['p_id', 'text'], ['p_changes', 'jsonb'], ['p_base', 'timestamptz']]
+    push_customer_fields: [['p_id', 'text'], ['p_changes', 'jsonb'], ['p_base', 'timestamptz']],
+    push_record_fields: [['p_kind', 'text'], ['p_id', 'text'], ['p_changes', 'jsonb'], ['p_base', 'timestamptz']]
   };
 
   function makeServer(){
@@ -1697,6 +1698,15 @@ async function serverTechniciansTab(){
       }
       if(u.pathname === '/rest/v1/customers'){
         const r = await asUser(uid, `select coalesce(json_agg(t), '[]') j from (select id, data, deleted, updated_at from public.customers order by updated_at) t`);
+        return [200, r.rows[0].j];
+      }
+      // Company setup and settings, as the other server block does
+      if(u.pathname === '/rest/v1/company_records'){
+        const since = u.searchParams.get('updated_at');
+        const r = await asUser(uid, `select coalesce(json_agg(t), '[]') j from (
+          select kind, id, data, deleted, updated_at from public.company_records
+          ${since ? 'where updated_at >= $1' : ''} order by updated_at, kind, id) t`,
+          since ? [since.replace(/^gte\./, '')] : []);
         return [200, r.rows[0].j];
       }
       const m = u.pathname.match(/^\/rest\/v1\/rpc\/(\w+)$/);
@@ -2522,6 +2532,105 @@ async function serverTechniciansTab(){
       close();
     }catch(e){
       check('technicians tab suite', false, e.stack);
+    }
+
+    // ---- Restore from backup wins everywhere ----
+    // Two computers on the same company. A makes a backup; B then changes a
+    // customer, the email style and adds a customer; A never syncs those in,
+    // restores the backup, and syncs. B must end up with exactly the backup.
+    console.log('\n=== Restore from backup wins everywhere ===');
+    try{
+      const rsrv = makeServer();
+      await pool.query('delete from public.company_records');
+      await pool.query('delete from public.customers where id in ($1, $2, $3)', ['r1', 'r2', 'r3']);
+      // A website with raw browser storage (including the sync's own record)
+      const bootWith = async raw=>{
+        const dialogs = [];
+        const dom = new JSDOM(fs.readFileSync('customer-intake.html', 'utf8'), {
+          runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://trifficpoolandspa-bit.github.io/Pool-Log/customer-intake.html',
+          beforeParse(w){
+            w.matchMedia = () => ({matches:false, addListener(){}, removeListener(){}, addEventListener(){}, removeEventListener(){}});
+            w.scrollTo = () => {}; w.scrollBy = () => {}; w.alert = () => {};
+            w.HTMLCanvasElement.prototype.getContext = () => ({drawImage(){}, fillRect(){}});
+            w.Element.prototype.scrollIntoView = function(){};
+            w.console.warn = () => {}; w.console.error = () => {};
+            w.indexedDB = new FDBFactory(); w.IDBKeyRange = global.IDBKeyRange;
+            w.URL.createObjectURL = () => 'blob:x'; w.URL.revokeObjectURL = () => {};
+            w.fetch = async (url, o2) => {
+              await sleep(1);
+              const [status, body] = await rsrv.handle(OWNER, url, o2);
+              return {ok: status >= 200 && status < 300, status, json: async () => body};
+            };
+            Object.entries(raw).forEach(([k, v]) => w.localStorage.setItem(k, v));
+            w.localStorage.setItem('weir:sbSession', JSON.stringify({access_token: 'owner-token', refresh_token: 'r'}));
+          }
+        });
+        const w = dom.window;
+        const iv = setInterval(()=>{
+          const ov = Array.from(w.document.querySelectorAll('.confirm-overlay')).filter(x => x.querySelector('#confirmOk')).pop();
+          if(ov && ov.textContent.trim().length > 20){ dialogs.push(ov.textContent); ov.querySelector('#confirmOk').click(); }
+        }, 5);
+        await sleep(900);
+        const storage = () => { const out = {}; for(let i = 0; i < w.localStorage.length; i++){ const k = w.localStorage.key(i); out[k] = w.localStorage.getItem(k); } return out; };
+        return {w, d: w.document, dialogs, storage, close(){ clearInterval(iv); w.close(); }};
+      };
+      const sync = async x => { await x.w.eval('syncCustomers()'); await sleep(200); };
+
+      // A: two customers and an email style, sent up, then a backup
+      const A = await bootWith({
+        'weir:photoEveryone': '{}',
+        'weir:customers': JSON.stringify([{id: 'r1', name: 'Restore One', day: 'Monday', active: true}, {id: 'r2', name: 'Restore Two', day: 'Tuesday', active: true}]),
+        'weir:reportEmailStyle': JSON.stringify({colour: '#111111', signoff: 'Original sign-off'})
+      });
+      const firstRes = await A.w.eval('syncCustomers()'); await sleep(200);
+      const onServer = async id => (await pool.query('select data->>\'name\' n, deleted from public.customers where id = $1', [id])).rows[0];
+      check('before: A\u2019s customers reached the server', !!(await onServer('r1')) && (await onServer('r1')).n === 'Restore One');
+      const backup = A.w.eval('JSON.stringify(collectBackup())');
+
+      // B: another computer changes things after the backup
+      const B = await bootWith({'weir:photoEveryone': '{}'});
+      await sync(B);
+      B.w.eval("customers.find(c => c.id === 'r1').name = 'Changed Elsewhere'; customers.push({id: 'r3', name: 'Added After Backup', day: 'Friday', active: true}); saveCustomers(); lsSet('reportEmailStyle', {colour: '#222222', signoff: 'Changed sign-off'}); lsSet('tasks', [{id: 'kAfter', title: 'Task after backup', technicianId: '', date: '2026-10-01', customerIds: [], done: false}]);");
+      await sync(B);
+      check('B\u2019s changes reached the server', (await onServer('r1')).n === 'Changed Elsewhere' && !!(await onServer('r3')));
+
+      // A restores the backup (never having seen B's changes), through the real Restore button
+      const input = A.d.getElementById('backupFileInput');
+      const file = new A.w.File([backup], 'backup.json', {type: 'application/json'});
+      Object.defineProperty(input, 'files', {value: [file], configurable: true});
+      input.dispatchEvent(new A.w.Event('change'));
+      await sleep(700);
+      check('restoring asks first, saying it replaces everything here, on the server and on the phones',
+            A.dialogs.some(t => /on the server and on the phones/.test(t)), A.dialogs.join(' | ').slice(0, 200));
+      const restoredStorage = A.storage();
+      A.close();
+      const stateKey = Object.keys(restoredStorage).find(k => /^weirsync:.*state:/.test(k));
+      check('the restore marks the sync to send everything restored', !!stateKey && !!JSON.parse(restoredStorage[stateKey]).restoredAt);
+
+      // A after its reload: syncs
+      const A2 = await bootWith(restoredStorage);
+      const st0 = JSON.parse(A2.storage()[stateKey] || '{}');
+      const res1 = await A2.w.eval('syncCustomers()'); await sleep(200);
+      await sync(A2);
+      check('after: the server has the backed-up name, not the later change', (await onServer('r1')).n === 'Restore One', JSON.stringify(await onServer('r1')));
+      const r3 = await onServer('r3');
+      check('the customer added after the backup is removed on the server', !r3 || r3.deleted === true, JSON.stringify(r3));
+      const task = (await pool.query(`select deleted from public.company_records where kind = 'task' and id = 'kAfter'`)).rows[0];
+      check('a task added after the backup is removed on the server too', !task || task.deleted === true, JSON.stringify(task));
+      const style = (await pool.query(`select data from public.company_records where kind = 'setup' and id = 'reportEmailStyle'`)).rows[0];
+      check('the email style is back to the backed-up one on the server', !!style && JSON.stringify(style.data).indexOf('Original sign-off') !== -1, style ? JSON.stringify(style.data).slice(0, 160) : 'none');
+      const after = JSON.parse(A2.storage()[stateKey] || '{}');
+      check('once all is sent, the restore mark is cleared', !after.restoredAt);
+
+      // B syncs, and has exactly the backup
+      await sync(B); await sync(B);
+      check('the other computer gets the backed-up customer back', B.w.eval("(customers.find(c => c.id === 'r1') || {}).name") === 'Restore One');
+      check('and loses the one added after the backup', !B.w.eval("customers.some(c => c.id === 'r3' && c.deleted !== true)"));
+      check('and the backed-up email style', /Original sign-off/.test(JSON.stringify(B.w.eval("lsGet('reportEmailStyle')"))));
+      check('and the task added after the backup is gone', !B.w.eval("(lsGet('tasks') || []).some(t => t.id === 'kAfter')"));
+      A2.close(); B.close();
+    }catch(e){
+      check('restore suite', false, e.stack);
     }
     await pool.end();
   })();

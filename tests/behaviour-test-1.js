@@ -1042,7 +1042,7 @@ console.log('\n=== Deleting equipment from chosen customers ===');
 
     const rows = Array.from(d.querySelectorAll('#icEquipmentList > div'));
     const saltRow = rows.find(r => r.textContent.includes('Salt System'));
-    const xBtn = Array.from(saltRow.querySelectorAll('button')).find(b => b.textContent.trim() === '\u00d7');
+    const xBtn = Array.from(saltRow.querySelectorAll('button')).find(b => b.textContent.trim() === '\u00d7' || b.dataset.xDrawn === '1');
     check('  the delete button exists', !!xBtn);
     xBtn.click();
 
@@ -1055,7 +1055,8 @@ console.log('\n=== Deleting equipment from chosen customers ===');
           !labels.some(t => t.startsWith('Delete from all')), labels.join(' | '));
 
     d.getElementById('delEqPick').click();
-    const names = Array.from(d.querySelectorAll('#delEqList label span')).map(s => s.textContent);
+    // Each row's name (its first line; the address sits under it now)
+    const names = Array.from(d.querySelectorAll('#delEqList label')).map(l => { const sp = l.querySelector('span > span'); return sp ? sp.textContent : ''; }).filter(Boolean);
     check('  lists only customers with that equipment', names.length === 2, names.join(','));
     check('  excludes one without it', !names.some(n => n.includes('Delta')));
 
