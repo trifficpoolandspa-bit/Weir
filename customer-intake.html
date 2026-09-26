@@ -1154,7 +1154,7 @@ input::placeholder{color:#A9BCB9;}
         <label>Scheduled date</label>
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
           <input type="date" id="wcDate" style="width:auto;min-width:0;padding-right:12px;">
-          <label style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
+          <label id="wcPhotoRequiredWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
             <input type="checkbox" id="wcPhotoRequired" style="margin:0;"> Photo required
           </label>
         </div>
@@ -1285,13 +1285,16 @@ input::placeholder{color:#A9BCB9;}
     </div>
 
     <div class="card" id="wcQuotesHistoryCard">
-      <div class="section-head">
+      <div class="section-head" style="display:none;">
         <h2 id="wcHistoryHeading">Sent history</h2>
         <span class="section-count" id="wcHistoryCount"></span>
       </div>
-      <div style="position:relative;margin-bottom:12px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+      <div style="position:relative;flex:1;min-width:0;">
         <input id="wcHistorySearch" placeholder="Search by customer name, address, phone, or email" autocomplete="off" style="padding-right:38px;">
         <button type="button" id="wcHistorySearchClear" style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);height:26px;width:26px;padding:0;border:none;background:none;color:var(--muted);font-size:17px;line-height:1;cursor:pointer;">×</button>
+      </div>
+      <input type="date" id="wcHistoryDate" aria-label="Date" title="Show only this day" style="width:auto;min-width:0;padding-right:12px;flex-shrink:0;">
       </div>
       <div id="wcHistoryList"></div>
     </div>
@@ -1310,9 +1313,14 @@ input::placeholder{color:#A9BCB9;}
     </div>
 
     <div class="card" id="wcSubmittedCard" style="display:none;">
-      <div class="section-head">
+      <div class="section-head" style="display:none;">
         <h2>Submitted from the field</h2>
         <span class="section-count" id="wcSubmittedCount"></span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+        <input id="wcSubmittedSearch" placeholder="Search by customer name, address, phone, or email" autocomplete="off" style="flex:1;min-width:180px;">
+        <select id="wcSubmittedTech" aria-label="Technician" style="width:auto;min-width:160px;"></select>
+        <input type="date" id="wcSubmittedDate" aria-label="Date" title="Show only this day" style="width:auto;min-width:0;padding-right:12px;">
       </div>
       <div id="wcSubmittedList"></div>
     </div>
@@ -3024,6 +3032,12 @@ document.addEventListener('touchstart', (e)=>{
 // while a placeholder holds its gap and the other rows glide out of the way.
 // Reordering only happens when the finger passes a neighbour's midpoint, so
 // nothing jitters back and forth.
+// A row being dragged anywhere on the page. A sync that would redraw these
+// lists waits until it's dropped: a redraw mid-drag swapped the rows for new
+// ones while the drag still held the old one, which either errored ("reading
+// 'insertBefore'") or dropped the old row back in beside the new — a copy.
+let reorderInProgress = false;
+
 function attachTouchReorder(handle, item, container, itemSelector, onReorder){
   const DRAG_THRESHOLD = 8;   // pixels of travel before it counts as a drag
   let dragging = false;
@@ -3049,6 +3063,9 @@ function attachTouchReorder(handle, item, container, itemSelector, onReorder){
   let sideBySide = false;
 
   function lift(clientX, clientY){
+    // The list was redrawn since the grip was pressed: this row is gone, so
+    // there's nothing to move (drag again on the new one)
+    if(!item.isConnected || !item.parentNode || !container.isConnected){ armed = false; reorderInProgress = false; return; }
     const rect = item.getBoundingClientRect();
     const all = Array.from(container.querySelectorAll(itemSelector));
     orderAtLift = all.map(el => el.dataset.reorderKey).filter(k => k !== undefined);
@@ -3126,10 +3143,19 @@ function attachTouchReorder(handle, item, container, itemSelector, onReorder){
   }
 
   function drop(){
+    reorderInProgress = false;
     if(!dragging) return;
     dragging = false;
     if(frame !== null){ cancelAnimationFrame(frame); frame = null; }
     if(edgeTimer){ clearInterval(edgeTimer); edgeTimer = null; }
+    // Redrawn mid-drag: put things straight and save nothing
+    if(!item.isConnected || !container.isConnected || !placeholder || !placeholder.isConnected){
+      if(placeholder && placeholder.parentNode) placeholder.parentNode.removeChild(placeholder);
+      placeholder = null;
+      ['position','left','top','width','margin','zIndex','pointerEvents',
+       'transition','boxShadow','transform'].forEach(p => { item.style[p] = ''; });
+      return;
+    }
 
     // Put the row back where the placeholder ended up
     if(placeholder && placeholder.parentNode){
@@ -3172,6 +3198,7 @@ function attachTouchReorder(handle, item, container, itemSelector, onReorder){
     if(e.touches.length !== 1) return;
     e.preventDefault();
     armed = true;
+    reorderInProgress = true;
     armX = e.touches[0].clientX;
     armY = e.touches[0].clientY;
   }, {passive:false});
@@ -3196,6 +3223,7 @@ function attachTouchReorder(handle, item, container, itemSelector, onReorder){
   ['touchend','touchcancel'].forEach(ev=>{
     handle.addEventListener(ev, (e)=>{
       armed = false;
+      reorderInProgress = false;
       if(!dragging) return;   // a tap that never became a drag changes nothing
       e.preventDefault();
       drop();
@@ -3205,6 +3233,7 @@ function attachTouchReorder(handle, item, container, itemSelector, onReorder){
   handle.addEventListener('mousedown', (e)=>{
     e.preventDefault();
     armed = true; armX = e.clientX; armY = e.clientY;
+    reorderInProgress = true;
     const onMove = (ev)=>{
       if(armed && !dragging){
         if(Math.abs(ev.clientX - armX) < DRAG_THRESHOLD
@@ -3221,6 +3250,7 @@ function attachTouchReorder(handle, item, container, itemSelector, onReorder){
       document.removeEventListener('mouseup', onUp);
       armed = false;
       if(dragging) drop();
+      reorderInProgress = false;
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
@@ -7586,6 +7616,8 @@ function foldInArrivedCopy(id){
 // that followed ate the click on the next field
 function editingSyncedLists(){
   if(document.querySelector('.confirm-overlay')) return true;
+  // A row being dragged: redrawing now would leave the drag holding an old row
+  if(reorderInProgress) return true;
   const el = document.activeElement;
   if(!el || !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return false;
   // A field on a page that isn't on screen can't be typed in
@@ -9631,7 +9663,7 @@ document.getElementById('wcCurrentSearch').addEventListener('input', ()=>{ wcCur
 
 document.querySelectorAll('#wcViewControl [data-wcview]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
-    wcCurrentPage = 1;
+    wcCurrentPage = 1; wcHistoryPage = 1; wcSubmittedPage = 1;
     wcView = btn.dataset.wcview;
     applyWorkOrderType();
   });
@@ -9639,6 +9671,7 @@ document.querySelectorAll('#wcViewControl [data-wcview]').forEach(btn=>{
 
 let wcHistorySearchTerm = '';
 
+let wcHistoryPage = 1;
 function renderWorkOrderHistory(){
   const container = document.getElementById('wcHistoryList');
   const countEl = document.getElementById('wcHistoryCount');
@@ -9654,7 +9687,16 @@ function renderWorkOrderHistory(){
   const kindNow = document.getElementById('wcType').value === 'Work Order' ? 'Work Order' : 'Quote';
   // Narrow to one customer's records when searching
   const term = wcHistorySearchTerm.trim().toLowerCase();
-  const visible = workOrders.filter(wo => (wo.type === 'Work Order' ? 'Work Order' : 'Quote') === kindNow).filter(wo=>{
+  // The date box: only that day (the date on it, or when it was made)
+  const onDay = (document.getElementById('wcHistoryDate') || {}).value || '';
+  const visible = workOrders.filter(wo => (wo.type === 'Work Order' ? 'Work Order' : 'Quote') === kindNow)
+    // Open quotes are in Current; History holds the approved (closed) ones
+    .filter(wo => kindNow !== 'Quote' || wo.closed)
+    .filter(wo=>{
+    if(onDay){
+      const made = wo.createdAt ? new Date(new Date(wo.createdAt).getTime() - new Date(wo.createdAt).getTimezoneOffset() * 60000).toISOString().slice(0, 10) : '';
+      if(wo.date !== onDay && made !== onDay) return false;
+    }
     if(!term) return true;
     const cust = customers.find(c => c.id === wo.customerId);
     if(!cust) return false;
@@ -9673,7 +9715,11 @@ function renderWorkOrderHistory(){
 
   container.innerHTML = '';
   const histKey = 'history:' + kindNow;
-  const sortedHist = visible.slice().sort((a,b)=> b.createdAt.localeCompare(a.createdAt));
+  const allHist = visible.slice().sort((a,b)=> b.createdAt.localeCompare(a.createdAt));
+  // Ten a page
+  const histPages = Math.max(1, Math.ceil(allHist.length / CUSTOM_PER_PAGE));
+  wcHistoryPage = Math.min(histPages, Math.max(1, wcHistoryPage));
+  const sortedHist = allHist.slice((wcHistoryPage - 1) * CUSTOM_PER_PAGE, wcHistoryPage * CUSTOM_PER_PAGE);
   container.appendChild(selectionBar(histKey, sortedHist.map(w => w.id), kindNow === 'Quote' ? 'quote' : 'work order', ids=>{
     const set = new Set(ids);
     workOrders = workOrders.filter(x => !set.has(x.id));
@@ -9681,7 +9727,7 @@ function renderWorkOrderHistory(){
     // Their scheduled visits go too
     lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !set.has(j.workOrderId)));
     if(editingId) renderCustomerWorkOrders(editingId);
-  }, renderWorkOrderHistory));
+  }, renderWorkOrderHistory, histPages > 1 ? buildListPager(wcHistoryPage, histPages, allHist.length, pg => { wcHistoryPage = pg; renderWorkOrderHistory(); }, '') : null));
   sortedHist
     .forEach(wo=>{
       const customer = customers.find(c => c.id === wo.customerId);
@@ -9737,6 +9783,16 @@ function renderWorkOrderHistory(){
 }
 
 
+document.getElementById('wcHistoryDate').addEventListener('change', ()=>{ wcHistoryPage = 1; renderWorkOrderHistory(); });
+// Work Order and Task History filters
+['wcSubmittedSearch', 'wcSubmittedTech', 'wcSubmittedDate'].forEach(id=>{
+  document.getElementById(id).addEventListener(id === 'wcSubmittedSearch' ? 'input' : 'change', ()=>{
+    wcSubmittedPage = 1;
+    const k = document.getElementById('wcType').value;
+    renderSubmittedHistory(k === 'Task' ? 'task' : 'work order');
+  });
+});
+document.getElementById('wcHistorySearch').addEventListener('input', ()=>{ wcHistoryPage = 1; });
 document.getElementById('wcHistorySearch').addEventListener('input', (e)=>{
   wcHistorySearchTerm = e.target.value;
   document.getElementById('wcHistorySearchClear').style.display = e.target.value ? 'block' : 'none';
@@ -9759,12 +9815,21 @@ document.getElementById('wcHistorySearchClear').addEventListener('click', ()=>{
 // buttons on each row keep working as before.
 const listSelections = {};
 function listSel(key){ return listSelections[key] || (listSelections[key] = {on: false, ids: new Set()}); }
-function selectionBar(key, visibleIds, noun, onDelete, redraw){
+function selectionBar(key, visibleIds, noun, onDelete, redraw, pager){
   const st = listSel(key);
   // Anything no longer on the list isn't selected any more
   st.ids.forEach(id => { if(visibleIds.indexOf(id) === -1) st.ids.delete(id); });
+  // Three parts on one row: nothing on the left, the page arrows in the middle
+  // (when there's more than one page), Select and the rest on the right
+  const row = document.createElement('div');
+  row.style.cssText = 'display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;margin:0 0 6px;';
+  row.appendChild(document.createElement('div'));
+  const mid = document.createElement('div');
+  if(pager){ pager.style.padding = '0'; mid.appendChild(pager); }
+  row.appendChild(mid);
   const bar = document.createElement('div');
-  bar.style.cssText = 'display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin:0 0 6px;';
+  bar.style.cssText = 'display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;';
+  row.appendChild(bar);
   const b = (text, extra) => {
     const x = document.createElement('button');
     x.type = 'button';
@@ -9778,7 +9843,7 @@ function selectionBar(key, visibleIds, noun, onDelete, redraw){
     sel.title = 'Choose several to delete at once';
     sel.addEventListener('click', ()=>{ st.on = true; redraw(); });
     bar.appendChild(sel);
-    return bar;
+    return row;
   }
   const all = b('Select all');
   all.addEventListener('click', ()=>{ visibleIds.forEach(id => st.ids.add(id)); redraw(); });
@@ -9799,7 +9864,7 @@ function selectionBar(key, visibleIds, noun, onDelete, redraw){
   const done = b('Done');
   done.addEventListener('click', ()=>{ st.on = false; st.ids.clear(); redraw(); });
   bar.appendChild(all); bar.appendChild(del); bar.appendChild(done);
-  return bar;
+  return row;
 }
 // The tick at the start of a row while selecting (null when not selecting)
 function selectionTick(key, id, redraw){
@@ -9850,9 +9915,9 @@ function renderCurrentList(kind){
   const tech = techSel.value;
 
   let rows = [];
-  // Work Order: no heading or note, just the list
-  heading.parentElement.style.display = kind === 'Work Order' ? 'none' : '';
-  note.style.display = kind === 'Work Order' ? 'none' : '';
+  // No heading or note on any of them, just the list
+  heading.parentElement.style.display = 'none';
+  note.style.display = 'none';
   if(kind === 'Work Order'){
     const woIds = new Set(workOrders.map(w => w.id));
     const jobs = (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'scheduled');
@@ -9903,7 +9968,7 @@ function renderCurrentList(kind){
       if(kind === 'Task'){ tasks = tasks.filter(t => !set.has(t.id)); saveTasks(); }
       else if(kind === 'Quote'){ workOrders = workOrders.filter(w => !set.has(w.id)); saveWorkOrders(); }
       else lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !set.has(j.id)));
-    }, redrawCur));
+    }, redrawCur, pages > 1 ? buildListPager(wcCurrentPage, pages, rows.length, pg => { wcCurrentPage = pg; renderCurrentList(kind); }, '') : null));
   pageRows.forEach((r, i, shown)=>{
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:11px 0;'
@@ -9947,15 +10012,17 @@ function renderCurrentList(kind){
       close.type = 'button';
       close.className = 'btn btn-ghost';
       close.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;';
-      close.textContent = '\u2713 Close';
-      close.title = 'Answered, or no longer needs following up \u2014 it stays in History';
+      close.textContent = 'Mark approved';
+      close.title = 'Approved by the customer \u2014 moves it to History';
       close.addEventListener('click', ()=>{
         const w = workOrders.find(x => x.id === r.id);
         if(!w) return;
         w.closed = true;
+        w.approved = true;
+        w.approvedAt = new Date().toISOString();
         saveWorkOrders();
         renderCurrentList(kind);
-        showToast('Quote closed \u2014 still in History');
+        showToast('Approved \u2014 moved to History');
       });
       acts.appendChild(close);
     } else {
@@ -9971,6 +10038,32 @@ function renderCurrentList(kind){
         edit.addEventListener('click', e => { e.stopPropagation(); loadWorkOrderIntoForm(wo); });
         acts.appendChild(edit);
       }
+      // Done without going through the field: to History, as if submitted there
+      const complete = document.createElement('button');
+      complete.type = 'button';
+      complete.className = 'btn btn-ghost';
+      complete.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;';
+      complete.textContent = 'Mark completed';
+      complete.title = 'Done \u2014 moves it to History';
+      complete.addEventListener('click', e=>{
+        e.stopPropagation();
+        const stamp = new Date().toISOString();
+        if(kind === 'Task'){
+          const t = tasks.find(x => x.id === r.id);
+          if(!t) return;
+          Object.assign(t, {done: true, doneAt: stamp, doneBy: 'office'});
+          saveTasks();
+        } else {
+          const jobs = lsGet('scheduledWorkOrders') || [];
+          const j = jobs.find(x => x.id === r.id);
+          if(!j) return;
+          Object.assign(j, {status: 'done', doneAt: stamp, doneBy: 'office'});
+          lsSet('scheduledWorkOrders', jobs);
+        }
+        renderCurrentList(kind);
+        showToast('Completed \u2014 moved to History');
+      });
+      acts.appendChild(complete);
       if(r.groupLeft > 1){
         const all = document.createElement('button');
         all.type = 'button';
@@ -10007,9 +10100,6 @@ function renderCurrentList(kind){
     row.appendChild(acts);
     box.appendChild(row);
   });
-  if(pages > 1){
-    box.appendChild(buildListPager(wcCurrentPage, pages, rows.length, pg => { wcCurrentPage = pg; renderCurrentList(kind); }, 'padding-top:14px;'));
-  }
 }
 
 // The first tab or History, for whichever of Quote / Work Order / Task is chosen.
@@ -10019,6 +10109,7 @@ var wcView = 'main';
 // Field submissions of one kind only, so a work order never lands in the task
 // history or the other way round. Kept on the phone for now; once they are
 // stored on the server they arrive here under 'jobSubmissions'.
+let wcSubmittedPage = 1;
 function renderSubmittedHistory(kind){
   const box = document.getElementById('wcSubmittedList');
   const countEl = document.getElementById('wcSubmittedCount');
@@ -10027,33 +10118,58 @@ function renderSubmittedHistory(kind){
   // on the phone (sent with their notes, snippet 16), plus any submissions
   // kept on this device from before that
   const nameOf = id => { const c = customers.find(x => String(x.id) === String(id)); return c ? displayName(c.name) : ''; };
+  const lookupOf = ids => ids.map(id => customers.find(x => String(x.id) === String(id))).filter(Boolean)
+    .map(c => [c.name, displayName(c.name), c.address, c.phone, c.email].filter(Boolean).join(' ')).join(' ');
   const fromServer = kind === 'task'
     ? tasks.filter(t => t && t.done).map(t => ({key: 'task:' + t.id, sourceId: t.id, title: t.title || 'Task',
         customerName: (t.customerIds || []).map(nameOf).filter(Boolean).join(', '),
-        submittedAt: t.doneAt || '', notes: t.doneNotes || '', by: technicianNameById(t.doneBy || t.technicianId) || ''}))
+        submittedAt: t.doneAt || '', notes: t.doneNotes || '', by: t.doneBy === 'office' ? 'the office' : (technicianNameById(t.doneBy || t.technicianId) || ''), techId: String(t.doneBy === 'office' ? (t.technicianId || '') : (t.doneBy || t.technicianId || '')),
+        lookup: lookupOf(t.customerIds || [])}))
     : (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'done').map(j => ({key: 'wo:' + j.id, sourceId: j.id, workOrderId: j.workOrderId,
         title: j.title || 'Work order', customerName: nameOf(j.customerId),
-        submittedAt: j.doneAt || '', notes: j.doneNotes || '', by: technicianNameById(j.doneBy || j.technicianId) || ''}));
+        submittedAt: j.doneAt || '', notes: j.doneNotes || '', by: j.doneBy === 'office' ? 'the office' : (technicianNameById(j.doneBy || j.technicianId) || ''), techId: String(j.doneBy === 'office' ? (j.technicianId || '') : (j.doneBy || j.technicianId || '')),
+        lookup: lookupOf([j.customerId])}));
   const seen = new Set(fromServer.map(x => String(x.sourceId)));
+  // The technician menu, kept on whoever was picked
+  const techSel = document.getElementById('wcSubmittedTech');
+  const keepTech = techSel.value;
+  techSel.innerHTML = '';
+  [['', 'All technicians']].concat(technicians.slice()
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity: 'base'}))
+      .map(t => [String(t.id), t.name || 'Technician']))
+    .forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; techSel.appendChild(o); });
+  techSel.value = keepTech && technicians.some(t => String(t.id) === keepTech) ? keepTech : '';
+  const wantTech = techSel.value;
+  const term = (document.getElementById('wcSubmittedSearch').value || '').trim().toLowerCase();
+  const onDay = document.getElementById('wcSubmittedDate').value || '';
+  const dayOf = at => at ? new Date(new Date(at).getTime() - new Date(at).getTimezoneOffset() * 60000).toISOString().slice(0, 10) : '';
   const list = fromServer.concat((lsGet('jobSubmissions') || [])
       .filter(sub => sub && sub.kind === kind && !seen.has(String(sub.sourceId))))
+    .filter(sub => !wantTech || String(sub.techId || sub.technicianId || '') === wantTech)
+    .filter(sub => !onDay || dayOf(sub.submittedAt) === onDay)
+    .filter(sub => !term || [sub.customerName, sub.lookup, sub.title, sub.notes, sub.by].filter(Boolean).join(' ').toLowerCase().includes(term))
     .sort((a, b) => String(b.submittedAt || '').localeCompare(String(a.submittedAt || '')));
   countEl.textContent = list.length ? String(list.length) : '';
   if(!list.length){
-    box.innerHTML = emptyState('Nothing submitted from the field yet. A ' + kind
-      + ' a technician submits will show up here.');
+    box.innerHTML = emptyState((wantTech || term || onDay) ? 'Nothing matches.'
+      : 'Nothing submitted from the field yet. A ' + kind + ' a technician submits will show up here.');
     return;
   }
   box.innerHTML = '';
   const subKey = 'submitted:' + kind;
   const redrawSub = () => renderSubmittedHistory(kind);
-  box.appendChild(selectionBar(subKey, list.map(x => x.key), 'submitted ' + kind, ids=>{
+  // Ten a page
+  const subPages = Math.max(1, Math.ceil(list.length / CUSTOM_PER_PAGE));
+  wcSubmittedPage = Math.min(subPages, Math.max(1, wcSubmittedPage));
+  const allSubs = list;
+  const pageSubs = allSubs.slice((wcSubmittedPage - 1) * CUSTOM_PER_PAGE, wcSubmittedPage * CUSTOM_PER_PAGE);
+  box.appendChild(selectionBar(subKey, pageSubs.map(x => x.key), 'submitted ' + kind, ids=>{
     const set = new Set(ids);
     tasks = tasks.filter(t => !set.has('task:' + t.id)); saveTasks();
     lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !set.has('wo:' + j.id)));
     lsSet('jobSubmissions', (lsGet('jobSubmissions') || []).filter(x => !(x && x.kind === kind && set.has(x.key))));
-  }, redrawSub));
-  list.forEach(sub=>{
+  }, redrawSub, subPages > 1 ? buildListPager(wcSubmittedPage, subPages, allSubs.length, pg => { wcSubmittedPage = pg; renderSubmittedHistory(kind); }, '') : null));
+  pageSubs.forEach(sub=>{
     const row = document.createElement('div');
     row.style.cssText = 'padding:12px 0;border-bottom:1px solid var(--line);';
     const subTick = selectionTick(subKey, sub.key, redrawSub);
@@ -10118,6 +10234,11 @@ function applyWorkOrderType(){
   const chosen = document.getElementById('wcType').value;
   const isTask = chosen === 'Task';
   const isWO = chosen === 'Work Order';
+
+  // Photo required is for work orders only, never a quote
+  const photoWrap = document.getElementById('wcPhotoRequiredWrap');
+  if(photoWrap) photoWrap.style.display = isWO ? 'inline-flex' : 'none';
+  if(!isWO){ const pr = document.getElementById('wcPhotoRequired'); if(pr) pr.checked = false; }
 
   document.querySelectorAll('#wcTypeToggle [data-wctype]').forEach(btn=>{
     btn.className = btn.dataset.wctype === chosen ? 'btn btn-primary' : 'btn btn-ghost';
@@ -10310,7 +10431,7 @@ document.querySelectorAll('#wcTypeToggle [data-wctype]').forEach(btn=>{
     }
     // Coming to any of the three from another starts on today's date, and on
     // its own tab rather than its History
-    if(btn.dataset.wctype !== document.getElementById('wcType').value){ resetScheduleDates(); wcView = 'main'; }
+    if(btn.dataset.wctype !== document.getElementById('wcType').value){ resetScheduleDates(); wcView = 'main'; wcCurrentPage = 1; wcHistoryPage = 1; wcSubmittedPage = 1; }
     document.getElementById('wcType').value = btn.dataset.wctype;
     applyWorkOrderType();
     if(arriving !== leaving){ restoreWcDraft(arriving); applyWorkOrderType(); }
@@ -10509,7 +10630,7 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
         });
       }));
       workOrders.push({
-        photoRequired: document.getElementById('wcPhotoRequired').checked,
+        photoRequired: type === 'Work Order' && document.getElementById('wcPhotoRequired').checked,
         id: woId, customerId: customer.id, type, lineItems: validItems, notes, total,
         technicianId: techIds[0], technicianIds: techIds, date, repeat,
         createdAt: new Date().toISOString(),
@@ -19604,6 +19725,23 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
 })();
 
 // ---- Page-wide touches, run last (formerly their own blocks) ----
+
+// One click outside a field leaves it. Some parts of the page stop a press from
+// doing its usual thing (drag grips, rows that shouldn't select text), and a
+// first click landing on one of those left the field still active, so it took
+// a second click elsewhere. Pressing another field, a button, a menu or a label
+// works as it always has; a drag grip keeps the field so a drag isn't cut short.
+(function oneClickLeavesAField(){
+  document.addEventListener('pointerdown', e=>{
+    const active = document.activeElement;
+    if(!active || !/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return;
+    const t = e.target;
+    if(!t || t === active || (active.contains && active.contains(t))) return;
+    if(t.closest && t.closest('input, textarea, select, button, a, label, [contenteditable="true"]')) return;
+    try{ if(getComputedStyle(t).cursor === 'grab') return; }catch(err){}
+    active.blur();
+  }, true);
+})();
 
 // Search boxes show only Weir's own suggestions (customers, and products on a
 // quote or work order line), never the browser's list of things typed before

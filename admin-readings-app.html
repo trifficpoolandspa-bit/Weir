@@ -8724,8 +8724,11 @@ function servicedOnDate(c, iso){
 let visitRouteDay = null;
 function noteServicedFor(customer){
   const on = todayDateStr();
-  const list = Array.isArray(customer.servicedFor) ? customer.servicedFor.slice() : [];
-  list.push({day: visitRouteDay || on, on: on});
+  const day = visitRouteDay || on;
+  // One note per day: servicing a day again replaces its note rather than
+  // adding a second (two notes needed two presses of Reservice)
+  const list = (Array.isArray(customer.servicedFor) ? customer.servicedFor : []).filter(x => x && x.day !== day);
+  list.push({day: day, on: on});
   customer.servicedFor = list.slice(-20);
 }
 
@@ -9130,7 +9133,8 @@ function renderServicedList(){
   const servicedRows = [];
   customers.filter(c => c.active !== false).forEach(c=>{
     const done = (Array.isArray(c.servicedFor) ? c.servicedFor : []).filter(x => x && x.on === today);
-    if(done.length) done.forEach(x => servicedRows.push({c, day: x.day}));
+    const days = Array.from(new Set(done.map(x => x.day)));
+    if(days.length) days.forEach(d => servicedRows.push({c, day: d}));
     else if(c.lastServicedDate === today) servicedRows.push({c, day: null});
   });
   const servicedCustomers = servicedRows
@@ -9220,9 +9224,11 @@ async function reserviceCustomer(customer, forDay){
   // Serviced today
   const doneToday = todayDateStr();
   if(Array.isArray(customer.servicedFor) && customer.servicedFor.length){
-    let at = -1;
-    customer.servicedFor.forEach((x, i) => { if(x && (forDay ? x.day === forDay : true)) at = i; });
-    if(at !== -1) customer.servicedFor = customer.servicedFor.filter((x, i) => i !== at);
+    // Every note for that day goes in one press (the latest service's day, if
+    // none is given)
+    let day = forDay;
+    if(!day){ const last = customer.servicedFor[customer.servicedFor.length - 1]; day = last && last.day; }
+    customer.servicedFor = customer.servicedFor.filter(x => x && x.day !== day);
   }
   const stillToday = (customer.servicedFor || []).some(x => x && x.on === doneToday);
   customer.lastServicedDate = stillToday ? doneToday : null;
