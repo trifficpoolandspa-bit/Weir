@@ -8330,7 +8330,7 @@ function routeJobsFor(customerId, dayISO, techId){
   const orders = (lsGet('scheduledWorkOrders') || [])
     .filter(j => j.status === 'scheduled' && j.date === dayISO && j.customerId === customerId && mine(j))
     .map(j => ({key: 'work order:' + j.id, kind: 'work order', id: j.id,
-                title: j.title || 'Work order', details: j.notes || ''}));
+                title: j.title || 'Work order', details: j.notes || '', photoRequired: !!j.photoRequired}));
   return orders.concat(tasks).filter(j => !jobSubmitted(j.key));
 }
 // Tasks with no customer that day, as jobs of their own
@@ -9310,7 +9310,11 @@ async function skipService(customer){
   // customer on Wednesday means they were missed on Friday. Work that was
   // actually done is dated today, which is what visitDateStr gives.
   const today = routeDateStr();
-  customer.lastServicedDate = today;
+  // Like a submitted report: done for the day being skipped (so it leaves that
+  // day's list) and stamped today (so it shows under Serviced today, where
+  // Reservice can undo it). The skip itself is still recorded for the skipped day.
+  visitRouteDay = today;
+  customer.lastServicedDate = visitDateStr();
   noteServicedFor(customer);
   // The report is finished and meant to stay, so a later cancel on a different
   // visit must not reach back and delete it

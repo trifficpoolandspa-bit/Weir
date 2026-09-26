@@ -6365,7 +6365,7 @@ function routeJobsFor(customerId, dayISO, techId){
   const orders = (lsGet('scheduledWorkOrders') || [])
     .filter(j => j.status === 'scheduled' && j.date === dayISO && j.customerId === customerId && mine(j))
     .map(j => ({key: 'work order:' + j.id, kind: 'work order', id: j.id,
-                title: j.title || 'Work order', details: j.notes || ''}));
+                title: j.title || 'Work order', details: j.notes || '', photoRequired: !!j.photoRequired}));
   return orders.concat(tasks).filter(j => !jobSubmitted(j.key));
 }
 // Tasks with no customer that day, as jobs of their own
@@ -7306,6 +7306,9 @@ async function skipService(customer){
     stopVisitTimer();
   }
   const today = todayDateStr();
+  // Done for the day it was skipped from, exactly like a submitted report (it's
+  // pressed on the day's list, so no visit was started to say which day)
+  visitRouteDay = (typeof isoForDay === 'function' && selectedHomeDay) ? isoForDay(selectedHomeDay) : today;
   customer.lastServicedDate = today;
   noteServicedFor(customer);
   customer.lastServicedAt = new Date().toISOString();
