@@ -748,6 +748,120 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   w.close();
 }
 
+
+// ---- Sept 25: the website ----
+{
+  console.log('\n=== customer-intake.html \u2014 Sept 25 ===');
+  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const plus = n => new Date(Date.now() + n * 86400000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const seed = {
+    technicians: [{id: 't1', name: 'Pat'}, {id: 't2', name: 'Sam'}],
+    customers: [{id: 'a', name: 'Alpha Smith', address: '1 A St', active: true, hasPool: true, day: 'Monday', technicianId: 't1'},
+                {id: 'b', name: 'Bravo Jones', active: true, hasPool: true, day: 'Monday', technicianId: 't2'},
+                {id: 'j', name: 'John Tyler', active: true, hasPool: true, day: 'Wednesday', technicianId: 't2'}],
+    routeOrders: {Monday: {r1: ['b', 'a']}},
+    workOrders: [{id: 'wo1', customerId: 'a', type: 'Work Order', lineItems: [{description: 'Fix light', qty: 1, price: 80}], total: 80, createdAt: '2026-09-20T10:00:00Z'},
+                 {id: 'q1', customerId: 'a', type: 'Quote', lineItems: [{description: 'Heater', qty: 1, price: 900}], total: 900, date: '2026-09-21', createdAt: '2026-09-21T10:00:00Z'}],
+    scheduledWorkOrders: [{id: 'jGone', workOrderId: 'woGONE', customerId: 'j', technicianId: 't2', date: plus(1), title: 'Filter clean', status: 'scheduled'},
+                          {id: 'j1', workOrderId: 'wo1', customerId: 'a', technicianId: 't1', date: plus(2), title: 'Fix light', status: 'scheduled'},
+                          {id: 'jDone', workOrderId: 'wo1', customerId: 'a', technicianId: 't1', date: today, title: 'Fix light', status: 'done', doneAt: '2026-09-25T12:00:00Z', doneBy: 't1', doneNotes: 'Bulb fitted.'}],
+    tasks: [{id: 'k1', title: 'Check seal', technicianId: 't1', date: plus(1), customerIds: ['a'], done: false},
+            {id: 'kDone', title: 'Drop kit', technicianId: 't1', date: today, customerIds: [], done: true, doneAt: '2026-09-25T13:00:00Z', doneBy: 't1', doneNotes: 'Left at gate.'}],
+    scheduledFilterCleans: [{id: 'fcX', groupId: 'gX', groupName: 'Elsewhere', customerId: 'j', technicianId: 't2', date: plus(3), status: 'scheduled'}],
+    taskTemplates: [{id: 'tt1', name: 'Check seal', title: 'Check seal', details: 'old'}]
+  };
+  const dom = new JSDOM(fs.readFileSync('customer-intake.html', 'utf8'), {runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.com/',
+    beforeParse(w){
+      w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
+      w.scrollTo=()=>{}; w.scrollBy=()=>{}; w.alert=()=>{}; w.console.warn=()=>{}; w.console.error=()=>{};
+      w.Element.prototype.scrollIntoView=function(){}; w.HTMLCanvasElement.prototype.getContext=()=>({});
+      w.localStorage.setItem('weir:photoEveryone', '{}');
+      Object.keys(seed).forEach(k => w.localStorage.setItem('weir:' + k, JSON.stringify(seed[k])));
+    }});
+  await wait(1500);
+  const w = dom.window, d = w.document;
+  const src = fs.readFileSync('customer-intake.html', 'utf8');
+  try{
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); window.__asked=[]; confirmDialog=(m)=>{ window.__asked.push(m); return Promise.resolve(true); };"
+      + " window.__sent=[]; sbFetch = async (path, o)=>{ if(path.indexOf('amend_visit')!==-1) window.__sent.push(JSON.parse(o.body)); return {ok:true,status:200,body:{result:'saved'}}; };");
+    check('the out-of-date blue note is gone', !/appear automatically in the main Weir app/.test(d.body.textContent));
+    check('search boxes show no browser suggestions', Array.from(d.querySelectorAll('input')).filter(i => /search/i.test(i.id || '')).every(i => i.getAttribute('autocomplete') === 'off'));
+    check('the website\u2019s sign-in can go back to the app\u2019s sign-in', /index\.html\?app=service/.test(d.getElementById('btnLoginBack').getAttribute('onclick')));
+    // Route Scheduling by technician; an old named-route order is split by technician once
+    check('a route is a technician\u2019s customers', w.eval("routeKeyFor(customers[0])") === 't1');
+    const split = JSON.parse(w.eval("JSON.stringify(dayOrdersFor('Monday'))"));
+    check('an old order is split by technician, nobody reshuffled', JSON.stringify(split) === '{"t2":["b"],"t1":["a"]}', JSON.stringify(split));
+    // Customers row: Day and Technician changed on the row, extra days on their own
+    w.eval("customers[0].extraDays = ['Thursday']; switchView('customers');");
+    const rowA = Array.from(d.querySelectorAll('#customerList .cust-row')).find(r => /Alpha/.test(r.textContent));
+    const daySel = Array.from(rowA.querySelectorAll('select')).filter(x => /day/i.test(x.getAttribute('aria-label')));
+    check('each of a customer\u2019s days is its own menu on the row', daySel.length === 2);
+    daySel[1].value = 'Friday'; daySel[1].dispatchEvent(new w.Event('change'));
+    check('changing the extra day leaves the main day', w.eval("customers[0].day") === 'Monday' && w.eval("customers[0].extraDays.join()") === 'Friday');
+    check('an extra day counts as a service day', w.eval("customerServicedOn(customers[0], 'Friday')") && !w.eval("customerServicedOn(customers[0], 'Tuesday')"));
+    // Profile: Done closes on the first press (the stale "wanted" note is cleared)
+    check('a profile field closes on the first press of Done', /if\(profileRowWanted === label\) profileRowWanted = null;/.test(src));
+    // Dosage rules: a sync waits while a window is open; borrowed rules show names
+    check('a borrowed rule shows its dosage by name', w.eval("chemConfig.spa.dosages.push({key:'dose_x', label:'Muriatic acid'}); doseNameFor('dose_x', 'spa', [])") === 'Muriatic acid');
+    const ov = d.createElement('div'); ov.className = 'confirm-overlay'; d.body.appendChild(ov);
+    w.eval("syncApplyRecord('setup','chemConfig',{value: JSON.parse(localStorage.getItem('weir:chemConfig'))},false)");
+    check('a sync waits while a window is open', w.eval("syncCopiesWaiting.size") === 1);
+    ov.remove(); await wait(700);
+    check('and is taken in once it closes', w.eval("syncCopiesWaiting.size") === 0);
+    // Enter confirms, Escape cancels
+    w.eval("window.__real = null;");
+    const realConfirm = w.eval("(function(){ return typeof confirmDialog; })()");
+    // WorkCenter: Current tab
+    w.eval("confirmDialog = (m)=>{ window.__asked.push(m); return Promise.resolve(true); }; switchView('workcenter');");
+    const kind = k => d.querySelector('#wcTypeToggle [data-wctype="' + k + '"]').click();
+    const tab = v => d.querySelector('#wcViewControl [data-wcview="' + v + '"]').click();
+    kind('Work Order'); tab('current');
+    const cur = () => d.getElementById('wcCurrentList').textContent;
+    check('Work Order \u2192 Current lists scheduled visits', /Fix light/.test(cur()) && /Filter clean/.test(cur()) && !/Bulb fitted/.test(cur()));
+    check('and flags one whose work order was deleted', /Work order deleted/.test(cur()));
+    Array.from(d.querySelectorAll('#wcCurrentList > div')).find(r => /Filter clean/.test(r.textContent)).querySelector('button[title="Take this one off the route"]').click();
+    await wait(80);
+    check('\u00d7 takes a visit off the route', !w.eval("(lsGet('scheduledWorkOrders')||[]).some(j => j.id === 'jGone')"));
+    tab('history');
+    check('Work Order History shows visits finished in the field, with who and the notes', /Fix light/.test(d.getElementById('wcSubmittedList').textContent) && /by Pat/.test(d.getElementById('wcSubmittedList').textContent) && /Bulb fitted/.test(d.getElementById('wcSubmittedList').textContent));
+    kind('Task'); tab('current');
+    check('Task \u2192 Current lists open tasks only', /Check seal/.test(cur()) && !/Drop kit/.test(cur()));
+    tab('history');
+    check('Task History shows tasks finished in the field', /Drop kit/.test(d.getElementById('wcSubmittedList').textContent) && /Left at gate/.test(d.getElementById('wcSubmittedList').textContent));
+    kind('Quote'); tab('current');
+    Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => /Close/.test(b.textContent)).click(); await wait(50);
+    check('\u2713 Close takes a quote off Current and keeps it', !/Heater/.test(cur()) && w.eval("workOrders.some(x => x.id === 'q1' && x.closed)"));
+    // Select several and delete
+    kind('Task'); tab('current');
+    Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => b.textContent === 'Select').click(); await wait(20);
+    Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => b.textContent === 'Select all').click(); await wait(20);
+    Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => /selected/.test(b.textContent)).click(); await wait(80);
+    check('Select all and delete clears the list', !w.eval("tasks.some(t => !t.done)"));
+    // Deleting a work order always takes its visits off the routes
+    kind('Work Order'); tab('history');
+    Array.from(d.querySelectorAll('#wcHistoryList .cust-row')).find(r => /Work Order/.test(r.textContent)).querySelectorAll('button')[1].click(); await wait(80);
+    check('deleting a work order takes all its visits off the routes', !w.eval("(lsGet('scheduledWorkOrders')||[]).some(j => j.workOrderId === 'wo1')"));
+    // Tasks form: no Editing heading, no list below, Photo required
+    kind('Task'); tab('main');
+    check('no "Tasks on the schedule" list', d.getElementById('wcTaskListCard').style.display === 'none');
+    check('no "Editing\u2026" heading is written any more', src.indexOf("heading.textContent = 'Editing a saved '") === -1 && src.indexOf("'Editing \"' + t.title") === -1);
+    d.getElementById('taskTitle').value = 'Photo test'; d.getElementById('taskPhotoRequired').checked = true;
+    w.eval("setPickedTechIds(document.getElementById('taskTechnician'), ['t1']);");
+    d.getElementById('btnSaveTask').click(); await wait(80);
+    check('Photo required is saved with a task', w.eval("tasks.some(t => t.title === 'Photo test' && t.photoRequired === true)"));
+    // Saved tasks: one per name
+    w.eval("promptDialog = ()=> Promise.resolve('check SEAL');");
+    d.getElementById('taskTitle').value = 'Check seal'; d.getElementById('taskDetails').value = 'new';
+    d.getElementById('btnSaveTaskTemplate').click(); await wait(80);
+    const tpl = JSON.parse(w.localStorage.getItem('weir:taskTemplates'));
+    check('saving a saved task with a taken name asks, then overwrites it', tpl.length === 1 && tpl[0].details === 'new' && w.eval("window.__asked.some(m => /already exists/.test(m))"));
+    // Leftover filter cleans
+    w.eval("applyWorkCenterMode('filters'); renderFilterGroups();");
+    check('filter cleans no group here made are listed', /Tyler, John/.test(d.getElementById('wcFilterStrayList').textContent));
+  }catch(e){ check('Sept 25 website', false, e.message); }
+  w.close();
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();

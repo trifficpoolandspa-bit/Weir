@@ -159,10 +159,11 @@ console.log('\n=== Tasks: several customers, and repeats ===');
     const w = dom.window, d = w.document;
     w.console.warn = ()=>{};
     try{
-      w.eval("currentUser = {id:'t1', name:'Alex'}; renderHomeList();");
+      w.eval("currentUser = {id:'t1', name:'Alex'}; if(typeof adminViewTechId !== 'undefined'){ adminViewTechId = 't1'; adminRouteStarted = true; } renderHomeList();");
       const card = d.getElementById('routeTaskCard');
-      check(file + ' shows a task with nobody attached at the top',
-            card.textContent.indexOf('Loose job') !== -1);
+      // A task with nobody attached is its own row on the day now
+      check(file + ' shows a task with nobody attached as a row on the day',
+            Array.from(d.querySelectorAll('#homeCustomerList .route-job')).some(r => r.textContent.indexOf('Loose job') !== -1));
       check(file + ' but not one tied to a customer',
             card.textContent.indexOf('At Alpha') === -1);
       check(file + ' which is found against that customer instead',
@@ -344,8 +345,10 @@ console.log('\n=== The task card has no redundant heading ===');
     // Editing still says so, since that is the one time it matters
     Array.from(d.querySelectorAll('#wcTaskList button'))
       .find(b => b.textContent === 'Edit').click();
-    check('  editing names the task being changed',
-          h.style.display !== 'none' && h.textContent.indexOf('Check the salt cell') !== -1,
+    // No "Editing …" heading any more (Tyrus: it only took up space); the
+    // button says it instead
+    check('  editing shows no heading, and the button says Save changes',
+          h.style.display === 'none' && d.getElementById('btnSaveTask').textContent === 'Save changes',
           h.textContent);
 
     d.getElementById('btnClearTask').click();
@@ -388,9 +391,8 @@ console.log('\n=== Quote and work order forms have no redundant heading ===');
     // Editing is the one case worth labelling
     w.eval("loadWorkOrderIntoForm(workOrders[0]);");
     deferred.push(()=>{
-      check('  editing a saved one says so',
-            h().style.display !== 'none'
-            && h().textContent.indexOf('Editing a saved') === 0, h().textContent);
+      check('  editing a saved one shows no heading',
+            h().style.display === 'none' || !h().textContent.trim(), h().textContent);
       d.getElementById('btnClearWorkOrder').click();
       check('  and clearing hides it again', h().style.display === 'none');
     });
@@ -2304,7 +2306,7 @@ async function serverTechniciansTab(){
       const allRows = Array.from(d.querySelectorAll('#photoRequireRows > div'));
       check('it is listed under the four built-in rows', allRows.length === 5
             && /Filter gauge/.test(allRows[4].textContent), allRows.map(r => r.textContent.slice(0, 24)).join(' | '));
-      const crosses = Array.from(d.querySelectorAll('#photoRequireRows button')).filter(b => b.textContent === '\u00d7');
+      const crosses = Array.from(d.querySelectorAll('#photoRequireRows button')).filter(b => b.textContent === '\u00d7' || b.dataset.xDrawn === '1');
       check('only your own photo has an X beside it', crosses.length === 1);
       check('and the X sits after its name and its Edit button',
             crosses[0].previousElementSibling && crosses[0].previousElementSibling.textContent === 'Edit'
@@ -2343,7 +2345,7 @@ async function serverTechniciansTab(){
 
       // Removing it
       w.__answer = 'ok';
-      Array.from(d.querySelectorAll('#photoRequireRows button')).filter(b => b.textContent === '\u00d7')[0].click();
+      Array.from(d.querySelectorAll('#photoRequireRows button')).filter(b => b.textContent === '\u00d7' || b.dataset.xDrawn === '1')[0].click();
       await sleep(400);
       check('the X removes it', Array.from(d.querySelectorAll('#photoRequireRows > div')).length === 4,
             String(d.querySelectorAll('#photoRequireRows > div').length));
@@ -3943,7 +3945,7 @@ async function photoRequirementsPage(){
       check('and the old row settings are put back to off',
             JSON.parse(w.localStorage.getItem('weir:photoDefaults')).after === 'off');
       check('everyone added to Everyone travels with the company setup',
-            /'photoDefaults', 'photoEveryone'\]/.test(fs.readFileSync('customer-intake.html', 'utf8')));
+            /'photoDefaults', 'photoEveryone',/.test(fs.readFileSync('customer-intake.html', 'utf8')));
     }catch(e){ check('carried over', false, e.message); }
     w.close();
   }

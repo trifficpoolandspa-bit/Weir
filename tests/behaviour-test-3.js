@@ -619,8 +619,9 @@ console.log('\n=== The WorkCenter tab always matches what is shown ===');
     check('  returning selects Work Orders again', activeTab() === 'quotes', activeTab());
     check('  and the email section is hidden',
           shown().indexOf('wcBroadcastSection') === -1, shown().join(','));
-    check('  showing the work order sections instead',
-          shown().join(',') === 'wcQuotesSection,wcQuotesHistoryCard', shown().join(','));
+    // The sent history now lives on the History tab, so only the form shows
+    check('  showing the work order form instead',
+          shown().join(',') === 'wcQuotesSection', shown().join(','));
 
     // Same for filter cleans
     press('filters');
@@ -632,7 +633,7 @@ console.log('\n=== The WorkCenter tab always matches what is shown ===');
 
     // No mode may leave another's section visible
     let clean = true;
-    [['quotes',2],['filters',1],['broadcast',1]].forEach(([m,n])=>{
+    [['quotes',1],['filters',1],['broadcast',1]].forEach(([m,n])=>{
       w.eval("applyWorkCenterMode('" + m + "');");
       if(shown().length !== n) clean = false;
     });
@@ -849,8 +850,8 @@ console.log('\n=== Tasks sent to a route ===');
       d.getElementById('btnTypeQuote').click();
       check('  switching back hides the task form',
             d.getElementById('wcTaskSection').style.display === 'none');
-      check('  and restores the quote history',
-            d.getElementById('wcQuotesHistoryCard').style.display === 'block');
+      check('  and brings back the quote form, with its history on the History tab',
+            d.getElementById('btnSendWorkOrder').offsetParent !== null || d.getElementById('wcQuotesSection').style.display !== 'none');
     }catch(e){ check('  task creation', false, e.message); }
   }
 
@@ -861,12 +862,15 @@ console.log('\n=== Tasks sent to a route ===');
       const w = dom.window, d = w.document;
       w.console.warn = ()=>{};
       try{
-        w.eval("currentUser = {id:'t1', name:'Alex'}; renderHomeList();");
+        w.eval("currentUser = {id:'t1', name:'Alex'}; if(typeof adminViewTechId !== 'undefined'){ adminViewTechId = 't1'; adminRouteStarted = true; } renderHomeList();");
+        // A task is a row on the day now (the old ✓ list is gone)
         const card = d.getElementById('routeTaskCard');
-        check(file + ' shows the task on the route', card && card.style.display === 'block');
-        check(file + ' with what needs doing',
-              card.textContent.indexOf('heater') !== -1, card.textContent.slice(0, 50));
-        check(file + ' and its details', card.textContent.indexOf('wants a quote') !== -1);
+        const row = Array.from(d.querySelectorAll('#homeCustomerList .route-job')).find(r => /heater/i.test(r.textContent));
+        check(file + ' shows the task on the route', !!row && !(card && card.style.display === 'block'));
+        check(file + ' with what needs doing', !!row && /heater/i.test(row.textContent), row ? row.textContent.slice(0, 50) : 'no row');
+        if(row) row.click();
+        const brief = d.querySelector('.route-job-brief');
+        check(file + ' and its details', !!brief && brief.textContent.indexOf('wants a quote') !== -1);
       }catch(e){ check(file + ' route tasks', false, e.message); }
     });
 
@@ -1252,7 +1256,7 @@ setTimeout(()=>{
         /return weeks === 1 \? 'a week ago' : weeks \+ ' weeks ago';/.test(src));
   check('every report is listed, not only one found by date',
         src.indexOf("Enter a date above to pull up") === -1);
-  check('newest first', /list\.sort\(\(a, b\) => String\(b\.date \|\| ''\)\.localeCompare/.test(src));
+  check('newest first (one row per visit)', /return visits\.reverse\(\);/.test(src));
 
   const day = n => new Date(Date.now() - n * 86400000).toISOString();
   const {dom} = load('customer-intake.html', {seed: {
@@ -1271,7 +1275,7 @@ setTimeout(()=>{
       + " viewCustomer(customers[0]); selectedHistoryType='pool'; applyProfileTab('history');"
       + " showHistory('c1','Alpha One');");
     const bars = () => Array.from(d.querySelectorAll('#historyList > div'))
-      .filter(x => !x.classList.contains('report-doc'));
+      .filter(x => x.style.cursor === 'pointer');   // the report rows (not the Select bar, tabs or pages)
     const open = () => d.querySelectorAll('#historyList .report-doc').length;
 
     check('every report has a bar', bars().length === 3, String(bars().length));
@@ -1315,7 +1319,7 @@ setTimeout(()=>{
 
     bars()[0].click();
     const inside = Array.from(d.querySelectorAll('#historyList .report-doc button'))
-      .find(x => x.textContent === 'Delete this report');
+      .find(x => x.textContent === 'Delete this visit');
     check('an open report has a delete at its foot', !!inside);
   }catch(e){ check('service report bars', false, e.message); }
 }
@@ -1338,7 +1342,7 @@ setTimeout(()=>{
   w.Element.prototype.scrollIntoView = function(){};
   try{
     const bars = () => Array.from(d.querySelectorAll('#historyList > div'))
-      .filter(x => !x.classList.contains('report-doc') && !x.querySelector('[data-history-page]'));
+      .filter(x => x.style.cursor === 'pointer');   // the report rows (not the Select bar, tabs or pages)
     const pageBtn = n => d.querySelector('#historyList [data-history-page="' + n + '"]');
     const pager = () => { const b = pageBtn(1); return b ? b.parentElement : null; };
     const info = () => pager() ? pager().lastChild.textContent : '(no page numbers)';
@@ -1393,8 +1397,9 @@ setTimeout(()=>{
 
     // A different body of water, customer or date starts on page 1
     pageBtn(2).click();
-    Array.from(d.querySelectorAll('#historySegControl .history-type-btn')).find(b => /spa/i.test(b.textContent)).click();
-    check('switching to the spa starts on its page 1', info() === 'Showing 1\u201310 of 12', info());
+    // No body-of-water tabs any more: pool and spa reports are one list of visits
+    const segBar = d.getElementById('historySegControl');
+    check('there are no body-of-water tabs above the reports', !segBar || segBar.style.display === 'none');
     pageBtn(2).click();
     w.eval("viewCustomer(customers[1]); selectedHistoryType='pool'; showHistory('c2','Bravo Two');");
     check('ten reports exactly: no page numbers', bars().length === 10 && !pager(), info());
@@ -1636,6 +1641,100 @@ setTimeout(()=>{
     w.eval("switchView('customers'); switchView('workcenter');");
     check('and after another page', wc() === today, wc());
   }catch(e){ check('several technicians', false, e.message); }
+}
+
+
+// ---- Sept 24: WorkCenter tabs and History, line items, the one-minute hold ----
+{
+  console.log('\n=== WorkCenter: each kind has its own tab and History ===');
+  const {dom} = load('customer-intake.html', {seed: {
+    customers: [{id: 'a', name: 'Alpha Smith', active: true, hasPool: true, email: 'a@x.com'},
+                {id: 'b', name: 'Bravo Jones', active: true, hasPool: true}],
+    productsServices: [{key: 'p1', name: 'Acid wash', price: '250', category: 'repairs'},
+                       {key: 'p2', name: 'Filter clean', price: '85', category: 'repairs'}],
+    chemProductsSeeded: true, repairProductsSeeded: true,
+    workOrders: [{id: 'q1', customerId: 'a', type: 'Quote', lineItems: [], total: 900, date: '2026-09-20'},
+                 {id: 'o1', customerId: 'a', type: 'Work Order', lineItems: [], total: 120, date: '2026-09-21'}],
+    jobSubmissions: [{key: 'work order:w1', kind: 'work order', customerName: 'Alpha Smith', title: 'Replace cartridge', submittedAt: '2026-09-24T17:00:00Z'},
+                     {key: 'task:k1:a', kind: 'task', customerName: 'Alpha Smith', title: 'Check seal', submittedAt: '2026-09-24T18:00:00Z'}]}});
+  const w = dom.window, d = w.document;
+  w.console.warn = ()=>{};
+  w.Element.prototype.scrollIntoView = function(){};
+  try{
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); switchView('workcenter');");
+    const kind = t => d.querySelector('#wcTypeToggle [data-wctype="' + t + '"]').click();
+    const tab = v => d.querySelector('#wcViewControl [data-wcview="' + v + '"]').click();
+    const shown = id => d.getElementById(id).style.display !== 'none';
+    const sent = () => d.getElementById('wcHistoryList').textContent;
+    // Each row's title line (the Select bar at the top isn't a row)
+    const field = () => Array.from(d.querySelectorAll('#wcSubmittedList > div'))
+      .map(r => { const body = r.lastElementChild; return r.style.borderBottom && body && body.firstChild ? body.firstChild.textContent : null; })
+      .filter(Boolean).join(' | ');
+
+    kind('Quote');
+    check('the first tab is named for the kind', d.getElementById('btnWcViewMain').textContent === 'Quote');
+    check('and shows the form, not the history', shown('wcQuotesSection') && !shown('wcQuotesHistoryCard'));
+    tab('history');
+    check('Quote History shows quotes only', /Quote/.test(sent()) && !/Work Order/.test(sent()), sent().slice(0, 60));
+    check('and no field submissions', !shown('wcSubmittedCard'));
+    kind('Work Order');
+    check('changing kind starts on its own tab', d.getElementById('btnWcViewMain').classList.contains('active'));
+    tab('history');
+    check('Work Order History shows work orders only', /Work Order/.test(sent()) && !/Quote —/.test(sent()), sent().slice(0, 60));
+    check('and only work orders from the field', field() === 'Alpha Smith \u2013 Replace cartridge', field());
+    kind('Task'); tab('history');
+    check('Task History shows only tasks from the field', field() === 'Alpha Smith \u2013 Check seal', field());
+
+    console.log('\n=== WorkCenter: line items ===');
+    kind('Quote');
+    d.getElementById('btnAddLineItem').click();
+    const row = () => d.querySelectorAll('#wcLineItems .fountain-row')[0];
+    const box = i => row().querySelectorAll('input')[i];
+    check('a new line starts at quantity 1', box(1).value === '1', box(1).value);
+    check('the price box shows a $', /\$/.test(row().textContent));
+    box(0).value = 'Acid wash'; box(0).dispatchEvent(new w.Event('input', {bubbles: true}));
+    check('choosing an item puts its price in', box(2).value === '250', box(2).value);
+    box(1).value = '3'; box(1).dispatchEvent(new w.Event('input', {bubbles: true}));
+    box(0).value = 'Filter clean'; box(0).dispatchEvent(new w.Event('input', {bubbles: true}));
+    check('changing the item replaces the price', box(2).value === '85', box(2).value);
+    check('and keeps a quantity typed by hand', box(1).value === '3', box(1).value);
+    box(1).value = ''; box(1).dispatchEvent(new w.Event('input', {bubbles: true}));
+    box(0).value = 'Filter clean again'; box(0).dispatchEvent(new w.Event('input', {bubbles: true}));
+    check('typing an item into an empty quantity sets it to 1', box(1).value === '1', box(1).value);
+
+    console.log('\n=== WorkCenter: each kind keeps its own entries for a minute ===');
+    w.eval("resetWorkOrderForm();");
+    const notes = () => d.getElementById('wcNotes').value;
+    kind('Quote');
+    w.eval("wcSelectedCustomerIds=['a']; renderWcCustomerChips();");
+    d.getElementById('wcNotes').value = 'Heater quote';
+    kind('Work Order');
+    check('Work Order does not show the quote', notes() === '' && w.eval("wcSelectedCustomerIds.length") === 0);
+    d.getElementById('wcNotes').value = 'Pump seal';
+    kind('Quote');
+    check('back to Quote within the minute: it is all there', notes() === 'Heater quote' && w.eval("wcSelectedCustomerIds.join()") === 'a');
+    kind('Work Order');
+    check('and the work order kept its own', notes() === 'Pump seal');
+    kind('Quote');
+    w.eval("switchView('customers'); switchView('workcenter');");
+    check('another page and back within the minute keeps it', notes() === 'Heater quote', notes());
+    kind('Task');
+    const realNow = w.Date.now; w.Date.now = () => realNow() + 61000;
+    kind('Quote');
+    w.Date.now = realNow;
+    check('after a minute the form is blank', notes() === '' && w.eval("wcSelectedCustomerIds.length") === 0, notes());
+    const site = fs.readFileSync('customer-intake.html', 'utf8');
+    check('nothing is kept past a reload (held only in the page)', /const wcDrafts = \{\};/.test(site) && !/lsSet\('wcDrafts'/.test(site));
+  }catch(e){ check('WorkCenter Sept 24', false, e.message); }
+}
+
+{
+  console.log('\n=== Website: windows close only from their buttons ===');
+  const site = fs.readFileSync('customer-intake.html', 'utf8');
+  check('no window closes on a click outside it',
+        !/if\(e\.target === (overlay|view|box)\)/.test(site) && !/target\.id === 'techAssignOverlay'/.test(site));
+  check('and a page-wide guard ignores clicks on any backdrop, for windows added later',
+        /windowsCloseOnlyFromButtons/.test(site) && /document\.addEventListener\('click', e=>\{\s*if\(isBackdrop\(e\.target\)\)\{ e\.stopPropagation\(\); e\.preventDefault\(\); \}\s*\}, true\);/.test(site));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');

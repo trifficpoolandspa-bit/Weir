@@ -1645,11 +1645,13 @@ async function walkVisit(w, d, maxPresses){
     ({w, d, order, company} = await start());
     drop(w, ['c','a','job:work order:w1','b','d']);
     d.getElementById('orderPermBtn').click(); await wait(200);
-    check('Every week makes it the company\u2019s route order', company().r1.join('') === 'cabdh', company().r1.join(''));
-    check('keeping anyone who wasn\u2019t on screen after them, and other routes untouched', company().r2.join('') === 'z');
+    // Saved per technician now: the old named route is turned into technicians' routes
+    check('Every week makes it the company\u2019s route order, under the technician', (company().t1 || []).join('') === 'cabd', JSON.stringify(company()));
+    check('anyone on another technician\u2019s route keeps their place, and no named route is left beside them',
+          (company().t9 || []).join('') === 'h' && (company().t2 || []).join('') === 'z' && !company().r1 && !company().r2);
     const sent = JSON.parse(w.eval("JSON.stringify(window.__sent)"));
     check('and sends it to the office as the setup record the website reads',
-          sent.length === 1 && sent[0].p_kind === 'setup' && sent[0].p_id === 'routeOrders' && sent[0].p_changes.value.v[day].r1.join('') === 'cabdh');
+          sent.length === 1 && sent[0].p_kind === 'setup' && sent[0].p_id === 'routeOrders' && (sent[0].p_changes.value.v[day].t1 || []).join('') === 'cabd');
     check('jobs are left out of route scheduling', !JSON.stringify(company()).includes('job:'));
     check('nothing is left waiting once it\u2019s gone', !JSON.parse(w.localStorage.getItem('weir:routeOrdersToSend')));
     w.eval("localStorage.setItem('weir:routeOrders', JSON.stringify({'" + day + "': {r1: ['d','c','b','a','h'], r2: ['z']}})); renderHomeList();");
@@ -1686,6 +1688,118 @@ async function walkVisit(w, d, maxPresses){
   // The website redraws its route scheduling when an order arrives from a phone
   check('the website redraws route scheduling when a new order arrives',
         /routeOrders = lsGet\('routeOrders'\) \|\| \{\};[\s\S]{0,300}renderRoutesList\(\)/.test(fs.readFileSync('customer-intake.html', 'utf8')));
+}
+
+
+// ---- Sept 25: the phones ----
+{
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const day = DAYS[new Date().getDay()], other = DAYS[(new Date().getDay() + 3) % 7];
+  const iso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const chem = {pool: {chemicals: [{key: 'chlorine', label: 'Chlorine'}], dosages: [{key: 'tabs', label: 'Tabs'}]},
+                spa: {chemicals: [{key: 'chlorine', label: 'Chlorine'}], dosages: [{key: 'tabs', label: 'Tabs'}]}, fountain: {chemicals: [], dosages: []}};
+  for(const file of ['technician-app.html', 'admin-readings-app.html']){
+    console.log('\n=== ' + file + ': Sept 25 ===');
+    const dom = boot(file, {
+      customers: [
+        {id: 'a', name: 'Alpha', address: '1 A St', active: true, hasPool: true, hasSpa: true, day, technicianId: 't1'},
+        {id: 'e', name: 'Extra Day', active: true, hasPool: true, day: other, extraDays: [day], technicianId: 't1'},
+        {id: 'z', name: 'Zed (Sam)', active: true, hasPool: true, day: other, technicianId: 't2'},
+        {id: 'v', name: 'Visit Test', active: true, hasPool: true, hasSpa: true, day: other, technicianId: 't1'}],
+      rescheduledVisits: [{id: 'r1', customerId: 'z', fromDate: '2026-01-01', toDate: iso}],
+      routeOrders: {[day]: {r1: ['a', 'e'], t1: ['e', 'a']}},
+      tasks: [{id: 'k1', title: 'Pick up chlorine', technicianId: 't1', date: iso, customerIds: [], done: false, photoRequired: true}],
+      scheduledWorkOrders: [{id: 'j1', workOrderId: 'wo1', customerId: 'a', technicianId: 't1', date: iso, title: 'Fix light', status: 'scheduled'}],
+      chemConfig: chem});
+    await wait(1300);
+    const w = dom.window, d = w.document;
+    w.Element.prototype.scrollIntoView = function(){};
+    try{
+      w.eval("currentUser = {id: 't1', name: 'Pat', full_access: true, isAdmin: true, canReorderRoute: true};"
+        + " if(typeof adminViewTechId !== 'undefined'){ adminViewTechId = 't1'; adminRouteStarted = true; }"
+        + " captureFromCamera = async ()=> 'data:image/jpeg;base64,x'; attemptAutoSend = async ()=>{}; window.__asked = [];"
+        + " confirmDialog = (m)=>{ window.__asked.push(m); return Promise.resolve(true); }; alertDialog = ()=> Promise.resolve();"
+        + " fieldAuthed = async ()=>({ok: true, status: 200, body: {result: 'saved'}});"
+        + " selectedHomeDay = '" + day + "'; switchView('home'); renderHomeList();");
+      await wait(450);
+      const names = () => Array.from(d.querySelectorAll('#homeCustomerList .cust-row .cust-name')).map(x => x.textContent.trim());
+      const today = names();
+      check(file + ': a customer shows once, never copied by an old route order beside a technician\u2019s', today.filter(n => n === 'Alpha').length === 1, today.join(','));
+      check(file + ': an extra service day puts the customer on that day too', today.indexOf('Extra Day') !== -1);
+      check(file + ': another technician\u2019s rescheduled customer isn\u2019t on this route', today.indexOf('Zed (Sam)') === -1);
+      check(file + ': the order comes from the technician\u2019s route', today[0] === 'Extra Day', today.join(','));
+      // A task with no customer is a row, and a required photo must be taken
+      const loose = Array.from(d.querySelectorAll('#homeCustomerList .route-job')).find(r => /Pick up chlorine/.test(r.textContent));
+      check(file + ': a task with no customer is a row on the day', !!loose && !(d.getElementById('routeTaskCard') && d.getElementById('routeTaskCard').style.display === 'block'));
+      loose.click(); await wait(40);
+      Array.from(d.querySelectorAll('.route-job-brief button')).find(b => /Start job/.test(b.textContent)).click(); await wait(40);
+      const page = d.getElementById('jobPage');
+      check(file + ': its page marks the photo Required', /Photo \u00b7 Required/.test(page.textContent));
+      Array.from(page.querySelectorAll('button')).find(b => /^Submit/.test(b.textContent)).click(); await wait(80);
+      check(file + ': it won\u2019t submit without the photo', !!d.getElementById('jobPage'));
+      Array.from(page.querySelectorAll('button')).find(b => b.textContent === 'Take photo').click(); await wait(60);
+      page.querySelector('textarea').value = 'Two buckets.';
+      Array.from(page.querySelectorAll('button')).find(b => /^Submit/.test(b.textContent)).click(); await wait(200);
+      const k1 = (JSON.parse(w.localStorage.getItem('weir:tasks')) || [])[0];
+      check(file + ': submitting marks the task done with the notes, for the office', k1.done === true && k1.doneBy === 't1' && k1.doneNotes === 'Two buckets.');
+      // A work order visit, the same
+      await wait(450);
+      const woRow = Array.from(d.querySelectorAll('#homeCustomerList .route-job')).find(r => /Fix light/.test(r.textContent));
+      woRow.click(); await wait(40);
+      Array.from(d.querySelectorAll('.route-job-brief button')).find(b => /Start job/.test(b.textContent)).click(); await wait(40);
+      d.getElementById('jobPage').querySelector('textarea').value = 'New bulb.';
+      Array.from(d.getElementById('jobPage').querySelectorAll('button')).find(b => /^Submit/.test(b.textContent)).click(); await wait(200);
+      const j1 = (JSON.parse(w.localStorage.getItem('weir:scheduledWorkOrders')) || [])[0];
+      check(file + ': submitting a work order visit marks it done with the notes', j1.status === 'done' && j1.doneNotes === 'New bulb.');
+      const sends = JSON.parse(w.eval("(()=>{ const st={work:{known:{},seen:{},edits:{},refused:{}}}; syncScanWork(st, '2026-09-25T12:00:00Z'); return JSON.stringify(Object.keys(st.work.edits).reduce((o,k)=>{ o[k.replace('\\u0002',':')]=Object.keys(st.work.edits[k]).sort(); return o; },{})); })()"));
+      check(file + ': and sends only what snippet 16 allows', JSON.stringify(sends['task:k1']) === '["done","doneAt","doneBy","doneNotes"]'
+            && JSON.stringify(sends['work_order:j1']) === '["doneAt","doneBy","doneNotes","status"]', JSON.stringify(sends));
+      // Every week, part of the day done: only those on screen swap places
+      check(file + ': Every week partway through a day keeps the rest in place',
+            w.eval("mergeVisibleOrder('ABCDEFGHIJKLMNOP'.split(''), ['P','M','N','O']).join('')") === 'ABCDEFGHIJKLPMNO');
+      // Leaving Today closes an open row
+      await wait(450);
+      d.querySelector('#homeCustomerList .cust-row').click(); await wait(30);
+      w.eval("switchView('options'); switchView('home');");
+      check(file + ': leaving Today closes an open row', !d.querySelector('.route-brief'));
+      // On my way has its heading
+      w.eval("askHeadsUpWay({id:'a', name:'Alpha', email:'a@x.com', phone:'5550101'})");
+      const hu = Array.from(d.querySelectorAll('.confirm-overlay')).pop();
+      check(file + ': the On my way window has its heading', !!hu && hu.querySelector('h2') && hu.querySelector('h2').textContent === 'On my way');
+      hu.remove();
+      // An extra photo limited to some customers
+      w.eval("chemConfig.pool.customPhotos = [{id:'cp1', label:'Heater', when:{after:true}, required:true, customerIds:['e']}];");
+      check(file + ': a photo for chosen customers is asked at theirs only',
+            w.eval("currentVisitCustomerId='e'; customPhotosFor('pool').length") === 1 && w.eval("currentVisitCustomerId='a'; customPhotosFor('pool').length") === 0);
+      w.eval("chemConfig.pool.customPhotos = []; currentVisitCustomerId = null;");
+      // The start and finish are saved on the visit's reports
+      w.eval("visitLocation = {customerId: 'a', start: {lat: 33.45, lng: -112.58, acc: 8, at: '2026-09-25T15:00:00Z'}, end: {lat: 33.4502, lng: -112.5801, acc: 9, at: '2026-09-25T15:20:00Z'}};"
+        + " localStorage.setItem('weir:visitPackage:a', JSON.stringify({sections: {pool: {id: 'rp1', date: '2026-09-25T15:20:00Z'}}}));");
+      await w.eval("commitVisitPackage('a')");
+      const rp = JSON.parse(w.eval("JSON.stringify((JSON.parse(localStorage.getItem('weir:readings:a')) || []).find(r => r.id === 'rp1') || null)"));
+      check(file + ': the start and finish are saved on the report', !!rp && rp.visitLocation && rp.visitLocation.start.lat === 33.45 && rp.visitLocation.end.lat === 33.4502, JSON.stringify(rp));
+      const src = fs.readFileSync(file, 'utf8');
+      check(file + ': the finish is always a fresh position', /maximumAge: kind === 'end' \? 0 : 60000/.test(src));
+      check(file + ': the map is never in the customer\u2019s email', src.slice(src.indexOf('function buildReportEmailHtml'), src.indexOf('function buildReportEmailHtml') + 8000).indexOf('visitLocation') === -1);
+      // Return to route clears the whole report, and the last page has Back
+      w.eval("openVisit('v')"); await wait(400);
+      w.eval("goToVisitStep(visitStepCardsFor('pool').length)"); await wait(80);
+      check(file + ': the last page has Back when no after photo is asked for', !!d.querySelector('#visitPoolSaveSection .step-back'));
+      w.eval("goToVisitStep(1)"); await wait(80);
+      await w.eval("skipBodyOfWater('pool')"); await wait(300);
+      const spa = d.getElementById('spa_chem_chlorine'); spa.value = '4'; spa.dispatchEvent(new w.Event('input', {bubbles: true}));
+      await wait(450);
+      d.querySelector('.step-back').click(); await wait(400);
+      w.eval("openVisit('v')"); await wait(400);
+      check(file + ': Return to route cancels the whole report, a skipped body included',
+            d.getElementById('spa_chem_chlorine').value === '' && w.eval("!(pendingVisit && pendingVisit.doneSections && pendingVisit.doneSections.pool)"));
+      if(file === 'admin-readings-app.html'){
+        check(file + ': Save report waits for the photo requirements', /const photosReady = !owing && !\(submitBtn && submitBtn\.disabled\);/.test(src));
+      }
+    }catch(e){ check(file + ': Sept 25', false, e.message); }
+    w.close();
+  }
+  check('Android keeps Weir upright', JSON.parse(fs.readFileSync('manifest.json', 'utf8')).orientation === 'portrait');
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
