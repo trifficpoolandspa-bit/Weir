@@ -865,6 +865,33 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   w.close();
 }
 
+
+// ---- Sodium Bicarbonate on the spa must stay ----
+{
+  console.log('\n=== customer-intake.html \u2014 lists are never overwritten by a page load ===');
+  const OLD = {pool:{chemicals:[{key:'chlorine',label:'Chlorine'}],dosages:[{key:'tabs',label:'Tabs'}]},
+               spa:{chemicals:[{key:'chlorine',label:'Chlorine'}],dosages:[{key:'tabs',label:'Tabs'}]}, fountain:{chemicals:[],dosages:[]}};
+  const PROD = [{key:'p1',name:'Acid wash',price:'250',category:'repairs'}];
+  const dom = new JSDOM(fs.readFileSync('customer-intake.html','utf8'), {runScripts:'dangerously', pretendToBeVisual:true, url:'https://example.com/',
+    beforeParse(w){ w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
+      w.scrollTo=()=>{}; w.alert=()=>{}; w.console.warn=()=>{}; w.console.error=()=>{}; w.HTMLCanvasElement.prototype.getContext=()=>({});
+      w.localStorage.setItem('weir:chemConfig', JSON.stringify(OLD)); w.localStorage.setItem('weir:productsServices', JSON.stringify(PROD)); }});
+  await wait(1500);
+  const w = dom.window;
+  try{
+    check('opening the page leaves the stored lists exactly as they were (nothing to send over another device\u2019s)',
+          w.localStorage.getItem('weir:chemConfig') === JSON.stringify(OLD));
+    check('and leaves the stored products as they were', w.localStorage.getItem('weir:productsServices') === JSON.stringify(PROD));
+    check('while the page still fills in the quick buttons for use', w.eval("chemConfig.pool.chemicals.every(c => Array.isArray(c.buttons))"));
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); appSettings.applyPoolDosagesToAll = true;"
+      + " chemConfig.spa.dosages.push({key:'dose_sb', label:'Sodium Bicarbonate', unit:'lb', buttons:[]}); selectedChemConfigType='pool'; saveChemConfig();");
+    const after = JSON.parse(w.localStorage.getItem('weir:chemConfig'));
+    check('"use the pool\u2019s dosages for all" keeps what only the spa has', after.spa.dosages.some(x => x.label === 'Sodium Bicarbonate')
+          && after.spa.dosages.some(x => x.key === 'tabs'));
+  }catch(e){ check('lists never overwritten', false, e.message); }
+  w.close();
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();
