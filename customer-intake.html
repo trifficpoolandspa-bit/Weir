@@ -1312,7 +1312,7 @@ input::placeholder{color:#A9BCB9;}
       <p id="wcCurrentNote" style="font-size:12.5px;color:var(--muted);margin:-8px 0 12px;"></p>
       <div id="wcCurrentFilters" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
         <select id="wcCurrentTech" aria-label="Technician" style="width:auto;min-width:170px;"></select>
-        <input id="wcCurrentSearch" placeholder="Search customer or work" autocomplete="off" style="flex:1;min-width:180px;">
+        <input id="wcCurrentSearch" placeholder="Search by customer name, address, phone, or email" autocomplete="off" style="flex:1;min-width:180px;">
       </div>
       <div id="wcCurrentList"></div>
     </div>
@@ -9761,6 +9761,11 @@ function renderWorkOrderHistory(){
       const dateStr = new Date(wo.createdAt).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'});
       row.innerHTML = `<div><div class="cust-name">${wo.type} — ${customer ? displayName(customer.name) : 'Unknown customer'}</div><div class="cust-meta">${dateStr} · $${wo.total.toFixed(2)}</div></div>`;
       const histTick = selectionTick(histKey, wo.id, renderWorkOrderHistory);
+      if(!histTick && (wo.type || 'Quote') === 'Quote'){
+        // A quote's row shows the email the customer got
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', e=>{ if(e.target.closest('button')) return; showSentQuoteEmail(wo); });
+      }
       if(histTick){
         const wrap = document.createElement('div');
         wrap.style.cssText = 'display:flex;align-items:center;min-width:0;';
@@ -9930,6 +9935,9 @@ function renderCurrentList(kind){
   const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   const term = (document.getElementById('wcCurrentSearch').value || '').trim().toLowerCase();
   const custName = id => { const c = customers.find(x => String(x.id) === String(id)); return c ? displayName(c.name) : 'A customer no longer on file'; };
+  // What the search looks through: each customer's name, address, phone and email
+  const custLook = ids => ids.map(id => customers.find(x => String(x.id) === String(id))).filter(Boolean)
+    .map(c => [c.name, displayName(c.name), c.address, c.phone, c.email].filter(Boolean).join(' ')).join(' ');
 
   // The technician filter (not for quotes)
   const keepTech = techSel.value;
@@ -9949,7 +9957,7 @@ function renderCurrentList(kind){
     const woIds = new Set(workOrders.map(w => w.id));
     const jobs = (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'scheduled');
     rows = jobs.filter(j => !tech || String(j.technicianId) === tech).map(j => ({
-      id: j.id, date: j.date, who: custName(j.customerId), what: j.title || 'Work order',
+      id: j.id, date: j.date, who: custName(j.customerId), look: custLook([j.customerId]), what: j.title || 'Work order',
       techName: technicianNameById(j.technicianId) || 'No technician',
       orphan: !!j.workOrderId && !woIds.has(j.workOrderId),
       workOrderId: j.workOrderId,
@@ -9961,7 +9969,7 @@ function renderCurrentList(kind){
     const open = tasks.filter(t => t && !t.done);
     rows = open.filter(t => !tech || String(t.technicianId) === tech).map(t => {
       const names = (t.customerIds || []).map(custName);
-      return {id: t.id, date: t.date, what: t.title || 'Task',
+      return {id: t.id, date: t.date, what: t.title || 'Task', look: custLook(t.customerIds || []),
         who: names.length ? names.slice(0, 2).join(', ') + (names.length > 2 ? ' +' + (names.length - 2) : '') : 'No customer',
         techName: technicianNameById(t.technicianId) || 'No technician',
         group: t.seriesId || '', groupLeft: t.seriesId ? open.filter(x => x.seriesId === t.seriesId).length : 1};
@@ -9970,12 +9978,12 @@ function renderCurrentList(kind){
     heading.textContent = 'Open quotes';
     note.textContent = 'Quotes sent and not yet closed, newest first. Close one once it\u2019s been answered or no longer needs following up \u2014 it stays in History.';
     rows = workOrders.filter(w => (w.type || 'Quote') === 'Quote' && !w.closed).map(w => ({
-      id: w.id, date: w.date || (w.createdAt || '').slice(0, 10), who: custName(w.customerId),
+      id: w.id, date: w.date || (w.createdAt || '').slice(0, 10), who: custName(w.customerId), look: custLook([w.customerId]),
       what: (w.lineItems || []).map(li => li.description).filter(Boolean).join(', ') || 'Quote',
       total: w.total
     }));
   }
-  rows = rows.filter(r => !term || r.who.toLowerCase().includes(term) || r.what.toLowerCase().includes(term));
+  rows = rows.filter(r => !term || [r.who, r.look, r.what].filter(Boolean).join(' ').toLowerCase().includes(term));
   rows.sort((a, b) => kind === 'Quote' ? String(b.date).localeCompare(String(a.date)) : String(a.date).localeCompare(String(b.date)));
 
   count.textContent = rows.length ? String(rows.length) : '';
@@ -10002,6 +10010,15 @@ function renderCurrentList(kind){
       + (i === shown.length - 1 ? '' : 'border-bottom:1px solid var(--line);');
     const tick = selectionTick(selKey, r.id, redrawCur);
     if(tick){ row.appendChild(tick); row.style.cursor = 'pointer'; row.addEventListener('click', e=>{ if(e.target.closest('button')) return; toggleSelected(selKey, r.id, redrawCur); }); }
+    else if(kind === 'Quote'){
+      // A quote's row shows the email the customer got
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', e=>{
+        if(e.target.closest('button')) return;
+        const w = workOrders.find(x => x.id === r.id);
+        if(w) showSentQuoteEmail(w);
+      });
+    }
     const when = document.createElement('div');
     when.style.cssText = 'flex:0 0 118px;font-size:12.5px;font-weight:600;';
     when.textContent = wcShortDate(r.date);
@@ -10716,11 +10733,14 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
     // before sending (without it, the email just goes without the buttons)
     const quoteId = 'wo_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
     const respondUrl = await registerQuoteResponse(quoteId);
-    const sent = await sendQuoteEmail(customer, subject,
-      quoteEmailHtml(customer, type, quoteDateText, validItems, total, notes, null, respondUrl), message);
+    const emailHtml = quoteEmailHtml(customer, type, quoteDateText, validItems, total, notes, null, respondUrl);
+    const sent = await sendQuoteEmail(customer, subject, emailHtml, message);
     if(sent) sentCount++;
 
     workOrders.push({
+      // The email exactly as sent, to show again from Current or History
+      emailHtml: emailHtml,
+      emailSubject: subject,
       id: quoteId,
       customerId: customer.id,
       type,
@@ -10918,6 +10938,51 @@ function fillQuoteEmailForm(q){
   });
 })();
 
+// ---------- A quote's email, as the customer sees it ----------
+function showSentQuoteEmail(w){
+  const customer = customers.find(c => c.id === w.customerId) || {name: 'Customer'};
+  let html = w.emailHtml;
+  let rebuilt = false;
+  if(!html){
+    // Sent before copies were kept: rebuilt with today's template, no buttons
+    const dateText = w.date
+      ? new Date(w.date + 'T12:00:00').toLocaleDateString(undefined, {month: 'long', day: 'numeric', year: 'numeric'})
+      : new Date(w.createdAt || Date.now()).toLocaleDateString(undefined, {month: 'long', day: 'numeric', year: 'numeric'});
+    html = quoteEmailHtml(customer, w.type || 'Quote', dateText, w.lineItems || [], Number(w.total) || 0, w.notes || '');
+    rebuilt = true;
+  }
+  const view = document.createElement('div');
+  view.className = 'confirm-overlay';
+  const card = document.createElement('div');
+  card.className = 'confirm-box';
+  card.style.cssText = 'max-width:720px;width:100%;display:flex;flex-direction:column;max-height:90vh;';
+  const head = document.createElement('div');
+  head.style.cssText = 'margin:0 0 10px;';
+  head.innerHTML = '<h3 style="font-size:15px;margin:0 0 3px;"></h3><p style="font-size:12px;color:var(--muted);margin:0;"></p>';
+  head.children[0].textContent = w.emailSubject || ((w.type || 'Quote') + ' to ' + displayName(customer.name));
+  const when = w.createdAt ? new Date(w.createdAt).toLocaleString() : '';
+  head.children[1].textContent = rebuilt
+    ? 'Sent before copies were kept \u2014 shown with today\u2019s template, without the Approve / Deny buttons'
+    : 'Sent ' + when + (customer.email ? ' to ' + customer.email : '');
+  card.appendChild(head);
+  const frame = document.createElement('iframe');
+  frame.style.cssText = 'flex:1;min-height:440px;width:100%;border:1px solid var(--line);border-radius:10px;background:#F4F6F5;';
+  card.appendChild(frame);
+  const shut = document.createElement('button');
+  shut.type = 'button';
+  shut.className = 'btn btn-primary';
+  shut.style.cssText = 'width:auto;align-self:flex-end;margin-top:12px;';
+  shut.textContent = 'Close';
+  card.appendChild(shut);
+  view.appendChild(card);
+  document.body.appendChild(view);
+  const doc = frame.contentDocument || frame.contentWindow.document;
+  doc.open(); doc.write(html); doc.close();
+  // Only a look: the buttons inside can't be pressed from here
+  try{ doc.querySelectorAll('a').forEach(a => a.addEventListener('click', e => e.preventDefault())); }catch(e){}
+  shut.addEventListener('click', ()=> view.remove());
+}
+
 // ---------- Customers approve or deny a quote from its email ----------
 // Each quote sent gets a secret code on the server (quote_responses, snippet
 // 17). The email's buttons open the quote-response function, which asks the
@@ -10935,7 +11000,10 @@ async function registerQuoteResponse(quoteId){
       body: JSON.stringify({company_id: siteUser.companyId, quote_id: quoteId, token: token, outcome: null, responded_at: null})
     });
     if(!res || !res.ok) return null;
-    return SUPABASE_URL + '/functions/v1/quote-response?t=' + token;
+    // The page on this website that asks the customer to confirm (Supabase shows
+    // pages from its own addresses as plain text); it carries which server to tell
+    return new URL('quote-response.html', location.href).href.split('?')[0]
+      + '?s=' + encodeURIComponent(SUPABASE_URL) + '&t=' + token;
   }catch(e){ return null; }
 }
 

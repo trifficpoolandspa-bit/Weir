@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your quote</title>
+<style>
+  body{margin:0;background:#F4F6F5;font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#1F2D2B;}
+  .card{max-width:480px;margin:48px auto;background:#fff;border-radius:14px;padding:28px 26px;border:1px solid #E6E9E8;}
+  h1{font-size:20px;margin:0 0 12px;}
+  p{font-size:15px;line-height:1.5;margin:0 0 20px;}
+  button{width:100%;padding:14px;border:0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;color:#fff;background:#134E4A;}
+  button.deny{background:#B8492E;}
+  button[disabled]{opacity:.6;cursor:default;}
+</style>
+</head>
+<body>
+<!-- The page a customer lands on from the Approve / Deny buttons in a quote
+     email. It asks first; only pressing the button records the answer, so
+     email link-checkers can't approve or deny a quote by accident. -->
+<div class="card">
+  <h1 id="title">One moment…</h1>
+  <p id="text"></p>
+  <button id="go" type="button" style="display:none;"></button>
+</div>
+<script>
+(function(){
+  const q = new URLSearchParams(location.search);
+  const token = q.get('t') || '';
+  const action = q.get('a') === 'deny' ? 'deny' : 'approve';
+  const server = q.get('s') || '';
+  const title = document.getElementById('title');
+  const text = document.getElementById('text');
+  const go = document.getElementById('go');
+  const show = (t, p) => { title.textContent = t; text.textContent = p || ''; };
+  // Only ever a Supabase address
+  let fn = '';
+  try{
+    const u = new URL(server);
+    if(u.protocol === 'https:' && /\.supabase\.co$/.test(u.hostname)) fn = u.origin + '/functions/v1/quote-response';
+  }catch(e){}
+  if(!token || !fn){ show('This link isn\u2019t complete', 'Please use the button in your email, or contact us directly.'); return; }
+  const who = c => c || 'us';
+  const said = o => o === 'denied' ? 'denied' : 'approved';
+
+  fetch(fn + '?t=' + encodeURIComponent(token)).then(r => r.json()).then(st=>{
+    if(st.state === 'missing'){ show('This quote can\u2019t be found', 'It may have been replaced by a newer one. Please use the latest email, or contact us directly.'); return; }
+    if(st.state === 'answered'){ show('Your answer is already in', 'This quote was already ' + said(st.outcome) + '. If that\u2019s not right, please contact ' + who(st.company) + '.'); return; }
+    show(action === 'approve' ? 'Approve this quote?' : 'Deny this quote?', 'Press the button to let ' + who(st.company) + ' know.');
+    go.textContent = action === 'approve' ? 'Approve this quote' : 'Deny this quote';
+    if(action === 'deny') go.className = 'deny';
+    go.style.display = 'block';
+    go.addEventListener('click', ()=>{
+      go.disabled = true;
+      fetch(fn, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({t: token, a: action})})
+        .then(r => r.json()).then(res=>{
+          go.style.display = 'none';
+          if(res.state === 'recorded') show(res.outcome === 'approved' ? 'Thank you \u2014 quote approved' : 'Thank you \u2014 quote denied', who(res.company) + ' has your answer. You can close this page.');
+          else if(res.state === 'answered') show('Your answer is already in', 'This quote was already ' + said(res.outcome) + '.');
+          else show('Something went wrong', 'Please try again, or contact us directly.');
+        })
+        .catch(()=>{ go.disabled = false; show('Couldn\u2019t reach us', 'Please check your connection and press the button again.'); go.style.display = 'block'; });
+    });
+  }).catch(()=> show('Couldn\u2019t reach us', 'Please check your connection and reload this page.'));
+})();
+</script>
+</body>
+</html>
