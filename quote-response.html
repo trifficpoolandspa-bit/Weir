@@ -27,6 +27,9 @@
           background:var(--teal-soft);color:var(--teal);}
   .answer.denied{background:#FBEAE4;color:var(--rust);}
   .foot{margin-top:26px;font-size:13px;color:#8A9A98;}
+  .close-link{display:inline-block;margin-top:8px;padding:0;border:0;background:none;font:inherit;font-size:14px;font-weight:700;
+              color:var(--teal);text-decoration:underline;text-underline-offset:3px;cursor:pointer !important;}
+  .close-link:hover{color:#0B3734;}
   .wait .badge path{display:none;}
   .wait .badge{animation:pulse 1.2s ease-in-out infinite;}
   @keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
@@ -62,7 +65,20 @@
       a.className = 'answer' + (outcome === 'denied' ? ' denied' : '');
       a.style.display = 'inline-block';
     }
-    $('foot').textContent = company ? company + ' \u00b7 You can close this page' : 'You can close this page';
+    // The company, then "Close this page", which closes it where the browser allows
+    const foot = $('foot');
+    foot.textContent = company || '';
+    const shut = document.createElement('button');
+    shut.type = 'button';
+    shut.className = 'close-link';
+    shut.textContent = 'Close this page';
+    shut.addEventListener('click', ()=>{
+      window.close();
+      // Some browsers don't let a page close its own tab: say so instead of doing nothing
+      setTimeout(()=>{ if(!window.closed){ shut.textContent = 'You can close this tab now'; shut.style.textDecoration = 'none'; shut.style.cursor = 'default'; } }, 300);
+    });
+    if(company) foot.appendChild(document.createElement('br'));
+    foot.appendChild(shut);
   };
   // Only ever a Supabase address
   let fn = '';

@@ -1158,7 +1158,7 @@ input::placeholder{color:#A9BCB9;}
         <label>Scheduled date</label>
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
           <input type="date" id="wcDate" style="width:auto;min-width:0;padding-right:12px;">
-          <span id="wcQuoteNumber" style="margin-left:auto;font-size:13.5px;font-weight:700;color:var(--teal-deep);white-space:nowrap;" title="The number this quote will get when sent"></span>
+          <span id="wcQuoteNumber" style="margin-left:auto;display:inline-block;padding:3px 11px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:12.5px;font-weight:700;letter-spacing:.05em;color:var(--teal-deep);white-space:nowrap;" title="The number this quote will get when sent"></span>
           <label id="wcPhotoRequiredWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
             <input type="checkbox" id="wcPhotoRequired" checked style="margin:0;"> Photo required
           </label>
@@ -9789,7 +9789,8 @@ function renderWorkOrderHistory(){
         const declined = !!wo.denied;
         const tag = document.createElement('span');
         tag.textContent = declined ? 'DECLINED' : 'APPROVED';
-        tag.style.cssText = 'display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:7px;'
+        // One fixed width for both, the word centred in it
+        tag.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;height:28px;width:100px;padding:0;border-radius:7px;'
           + 'font-size:12px;font-weight:800;letter-spacing:.06em;color:#fff;flex-shrink:0;'
           + 'background:' + (declined ? '#B8492E' : '#2E8B57') + ';';
         // Placed with the buttons (below), so it doesn't move with the name's length
@@ -10903,7 +10904,9 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
     // The date, with the quote's number at the far right of the same line
     + '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin-top:3px;"><tr>'
     + '<td style="font-size:13.5px;color:#6B7B79;">' + esc(dateText) + '</td>'
-    + (quoteNumber ? '<td style="font-size:13.5px;color:#6B7B79;text-align:right;white-space:nowrap;font-weight:700;">' + esc(type) + ' #' + esc(String(quoteNumber)) + '</td>' : '')
+    + (quoteNumber ? '<td style="text-align:right;white-space:nowrap;">'
+        + '<span style="display:inline-block;padding:3px 11px;border:1px solid #D6E2E0;border-radius:999px;background:#F6F9F8;'
+        + 'font-size:12.5px;font-weight:700;letter-spacing:.05em;color:#16302E;">#' + esc(quoteNumberText(quoteNumber)) + '</span></td>' : '')
     + '</tr></table>'
     + '</td></tr>'
     // The items
@@ -11014,9 +11017,11 @@ function nextQuoteNumber(){
   const used = (workOrders || []).reduce((m, w) => Math.max(m, Number(w && w.number) || 0), 0);
   return Math.max(used, Number(lsGet('quoteCounter')) || 0) + 1;
 }
+// Shown with four digits: #0007
+function quoteNumberText(n){ return String(n).padStart(4, '0'); }
 function showNextQuoteNumber(){
   const el = document.getElementById('wcQuoteNumber');
-  if(el) el.textContent = 'Quote #' + nextQuoteNumber();
+  if(el) el.textContent = '#' + quoteNumberText(nextQuoteNumber());
 }
 
 // A quote from History started as a new work order: its customer and items on
