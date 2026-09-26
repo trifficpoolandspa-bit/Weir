@@ -1294,6 +1294,11 @@ input::placeholder{color:#A9BCB9;}
         <input id="wcHistorySearch" placeholder="Search by customer name, address, phone, or email" autocomplete="off" style="padding-right:38px;">
         <button type="button" id="wcHistorySearchClear" style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);height:26px;width:26px;padding:0;border:none;background:none;color:var(--muted);font-size:17px;line-height:1;cursor:pointer;">×</button>
       </div>
+      <select id="wcHistoryOutcome" aria-label="Approved or denied" style="width:auto;min-width:0;flex-shrink:0;">
+        <option value="">All</option>
+        <option value="approved">Approved</option>
+        <option value="denied">Denied</option>
+      </select>
       <input type="date" id="wcHistoryDate" aria-label="Date" title="Show only this day" style="width:auto;min-width:0;padding-right:12px;flex-shrink:0;">
       </div>
       <div id="wcHistoryList"></div>
@@ -3391,8 +3396,22 @@ function saveChemConfig(){
   if(selectedChemConfigType === 'pool'){
     // The pool's list is copied across, but anything only the spa or extra body
     // has (a Sodium Bicarbonate added to the spa) is kept, not wiped
-    const poolPlus = (poolList, ownList) => cloneList(poolList).concat(
-      (ownList || []).filter(x => x && !poolList.some(pz => pz && pz.key === x.key)));
+    // ...each back in its place: right after the row it sat under on its own
+    // tab (at the top if it was first), not moved to the end
+    const poolPlus = (poolList, ownList)=>{
+      const out = cloneList(poolList);
+      const inPool = k => poolList.some(pz => pz && pz.key === k);
+      let after = null;                       // the row above, as it was on this tab
+      (ownList || []).forEach(x=>{
+        if(!x) return;
+        if(!inPool(x.key)){
+          const at = after === null ? -1 : out.findIndex(o => o && o.key === after);
+          out.splice(at + 1, 0, x);
+        }
+        after = x.key;
+      });
+      return out;
+    };
     ['spa','fountain'].forEach(t=>{
       if(appSettings.applyPoolChemicalsToAll){
         chemConfig[t].chemicals = poolPlus(chemConfig.pool.chemicals, chemConfig[t].chemicals);
@@ -9692,6 +9711,12 @@ function renderWorkOrderHistory(){
   const visible = workOrders.filter(wo => (wo.type === 'Work Order' ? 'Work Order' : 'Quote') === kindNow)
     // Open quotes are in Current; History holds the approved (closed) ones
     .filter(wo => kindNow !== 'Quote' || wo.closed)
+    // The Approved / Denied menu (closed before either existed counts as approved)
+    .filter(wo=>{
+      const want = (document.getElementById('wcHistoryOutcome') || {}).value || '';
+      if(!want) return true;
+      return want === 'denied' ? !!wo.denied : !wo.denied;
+    })
     .filter(wo=>{
     if(onDay){
       const made = wo.createdAt ? new Date(new Date(wo.createdAt).getTime() - new Date(wo.createdAt).getTimezoneOffset() * 60000).toISOString().slice(0, 10) : '';
@@ -9727,7 +9752,7 @@ function renderWorkOrderHistory(){
     // Their scheduled visits go too
     lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !set.has(j.workOrderId)));
     if(editingId) renderCustomerWorkOrders(editingId);
-  }, renderWorkOrderHistory, histPages > 1 ? buildListPager(wcHistoryPage, histPages, allHist.length, pg => { wcHistoryPage = pg; renderWorkOrderHistory(); }, '') : null));
+  }, renderWorkOrderHistory, histPages > 1 ? buildListPager(wcHistoryPage, histPages, allHist.length, pg => { wcHistoryPage = pg; renderWorkOrderHistory(); }, '') : null, true));
   sortedHist
     .forEach(wo=>{
       const customer = customers.find(c => c.id === wo.customerId);
@@ -9784,6 +9809,7 @@ function renderWorkOrderHistory(){
 
 
 document.getElementById('wcHistoryDate').addEventListener('change', ()=>{ wcHistoryPage = 1; renderWorkOrderHistory(); });
+document.getElementById('wcHistoryOutcome').addEventListener('change', ()=>{ wcHistoryPage = 1; renderWorkOrderHistory(); });
 // Work Order and Task History filters
 ['wcSubmittedSearch', 'wcSubmittedTech', 'wcSubmittedDate'].forEach(id=>{
   document.getElementById(id).addEventListener(id === 'wcSubmittedSearch' ? 'input' : 'change', ()=>{
@@ -9815,7 +9841,7 @@ document.getElementById('wcHistorySearchClear').addEventListener('click', ()=>{
 // buttons on each row keep working as before.
 const listSelections = {};
 function listSel(key){ return listSelections[key] || (listSelections[key] = {on: false, ids: new Set()}); }
-function selectionBar(key, visibleIds, noun, onDelete, redraw, pager){
+function selectionBar(key, visibleIds, noun, onDelete, redraw, pager, onLeft){
   const st = listSel(key);
   // Anything no longer on the list isn't selected any more
   st.ids.forEach(id => { if(visibleIds.indexOf(id) === -1) st.ids.delete(id); });
@@ -9823,13 +9849,14 @@ function selectionBar(key, visibleIds, noun, onDelete, redraw, pager){
   // (when there's more than one page), Select and the rest on the right
   const row = document.createElement('div');
   row.style.cssText = 'display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;margin:0 0 6px;';
-  row.appendChild(document.createElement('div'));
+  // Select and the rest go far left on the WorkCenter's lists, far right elsewhere
+  const bar = document.createElement('div');
+  bar.style.cssText = 'display:flex;align-items:center;justify-content:' + (onLeft ? 'flex-start' : 'flex-end') + ';gap:8px;flex-wrap:wrap;';
   const mid = document.createElement('div');
   if(pager){ pager.style.padding = '0'; mid.appendChild(pager); }
+  row.appendChild(onLeft ? bar : document.createElement('div'));
   row.appendChild(mid);
-  const bar = document.createElement('div');
-  bar.style.cssText = 'display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;';
-  row.appendChild(bar);
+  row.appendChild(onLeft ? document.createElement('div') : bar);
   const b = (text, extra) => {
     const x = document.createElement('button');
     x.type = 'button';
@@ -9968,7 +9995,7 @@ function renderCurrentList(kind){
       if(kind === 'Task'){ tasks = tasks.filter(t => !set.has(t.id)); saveTasks(); }
       else if(kind === 'Quote'){ workOrders = workOrders.filter(w => !set.has(w.id)); saveWorkOrders(); }
       else lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !set.has(j.id)));
-    }, redrawCur, pages > 1 ? buildListPager(wcCurrentPage, pages, rows.length, pg => { wcCurrentPage = pg; renderCurrentList(kind); }, '') : null));
+    }, redrawCur, pages > 1 ? buildListPager(wcCurrentPage, pages, rows.length, pg => { wcCurrentPage = pg; renderCurrentList(kind); }, '') : null, true));
   pageRows.forEach((r, i, shown)=>{
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:11px 0;'
@@ -10025,6 +10052,24 @@ function renderCurrentList(kind){
         showToast('Approved \u2014 moved to History');
       });
       acts.appendChild(close);
+      // Mark denied, to its right: also moves the quote to History
+      const deny = document.createElement('button');
+      deny.type = 'button';
+      deny.className = 'btn btn-ghost';
+      deny.style.cssText = close.style.cssText;
+      deny.textContent = 'Mark denied';
+      deny.title = 'Turned down by the customer \u2014 moves it to History';
+      deny.addEventListener('click', ()=>{
+        const w = workOrders.find(x => x.id === r.id);
+        if(!w) return;
+        w.closed = true;
+        w.denied = true;
+        w.deniedAt = new Date().toISOString();
+        saveWorkOrders();
+        renderCurrentList(kind);
+        showToast('Denied \u2014 moved to History');
+      });
+      acts.appendChild(deny);
     } else {
       // Edit: to the Work Order tab with it loaded
       const wo = kind === 'Work Order' && r.workOrderId ? workOrders.find(x => x.id === r.workOrderId) : null;
@@ -10168,7 +10213,7 @@ function renderSubmittedHistory(kind){
     tasks = tasks.filter(t => !set.has('task:' + t.id)); saveTasks();
     lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !set.has('wo:' + j.id)));
     lsSet('jobSubmissions', (lsGet('jobSubmissions') || []).filter(x => !(x && x.kind === kind && set.has(x.key))));
-  }, redrawSub, subPages > 1 ? buildListPager(wcSubmittedPage, subPages, allSubs.length, pg => { wcSubmittedPage = pg; renderSubmittedHistory(kind); }, '') : null));
+  }, redrawSub, subPages > 1 ? buildListPager(wcSubmittedPage, subPages, allSubs.length, pg => { wcSubmittedPage = pg; renderSubmittedHistory(kind); }, '') : null, true));
   pageSubs.forEach(sub=>{
     const row = document.createElement('div');
     row.style.cssText = 'padding:12px 0;border-bottom:1px solid var(--line);';
@@ -10667,12 +10712,16 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
 
     // The company's own name, not one written into the page
     const subject = type + ' from ' + companyName() + ' — ' + customer.name;
+    // Approve / Deny buttons: a secret code for this quote, saved on the server
+    // before sending (without it, the email just goes without the buttons)
+    const quoteId = 'wo_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+    const respondUrl = await registerQuoteResponse(quoteId);
     const sent = await sendQuoteEmail(customer, subject,
-      quoteEmailHtml(customer, type, quoteDateText, validItems, total, notes), message);
+      quoteEmailHtml(customer, type, quoteDateText, validItems, total, notes, null, respondUrl), message);
     if(sent) sentCount++;
 
     workOrders.push({
-      id: 'wo_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+      id: quoteId,
       customerId: customer.id,
       type,
       lineItems: validItems,
@@ -10710,7 +10759,7 @@ function loadQuoteEmailStyle(){
   return Object.assign({}, QUOTE_EMAIL_DEFAULTS, lsGet('quoteEmailStyle') || {});
 }
 
-function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOverride){
+function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOverride, respondUrl){
   const style = lsGet('reportEmailStyle') || {};
   const q = styleOverride || loadQuoteEmailStyle();
   const colour = style.colour || '#134E4A';
@@ -10782,6 +10831,11 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
         + '<div style="font-size:14px;color:#4A5A58;line-height:1.5;white-space:pre-wrap;">' + esc(notes) + '</div></td></tr>' : '')
     // Footer
     + '<tr><td style="padding:26px;">'
+    // Approve / Deny, when the quote can take an answer
+    + (respondUrl ? '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 6px;width:100%;"><tr>'
+        + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">Approve</a></td>'
+        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#ffffff;color:#B8492E;border:1.5px solid #EFC9BC;font-weight:700;font-size:15px;text-decoration:none;">Deny</a></td>'
+        + '</tr></table>' : '')
     + (((q.closing || '').trim() || signoff) ? '<div style="font-size:14px;color:#4A5A58;padding-top:18px;border-top:1px solid #E6E9E8;white-space:pre-wrap;">'
         + esc((q.closing || '').trim())
         + ((q.closing || '').trim() && signoff ? '<br>' : '') + (signoff ? esc(signoff) : '') + '</div>' : '')
@@ -10863,6 +10917,55 @@ function fillQuoteEmailForm(q){
     shut.addEventListener('click', done);
   });
 })();
+
+// ---------- Customers approve or deny a quote from its email ----------
+// Each quote sent gets a secret code on the server (quote_responses, snippet
+// 17). The email's buttons open the quote-response function, which asks the
+// customer to confirm and records the answer. Each sync picks answers up and
+// files the quote into History as Approved or Denied.
+async function registerQuoteResponse(quoteId){
+  try{
+    if(typeof siteUser === 'undefined' || !siteUser || !siteUser.companyId) return null;
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    const token = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    const res = await sbFetch('/rest/v1/quote_responses?on_conflict=company_id,quote_id', {
+      method: 'POST',
+      headers: {'Prefer': 'resolution=merge-duplicates,return=minimal'},
+      body: JSON.stringify({company_id: siteUser.companyId, quote_id: quoteId, token: token, outcome: null, responded_at: null})
+    });
+    if(!res || !res.ok) return null;
+    return SUPABASE_URL + '/functions/v1/quote-response?t=' + token;
+  }catch(e){ return null; }
+}
+
+async function takeQuoteAnswers(){
+  try{
+    if(typeof siteUser === 'undefined' || !siteUser || !siteUser.companyId) return;
+    const res = await sbFetch('/rest/v1/quote_responses?select=quote_id,outcome,responded_at&outcome=not.is.null', {method: 'GET'});
+    if(!res || !res.ok || !Array.isArray(res.body)) return;
+    let changed = false;
+    res.body.forEach(a=>{
+      const w = workOrders.find(x => x.id === a.quote_id);
+      if(!w) return;
+      const approved = a.outcome === 'approved';
+      if(w.closed && !!w.approved === approved && !!w.denied === !approved) return;
+      w.closed = true;
+      w.approved = approved;
+      w.denied = !approved;
+      w[approved ? 'approvedAt' : 'deniedAt'] = a.responded_at || new Date().toISOString();
+      w.answeredByCustomer = true;
+      changed = true;
+    });
+    if(changed){
+      saveWorkOrders();
+      const wcPage = document.getElementById('view-workcenter');
+      if(wcPage && wcPage.classList.contains('active')) applyWorkOrderType();
+    }
+  }catch(e){}
+}
+// Checked every minute while signed in, and on opening the WorkCenter
+setInterval(takeQuoteAnswers, 60000);
 
 // Through the report function; the plain-text email is kept as a fallback so a
 // quote still goes out if that can't be reached
@@ -17615,6 +17718,8 @@ document.getElementById('btnAddCustomer').addEventListener('click', ()=>{
 });
 
 function switchView(view){
+  // Customers' answers to quotes, fresh on opening the WorkCenter
+  if(view === 'workcenter' && typeof takeQuoteAnswers === 'function') setTimeout(takeQuoteAnswers, 0);
   // Leaving the WorkCenter's Quote / Work Order / Task form for another page
   // holds what was typed for a minute, like switching tabs does
   const wcPage = document.getElementById('view-workcenter');
