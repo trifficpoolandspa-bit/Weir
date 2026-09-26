@@ -1853,6 +1853,33 @@ async function walkVisit(w, d, maxPresses){
   }
 }
 
+
+// ---- Filter cleans in the group's order ----
+{
+  console.log('\n=== technician-app.html: filter cleans in the group\u2019s order ===');
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const today = DAYS[new Date().getDay()];
+  const other = DAYS[(new Date().getDay() + 3) % 7];
+  const iso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const dom = boot('technician-app.html', {
+    customers: ['Alpha', 'Bravo', 'Charlie'].map((n, i) => ({id: 'f' + i, name: n + ' Clean', active: true, hasPool: true, day: other, technicianId: 't1'})),
+    // Stored in the order f0, f1, f2, but the group put them as f2, f0, f1
+    scheduledFilterCleans: [
+      {id: 's0', groupId: 'g', customerId: 'f0', technicianId: 't1', date: iso, order: 1, status: 'scheduled'},
+      {id: 's1', groupId: 'g', customerId: 'f1', technicianId: 't1', date: iso, order: 2, status: 'scheduled'},
+      {id: 's2', groupId: 'g', customerId: 'f2', technicianId: 't1', date: iso, order: 0, status: 'scheduled'}]
+  });
+  await wait(1300);
+  const w = dom.window, d = w.document;
+  try{
+    w.eval("currentUser = {id: 't1', name: 'Pat'}; selectedHomeDay = '" + today + "'; switchView('home'); renderHomeList();");
+    await wait(300);
+    const shown = Array.from(d.querySelectorAll('#homeCustomerList .cust-row .cust-name')).map(n => n.textContent.trim().replace(/\s*FILTER CLEAN.*$/i, '').replace(/[^A-Za-z ]/g, '').trim());
+    check('the day\u2019s filter cleans follow the group\u2019s order', shown.join(',') === 'Charlie Clean,Alpha Clean,Bravo Clean', shown.join(','));
+  }catch(e){ check('filter clean order', false, e.message); }
+  w.close();
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();

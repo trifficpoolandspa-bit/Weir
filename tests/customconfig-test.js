@@ -987,6 +987,94 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   w.close();
 }
 
+
+// ---- Sept 26, later: filter clean groups, search windows, addresses ----
+{
+  console.log('\n=== customer-intake.html \u2014 filter clean groups and search windows ===');
+  const iso = n => new Date(Date.now() + n * 86400000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const seed = {
+    technicians: [{id: 't1', name: 'Zed'}, {id: 't2', name: 'amy'}],
+    customers: [{id: 'a', name: 'John Tyler', address: '1 Palm Way', city: 'Buckeye', state: 'AZ', zip: '85326', active: true, hasPool: true},
+                {id: 'b', name: 'John Tyler', address: '9 Oak St', active: true, hasPool: true},
+                {id: 'c', name: 'Cara Diaz', address: '3 Elm Rd', active: true, hasPool: true}],
+    filterGroups: [{id: 'g1', name: 'North', customerIds: ['a', 'c'], date: iso(2), technicianId: 't1'},
+                   {id: 'g2', name: 'South', customerIds: ['b'], date: iso(3), technicianId: 't2'},
+                   {id: 'g3', name: 'Unassigned', customerIds: [], date: '', technicianId: ''}]
+  };
+  const dom = new JSDOM(fs.readFileSync('customer-intake.html', 'utf8'), {runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.com/',
+    beforeParse(w){
+      w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
+      w.scrollTo=()=>{}; w.scrollBy=()=>{}; w.alert=()=>{}; w.console.warn=()=>{}; w.console.error=()=>{};
+      w.Element.prototype.scrollIntoView=function(){}; w.HTMLCanvasElement.prototype.getContext=()=>({});
+      w.localStorage.setItem('weir:photoEveryone', '{}');
+      Object.keys(seed).forEach(k => w.localStorage.setItem('weir:' + k, JSON.stringify(seed[k])));
+    }});
+  await wait(1500);
+  const w = dom.window, d = w.document;
+  try{
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); confirmDialog=()=>Promise.resolve(true); switchView('workcenter'); applyWorkCenterMode('filters'); openFilterGroupIds.add('g1'); renderFilterGroups();");
+    await wait(80);
+    const list = () => d.getElementById('filterGroupList');
+    const headings = () => Array.from(list().querySelectorAll(':scope > [data-reorder-key]')).map(c => c.dataset.reorderKey).join(',');
+    check('the subtext says to press Schedule and mentions emails', /press Schedule to push it onto that technician\u2019s route\. Customize emails/.test(d.getElementById('wcFiltersSection').textContent.replace(/'/g, '\u2019')));
+    check('no Save group button', !/Save group/.test(list().textContent));
+    check('each group has a drag grip', list().querySelectorAll(':scope > [data-reorder-key] span[title="Drag to reorder"]').length === 3);
+    check('each heading lights up under the pointer', list().querySelectorAll('.fg-head').length === 3);
+    // The date: saved as it changes, no redraw, heading updated
+    const dateBox = list().querySelector('input[type="date"]');
+    dateBox.value = iso(5); dateBox.dispatchEvent(new w.Event('change'));
+    await wait(30);
+    check('a group\u2019s date saves as it changes', JSON.parse(w.localStorage.getItem('weir:filterGroups')).find(g => g.id === 'g1').date === iso(5));
+    check('without redrawing the list (the box stays the same one)', list().querySelector('input[type="date"]') === dateBox);
+    dateBox.dispatchEvent(new w.Event('blur')); await wait(30);
+    check('nor on leaving the box, so the next click lands', list().querySelector('input[type="date"]') === dateBox);
+    const dayName = new Date(iso(5) + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
+    check('the heading shows the new date', list().textContent.indexOf(dayName) !== -1, dayName);
+    // Customers in a group: grips, and their order goes to the scheduled cleans
+    check('an open group\u2019s customers have drag grips', list().querySelectorAll('span[title^="Drag to reorder \u2014 the order"]').length === 2);
+    w.eval("scheduleFilterGroup(filterGroups.find(g => g.id === 'g1')); saveFilterGroups();");
+    const order = () => JSON.stringify((JSON.parse(w.localStorage.getItem('weir:scheduledFilterCleans')) || []).filter(x => x.groupId === 'g1').sort((a, b) => a.order - b.order).map(x => x.customerId));
+    check('scheduling carries the group\u2019s customer order', order() === '["a","c"]', order());
+    w.eval("const g = filterGroups.find(x => x.id === 'g1'); g.customerIds = ['c', 'a']; saveFilterGroups(); setFilterCleanOrder(g);");
+    check('reordering a scheduled group updates the order on its cleans', order() === '["c","a"]', order());
+    // The technician menu
+    const menu = d.getElementById('filterGroupTech');
+    w.eval('renderFilterGroups()');
+    check('the technician menu lists All, the technicians A\u2013Z, then No technician',
+          Array.from(menu.options).map(o => o.textContent).join('|') === 'All technicians|amy|Zed|No technician', Array.from(menu.options).map(o => o.textContent).join('|'));
+    menu.value = 't2'; menu.dispatchEvent(new w.Event('change'));
+    check('picking one shows only their groups', headings() === 'g2', headings());
+    menu.value = 'none'; menu.dispatchEvent(new w.Event('change'));
+    check('No technician shows unassigned groups', headings() === 'g3', headings());
+    menu.value = ''; menu.dispatchEvent(new w.Event('change'));
+    // Away for more than a minute: every group closed
+    w.eval("openFilterGroupIds.add('g1'); openFilterGroupIds.add('g2'); filtersLeftAt = Date.now() - 61000; renderFilterGroups();");
+    check('after more than a minute away, the groups are closed', w.eval('openFilterGroupIds.size') === 0);
+    w.eval("openFilterGroupIds.add('g1'); filtersLeftAt = Date.now() - 20000; renderFilterGroups();");
+    check('within the minute they stay open', w.eval("openFilterGroupIds.has('g1')"));
+    // The + Add customers window
+    w.eval('renderFilterGroups()'); await wait(20);
+    Array.from(list().querySelectorAll('button')).find(b => b.textContent === '+ Add customers').click();
+    await wait(150);
+    const box = d.getElementById('gcpSearch');
+    check('+ Add customers opens with the cursor in its search box', d.activeElement === box);
+    check('with no \u00d7 beside it', d.getElementById('gcpSearchClear').style.display === 'none' || d.getElementById('gcpSearchClear').hidden);
+    check('its search box asks for no browser suggestions', box.getAttribute('autocomplete') === 'weir-search');
+    const rows = Array.from(d.querySelectorAll('#gcpList label')).map(l => l.textContent);
+    check('each customer shows their full address under the name', rows.some(t => /Tyler, John1 Palm Way, Buckeye, AZ, 85326/.test(t)) && rows.some(t => /Tyler, John9 Oak St/.test(t)), rows.join(' | '));
+    box.value = 'palm'; box.dispatchEvent(new w.Event('input', {bubbles: true}));
+    box.dispatchEvent(new w.MouseEvent('mousedown', {bubbles: true}));
+    check('clicking in the box while typing leaves it alone', box.value === 'palm');
+    box.blur(); await wait(10);
+    box.dispatchEvent(new w.MouseEvent('mousedown', {bubbles: true}));
+    check('clicking back into it after leaving empties it', box.value === '');
+    check('and every customer shows again', Array.from(d.querySelectorAll('#gcpList label')).filter(l => l.style.display !== 'none').length === 3);
+    // Addresses in the other customer searches
+    check('the Task customer box and the other pickers show addresses too', (fs.readFileSync('customer-intake.html', 'utf8').match(/nameWithAddress\(/g) || []).length >= 8);
+  }catch(e){ check('filter clean groups and search windows', false, e.stack); }
+  w.close();
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();
