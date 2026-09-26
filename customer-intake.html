@@ -1154,6 +1154,7 @@ input::placeholder{color:#A9BCB9;}
         <label>Scheduled date</label>
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
           <input type="date" id="wcDate" style="width:auto;min-width:0;padding-right:12px;">
+          <span id="wcQuoteNumber" style="margin-left:auto;font-size:13.5px;font-weight:700;color:var(--teal-deep);white-space:nowrap;" title="The number this quote will get when sent"></span>
           <label id="wcPhotoRequiredWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
             <input type="checkbox" id="wcPhotoRequired" checked style="margin:0;"> Photo required
           </label>
@@ -2137,7 +2138,7 @@ const SYNCED_RECORD_KEYS = ['technicians', 'settings', 'tasks', 'rescheduledVisi
   'scheduledFilterCleans', 'scheduledWorkOrders', 'chemConfig', 'customChemConfig',
   'customBodyOrder', 'routeOrders', 'reportEmailStyle', 'companyName', 'ownerName',
   'licenseNumber', 'serviceArea', 'accountEmail', 'accountPhone', 'businessAddress',
-  'businessCity', 'businessState', 'businessZip', 'businessWebsite'];
+  'businessCity', 'businessState', 'businessZip', 'businessWebsite', 'quoteCounter'];
 
 function syncNoteSave(key){
   if(SYNCED_RECORD_KEYS.indexOf(key) === -1) return;
@@ -7538,7 +7539,9 @@ const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'r
                          // now, so prices set on one device never reached another
                          'productsServices',
                          // What goes at the top and bottom of a quote email
-                         'quoteEmailStyle'];
+                         'quoteEmailStyle',
+                         // The last quote number used, so numbering carries on from any computer
+                         'quoteCounter'];
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
   'requireSkipPhoto', 'requireSkipReason', 'allowRouteReorder', 'showDosageSuggestions',
   'showWaterBalance', 'autoNotifyAll', 'autoNotifyAllLead', 'showPoolSizeInProfile',
@@ -9770,6 +9773,23 @@ function renderWorkOrderHistory(){
       row.className = 'cust-row';
       const dateStr = new Date(wo.createdAt).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'});
       row.innerHTML = `<div><div class="cust-name">${wo.type} — ${customer ? displayName(customer.name) : 'Unknown customer'}</div><div class="cust-meta">${dateStr} · $${wo.total.toFixed(2)}</div></div>`;
+      if((wo.type || 'Quote') === 'Quote'){
+        // A quote: the customer and the quote's name (no "Quote —"), then a
+        // bold APPROVED (green) or DECLINED (red) tag, the height of the buttons
+        const nameLine = row.querySelector('.cust-name');
+        nameLine.textContent = (customer ? displayName(customer.name) : 'Unknown customer') + (wo.name ? ' \u2014 ' + wo.name : '');
+        const line = document.createElement('div');
+        line.style.cssText = 'display:flex;align-items:center;gap:12px;min-width:0;';
+        nameLine.parentNode.insertBefore(line, nameLine);
+        line.appendChild(nameLine);
+        const declined = !!wo.denied;
+        const tag = document.createElement('span');
+        tag.textContent = declined ? 'DECLINED' : 'APPROVED';
+        tag.style.cssText = 'display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:7px;'
+          + 'font-size:12px;font-weight:800;letter-spacing:.06em;color:#fff;flex-shrink:0;'
+          + 'background:' + (declined ? '#B8492E' : '#2E8B57') + ';';
+        line.appendChild(tag);
+      }
       const histTick = selectionTick(histKey, wo.id, renderWorkOrderHistory);
       if(!histTick && (wo.type || 'Quote') === 'Quote'){
         // A quote's row shows the email the customer got
@@ -9999,6 +10019,7 @@ function renderCurrentList(kind){
     note.textContent = 'Quotes sent and not yet closed, newest first. Close one once it\u2019s been answered or no longer needs following up \u2014 it stays in History.';
     rows = workOrders.filter(w => (w.type || 'Quote') === 'Quote' && !w.closed).map(w => ({
       id: w.id, date: w.date || (w.createdAt || '').slice(0, 10), who: custName(w.customerId), look: custLook([w.customerId]),
+      quoteName: w.name || '',
       what: (w.lineItems || []).map(li => li.description).filter(Boolean).join(', ') || 'Quote',
       total: w.total
     }));
@@ -10052,7 +10073,10 @@ function renderCurrentList(kind){
     mid.style.cssText = 'flex:1;min-width:0;';
     const l1 = document.createElement('div');
     l1.style.cssText = 'font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-    l1.textContent = r.who + ' \u2013 ' + r.what;
+    // A quote: the customer and the quote's name, like History
+    l1.textContent = kind === 'Quote'
+      ? r.who + (r.quoteName ? ' \u2014 ' + r.quoteName : '')
+      : r.who + ' \u2013 ' + r.what;
     const l2 = document.createElement('div');
     l2.style.cssText = 'font-size:12px;color:var(--muted);';
     const bits = [];
@@ -10317,9 +10341,11 @@ function applyWorkOrderType(){
   const isTask = chosen === 'Task';
   const isWO = chosen === 'Work Order';
 
-  // The quote's name is for quotes only
+  // The quote's name and number are for quotes only
   const qName = document.getElementById('wcQuoteNameField');
   if(qName) qName.style.display = chosen === 'Quote' ? '' : 'none';
+  const qNum = document.getElementById('wcQuoteNumber');
+  if(qNum){ qNum.style.display = chosen === 'Quote' ? '' : 'none'; if(chosen === 'Quote') showNextQuoteNumber(); }
   // Photo required is for work orders only, never a quote
   const photoWrap = document.getElementById('wcPhotoRequiredWrap');
   if(photoWrap) photoWrap.style.display = isWO ? 'inline-flex' : 'none';
@@ -10758,11 +10784,15 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
     // before sending (without it, the email just goes without the buttons)
     const quoteId = 'wo_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
     const respondUrl = await registerQuoteResponse(quoteId);
-    const emailHtml = quoteEmailHtml(customer, type, quoteDateText, validItems, total, notes, null, respondUrl);
+    // This quote's number: the next one up
+    const quoteNumber = nextQuoteNumber();
+    lsSet('quoteCounter', quoteNumber);
+    const emailHtml = quoteEmailHtml(customer, type, quoteDateText, validItems, total, notes, null, respondUrl, quoteNumber);
     const sent = await sendQuoteEmail(customer, subject, emailHtml, message);
     if(sent) sentCount++;
 
     workOrders.push({
+      number: quoteNumber,
       name: document.getElementById('wcQuoteName').value.trim(),
       // The email exactly as sent, to show again from Current or History
       emailHtml: emailHtml,
@@ -10782,6 +10812,7 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
   saveWorkOrders();
   renderWorkOrderHistory();
   resetWorkOrderForm();
+  showNextQuoteNumber();
   showToast(sentCount === picked.length
     ? type + ' sent to ' + sentCount + (sentCount === 1 ? ' customer' : ' customers')
     : type + ' saved — ' + sentCount + ' of ' + picked.length + ' emailed');
@@ -10805,7 +10836,7 @@ function loadQuoteEmailStyle(){
   return Object.assign({}, QUOTE_EMAIL_DEFAULTS, lsGet('quoteEmailStyle') || {});
 }
 
-function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOverride, respondUrl){
+function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOverride, respondUrl, quoteNumber){
   const style = lsGet('reportEmailStyle') || {};
   const q = styleOverride || loadQuoteEmailStyle();
   const colour = style.colour || '#134E4A';
@@ -10860,7 +10891,11 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
     + esc(type) + '</div>'
     + '<div style="font-size:17px;font-weight:700;color:#16302E;">' + esc(customer.name) + '</div>'
     + (customer.address ? '<div style="font-size:13.5px;color:#6B7B79;margin-top:3px;">' + esc(customer.address) + '</div>' : '')
-    + '<div style="font-size:13.5px;color:#6B7B79;margin-top:3px;">' + esc(dateText) + '</div>'
+    // The date, with the quote's number at the far right of the same line
+    + '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin-top:3px;"><tr>'
+    + '<td style="font-size:13.5px;color:#6B7B79;">' + esc(dateText) + '</td>'
+    + (quoteNumber ? '<td style="font-size:13.5px;color:#6B7B79;text-align:right;white-space:nowrap;font-weight:700;">' + esc(type) + ' #' + esc(String(quoteNumber)) + '</td>' : '')
+    + '</tr></table>'
     + '</td></tr>'
     // The items
     + '<tr><td style="padding:20px 26px 0;">'
@@ -10963,6 +10998,17 @@ function fillQuoteEmailForm(q){
     shut.addEventListener('click', done);
   });
 })();
+
+// Quote numbers: each quote sent gets the next one (1, 2, 3...). The last one
+// used is kept in quoteCounter, synced, so numbering carries on from any computer.
+function nextQuoteNumber(){
+  const used = (workOrders || []).reduce((m, w) => Math.max(m, Number(w && w.number) || 0), 0);
+  return Math.max(used, Number(lsGet('quoteCounter')) || 0) + 1;
+}
+function showNextQuoteNumber(){
+  const el = document.getElementById('wcQuoteNumber');
+  if(el) el.textContent = 'Quote #' + nextQuoteNumber();
+}
 
 // A quote from History started as a new work order: its customer and items on
 // the Work Order tab, ready for a date, technician and Finalize. The quote
