@@ -1308,6 +1308,7 @@ input::placeholder{color:#A9BCB9;}
         <option value="">All</option>
         <option value="approved">Approved</option>
         <option value="denied">Declined</option>
+        <option value="expired">Expired</option>
       </select>
       <input type="date" id="wcHistoryDate" aria-label="Date" title="Show only this day" style="width:auto;min-width:0;padding-right:12px;flex-shrink:0;">
       </div>
@@ -9709,6 +9710,8 @@ let wcHistorySearchTerm = '';
 
 let wcHistoryPage = 1;
 function renderWorkOrderHistory(){
+  // Anything past its 30 days moves here as Expired first
+  if(typeof expireOldQuotes === 'function') expireOldQuotes();
   const container = document.getElementById('wcHistoryList');
   const countEl = document.getElementById('wcHistoryCount');
 
@@ -9732,7 +9735,9 @@ function renderWorkOrderHistory(){
     .filter(wo=>{
       const want = (document.getElementById('wcHistoryOutcome') || {}).value || '';
       if(!want) return true;
-      return want === 'denied' ? !!wo.denied : !wo.denied;
+      if(want === 'expired') return !!wo.expired;
+      if(want === 'denied') return !!wo.denied && !wo.expired;
+      return !wo.denied && !wo.expired;
     })
     .filter(wo=>{
     if(onDay){
@@ -9787,12 +9792,13 @@ function renderWorkOrderHistory(){
         nameLine.parentNode.insertBefore(line, nameLine);
         line.appendChild(nameLine);
         const declined = !!wo.denied;
+        const expired = !!wo.expired;
         const tag = document.createElement('span');
-        tag.textContent = declined ? 'DECLINED' : 'APPROVED';
+        tag.textContent = expired ? 'EXPIRED' : (declined ? 'DECLINED' : 'APPROVED');
         // One fixed width for both, the word centred in it
         tag.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;height:28px;width:100px;padding:0;border-radius:7px;'
           + 'font-size:12px;font-weight:800;letter-spacing:.06em;color:#fff;flex-shrink:0;'
-          + 'background:' + (declined ? '#B8492E' : '#2E8B57') + ';';
+          + 'background:' + (expired ? '#8A9795' : (declined ? '#B8492E' : '#2E8B57')) + ';';
         // Placed with the buttons (below), so it doesn't move with the name's length
         row._statusTag = tag;
       }
@@ -10023,6 +10029,7 @@ function renderCurrentList(kind){
         group: t.seriesId || '', groupLeft: t.seriesId ? open.filter(x => x.seriesId === t.seriesId).length : 1};
     });
   } else {
+    expireOldQuotes();
     heading.textContent = 'Open quotes';
     note.textContent = 'Quotes sent and not yet closed, newest first. Close one once it\u2019s been answered or no longer needs following up \u2014 it stays in History.';
     rows = workOrders.filter(w => (w.type || 'Quote') === 'Quote' && !w.closed).map(w => ({
@@ -11121,8 +11128,34 @@ async function registerQuoteResponse(quoteId){
   }catch(e){ return null; }
 }
 
+// A quote the customer hasn't answered 30 days after it was sent has expired:
+// it moves from Current to History, tagged EXPIRED (grey). The customer can no
+// longer answer it either (the quote-response function says it's expired).
+const QUOTE_ANSWER_DAYS = 30;
+function expireOldQuotes(){
+  const cutoff = Date.now() - QUOTE_ANSWER_DAYS * 24 * 60 * 60 * 1000;
+  let changed = false;
+  (workOrders || []).forEach(w=>{
+    if(!w || (w.type || 'Quote') !== 'Quote' || w.closed || w.status === 'draft') return;
+    const sent = new Date(w.createdAt || 0).getTime();
+    if(sent && sent < cutoff){
+      w.closed = true;
+      w.expired = true;
+      w.expiredAt = new Date(sent + QUOTE_ANSWER_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      changed = true;
+    }
+  });
+  if(changed) saveWorkOrders();
+  return changed;
+}
+
 async function takeQuoteAnswers(){
   try{
+    // Expired ones first, then any answers
+    if(expireOldQuotes()){
+      const page = document.getElementById('view-workcenter');
+      if(page && page.classList.contains('active')) applyWorkOrderType();
+    }
     if(typeof siteUser === 'undefined' || !siteUser || !siteUser.companyId) return;
     const res = await sbFetch('/rest/v1/quote_responses?select=quote_id,outcome,responded_at&outcome=not.is.null', {method: 'GET'});
     if(!res || !res.ok || !Array.isArray(res.body)) return;
@@ -11131,10 +11164,11 @@ async function takeQuoteAnswers(){
       const w = workOrders.find(x => x.id === a.quote_id);
       if(!w) return;
       const approved = a.outcome === 'approved';
-      if(w.closed && !!w.approved === approved && !!w.denied === !approved) return;
+      if(w.closed && !w.expired && !!w.approved === approved && !!w.denied === !approved) return;
       w.closed = true;
       w.approved = approved;
       w.denied = !approved;
+      w.expired = false;
       w[approved ? 'approvedAt' : 'deniedAt'] = a.responded_at || new Date().toISOString();
       w.answeredByCustomer = true;
       changed = true;
