@@ -80,6 +80,11 @@
         done('Thank you for your response!',
              (res.company ? who + ' has' : 'We have') + ' your answer and will be in touch soon.',
              res.outcome, res.company);
+      } else if(res.state === 'expired'){
+        done('This quote has expired',
+             'It was sent more than ' + (res.days || 30) + ' days ago. Please contact ' + (res.company || 'us') + ' for an updated quote.',
+             null, res.company);
+        card.querySelector('.badge').style.display = 'none';
       } else if(res.state === 'error'){
         done('Almost there', 'We couldn\u2019t record your answer just now. Please try again shortly, or reply to the email.', null, res.company);
         try{ console.warn('quote-response:', res.why); }catch(e){}

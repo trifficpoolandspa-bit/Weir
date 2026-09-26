@@ -1155,9 +1155,14 @@ input::placeholder{color:#A9BCB9;}
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
           <input type="date" id="wcDate" style="width:auto;min-width:0;padding-right:12px;">
           <label id="wcPhotoRequiredWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
-            <input type="checkbox" id="wcPhotoRequired" style="margin:0;"> Photo required
+            <input type="checkbox" id="wcPhotoRequired" checked style="margin:0;"> Photo required
           </label>
         </div>
+      </div>
+      <!-- Quotes only -->
+      <div class="field" id="wcQuoteNameField">
+        <label>Quote name</label>
+        <input id="wcQuoteName" placeholder="e.g. Heater replacement" autocomplete="off">
       </div>
       <div class="field" style="position:relative;">
         <label>Customer</label>
@@ -1297,7 +1302,7 @@ input::placeholder{color:#A9BCB9;}
       <select id="wcHistoryOutcome" aria-label="Approved or denied" style="width:auto;min-width:0;flex-shrink:0;">
         <option value="">All</option>
         <option value="approved">Approved</option>
-        <option value="denied">Denied</option>
+        <option value="denied">Declined</option>
       </select>
       <input type="date" id="wcHistoryDate" aria-label="Date" title="Show only this day" style="width:auto;min-width:0;padding-right:12px;flex-shrink:0;">
       </div>
@@ -9648,8 +9653,11 @@ document.getElementById('btnAddLineItem').addEventListener('click', ()=>{
 // work order used to put it back to Quote, which threw you onto the quote tab
 // when you were most likely to be writing another work order.
 function resetWorkOrderForm(backToQuote){
+  const qn = document.getElementById('wcQuoteName');
+  if(qn) qn.value = '';
+  // A new work order starts with Photo required on
   const photoReq = document.getElementById('wcPhotoRequired');
-  if(photoReq) photoReq.checked = false;
+  if(photoReq) photoReq.checked = true;
   const heading = document.getElementById('wcFormHeading');
   if(heading){
     heading.textContent = '';
@@ -9787,6 +9795,16 @@ function renderWorkOrderHistory(){
       editBtn.style.cssText = 'width:auto;padding:6px 10px;font-size:12px;';
       editBtn.textContent = 'Edit & resend';
       editBtn.addEventListener('click', ()=> loadWorkOrderIntoForm(wo));
+      if((wo.type || 'Quote') === 'Quote'){
+        const toWO = document.createElement('button');
+        toWO.type = 'button';
+        toWO.className = 'btn btn-ghost';
+        toWO.style.cssText = editBtn.style.cssText;
+        toWO.textContent = 'Convert to work order';
+        toWO.title = 'Start a work order with this quote\u2019s customer and items';
+        toWO.addEventListener('click', e=>{ e.stopPropagation(); convertQuoteToWorkOrder(wo); });
+        rightWrap.appendChild(toWO);
+      }
       rightWrap.appendChild(editBtn);
 
       const delBtn = document.createElement('button');
@@ -10076,7 +10094,7 @@ function renderCurrentList(kind){
       deny.type = 'button';
       deny.className = 'btn btn-ghost';
       deny.style.cssText = close.style.cssText;
-      deny.textContent = 'Mark denied';
+      deny.textContent = 'Mark declined';
       deny.title = 'Turned down by the customer \u2014 moves it to History';
       deny.addEventListener('click', ()=>{
         const w = workOrders.find(x => x.id === r.id);
@@ -10086,7 +10104,7 @@ function renderCurrentList(kind){
         w.deniedAt = new Date().toISOString();
         saveWorkOrders();
         renderCurrentList(kind);
-        showToast('Denied \u2014 moved to History');
+        showToast('Declined \u2014 moved to History');
       });
       acts.appendChild(deny);
     } else {
@@ -10299,10 +10317,13 @@ function applyWorkOrderType(){
   const isTask = chosen === 'Task';
   const isWO = chosen === 'Work Order';
 
+  // The quote's name is for quotes only
+  const qName = document.getElementById('wcQuoteNameField');
+  if(qName) qName.style.display = chosen === 'Quote' ? '' : 'none';
   // Photo required is for work orders only, never a quote
   const photoWrap = document.getElementById('wcPhotoRequiredWrap');
   if(photoWrap) photoWrap.style.display = isWO ? 'inline-flex' : 'none';
-  if(!isWO){ const pr = document.getElementById('wcPhotoRequired'); if(pr) pr.checked = false; }
+  // (A quote never carries it: saved only when the kind is Work Order)
 
   document.querySelectorAll('#wcTypeToggle [data-wctype]').forEach(btn=>{
     btn.className = btn.dataset.wctype === chosen ? 'btn btn-primary' : 'btn btn-ghost';
@@ -10414,6 +10435,7 @@ function captureWcDraft(type){
       notes: document.getElementById('wcNotes').value,
       date: document.getElementById('wcDate').value,
       photoRequired: document.getElementById('wcPhotoRequired').checked,
+      quoteName: document.getElementById('wcQuoteName').value,
       techs: pickedTechIds(document.getElementById('wcTechnician')),
       repeat: document.getElementById('wcRepeat').value,
       customEvery: (document.getElementById('wcCustomEvery') || {}).value,
@@ -10421,7 +10443,7 @@ function captureWcDraft(type){
       heading: heading ? heading.textContent : ''
     };
     hasContent = !!(state.customers.length || state.search.trim() || state.lineItems.length
-      || state.notes.trim() || state.techs.length || state.heading);
+      || state.notes.trim() || state.techs.length || state.heading || state.quoteName.trim());
   }
   if(hasContent) wcDrafts[type] = {at: Date.now(), state: state};
   else delete wcDrafts[type];
@@ -10463,6 +10485,7 @@ function restoreWcDraft(type){
     document.getElementById('wcNotes').value = st.notes;
     document.getElementById('wcDate').value = st.date;
     document.getElementById('wcPhotoRequired').checked = !!st.photoRequired;
+    document.getElementById('wcQuoteName').value = st.quoteName || '';
     setPickedTechIds(document.getElementById('wcTechnician'), st.techs);
     document.getElementById('wcRepeat').value = st.repeat;
     if(document.getElementById('wcCustomEvery')) document.getElementById('wcCustomEvery').value = st.customEvery;
@@ -10740,6 +10763,7 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
     if(sent) sentCount++;
 
     workOrders.push({
+      name: document.getElementById('wcQuoteName').value.trim(),
       // The email exactly as sent, to show again from Current or History
       emailHtml: emailHtml,
       emailSubject: subject,
@@ -10856,7 +10880,7 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
     // Approve / Deny, when the quote can take an answer
     + (respondUrl ? '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 6px;width:100%;"><tr>'
         + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">Approve</a></td>'
-        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#ffffff;color:#B8492E;border:1.5px solid #EFC9BC;font-weight:700;font-size:15px;text-decoration:none;">Deny</a></td>'
+        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#ffffff;color:#B8492E;border:1.5px solid #EFC9BC;font-weight:700;font-size:15px;text-decoration:none;">Decline</a></td>'
         + '</tr></table>' : '')
     + (((q.closing || '').trim() || signoff) ? '<div style="font-size:14px;color:#4A5A58;padding-top:18px;border-top:1px solid #E6E9E8;white-space:pre-wrap;">'
         + esc((q.closing || '').trim())
@@ -10940,6 +10964,26 @@ function fillQuoteEmailForm(q){
   });
 })();
 
+// A quote from History started as a new work order: its customer and items on
+// the Work Order tab, ready for a date, technician and Finalize. The quote
+// itself is left as it is.
+function convertQuoteToWorkOrder(q){
+  switchView('workcenter');
+  setTimeout(()=>{
+    document.getElementById('wcType').value = 'Work Order';
+    wcView = 'main';
+    resetWorkOrderForm();
+    applyWorkOrderType();
+    wcSelectedCustomerIds = q.customerId ? [q.customerId] : [];
+    renderWcCustomerChips();
+    currentLineItems = (q.lineItems || []).map(li => Object.assign({}, li));
+    renderLineItems();
+    recalcWorkOrderTotal();
+    document.getElementById('wcPhotoRequired').checked = true;
+    showToast('Quote copied to a new work order');
+  }, 0);
+}
+
 // ---------- A quote's email, as the customer sees it ----------
 function showSentQuoteEmail(w){
   const customer = customers.find(c => c.id === w.customerId) || {name: 'Customer'};
@@ -10964,7 +11008,7 @@ function showSentQuoteEmail(w){
   head.children[0].textContent = w.emailSubject || ((w.type || 'Quote') + ' to ' + displayName(customer.name));
   const when = w.createdAt ? new Date(w.createdAt).toLocaleString() : '';
   head.children[1].textContent = rebuilt
-    ? 'Sent before copies were kept \u2014 shown with today\u2019s template, without the Approve / Deny buttons'
+    ? 'Sent before copies were kept \u2014 shown with today\u2019s template, without the Approve / Decline buttons'
     : 'Sent ' + when + (customer.email ? ' to ' + customer.email : '');
   card.appendChild(head);
   const frame = document.createElement('iframe');
@@ -10999,7 +11043,8 @@ async function registerQuoteResponse(quoteId){
     const res = await sbFetch('/rest/v1/quote_responses?on_conflict=company_id,quote_id', {
       method: 'POST',
       headers: {'Prefer': 'resolution=merge-duplicates,return=minimal'},
-      body: JSON.stringify({company_id: siteUser.companyId, quote_id: quoteId, token: token, outcome: null, responded_at: null})
+      // Sent now: the customer has 30 days from this sending to answer
+      body: JSON.stringify({company_id: siteUser.companyId, quote_id: quoteId, token: token, outcome: null, responded_at: null, created_at: new Date().toISOString()})
     });
     if(!res || !res.ok) return null;
     // The page on this website that asks the customer to confirm (Supabase shows
@@ -11066,6 +11111,7 @@ function loadWorkOrderIntoForm(w){
     const dateEl = document.getElementById('wcDate');
     if(dateEl) dateEl.value = w.date || '';
     document.getElementById('wcPhotoRequired').checked = !!w.photoRequired;
+    document.getElementById('wcQuoteName').value = w.name || '';
 
     currentLineItems = (w.lineItems || []).map(li => ({...li}));
     renderLineItems();
