@@ -5905,8 +5905,8 @@ function openGroupCustomerPicker(g){
       <h3 style="font-size:15px;margin:0 0 4px;">Add customers to ${g.name}</h3>
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 12px;">Tick everyone who needs a filter clean in this batch.</p>
       <div style="position:relative;margin-bottom:10px;">
-        <input id="gcpSearch" placeholder="Search by name, address, phone, or email" autocomplete="off" style="padding-right:36px;">
-        <button type="button" id="gcpSearchClear" style="display:none;position:absolute;right:9px;top:50%;transform:translateY(-50%);height:24px;width:24px;padding:0;border:none;background:none;color:var(--muted);font-size:16px;line-height:1;cursor:pointer;">×</button>
+        <input id="gcpSearch" placeholder="Search by name, address, phone, or email" autocomplete="off">
+        <button type="button" id="gcpSearchClear" hidden style="display:none !important;position:absolute;right:9px;top:50%;transform:translateY(-50%);height:24px;width:24px;padding:0;border:none;background:none;color:var(--muted);font-size:16px;line-height:1;cursor:pointer;">×</button>
       </div>
       <div id="gcpList" style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:4px 8px;margin-bottom:14px;"></div>
       <div class="btn-row">
@@ -5922,7 +5922,7 @@ function openGroupCustomerPicker(g){
 
   function applyGcpSearch(){
     const t = searchEl.value.trim().toLowerCase();
-    clearEl.style.display = searchEl.value ? 'block' : 'none';
+    clearEl.style.display = 'none';   // no × here: a click on the box empties it
     let shown = 0;
     listEl.querySelectorAll('label').forEach(row=>{
       const hay = row.dataset.search || '';
@@ -5947,6 +5947,16 @@ function openGroupCustomerPicker(g){
     applyGcpSearch();
     searchEl.focus();
   });
+  // Pressing the search box, with something already typed, empties it for a
+  // fresh name: every time, and nothing comes back. Tabbing into it does too.
+  const emptyForFresh = ()=>{
+    if(!searchEl.value) return;
+    searchEl.value = '';
+    applyGcpSearch();
+  };
+  searchEl.addEventListener('mousedown', emptyForFresh);
+  searchEl.addEventListener('touchstart', emptyForFresh, {passive: true});
+  searchEl.addEventListener('focus', emptyForFresh);
   // Ready to type the moment the window opens (after the click that opened it
   // has finished, so nothing takes the cursor back)
   setTimeout(()=>{ try{ searchEl.focus(); }catch(e){} }, 60);
@@ -20268,7 +20278,17 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
     && el.getAttribute('list') !== 'wcProductSuggestions'
     && (/search/i.test(el.id || '') || el.type === 'search'
         || /^(search|start typing)/i.test(el.placeholder || ''));
-  const quiet = el => { if(isSearch(el) && el.getAttribute('autocomplete') !== 'off') el.setAttribute('autocomplete', 'off'); };
+  // "off" alone isn't enough: Chrome still offers saved emails and addresses in a
+  // box that mentions them ("…phone, or email"). An autocomplete value it
+  // doesn't recognise turns its suggestions off, and an unfamiliar name keeps
+  // it from matching the box to anything saved.
+  const quiet = el=>{
+    if(!isSearch(el)) return;
+    if(el.getAttribute('autocomplete') !== 'weir-search') el.setAttribute('autocomplete', 'weir-search');
+    if(!el.getAttribute('name')) el.setAttribute('name', 'weir-search-' + (el.id || Math.random().toString(36).slice(2, 8)));
+    el.setAttribute('data-lpignore', 'true');   // password managers too
+    el.setAttribute('data-1p-ignore', 'true');
+  };
   const sweep = root => { if(root && root.querySelectorAll) root.querySelectorAll('input').forEach(quiet); };
   sweep(document);
   new MutationObserver(list => list.forEach(m => m.addedNodes.forEach(n=>{
