@@ -5773,11 +5773,16 @@ function renderFilterGroups(){
     dateInput.type = 'date';
     dateInput.value = g.date || '';
     dateInput.style.cssText = 'flex:1;min-width:150px;';
-    // Saved as it changes, but redrawn only on leaving the box: a date counts as
-    // complete after the first digit of the year, and redrawing then replaced
-    // the box being typed in
-    dateInput.addEventListener('change', ()=>{ g.date = dateInput.value; saveFilterGroups(); });
-    dateInput.addEventListener('blur', ()=> renderFilterGroups());
+    // Saved as it changes, and the heading's date updated in place: no redraw at
+    // all. Redrawing while typing replaced the box mid-year; redrawing on leaving
+    // it replaced whatever was being clicked next, so the click was lost.
+    dateInput.addEventListener('change', ()=>{
+      g.date = dateInput.value;
+      saveFilterGroups();
+      const cntNow = (g.customerIds || []).length;
+      const dateNow = g.date ? new Date(g.date + 'T12:00:00').toLocaleDateString(undefined,{weekday:'short', month:'short', day:'numeric'}) : 'No date';
+      sub.textContent = cntNow + (cntNow === 1 ? ' customer' : ' customers') + ' \u00b7 ' + dateNow + ' \u00b7 ' + (technicianNameById(g.technicianId) || 'No technician');
+    });
     controls.appendChild(dateInput);
 
     const techSel = document.createElement('select');
@@ -5947,16 +5952,24 @@ function openGroupCustomerPicker(g){
     applyGcpSearch();
     searchEl.focus();
   });
-  // Pressing the search box, with something already typed, empties it for a
-  // fresh name: every time, and nothing comes back. Tabbing into it does too.
+  // Coming back to the search box (clicking or tabbing into it from elsewhere)
+  // empties it for a fresh name, and nothing comes back. While it's already
+  // being typed in, it's a normal box: clicks move the cursor, drags highlight.
   const emptyForFresh = ()=>{
+    if(document.activeElement === searchEl) return;   // already typing here
     if(!searchEl.value) return;
     searchEl.value = '';
     applyGcpSearch();
   };
   searchEl.addEventListener('mousedown', emptyForFresh);
   searchEl.addEventListener('touchstart', emptyForFresh, {passive: true});
-  searchEl.addEventListener('focus', emptyForFresh);
+  searchEl.addEventListener('focus', ()=>{
+    // The focus that follows a click from elsewhere: empty it (the mousedown
+    // above has usually done so already)
+    if(!searchEl.value) return;
+    searchEl.value = '';
+    applyGcpSearch();
+  });
   // Ready to type the moment the window opens (after the click that opened it
   // has finished, so nothing takes the cursor back)
   setTimeout(()=>{ try{ searchEl.focus(); }catch(e){} }, 60);
@@ -20175,6 +20188,7 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
   document.addEventListener('pointerdown', e=>{
     const inp = e.target;
     if(!isWindowSearch(inp) || !inp.value) return;
+    if(document.activeElement === inp) return;   // already typing here: a normal box
     inp.value = '';
     inp.dispatchEvent(new Event('input', {bubbles: true}));
   }, true);
