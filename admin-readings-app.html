@@ -10938,7 +10938,19 @@ function syncStepChrome(){
       save.className = 'btn btn-ghost save-report-btn';
       save.style.cssText = 'width:auto;flex-shrink:0;padding:6px 12px;font-size:12.5px;justify-self:center;';
       save.textContent = 'Save report';
+      // Only once the photo requirements are met: the same checks as Submit
+      // (after photo, closed gate photo) and any required extra photo here
+      const submitBtn = document.getElementById(submitId);
+      const owing = missingRequiredPhoto();
+      const photosReady = !owing && !(submitBtn && submitBtn.disabled);
+      if(!photosReady){
+        save.disabled = true;
+        save.style.opacity = '0.4';
+        save.style.cursor = 'not-allowed';
+        save.title = owing || (submitBtn && submitBtn.title) || 'Take the required photos first';
+      }
       save.addEventListener('click', async ()=>{
+        if(save.disabled) return;
         const ok = await confirmDialog('This will not send it to the customer. Are you sure you would like to save it?',
           'Save report');
         if(!ok) return;

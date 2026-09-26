@@ -5463,6 +5463,9 @@ document.getElementById('btnRemoveStrayCleans').addEventListener('click', async 
 });
 
 function renderFilterGroups(){
+  // Drawn first: with no groups at all this function stops early, and the
+  // leftovers were never shown
+  renderStrayFilterCleans();
   const container = document.getElementById('filterGroupList');
   if(!container) return;
   if(filterGroups.length === 0){
@@ -7528,6 +7531,8 @@ function editingSyncedLists(){
   if(document.querySelector('.confirm-overlay')) return true;
   const el = document.activeElement;
   if(!el || !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return false;
+  // A field on a page that isn't on screen can't be typed in
+  if(el.offsetParent === null) return false;
   // Readings & dosages and Customer Customization share one page
   return !!el.closest('#view-chemconfig, #view-productsservices');
 }
@@ -19473,8 +19478,9 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
     });
   });
 })();
-</script>
-<script>
+
+// ---- Page-wide touches, run last (formerly their own blocks) ----
+
 // Search boxes show only Weir's own suggestions (customers, and products on a
 // quote or work order line), never the browser's list of things typed before
 (function noBrowserSuggestionsInSearch(){
@@ -19490,6 +19496,8 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
     if(n.tagName === 'INPUT') quiet(n); else sweep(n);
   }))).observe(document.body, {childList: true, subtree: true});
 })();
+
 </script>
+
 </body>
 </html>
