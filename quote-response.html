@@ -9,6 +9,8 @@
 <style>
   :root{ --teal:#134E4A; --teal-soft:#E4F0EE; --rust:#B8492E; --ink:#1F2D2B; --muted:#5E7371; }
   *{box-sizing:border-box;}
+  /* Nothing to type or select here: no blinking text cursor on a click */
+  html,body,*{caret-color:transparent;user-select:none;-webkit-user-select:none;cursor:default;}
   body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
        font-family:"DM Sans",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);
        background:linear-gradient(160deg,#EAF3F1 0%,#F6F8F7 55%,#FFFFFF 100%);}

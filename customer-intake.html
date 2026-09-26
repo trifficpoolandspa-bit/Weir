@@ -9683,6 +9683,8 @@ document.getElementById('wcCurrentSearch').addEventListener('input', ()=>{ wcCur
 document.querySelectorAll('#wcViewControl [data-wcview]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     wcCurrentPage = 1; wcHistoryPage = 1; wcSubmittedPage = 1;
+    // Customers' latest answers to quotes, straight away
+    if(btn.dataset.wcview !== 'main' && typeof takeQuoteAnswers === 'function') setTimeout(takeQuoteAnswers, 0);
     wcView = btn.dataset.wcview;
     applyWorkOrderType();
   });
@@ -11034,6 +11036,8 @@ async function takeQuoteAnswers(){
 }
 // Checked every minute while signed in, and on opening the WorkCenter
 setInterval(takeQuoteAnswers, 60000);
+// and once shortly after the page opens
+setTimeout(takeQuoteAnswers, 4000);
 
 // Through the report function; the plain-text email is kept as a fallback so a
 // quote still goes out if that can't be reached
