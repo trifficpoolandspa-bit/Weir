@@ -5,7 +5,8 @@
 // pages from its own function addresses as plain text, so the thank-you page
 // lives on the website.) Buttons in emails sent before that page existed come
 // here directly: the answer is recorded and a plain thank-you shown.
-// The latest answer counts, so a customer can change their mind.
+// The latest answer counts, so a customer can change their mind, for 30 days
+// from when the quote was sent; after that the quote has expired.
 //
 // Talks to the database the same way send-report does (its own keys, straight
 // requests), and says why if the database refuses rather than "not found".
@@ -25,6 +26,8 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "content-type": "application/json" } });
 const text = (body: string) =>
   new Response(body, { headers: { ...CORS, "content-type": "text/plain; charset=utf-8" } });
+
+const ANSWER_DAYS = 30;
 
 const db = async (path: string, init: RequestInit = {}) => {
   const res = await fetch(SUPABASE_URL + "/rest/v1/" + path, {
@@ -61,16 +64,24 @@ Deno.serve(async (req) => {
 
   if (!token) return fromOldEmail ? text(sorry) : json({ state: "missing" });
 
-  const found = await db("quote_responses?select=company_id,outcome&token=eq." + encodeURIComponent(token));
+  const found = await db("quote_responses?select=company_id,outcome,created_at&token=eq." + encodeURIComponent(token));
   if (!found.ok) {
     // The database refused: say why, rather than "not found"
     return fromOldEmail ? text(sorry) : json({ state: "error", why: found.status + " " + found.body.slice(0, 200) }, 500);
   }
-  const row = Array.isArray(found.data) && found.data.length ? found.data[0] as { company_id: string; outcome: string | null } : null;
+  const row = Array.isArray(found.data) && found.data.length ? found.data[0] as { company_id: string; outcome: string | null; created_at: string } : null;
   if (!row) return fromOldEmail ? text(sorry) : json({ state: "missing" });
 
   const co = await db("companies?select=name&id=eq." + encodeURIComponent(row.company_id));
   const company = co.ok && Array.isArray(co.data) && co.data.length ? String((co.data[0] as { name?: string }).name || "") : "";
+
+  // Past 30 days from sending: expired, nothing recorded
+  const sentAt = new Date(row.created_at).getTime();
+  if (sentAt && Date.now() - sentAt > ANSWER_DAYS * 24 * 60 * 60 * 1000) {
+    return fromOldEmail
+      ? text("This quote has expired. It was sent more than " + ANSWER_DAYS + " days ago — please contact " + (company || "us") + " for an updated quote.")
+      : json({ state: "expired", outcome: row.outcome, company, days: ANSWER_DAYS });
+  }
 
   if (!outcome) return json({ state: row.outcome ? "answered" : "open", outcome: row.outcome, company });
 
