@@ -5947,6 +5947,9 @@ function openGroupCustomerPicker(g){
     applyGcpSearch();
     searchEl.focus();
   });
+  // Ready to type the moment the window opens (after the click that opened it
+  // has finished, so nothing takes the cursor back)
+  setTimeout(()=>{ try{ searchEl.focus(); }catch(e){} }, 60);
 
   active
     .slice()
@@ -20156,7 +20159,15 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
   };
   const isWindowSearch = el => el && el.tagName === 'INPUT'
     && (/search/i.test(el.id || '') || /^search/i.test(el.placeholder || '')) && inWindow(el);
-  const isCustomerField = el => el && el.tagName === 'INPUT' && (IDS.indexOf(el.id) !== -1 || isWindowSearch(el));
+  const isCustomerField = el => el && el.tagName === 'INPUT' && IDS.indexOf(el.id) !== -1 && !isWindowSearch(el);
+  // A search box in a window: every click empties it, for a fresh name, and
+  // nothing is put back afterwards
+  document.addEventListener('pointerdown', e=>{
+    const inp = e.target;
+    if(!isWindowSearch(inp) || !inp.value) return;
+    inp.value = '';
+    inp.dispatchEvent(new Event('input', {bubbles: true}));
+  }, true);
   const nearby = inp => inp.closest('.field') || inp.parentElement;
   // Noted at the press itself: some of these fields already empty themselves
   // when they get focus, so by then the old text would be gone
