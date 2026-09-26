@@ -8696,6 +8696,10 @@ function localDateOfStamp(stamp){
 // which brings the customer back for that day as it always has.
 function servicedOnDate(c, iso){
   if(!c || !iso) return false;
+  // Once services note which day they were for, only that day's own visit counts
+  if(Array.isArray(c.servicedFor) && c.servicedFor.length){
+    return servicedForCovers(c, iso);
+  }
   // Serviced on that day, or since. A Friday customer caught up on Monday is
   // done: Friday's route should not keep asking for them. Work is dated when
   // it was done, so the date on the visit is later than the day it was for.
@@ -8712,6 +8716,27 @@ function servicedOnDate(c, iso){
 
 // A customer's service days: their main day, and any extra days for customers
 // serviced more than once a week
+// Which day's visit a service was for. A customer on two days (an extra day,
+// or a leftover copy) used to share one "last serviced" date, so servicing one
+// hid both and Reservice brought both back. Each service now notes the day it
+// was for; a day hides the customer only once that day's own visit is done.
+// Customers with no such note yet keep the old rule.
+let visitRouteDay = null;
+function noteServicedFor(customer){
+  const on = todayDateStr();
+  const list = Array.isArray(customer.servicedFor) ? customer.servicedFor.slice() : [];
+  list.push({day: visitRouteDay || on, on: on});
+  customer.servicedFor = list.slice(-20);
+}
+
+// A later service for a day that isn't one of their own days is a catch-up,
+// and clears an earlier missed visit; a service for another of their own days
+// (an extra day) doesn't
+function servicedForCovers(c, dayISO){
+  const NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  return c.servicedFor.some(x => x && (x.day === dayISO
+    || (x.day > dayISO && !customerServicedOn(c, NAMES[new Date(x.day + 'T12:00:00').getDay()]))));
+}
 function customerServicedOn(c, day){
   return !!c && !!day && (c.day === day || (Array.isArray(c.extraDays) && c.extraDays.indexOf(day) !== -1));
 }
@@ -9179,6 +9204,10 @@ async function reserviceCustomer(customer){
   // report as a redo so the two can be told apart.
   customer.pendingRedo = true;
   customer.lastServicedDate = null;
+  // Only the latest service's day comes back, not every day they're on
+  if(Array.isArray(customer.servicedFor) && customer.servicedFor.length){
+    customer.servicedFor = customer.servicedFor.slice(0, -1);
+  }
   delete customer.lastServiceDurationMs;
   delete customer.lastServicedAt;
   await saveCustomers();
@@ -9282,6 +9311,7 @@ async function skipService(customer){
   // actually done is dated today, which is what visitDateStr gives.
   const today = routeDateStr();
   customer.lastServicedDate = today;
+  noteServicedFor(customer);
   // The report is finished and meant to stay, so a later cancel on a different
   // visit must not reach back and delete it
   visitSavedReadings = [];
@@ -12019,7 +12049,8 @@ async function openVisit(customerId){
         sectionsAlreadyDoneToday(customer),
         heldSectionsFor(customerId))
     };
-    // Where the phone is as the report starts
+    // Which day's visit this is, and where the phone is as the report starts
+    visitRouteDay = (typeof isoForDay === 'function' && selectedHomeDay) ? isoForDay(selectedHomeDay) : todayDateStr();
     visitLocation = {customerId: customerId, start: null, end: null};
     grabVisitLocation('start');
     visitStepBySection = {};
@@ -12420,6 +12451,7 @@ async function finalizeVisitSend(){
   const customer = customers.find(c => c.id === customerId);
   if(customer){
     customer.lastServicedDate = visitDateStr();
+    noteServicedFor(customer);
     customer.lastServicedAt = visitTimestamp();
     if(elapsedMs !== null) customer.lastServiceDurationMs = elapsedMs;
     await saveCustomers();

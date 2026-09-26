@@ -8721,7 +8721,10 @@ function openTechPickWindow(btn){
     list.insertAdjacentHTML('beforeend',
       '<div style="font-size:12.5px;color:var(--muted);padding:11px 8px;">Add a technician first.</div>');
   }
-  technicians.forEach(t => rowFor(String(t.id), t.name, picked.indexOf(String(t.id)) !== -1));
+  // A to Z by name (Unassigned, when offered, stays at the top)
+  technicians.slice()
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity: 'base'}))
+    .forEach(t => rowFor(String(t.id), t.name, picked.indexOf(String(t.id)) !== -1));
   document.getElementById('techPickOverlay').style.display = 'flex';
 }
 
@@ -9787,15 +9790,17 @@ function renderCurrentList(kind){
   const tech = techSel.value;
 
   let rows = [];
+  // Work Order: no heading or note, just the list
+  heading.parentElement.style.display = kind === 'Work Order' ? 'none' : '';
+  note.style.display = kind === 'Work Order' ? 'none' : '';
   if(kind === 'Work Order'){
-    heading.textContent = 'Scheduled work orders';
-    note.textContent = 'Every visit still on a technician\u2019s route, soonest first. Take off any that no longer need doing.';
     const woIds = new Set(workOrders.map(w => w.id));
     const jobs = (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'scheduled');
     rows = jobs.filter(j => !tech || String(j.technicianId) === tech).map(j => ({
       id: j.id, date: j.date, who: custName(j.customerId), what: j.title || 'Work order',
       techName: technicianNameById(j.technicianId) || 'No technician',
       orphan: !!j.workOrderId && !woIds.has(j.workOrderId),
+      workOrderId: j.workOrderId,
       group: j.workOrderId, groupLeft: jobs.filter(x => x.workOrderId && x.workOrderId === j.workOrderId).length
     }));
   } else if(kind === 'Task'){
@@ -9894,6 +9899,18 @@ function renderCurrentList(kind){
       });
       acts.appendChild(close);
     } else {
+      // Edit: to the Work Order tab with it loaded
+      const wo = kind === 'Work Order' && r.workOrderId ? workOrders.find(x => x.id === r.workOrderId) : null;
+      if(wo){
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'btn btn-ghost';
+        edit.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;';
+        edit.textContent = 'Edit';
+        edit.title = 'Open this work order to change it';
+        edit.addEventListener('click', e => { e.stopPropagation(); loadWorkOrderIntoForm(wo); });
+        acts.appendChild(edit);
+      }
       if(r.groupLeft > 1){
         const all = document.createElement('button');
         all.type = 'button';
@@ -9954,7 +9971,7 @@ function renderSubmittedHistory(kind){
     ? tasks.filter(t => t && t.done).map(t => ({key: 'task:' + t.id, sourceId: t.id, title: t.title || 'Task',
         customerName: (t.customerIds || []).map(nameOf).filter(Boolean).join(', '),
         submittedAt: t.doneAt || '', notes: t.doneNotes || '', by: technicianNameById(t.doneBy || t.technicianId) || ''}))
-    : (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'done').map(j => ({key: 'wo:' + j.id, sourceId: j.id,
+    : (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'done').map(j => ({key: 'wo:' + j.id, sourceId: j.id, workOrderId: j.workOrderId,
         title: j.title || 'Work order', customerName: nameOf(j.customerId),
         submittedAt: j.doneAt || '', notes: j.doneNotes || '', by: technicianNameById(j.doneBy || j.technicianId) || ''}));
   const seen = new Set(fromServer.map(x => String(x.sourceId)));
@@ -10000,6 +10017,18 @@ function renderSubmittedHistory(kind){
       body.appendChild(notes);
     }
     row.appendChild(body);
+    // A work order submitted in the field: Edit & resend opens it on the Work Order tab
+    const woOf = kind === 'work order' && sub.workOrderId ? workOrders.find(x => x.id === sub.workOrderId) : null;
+    if(woOf){
+      row.style.display = 'flex'; row.style.alignItems = 'flex-start'; row.style.gap = '10px';
+      const again = document.createElement('button');
+      again.type = 'button';
+      again.className = 'btn btn-ghost';
+      again.style.cssText = 'width:auto;flex-shrink:0;padding:5px 10px;font-size:12px;';
+      again.textContent = 'Edit & resend';
+      again.addEventListener('click', e => { e.stopPropagation(); loadWorkOrderIntoForm(woOf); });
+      row.appendChild(again);
+    }
     box.appendChild(row);
   });
 }
@@ -10033,7 +10062,9 @@ function applyWorkOrderType(){
   // The heading only appears while editing something, so leave it as it is
   if(isTask || history || current) document.getElementById('wcFormHeading').style.display = 'none';
   // Quotes sent and work orders finalised now live on History, each on its own
-  document.getElementById('wcQuotesHistoryCard').style.display = (history && !isTask) ? 'block' : 'none';
+  // Quote History lists quotes sent. Work Order History holds only work
+  // submitted in the field, so a finalized work order sits in Current until then.
+  document.getElementById('wcQuotesHistoryCard').style.display = (history && !isTask && !isWO) ? 'block' : 'none';
   document.getElementById('wcSubmittedCard').style.display = (history && chosen !== 'Quote') ? 'block' : 'none';
   document.getElementById('wcTaskSection').style.display = (isTask && !history && !current) ? 'block' : 'none';
   // "Tasks on the schedule" is no longer shown; Task → Current lists them
@@ -10045,8 +10076,8 @@ function applyWorkOrderType(){
   }
 
   if(history){
-    if(!isTask){
-      document.getElementById('wcHistoryHeading').textContent = isWO ? 'Work orders finalized' : 'Quotes sent';
+    if(!isTask && !isWO){
+      document.getElementById('wcHistoryHeading').textContent = 'Quotes sent';
       renderWorkOrderHistory();
     }
     if(chosen !== 'Quote') renderSubmittedHistory(isTask ? 'task' : 'work order');
@@ -10644,6 +10675,8 @@ function loadWorkOrderIntoForm(w){
   switchView('workcenter');
   setTimeout(()=>{
     document.getElementById('wcType').value = w.type || 'Quote';
+    // Straight to its own tab, where the form is
+    wcView = 'main';
     applyWorkOrderType();
 
     wcSelectedCustomerIds = w.customerId ? [w.customerId] : [];
