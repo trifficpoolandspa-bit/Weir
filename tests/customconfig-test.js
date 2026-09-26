@@ -640,8 +640,8 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     check('Quote History lists quotes only', shown('wcQuotesHistoryCard') && /Quote/.test(d.getElementById('wcHistoryList').textContent)
           && !/Work Order/.test(d.getElementById('wcHistoryList').textContent) && !shown('wcSubmittedCard'));
     type('Work Order'); tab('history');
-    check('Work Order History lists work orders and only work orders submitted from the field',
-          /Work Order/.test(d.getElementById('wcHistoryList').textContent) && /Swap cartridge/.test(d.getElementById('wcSubmittedList').textContent)
+    check('Work Order History shows only work orders submitted from the field',
+          d.getElementById('wcQuotesHistoryCard').style.display === 'none' && /Swap cartridge/.test(d.getElementById('wcSubmittedList').textContent)
           && !/Check seal/.test(d.getElementById('wcSubmittedList').textContent));
     type('Task'); tab('history');
     check('Task History lists only tasks submitted from the field',
@@ -838,8 +838,11 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => /selected/.test(b.textContent)).click(); await wait(80);
     check('Select all and delete clears the list', !w.eval("tasks.some(t => !t.done)"));
     // Deleting a work order always takes its visits off the routes
-    kind('Work Order'); tab('history');
-    Array.from(d.querySelectorAll('#wcHistoryList .cust-row')).find(r => /Work Order/.test(r.textContent)).querySelectorAll('button')[1].click(); await wait(80);
+    // (from the customer's profile, where saved work orders are listed)
+    w.eval("switchView('customers'); viewCustomer(customers[0]); renderCustomerWorkOrders('a');"); await wait(100);
+    Array.from(d.querySelectorAll('#custWorkOrderList button')).filter(b => /Delete/.test(b.textContent))
+      .find(b => /Fix light|Work Order/.test((b.closest('.cust-row') || b.parentElement.parentElement).textContent)).click(); await wait(120);
+    w.eval("switchView('workcenter');");
     check('deleting a work order takes all its visits off the routes', !w.eval("(lsGet('scheduledWorkOrders')||[]).some(j => j.workOrderId === 'wo1')"));
     // Tasks form: no Editing heading, no list below, Photo required
     kind('Task'); tab('main');

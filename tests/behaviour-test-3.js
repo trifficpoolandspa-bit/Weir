@@ -1546,7 +1546,9 @@ setTimeout(()=>{
     check('labelled Saved technician', label === 'Saved technician', label);
     taskBtn.click();
     check('pressing it opens the window', win().style.display === 'flex');
-    check('listing every technician, with no Unassigned', boxes().map(b => b.value).join() === 't1,t2,t3');
+    check('listing every technician, with no Unassigned', boxes().map(b => b.value).sort().join() === 't1,t2,t3');
+    const shownNames = Array.from(d.querySelectorAll('#techPickList label span')).map(x => x.textContent);
+    check('in alphabetical order', shownNames.join('|') === shownNames.slice().sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base'})).join('|'), shownNames.join(', '));
     check('each as a list row that lights up under the pointer',
           Array.from(d.querySelectorAll('#techPickList label')).every(l => l.classList.contains('pick-row') && l.classList.contains('press-row')));
     d.getElementById('btnTechPickAll').click();
@@ -1607,7 +1609,7 @@ setTimeout(()=>{
     check('Work Order has the same button, labelled Saved technician',
           woBtn.tagName === 'BUTTON' && woBtn.closest('.field').querySelector('label').textContent === 'Saved technician');
     woBtn.click();
-    check('with no Unassigned in its window either', boxes().map(b => b.value).join() === 't1,t2,t3');
+    check('with no Unassigned in its window either', boxes().map(b => b.value).sort().join() === 't1,t2,t3');
     tick('t2'); tick('t3'); d.getElementById('btnSaveTechPick').click();
     w.eval("wcSelectedCustomerIds.push('c1'); renderWcCustomerChips();"
       + " currentLineItems = [{description: 'Replace pump seal', qty: 1, price: 40}]; renderLineItems();");
@@ -1616,7 +1618,7 @@ setTimeout(()=>{
     check('a work order for two technicians puts a separate job on each route',
           jobs.length === 2 && jobs.map(j => j.technicianId).sort().join() === 't2,t3', JSON.stringify(jobs.map(j => j.technicianId)));
     const wo = JSON.parse(w.localStorage.getItem('weir:workOrders') || '[]').slice(-1)[0] || {};
-    check('the saved work order remembers them all', (wo.technicianIds || []).join() === 't2,t3', JSON.stringify(wo.technicianIds));
+    check('the saved work order remembers them all', (wo.technicianIds || []).slice().sort().join() === 't2,t3', JSON.stringify(wo.technicianIds));
     toasts.length = 0;
     w.eval("wcSelectedCustomerIds.push('c1'); renderWcCustomerChips();"
       + " currentLineItems = [{description: 'Again', qty: 1, price: 1}]; renderLineItems();");
@@ -1680,7 +1682,8 @@ setTimeout(()=>{
     kind('Work Order');
     check('changing kind starts on its own tab', d.getElementById('btnWcViewMain').classList.contains('active'));
     tab('history');
-    check('Work Order History shows work orders only', /Work Order/.test(sent()) && !/Quote —/.test(sent()), sent().slice(0, 60));
+    // Work Order History holds only work submitted in the field (a finalized work order waits in Current)
+    check('Work Order History has no finalized list, only what was submitted in the field', d.getElementById('wcQuotesHistoryCard').style.display === 'none');
     check('and only work orders from the field', field() === 'Alpha Smith \u2013 Replace cartridge', field());
     kind('Task'); tab('history');
     check('Task History shows only tasks from the field', field() === 'Alpha Smith \u2013 Check seal', field());

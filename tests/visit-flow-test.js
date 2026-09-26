@@ -795,7 +795,7 @@ async function walkVisit(w, d, maxPresses){
   ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
     const src = fs.readFileSync(file, 'utf8');
     check(file + ' counts a later service as done for an earlier day',
-          /lastServicedDate >= (selectedDayISO|iso)/.test(src));
+          /lastServicedDate >= (selectedDayISO|iso|dayISO)/.test(src) && /function servicedForCovers/.test(src));
   });
 }
 
@@ -1014,7 +1014,7 @@ async function walkVisit(w, d, maxPresses){
   const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const today = DAYS[new Date().getDay()];
   const iso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  const tomorrowIso = new Date(Date.now() + 86400000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const tomorrowIso = new Date(Date.now() + (new Date().getDay() === 6 ? -86400000 : 86400000) - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   const other = today === 'Wednesday' ? 'Tuesday' : 'Wednesday';
   const seedJobs = {
     customers: [
@@ -1107,7 +1107,7 @@ async function walkVisit(w, d, maxPresses){
     const w2 = dom2.window, d2 = w2.document;
     w2.Element.prototype.scrollIntoView = function(){};
     try{
-      const tomorrow = DAYS[(new Date().getDay() + 1) % 7];
+      const tomorrow = DAYS[(new Date().getDay() === 6 ? 5 : new Date().getDay() + 1)];
       w2.eval("currentUser = {id: 't1', name: 'Pat', full_access: true};"
         + " if(typeof adminViewTechId !== 'undefined'){ adminViewTechId = 't1'; adminRouteStarted = true; }"
         + " selectedHomeDay = '" + tomorrow + "'; switchView('home'); renderHomeList();");
@@ -1161,7 +1161,7 @@ async function walkVisit(w, d, maxPresses){
 // ---- Sept 24: jobs, the Today list, extra photos, rescheduling, Skip ----
 {
   const isoToday = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  const isoTomorrow = new Date(Date.now() + 86400000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const isoTomorrow = new Date(Date.now() + (new Date().getDay() === 6 ? -86400000 : 86400000) - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   const other = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][(new Date().getDay() + 3) % 7];
   for(const file of ['technician-app.html', 'admin-readings-app.html']){
     console.log('\n=== ' + file + ': work orders and tasks on the route ===');
@@ -1248,7 +1248,7 @@ async function walkVisit(w, d, maxPresses){
       w.eval("fieldRouteOrder[orderKey(selectedHomeDay, isoForDay(selectedHomeDay))] = []; renderHomeList();");
 
       // Another day's job: technician app refuses, admin app allows
-      w.eval("selectedHomeDay = '" + ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][(new Date().getDay() + 1) % 7] + "'; renderHomeList();");
+      w.eval("selectedHomeDay = '" + ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][(new Date().getDay() === 6 ? 5 : new Date().getDay() + 1)] + "'; renderHomeList();");
       await wait(450);
       const tomorrowRow = d.querySelector('#homeCustomerList .route-job');
       tomorrowRow.click();
@@ -1333,9 +1333,9 @@ async function walkVisit(w, d, maxPresses){
 {
   const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const iso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  const tomorrow = new Date(Date.now() + 86400000);
+  const tomorrow = new Date(Date.now() + (new Date().getDay() === 6 ? -86400000 : 86400000));
   const tomorrowIso = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  const otherDay = DAYS[(new Date().getDay() + 2) % 7];
+  const otherDay = DAYS[(new Date().getDay() >= 5 ? new Date().getDay() - 3 : new Date().getDay() + 2)];
   const jobsSeed = extra => seedFor(Object.assign({
     customers: [
       {id:'a', name:'Alpha One', address:'1 A St', phone:'(623) 555-0101', gateCode:'4321', dogs:[{name:'Rex'}],
@@ -1497,7 +1497,7 @@ async function walkVisit(w, d, maxPresses){
   const todayName = DAYS[new Date().getDay()];
   const otherName = DAYS[(new Date().getDay() + 3) % 7];
   const iso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  const tomorrowIso = new Date(Date.now() + 86400000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const tomorrowIso = new Date(Date.now() + (new Date().getDay() === 6 ? -86400000 : 86400000) - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   for(const file of ['technician-app.html', 'admin-readings-app.html']){
     console.log('\n=== ' + file + ': jobs on Today ===');
     const dom = boot(file, {
@@ -1571,7 +1571,7 @@ async function walkVisit(w, d, maxPresses){
       check(file + ': but their job stays until it\u2019s submitted', after.some(x => /Swap valve/.test(x)), after.join(' | '));
 
       // A job dated another day
-      w.eval("selectedHomeDay = '" + DAYS[new Date(Date.now() + 86400000).getDay()] + "'; renderHomeList();"); await wait(450);
+      w.eval("selectedHomeDay = '" + DAYS[new Date(Date.now() + (new Date().getDay() === 6 ? -86400000 : 86400000)).getDay()] + "'; renderHomeList();"); await wait(450);
       const tRow = Array.from(d.querySelectorAll('#homeCustomerList .route-job')).find(r => /Tomorrow job/.test(r.textContent));
       tRow.click(); await wait(50);
       const tStart = d.querySelector('.route-job-brief .btn-primary');
@@ -1800,6 +1800,31 @@ async function walkVisit(w, d, maxPresses){
     w.close();
   }
   check('Android keeps Weir upright', JSON.parse(fs.readFileSync('manifest.json', 'utf8')).orientation === 'portrait');
+}
+
+
+// ---- A customer on two days: each day's visit on its own ----
+{
+  console.log('\n=== two days, each its own visit ===');
+  for(const file of ['technician-app.html', 'admin-readings-app.html']){
+    const dom = boot(file, {customers: [{id: 'j', name: 'John Tyler', active: true, hasPool: true, day: 'Wednesday', extraDays: ['Thursday'], technicianId: 't1'}]});
+    await wait(1300);
+    const w = dom.window, d = w.document;
+    try{
+      const wed = w.eval("isoForDay('Wednesday')"), thu = w.eval("isoForDay('Thursday')");
+      const shows = day => { w.eval("currentUser={id:'t1',name:'Pat',full_access:true,isAdmin:true}; if(typeof adminViewTechId!=='undefined'){adminViewTechId='t1';} selectedHomeDay='" + day + "'; renderHomeList();");
+        return /John Tyler/.test(d.getElementById('homeCustomerList').textContent); };
+      // Serviced for Thursday (as a finished visit records it)
+      w.eval("visitRouteDay = '" + thu + "'; const c = customers[0]; c.lastServicedDate = todayDateStr(); noteServicedFor(c);");
+      check(file + ': servicing one day\u2019s visit keeps the other day', shows('Wednesday') && !shows('Thursday'));
+      await w.eval("reserviceCustomer(customers[0])");
+      check(file + ': Reservice brings back only that day', shows('Wednesday') && shows('Thursday'));
+      // A weekly customer caught up on a day that isn't theirs is done for the missed day
+      w.eval("customers[0].extraDays = []; customers[0].servicedFor = [{day: '" + thu + "', on: '" + thu + "'}];");
+      check(file + ': a catch-up on another day still clears the missed day', !shows('Wednesday'));
+    }catch(e){ check(file + ': two days', false, e.message); }
+    w.close();
+  }
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
