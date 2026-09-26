@@ -1676,8 +1676,10 @@ setTimeout(()=>{
     kind('Quote');
     check('the first tab is named for the kind', d.getElementById('btnWcViewMain').textContent === 'Quote');
     check('and shows the form, not the history', shown('wcQuotesSection') && !shown('wcQuotesHistoryCard'));
+    // Quote History holds answered quotes: mark this test's quotes approved first
+    w.eval("workOrders.forEach(x => { if((x.type || 'Quote') === 'Quote'){ x.closed = true; x.approved = true; } }); saveWorkOrders();");
     tab('history');
-    check('Quote History shows quotes only', /Quote/.test(sent()) && !/Work Order/.test(sent()), sent().slice(0, 60));
+    check('Quote History shows answered quotes only, tagged', /APPROVED/.test(sent()) && !/Work Order/.test(sent()), sent().slice(0, 60));
     check('and no field submissions', !shown('wcSubmittedCard'));
     kind('Work Order');
     check('changing kind starts on its own tab', d.getElementById('btnWcViewMain').classList.contains('active'));

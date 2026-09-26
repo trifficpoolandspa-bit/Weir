@@ -608,6 +608,87 @@ function boot(){
   }
 }
 
+
+{
+  console.log('\n=== quotes are emailed in the service report style ===');
+  const saved = seed.customers;
+  seed.companyName = 'Triffic Pool and Spa';
+  seed.accountPhone = '(623) 555-0100';
+  const dom = boot();
+  delete seed.companyName; delete seed.accountPhone;
+  await new Promise(r => setTimeout(r, 1500));
+  const w = dom.window, d = w.document;
+  try{
+    w.eval("window.__calls=[]; sbFetch = async (path, o)=>{ window.__calls.push({path: path, body: JSON.parse(o.body)}); return {ok: true, status: 200, body: {sent: true}}; };"
+      + " confirmDialog = ()=>Promise.resolve(true); switchView('workcenter');");
+    d.querySelector('#wcTypeToggle [data-wctype="Quote"]').click();
+    w.eval("wcSelectedCustomerIds=['a']; renderWcCustomerChips(); currentLineItems=[{description:'Acid wash',qty:1,price:'250'},{description:'Filter clean',qty:2,price:'85'}]; renderLineItems();");
+    d.getElementById('wcNotes').value = 'Price holds for 30 days.';
+    d.getElementById('btnSendWorkOrder').click();
+    await new Promise(r => setTimeout(r, 400));
+    const calls = JSON.parse(w.eval("JSON.stringify(window.__calls)"));
+    const c = calls[0] || {body: {}};
+    check('  a quote goes through the report function', calls.length === 1 && c.path === '/functions/v1/send-report', JSON.stringify(calls.map(x => x.path)));
+    check('  to the customer', c.body.to === 'alpha@x.com', c.body.to);
+    check('  with the company\u2019s own name in the subject', /^Quote from Triffic Pool and Spa \u2014 /.test(c.body.subject || ''), c.body.subject);
+    const html = c.body.html || '';
+    check('  laid out like the report: header, item table, total, notes, sign-off',
+          /<table/.test(html) && /Triffic Pool and Spa/.test(html) && /Acid wash/.test(html) && /\$170\.00/.test(html)
+          && /\$420\.00/.test(html) && /Price holds for 30 days\./.test(html) && /Just reply to this email/.test(html));
+    check('  and the contact line', /555-0100/.test(html));
+    check('  no company name written into the page', !/Triffic Pool &(amp;)? Spa/.test(fs.readFileSync('customer-intake.html', 'utf8')));
+    w.eval("window.__calls=[]; window.__plain=[]; sbFetch = async ()=>({ok:false,status:0,body:null,offline:true}); sendCustomerEmail = async (to, subj, msg)=>{ window.__plain.push(msg); return true; };");
+    w.eval("wcSelectedCustomerIds=['a']; renderWcCustomerChips(); currentLineItems=[{description:'Acid wash',qty:1,price:'250'}]; renderLineItems();");
+    d.getElementById('btnSendWorkOrder').click();
+    await new Promise(r => setTimeout(r, 400));
+    check('  if the report function can\u2019t be reached, the plain email still goes',
+          JSON.parse(w.eval("JSON.stringify(window.__plain)")).length === 1);
+
+    console.log('\n=== quotes: Customize email ===');
+    const btn = d.getElementById('btnCustomizeQuoteEmail');
+    check('  Customize email sits beside Send on the Quote tab', btn && btn.style.display !== 'none');
+    d.querySelector('#wcTypeToggle [data-wctype="Work Order"]').click();
+    check('  and not on Work Order', btn.style.display === 'none');
+    d.querySelector('#wcTypeToggle [data-wctype="Quote"]').click();
+    btn.click();
+    const ov = d.getElementById('quoteEmailOverlay');
+    check('  it opens its window', ov.style.display === 'flex');
+    check('  with the current wording', d.getElementById('qeClosing').value === 'Questions, or ready to go ahead? Just reply to this email.'
+          && d.getElementById('qeHeader').placeholder === 'Triffic Pool and Spa');
+    d.getElementById('qeHeader').value = 'Triffic Pools';
+    d.getElementById('qeSubheader').value = 'Licensed & insured';
+    d.getElementById('qeClosing').value = 'Call us to book.';
+    d.getElementById('qeSignoff').value = 'Cheers, Tyrus';
+    d.getElementById('qeContact').checked = false;
+    const preview = w.eval("quoteEmailHtml(customers[0], 'Quote', 'Today', [{description:'X',qty:1,price:1}], 1, '', quoteEmailFormValues())");
+    check('  Preview uses what is typed before saving', /Triffic Pools/.test(preview) && !/Triffic Pools/.test(w.eval("quoteEmailHtml(customers[0],'Quote','Today',[],0,'')")));
+    d.getElementById('btnSaveQuoteEmail').click();
+    check('  Save closes the window', ov.style.display === 'none');
+    const html2 = w.eval("quoteEmailHtml(customers[0], 'Quote', 'Today', [{description:'X',qty:1,price:1}], 1, '')");
+    check('  and every quote then uses it',
+          /Triffic Pools/.test(html2) && /Licensed &amp; insured/.test(html2) && /Call us to book\./.test(html2) && /Cheers, Tyrus/.test(html2));
+    check('  hiding phone, email and website works', !/555-0100/.test(html2));
+    { const site = fs.readFileSync('customer-intake.html', 'utf8'); const keys = site.slice(site.indexOf('const SYNC_SETUP_KEYS'), site.indexOf('];', site.indexOf('const SYNC_SETUP_KEYS')));
+      check('  it travels with the company setup', /'quoteEmailStyle'/.test(keys)); }
+    btn.click();
+    w.eval("window.__asked = []; confirmDialog = (msg, label)=>{ window.__asked.push(label); return Promise.resolve(false); };");
+    d.getElementById('btnQeReset').click();
+    await new Promise(r => setTimeout(r, 50));
+    check('  Reset asks first, and saying no changes nothing',
+          JSON.parse(w.eval("JSON.stringify(window.__asked)"))[0] === 'Reset' && d.getElementById('qeHeader').value === 'Triffic Pools');
+    w.eval("confirmDialog = ()=>Promise.resolve(true);");
+    d.getElementById('btnQeReset').click();
+    await new Promise(r => setTimeout(r, 50));
+    check('  saying yes puts the defaults back in the boxes',
+          d.getElementById('qeHeader').value === '' && d.getElementById('qeContact').checked === true,
+          JSON.stringify([d.getElementById('qeHeader').value, d.getElementById('qeContact').checked]));
+    check('  and saves them there and then', !/Triffic Pools/.test(w.eval("quoteEmailHtml(customers[0],'Quote','Today',[],0,'')")));
+    d.getElementById('btnCancelQuoteEmail').click();
+    check('  Cancel closes the window', d.getElementById('quoteEmailOverlay').style.display === 'none');
+  }catch(e){ check('  quote emails', false, e.message); }
+  w.close();
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();

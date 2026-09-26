@@ -636,8 +636,10 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     const shown = id => d.getElementById(id).style.display !== 'none';
 
     // Tabs and History, each kind its own
+    // Quote History holds answered quotes: mark this test's quotes approved first
+    w.eval("workOrders.forEach(x => { if((x.type || 'Quote') === 'Quote'){ x.closed = true; x.approved = true; } }); saveWorkOrders();");
     type('Quote'); tab('history');
-    check('Quote History lists quotes only', shown('wcQuotesHistoryCard') && /Quote/.test(d.getElementById('wcHistoryList').textContent)
+    check('Quote History lists answered quotes only, tagged', shown('wcQuotesHistoryCard') && /APPROVED/.test(d.getElementById('wcHistoryList').textContent)
           && !/Work Order/.test(d.getElementById('wcHistoryList').textContent) && !shown('wcSubmittedCard'));
     type('Work Order'); tab('history');
     check('Work Order History shows only work orders submitted from the field',
@@ -672,10 +674,19 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     w.eval("window.__sent=[]; sbFetch = async (path, o)=>{ window.__sent.push({path, body: JSON.parse(o.body)}); return {ok:true,status:200,body:{}}; };");
     w.eval("wcSelectedCustomerIds=['a']; renderWcCustomerChips(); currentLineItems=[{description:'Acid wash',qty:1,price:'250'}]; renderLineItems();");
     d.getElementById('btnSendWorkOrder').click(); await wait(300);
-    const sent = JSON.parse(w.eval("JSON.stringify(window.__sent)"));
-    check('a quote is sent through the report function', sent.length === 1 && sent[0].path === '/functions/v1/send-report');
-    check('as a designed email with the items and total', /<table/.test(sent[0].body.html) && /Acid wash/.test(sent[0].body.html) && /\$250\.00/.test(sent[0].body.html));
-    check('from the company\u2019s own name', sent[0].body.subject === 'Quote from Triffic Pool and Spa \u2014 Alpha Smith', sent[0].body.subject);
+    const calls = JSON.parse(w.eval("JSON.stringify(window.__sent)"));
+    // First the quote's code is saved (for the Approve / Decline buttons), then the email goes
+    const mails = calls.filter(c => c.path === '/functions/v1/send-report');
+    const mail = mails[0] || {body: {}};
+    check('a quote is sent through the report function', mails.length === 1, JSON.stringify(calls.map(c => c.path)));
+    check('as a designed email with the items and total', /<table/.test(mail.body.html || '') && /Acid wash/.test(mail.body.html || '') && /\$250\.00/.test(mail.body.html || ''));
+    check('from the company\u2019s own name', mail.body.subject === 'Quote from Triffic Pool and Spa \u2014 Alpha Smith', mail.body.subject);
+    const code = calls.find(c => c.path.indexOf('/rest/v1/quote_responses') === 0);
+    check('the quote\u2019s answer code is saved before the email goes', !!code && calls.indexOf(code) < calls.indexOf(mails[0]) && /^[0-9a-f]{32}$/.test(code.body.token || ''));
+    check('the email has Approve and Decline buttons for that code', !!code && (mail.body.html || '').indexOf('t=' + code.body.token + '&a=approve') !== -1
+          && (mail.body.html || '').indexOf('&a=deny') !== -1 && />Decline</.test(mail.body.html || ''));
+    check('and the quote\u2019s number beside QUOTE (#0001)', /#0001/.test(mail.body.html || ''));
+    check('the quote keeps its number and a copy of the email', w.eval("(()=>{ const q = workOrders.filter(x => (x.type||'Quote')==='Quote').slice(-1)[0]; return q.number === 1 && /Acid wash/.test(q.emailHtml || ''); })()"));
     check('the company name is not written into the page', fs.readFileSync('customer-intake.html', 'utf8').indexOf('Triffic Pool & Spa') === -1);
     // Customize email
     type('Work Order');
@@ -829,8 +840,10 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     tab('history');
     check('Task History shows tasks finished in the field', /Drop kit/.test(d.getElementById('wcSubmittedList').textContent) && /Left at gate/.test(d.getElementById('wcSubmittedList').textContent));
     kind('Quote'); tab('current');
-    Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => /Close/.test(b.textContent)).click(); await wait(50);
-    check('\u2713 Close takes a quote off Current and keeps it', !/Heater/.test(cur()) && w.eval("workOrders.some(x => x.id === 'q1' && x.closed)"));
+    check('each open quote has Mark approved and Mark declined', Array.from(d.querySelectorAll('#wcCurrentList button')).some(b => b.textContent === 'Mark approved')
+          && Array.from(d.querySelectorAll('#wcCurrentList button')).some(b => b.textContent === 'Mark declined'));
+    Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => b.textContent === 'Mark approved').click(); await wait(50);
+    check('Mark approved takes a quote off Current, approved', !/Heater/.test(cur()) && w.eval("workOrders.some(x => x.id === 'q1' && x.closed && x.approved)"));
     // Select several and delete
     kind('Task'); tab('current');
     Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => b.textContent === 'Select').click(); await wait(20);
@@ -889,6 +902,88 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     check('"use the pool\u2019s dosages for all" keeps what only the spa has', after.spa.dosages.some(x => x.label === 'Sodium Bicarbonate')
           && after.spa.dosages.some(x => x.key === 'tabs'));
   }catch(e){ check('lists never overwritten', false, e.message); }
+  w.close();
+}
+
+
+// ---- Sept 26: quotes, work orders and the WorkCenter lists ----
+{
+  console.log('\n=== customer-intake.html \u2014 Sept 26 ===');
+  const iso = n => new Date(Date.now() + n * 86400000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const ago = n => new Date(Date.now() - n * 86400000).toISOString();
+  const seed = {
+    technicians: [{id: 't1', name: 'Pat'}],
+    customers: [{id: 'a', name: 'Alpha Smith', address: '12 Palm Way', phone: '5550101', email: 'a@x.test', active: true, hasPool: true},
+                {id: 'b', name: 'Bravo Jones', address: '9 Oak St', active: true, hasPool: true}],
+    workOrders: [
+      {id: 'q1', customerId: 'a', type: 'Quote', name: 'Heater job', number: 3, lineItems: [{description: 'Heater', qty: 1, price: 900}], total: 900, createdAt: ago(2), status: 'sent'},
+      {id: 'q2', customerId: 'b', type: 'Quote', lineItems: [{description: 'Pump', qty: 1, price: 500}], total: 500, createdAt: ago(40), status: 'sent'},
+      {id: 'q3', customerId: 'a', type: 'Quote', lineItems: [{description: 'Lights', qty: 2, price: 50}], total: 100, createdAt: ago(5), status: 'sent', closed: true, denied: true},
+      {id: 'q4', customerId: 'b', type: 'Quote', lineItems: [{description: 'Filter', qty: 1, price: 80}], total: 80, createdAt: ago(6), status: 'sent', closed: true, approved: true},
+      {id: 'w1', customerId: 'a', type: 'Work Order', number: 5, lineItems: [{description: 'Fix light', qty: 1, price: 80}], total: 80, createdAt: ago(1)}],
+    scheduledWorkOrders: [{id: 'j1', workOrderId: 'w1', customerId: 'a', technicianId: 't1', date: iso(1), title: 'Fix light', status: 'scheduled'}],
+    tasks: [{id: 'k1', title: 'Check seal', technicianId: 't1', date: iso(1), customerIds: ['b'], done: false}],
+    quoteCounter: 3, workOrderCounter: 5
+  };
+  const dom = new JSDOM(fs.readFileSync('customer-intake.html', 'utf8'), {runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.com/',
+    beforeParse(w){
+      w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
+      w.scrollTo=()=>{}; w.scrollBy=()=>{}; w.alert=()=>{}; w.console.warn=()=>{}; w.console.error=()=>{};
+      w.Element.prototype.scrollIntoView=function(){}; w.HTMLCanvasElement.prototype.getContext=()=>({});
+      w.localStorage.setItem('weir:photoEveryone', '{}');
+      Object.keys(seed).forEach(k => w.localStorage.setItem('weir:' + k, JSON.stringify(seed[k])));
+    }});
+  await wait(1500);
+  const w = dom.window, d = w.document;
+  try{
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); confirmDialog=()=>Promise.resolve(true); sbFetch = async ()=>({ok:false,status:0,body:null}); switchView('workcenter');");
+    const kind = k => d.querySelector('#wcTypeToggle [data-wctype="' + k + '"]').click();
+    const tab = v => d.querySelector('#wcViewControl [data-wcview="' + v + '"]').click();
+    const num = () => d.getElementById('wcQuoteNumber');
+    kind('Quote'); tab('main');
+    check('the Quote form shows the next quote number, #0004', num().style.display !== 'none' && num().textContent === '#0004', num().textContent);
+    check('and a Quote name box; no Photo required box', d.getElementById('wcQuoteNameField').style.display !== 'none' && d.getElementById('wcPhotoRequiredWrap').style.display === 'none');
+    kind('Work Order');
+    check('Work Order counts on its own: #0006', num().textContent === '#0006', num().textContent);
+    check('Photo required starts ticked on a new work order', d.getElementById('wcPhotoRequired').checked === true);
+    check('no Quote name box on Work Order', d.getElementById('wcQuoteNameField').style.display === 'none');
+    // Current: an old unanswered quote expires; search by address
+    kind('Quote'); tab('current');
+    const cur = () => d.getElementById('wcCurrentList').textContent;
+    check('a quote unanswered 30 days expires out of Current', !/Jones/.test(cur()) && w.eval("workOrders.find(x => x.id === 'q2').expired === true"));
+    check('Current shows the customer and the quote name', /Smith, Alpha \u2014 Heater job/.test(cur()), cur().slice(0, 80));
+    d.getElementById('wcCurrentSearch').value = 'palm way'; d.getElementById('wcCurrentSearch').dispatchEvent(new w.Event('input'));
+    check('Current searches by address too', /Heater job/.test(cur()));
+    d.getElementById('wcCurrentSearch').value = ''; d.getElementById('wcCurrentSearch').dispatchEvent(new w.Event('input'));
+    Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => b.textContent === 'Mark declined').click(); await wait(50);
+    check('Mark declined moves a quote to History as declined', w.eval("(q => q.closed && q.denied)(workOrders.find(x => x.id === 'q1'))"));
+    // History: tags, menu
+    tab('history');
+    const hist = () => d.getElementById('wcHistoryList').textContent;
+    check('History tags each quote APPROVED, DECLINED or EXPIRED', /APPROVED/.test(hist()) && /DECLINED/.test(hist()) && /EXPIRED/.test(hist()));
+    const pick = v => { const m = d.getElementById('wcHistoryOutcome'); m.value = v; m.dispatchEvent(new w.Event('change')); };
+    pick('expired');  check('the menu shows only expired', /EXPIRED/.test(hist()) && !/APPROVED|DECLINED/.test(hist()));
+    pick('denied');   check('only declined', /DECLINED/.test(hist()) && !/APPROVED|EXPIRED/.test(hist()));
+    pick('approved'); check('only approved', /APPROVED/.test(hist()) && !/DECLINED|EXPIRED/.test(hist()));
+    pick('');
+    // Convert to work order
+    const approvedRow = Array.from(d.querySelectorAll('#wcHistoryList .cust-row')).find(r => /APPROVED/.test(r.textContent));
+    Array.from(approvedRow.querySelectorAll('button')).find(b => b.textContent === 'Convert to work order').click(); await wait(60);
+    check('Convert to work order opens a new work order with the quote\u2019s customer and items',
+          d.getElementById('wcType').value === 'Work Order' && w.eval("wcSelectedCustomerIds.join()") === 'b'
+          && w.eval("currentLineItems.map(l => l.description).join()") === 'Filter' && d.getElementById('wcPhotoRequired').checked);
+    // Mark completed on work orders and tasks
+    kind('Work Order'); tab('current');
+    Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => b.textContent === 'Mark completed').click(); await wait(50);
+    tab('history');
+    check('Mark completed moves a work order visit to History, by the office', /Fix light/.test(d.getElementById('wcSubmittedList').textContent) && /by the office/.test(d.getElementById('wcSubmittedList').textContent));
+    kind('Task'); tab('current');
+    Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => b.textContent === 'Mark completed').click(); await wait(50);
+    tab('history');
+    check('and a task', /Check seal/.test(d.getElementById('wcSubmittedList').textContent));
+    const techMenu = d.getElementById('wcSubmittedTech'); techMenu.value = 't1'; techMenu.dispatchEvent(new w.Event('change'));
+    check('History\u2019s technician menu still finds it under its technician', /Check seal/.test(d.getElementById('wcSubmittedList').textContent));
+  }catch(e){ check('Sept 26 website', false, e.message); }
   w.close();
 }
 
