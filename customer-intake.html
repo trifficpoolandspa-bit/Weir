@@ -261,6 +261,9 @@ input::placeholder{color:#A9BCB9;}
    padding lets the highlight reach past the text without moving it */
 .wc-row{border-radius:8px;margin-left:-8px;margin-right:-8px;padding-left:8px !important;padding-right:8px !important;transition:background-color .12s ease;}
 .wc-row:hover{background:var(--teal-pale);}
+/* A filter clean group's heading lights up under the pointer too */
+.fg-head{border-radius:9px;margin:-6px -8px;padding:6px 8px;transition:background-color .12s ease;}
+.fg-head:hover{background:var(--teal-pale);}
 .pick-row{display:flex;align-items:center;gap:10px;padding:11px 8px;border-bottom:1px solid var(--line);font-size:13.5px;cursor:pointer;margin:0;}
 .pick-row:last-child{border-bottom:none;}
 .profile-meta-row.editable:hover .profile-meta-value{color:var(--teal-deep);}
@@ -1371,13 +1374,14 @@ input::placeholder{color:#A9BCB9;}
     <div class="card" id="wcFiltersSection" style="display:none;">
       <div class="section-head">
         <h2>Filter clean groups</h2>
-        <div style="display:flex;gap:8px;margin-left:auto;">
+        <div style="display:flex;gap:8px;margin-left:auto;align-items:center;">
+          <select id="filterGroupTech" aria-label="Technician" title="Show one technician's groups" style="width:auto;min-width:160px;"></select>
           <button class="btn btn-ghost" id="btnNewFilterGroup" style="width:auto;">+ New group</button>
           <button class="btn btn-primary" id="btnScheduleFilterGroups" style="width:auto;">Schedule</button>
           <button class="btn btn-primary" id="btnEmailFilterGroups" style="width:auto;">Email</button>
         </div>
       </div>
-      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Group customers together, give the group a date and a technician, then finalize to push it onto that technician's route.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Group customers together, give the group a date and a technician, then press Schedule to push it onto that technician's route. Customize emails to send to groups individually or all together.</p>
       <div id="filterGroupList"></div>
     </div>
 
@@ -5457,6 +5461,8 @@ function resetScheduleDates(){
 function applyWorkCenterMode(mode){
   const cameFrom = workCenterMode;
   workCenterMode = mode;
+  // Leaving the filter clean groups starts their one-minute clock
+  if(cameFrom === 'filters' && mode !== 'filters') filtersLeftAt = Date.now();
   if(cameFrom === 'quotes' && mode !== 'quotes') leaveWcForm();
   if(mode === 'quotes' && cameFrom !== 'quotes'){ resetScheduleDates(); wcView = 'main'; }
   // Coming into Email from anywhere else starts with nobody chosen, so a list
@@ -5581,7 +5587,43 @@ document.getElementById('btnRemoveStrayCleans').addEventListener('click', async 
   showToast('Removed');
 });
 
+// A group's customer order, carried onto its scheduled filter cleans so the
+// technician's phone lists them the same way
+function setFilterCleanOrder(g){
+  const sched = lsGet('scheduledFilterCleans') || [];
+  let changed = false;
+  sched.forEach(sc=>{
+    if(!sc || sc.groupId !== g.id) return;
+    const i = (g.customerIds || []).indexOf(sc.customerId);
+    if(i !== -1 && sc.order !== i){ sc.order = i; changed = true; }
+  });
+  if(changed) lsSet('scheduledFilterCleans', sched);
+}
+
+// Away from the filter clean groups for over a minute (another page, tab or
+// window): coming back finds every group closed
+// (var, so they exist from the moment the page starts, whichever runs first)
+var filtersLeftAt = null;
+var FILTERS_CLOSE_MS = 60 * 1000;
+function onFilterGroupsPage(){
+  const page = document.getElementById('view-workcenter');
+  return !!(page && page.classList.contains('active') && workCenterMode === 'filters');
+}
+function closeGroupsIfAway(){
+  if(filtersLeftAt && Date.now() - filtersLeftAt > FILTERS_CLOSE_MS) openFilterGroupIds.clear();
+  filtersLeftAt = null;
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(!onFilterGroupsPage()) return;
+  if(document.hidden){ filtersLeftAt = Date.now(); return; }
+  const wasAway = filtersLeftAt && Date.now() - filtersLeftAt > FILTERS_CLOSE_MS;
+  closeGroupsIfAway();
+  if(wasAway) renderFilterGroups();
+});
+
 function renderFilterGroups(){
+  // Back after more than a minute away: every group starts closed
+  if(onFilterGroupsPage()) closeGroupsIfAway();
   // Drawn first: with no groups at all this function stops early, and the
   // leftovers were never shown
   renderStrayFilterCleans();
@@ -5593,16 +5635,37 @@ function renderFilterGroups(){
   }
   container.innerHTML = '';
 
+  // The technician menu (All, then A-Z, then No technician); keeps its choice
+  const techMenu = document.getElementById('filterGroupTech');
+  let showTech = '';
+  if(techMenu){
+    const keep = techMenu.value;
+    techMenu.innerHTML = '';
+    [['', 'All technicians']].concat(technicians.slice()
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity: 'base'}))
+        .map(t => [String(t.id), t.name || 'Technician']), [['none', 'No technician']])
+      .forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; techMenu.appendChild(o); });
+    techMenu.value = Array.from(techMenu.options).some(o => o.value === keep) ? keep : '';
+    showTech = techMenu.value;
+  }
+  const shownGroup = g => !showTech || (showTech === 'none' ? !g.technicianId : String(g.technicianId || '') === showTech);
+  if(!filterGroups.some(shownGroup)){
+    const who = techMenu ? techMenu.options[techMenu.selectedIndex].textContent : '';
+    container.insertAdjacentHTML('beforeend', emptyState(showTech === 'none' ? 'Every group has a technician.' : 'No groups for ' + who + '.'));
+  }
   filterGroups.forEach(g=>{
+    if(!shownGroup(g)) return;
     const isOpen = openFilterGroupIds.has(g.id);
 
     const card = document.createElement('div');
+    card.dataset.reorderKey = g.id;
     card.style.cssText = 'border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;background:#fff;';
 
     const head = document.createElement('div');
     head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;cursor:pointer;'
       + (isOpen ? 'margin-bottom:10px;' : '');
     head.title = isOpen ? 'Tap to collapse' : 'Tap to open';
+    head.className = 'fg-head';   // lights up under the pointer
     head.addEventListener('click', (e)=>{
       if(e.target.closest('button') || e.target.closest('input') || e.target.closest('select')) return;
       if(isOpen) openFilterGroupIds.delete(g.id); else openFilterGroupIds.add(g.id);
@@ -5624,6 +5687,25 @@ function renderFilterGroups(){
 
     const leftWrap = document.createElement('div');
     leftWrap.style.cssText = 'display:flex;align-items:center;gap:10px;min-width:0;';
+    // Drag by the grip to put the groups in any order
+    const grip = document.createElement('span');
+    grip.textContent = '\u2261';
+    grip.title = 'Drag to reorder';
+    grip.style.cssText = 'color:var(--muted);font-size:18px;flex-shrink:0;padding:0 2px;';
+    grip.addEventListener('click', e => e.stopPropagation());
+    leftWrap.appendChild(grip);
+    attachTouchReorder(grip, card, container, ':scope > [data-reorder-key]', keys=>{
+      const byId = {};
+      filterGroups.forEach(x => { byId[x.id] = x; });
+      // Only the groups on screen swap places among themselves; any hidden by
+      // the technician menu keep theirs
+      const moved = keys.filter((k, i) => byId[k] && keys.indexOf(k) === i);
+      const onScreen = new Set(moved);
+      let at = 0;
+      filterGroups = filterGroups.map(x => onScreen.has(x.id) ? byId[moved[at++]] : x);
+      saveFilterGroups();
+      renderFilterGroups();
+    });
     const chev = document.createElement('span');
     chev.style.cssText = 'color:var(--muted);font-size:15px;flex-shrink:0;';
     chev.textContent = isOpen ? '\u2039' : '\u203A';
@@ -5691,7 +5773,11 @@ function renderFilterGroups(){
     dateInput.type = 'date';
     dateInput.value = g.date || '';
     dateInput.style.cssText = 'flex:1;min-width:150px;';
-    dateInput.addEventListener('change', ()=>{ g.date = dateInput.value; saveFilterGroups(); renderFilterGroups(); });
+    // Saved as it changes, but redrawn only on leaving the box: a date counts as
+    // complete after the first digit of the year, and redrawing then replaced
+    // the box being typed in
+    dateInput.addEventListener('change', ()=>{ g.date = dateInput.value; saveFilterGroups(); });
+    dateInput.addEventListener('blur', ()=> renderFilterGroups());
     controls.appendChild(dateInput);
 
     const techSel = document.createElement('select');
@@ -5716,8 +5802,24 @@ function renderFilterGroups(){
         const cust = customers.find(x => x.id === cid);
         if(!cust) return;
         const chip = document.createElement('span');
+        chip.dataset.reorderKey = cid;
         chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:var(--teal-pale);color:var(--teal-deep);font-size:12px;font-weight:600;padding:4px 8px;border-radius:8px;';
-        chip.textContent = displayName(cust.name);
+        // Drag by the grip: this order is the order on the technician's phone
+        const cgrip = document.createElement('span');
+        cgrip.textContent = '\u2261';
+        cgrip.title = 'Drag to reorder \u2014 the order the technician sees';
+        cgrip.style.cssText = 'color:var(--muted);font-size:14px;line-height:1;';
+        chip.appendChild(cgrip);
+        chip.appendChild(document.createTextNode(displayName(cust.name)));
+        attachTouchReorder(cgrip, chip, members, ':scope > [data-reorder-key]', keys=>{
+          const known = new Set(g.customerIds);
+          const next = keys.filter(k => known.has(k));
+          g.customerIds.forEach(k => { if(next.indexOf(k) === -1) next.push(k); });
+          g.customerIds = next;
+          saveFilterGroups();
+          setFilterCleanOrder(g);
+          renderFilterGroups();
+        });
         if(true){
           const x = document.createElement('button');
           x.type = 'button';
@@ -5746,17 +5848,8 @@ function renderFilterGroups(){
     addBtn.addEventListener('click', ()=> openGroupCustomerPicker(g));
     actions.appendChild(addBtn);
 
-    const saveBtn = document.createElement('button');
-    saveBtn.type = 'button';
-    saveBtn.className = 'btn btn-ghost';
-    saveBtn.style.cssText = 'width:auto;padding:7px 12px;font-size:12.5px;';
-    saveBtn.textContent = 'Save group';
-    saveBtn.addEventListener('click', ()=>{
-      saveFilterGroups();
-      renderFilterGroups();
-      showToast('"' + g.name + '" saved');
-    });
-    actions.appendChild(saveBtn);
+    // No Save button: every change to a group (name, date, technician, its
+    // customers and their order) is saved the moment it's made
 
     card.appendChild(actions);
     container.appendChild(card);
@@ -5781,7 +5874,7 @@ async function finalizeFilterGroup(g){
   sched = sched.filter(s => s.groupId !== g.id);
   // Re-finalizing replaces this group's previous schedule rather than stacking
   sched = sched.filter(s => s.groupId !== g.id);
-  g.customerIds.forEach(cid=>{
+  g.customerIds.forEach((cid, i)=>{
     sched.push({
       id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
       groupId: g.id,
@@ -5789,6 +5882,7 @@ async function finalizeFilterGroup(g){
       customerId: cid,
       technicianId: g.technicianId,
       date: g.date,
+      order: i,            // the group's order, kept on the technician's phone
       status: 'scheduled'
     });
   });
@@ -5861,7 +5955,8 @@ function openGroupCustomerPicker(g){
       const lbl = document.createElement('label');
       lbl.dataset.search = [cust.name, cust.address, cust.phone, cust.email]
         .filter(Boolean).join(' ').toLowerCase();
-      lbl.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13.5px;';
+      lbl.className = 'press-row';   // lights up under the pointer
+      lbl.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13.5px;border-radius:6px;';
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.style.width = 'auto';
@@ -9257,7 +9352,7 @@ function scheduleFilterGroup(g){
   let sched = lsGet('scheduledFilterCleans') || [];
   // Re-scheduling replaces this group's previous entries rather than stacking
   sched = sched.filter(s => s.groupId !== g.id);
-  (g.customerIds || []).forEach(cid=>{
+  (g.customerIds || []).forEach((cid, i)=>{
     sched.push({
       id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
       groupId: g.id,
@@ -9265,6 +9360,7 @@ function scheduleFilterGroup(g){
       customerId: cid,
       technicianId: g.technicianId,
       date: g.date,
+      order: i,            // the group's order, kept on the technician's phone
       status: 'scheduled'
     });
   });
@@ -9392,6 +9488,7 @@ async function openFilterGroupScheduler(){
 }
 
 document.getElementById('btnScheduleFilterGroups').addEventListener('click', openFilterGroupScheduler);
+document.getElementById('filterGroupTech').addEventListener('change', ()=> renderFilterGroups());
 
 async function openFilterGroupEmail(){
   const usable = filterGroups.filter(g => (g.customerIds || []).length);
@@ -10360,11 +10457,6 @@ function applyWorkOrderType(){
   const isTask = chosen === 'Task';
   const isWO = chosen === 'Work Order';
 
-  // The quote's name and number are for quotes only
-  const qName = document.getElementById('wcQuoteNameField');
-  if(qName) qName.style.display = chosen === 'Quote' ? '' : 'none';
-  const qNum = document.getElementById('wcQuoteNumber');
-  if(qNum){ const numbered = chosen === 'Quote' || chosen === 'Work Order'; qNum.style.display = numbered ? '' : 'none'; if(numbered) showNextQuoteNumber(); }
   // Photo required is for work orders only, never a quote
   const photoWrap = document.getElementById('wcPhotoRequiredWrap');
   if(photoWrap) photoWrap.style.display = isWO ? 'inline-flex' : 'none';
@@ -10391,6 +10483,13 @@ function applyWorkOrderType(){
     if(el.id === 'wcFormHeading' || el.id === 'wcTypeToggle' || el.id === 'wcType' || el.id === 'wcViewControl') return;
     el.style.display = (isTask || history || current) ? 'none' : '';
   });
+  // After the form's boxes are shown: the quote's name is for quotes only, and
+  // the number for quotes and work orders
+  const qName = document.getElementById('wcQuoteNameField');
+  if(qName) qName.style.display = chosen === 'Quote' ? '' : 'none';
+  const qNum = document.getElementById('wcQuoteNumber');
+  if(qNum){ const numbered = chosen === 'Quote' || chosen === 'Work Order'; qNum.style.display = numbered ? '' : 'none'; if(numbered) showNextQuoteNumber(); }
+
   // The heading only appears while editing something, so leave it as it is
   if(isTask || history || current) document.getElementById('wcFormHeading').style.display = 'none';
   // Quotes sent and work orders finalised now live on History, each on its own
@@ -17967,6 +18066,8 @@ document.getElementById('btnAddCustomer').addEventListener('click', ()=>{
 });
 
 function switchView(view){
+  // Leaving the filter clean groups for another page starts their minute
+  if(view !== 'workcenter' && typeof onFilterGroupsPage === 'function' && onFilterGroupsPage()) filtersLeftAt = Date.now();
   // Customers' answers to quotes, fresh on opening the WorkCenter
   if(view === 'workcenter' && typeof takeQuoteAnswers === 'function') setTimeout(takeQuoteAnswers, 0);
   // Leaving the WorkCenter's Quote / Work Order / Task form for another page
@@ -20038,7 +20139,24 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
   const IDS = ['customerSearch', 'techAssignedSearch', 'techAssignSearch', 'customCustSearch',
                'wcRecipientSearch', 'wcCustomerSearch', 'taskCustomerSearch', 'wcHistorySearch',
                'billingSearch', 'groupSearch', 'delEqSearch', 'addEqSearch'];
-  const isCustomerField = el => el && el.tagName === 'INPUT' && IDS.indexOf(el.id) !== -1;
+  // ...and any search box inside a window (the customer pickers and lists)
+  // Inside a window: any full-screen fixed layer, wherever it sits on the page
+  const inWindow = el=>{
+    let n = el.parentElement;
+    while(n && n !== document.body){
+      try{
+        if(getComputedStyle(n).position === 'fixed'){
+          const r = n.getBoundingClientRect();
+          if(r.width >= window.innerWidth - 2 && r.height >= window.innerHeight - 2) return true;
+        }
+      }catch(e){}
+      n = n.parentElement;
+    }
+    return false;
+  };
+  const isWindowSearch = el => el && el.tagName === 'INPUT'
+    && (/search/i.test(el.id || '') || /^search/i.test(el.placeholder || '')) && inWindow(el);
+  const isCustomerField = el => el && el.tagName === 'INPUT' && (IDS.indexOf(el.id) !== -1 || isWindowSearch(el));
   const nearby = inp => inp.closest('.field') || inp.parentElement;
   // Noted at the press itself: some of these fields already empty themselves
   // when they get focus, so by then the old text would be gone
@@ -20079,6 +20197,41 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
 })();
 
 // ---- Page-wide touches, run last (formerly their own blocks) ----
+
+// A window with a search box opens ready to type in: the cursor goes straight
+// to its search box. Only when the window first appears, and not if something
+// in it already has the cursor.
+(function windowSearchReady(){
+  const isSearch = el => el && el.tagName === 'INPUT' && el.type !== 'hidden'
+    && (/search/i.test(el.id || '') || /^search/i.test(el.placeholder || ''));
+  const shownWindows = el=>{
+    try{
+      const cs = getComputedStyle(el);
+      if(cs.position !== 'fixed' || cs.display === 'none' || cs.visibility === 'hidden') return false;
+      const r = el.getBoundingClientRect();
+      return r.width >= window.innerWidth - 2 && r.height >= window.innerHeight - 2 && el.children.length > 0;
+    }catch(e){ return false; }
+  };
+  let open = new Set();
+  let queued = false;
+  const look = ()=>{
+    queued = false;
+    // Windows anywhere on the page: added to it, or built into its layout
+    const found = new Set(Array.from(document.body.children));
+    document.querySelectorAll('.confirm-overlay, [id$="Overlay"], [id$="overlay"], [style*="position:fixed"], [style*="position: fixed"]')
+      .forEach(el => found.add(el));
+    const now = new Set(Array.from(found).filter(shownWindows));
+    now.forEach(win=>{
+      if(open.has(win)) return;
+      if(win.contains(document.activeElement) && document.activeElement !== document.body) return;
+      const box = Array.from(win.querySelectorAll('input')).find(i => isSearch(i) && i.offsetParent !== null);
+      if(box) setTimeout(()=>{ try{ box.focus(); }catch(e){} }, 30);
+    });
+    open = now;
+  };
+  new MutationObserver(()=>{ if(!queued){ queued = true; requestAnimationFrame(look); } })
+    .observe(document.body, {childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class']});
+})();
 
 // One click outside a field leaves it. Some parts of the page stop a press from
 // doing its usual thing (drag grips, rows that shouldn't select text), and a

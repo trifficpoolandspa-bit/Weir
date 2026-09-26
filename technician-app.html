@@ -6804,6 +6804,15 @@ function renderHomeList(){
     !servicedForDay(c, selectedDayISO) &&
     !routeCustomers.some(r => r.id === c.id));
 
+  // Filter cleans in the order their group was put in on the website (then
+  // anyone moved onto the day)
+  const cleanOrder = {};
+  (lsGet('scheduledFilterCleans') || [])
+    .filter(sc => sc.status === 'scheduled' && sc.date === selectedDayISO && currentUser && sc.technicianId === currentUser.id)
+    .forEach(sc => { cleanOrder[sc.customerId] = typeof sc.order === 'number' ? sc.order : 9999; });
+  const orderOf = c => (c.id in cleanOrder) ? cleanOrder[c.id] : 99999;
+  extraFilterCustomers.sort((a, b) => orderOf(a) - orderOf(b));
+
   const todaysCustomers = orderCustomersForDay(selectedHomeDay,
     routeCustomers
       .filter(c => !movedAway.has(c.id))
