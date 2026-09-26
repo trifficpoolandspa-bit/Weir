@@ -257,6 +257,10 @@ input::placeholder{color:#A9BCB9;}
 .profile-meta-row.editable:hover{background:var(--teal-pale);}
 /* A pressable row in a list or window */
 .press-row:hover{background:var(--teal-pale);}
+/* WorkCenter Current and History rows light up under the pointer; the side
+   padding lets the highlight reach past the text without moving it */
+.wc-row{border-radius:8px;margin-left:-8px;margin-right:-8px;padding-left:8px !important;padding-right:8px !important;transition:background-color .12s ease;}
+.wc-row:hover{background:var(--teal-pale);}
 .pick-row{display:flex;align-items:center;gap:10px;padding:11px 8px;border-bottom:1px solid var(--line);font-size:13.5px;cursor:pointer;margin:0;}
 .pick-row:last-child{border-bottom:none;}
 .profile-meta-row.editable:hover .profile-meta-value{color:var(--teal-deep);}
@@ -9770,7 +9774,7 @@ function renderWorkOrderHistory(){
     .forEach(wo=>{
       const customer = customers.find(c => c.id === wo.customerId);
       const row = document.createElement('div');
-      row.className = 'cust-row';
+      row.className = 'cust-row wc-row';
       const dateStr = new Date(wo.createdAt).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'});
       row.innerHTML = `<div><div class="cust-name">${wo.type} — ${customer ? displayName(customer.name) : 'Unknown customer'}</div><div class="cust-meta">${dateStr} · $${wo.total.toFixed(2)}</div></div>`;
       if((wo.type || 'Quote') === 'Quote'){
@@ -9788,7 +9792,8 @@ function renderWorkOrderHistory(){
         tag.style.cssText = 'display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:7px;'
           + 'font-size:12px;font-weight:800;letter-spacing:.06em;color:#fff;flex-shrink:0;'
           + 'background:' + (declined ? '#B8492E' : '#2E8B57') + ';';
-        line.appendChild(tag);
+        // Placed with the buttons (below), so it doesn't move with the name's length
+        row._statusTag = tag;
       }
       const histTick = selectionTick(histKey, wo.id, renderWorkOrderHistory);
       if(!histTick && (wo.type || 'Quote') === 'Quote'){
@@ -9808,6 +9813,8 @@ function renderWorkOrderHistory(){
 
       const rightWrap = document.createElement('div');
       rightWrap.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
+      // APPROVED / DECLINED, just left of Convert to work order
+      if(row._statusTag) rightWrap.appendChild(row._statusTag);
 
       const editBtn = document.createElement('button');
       editBtn.type = 'button';
@@ -10047,6 +10054,7 @@ function renderCurrentList(kind){
     }, redrawCur, pages > 1 ? buildListPager(wcCurrentPage, pages, rows.length, pg => { wcCurrentPage = pg; renderCurrentList(kind); }, '') : null, true));
   pageRows.forEach((r, i, shown)=>{
     const row = document.createElement('div');
+    row.className = 'wc-row';
     row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:11px 0;'
       + (i === shown.length - 1 ? '' : 'border-bottom:1px solid var(--line);');
     const tick = selectionTick(selKey, r.id, redrawCur);
@@ -10277,6 +10285,7 @@ function renderSubmittedHistory(kind){
   }, redrawSub, subPages > 1 ? buildListPager(wcSubmittedPage, subPages, allSubs.length, pg => { wcSubmittedPage = pg; renderSubmittedHistory(kind); }, '') : null, true));
   pageSubs.forEach(sub=>{
     const row = document.createElement('div');
+    row.className = 'wc-row';
     row.style.cssText = 'padding:12px 0;border-bottom:1px solid var(--line);';
     const subTick = selectionTick(subKey, sub.key, redrawSub);
     if(subTick){ row.style.display = 'flex'; row.style.alignItems = 'flex-start'; row.style.cursor = 'pointer';
@@ -11054,7 +11063,7 @@ function showSentQuoteEmail(w){
   head.children[0].textContent = w.emailSubject || ((w.type || 'Quote') + ' to ' + displayName(customer.name));
   const when = w.createdAt ? new Date(w.createdAt).toLocaleString() : '';
   head.children[1].textContent = rebuilt
-    ? 'Sent before copies were kept \u2014 shown with today\u2019s template, without the Approve / Decline buttons'
+    ? 'Sent before copies were kept \u2014 shown with today\u2019s template'
     : 'Sent ' + when + (customer.email ? ' to ' + customer.email : '');
   card.appendChild(head);
   const frame = document.createElement('iframe');
@@ -11070,8 +11079,15 @@ function showSentQuoteEmail(w){
   document.body.appendChild(view);
   const doc = frame.contentDocument || frame.contentWindow.document;
   doc.open(); doc.write(html); doc.close();
-  // Only a look: the buttons inside can't be pressed from here
-  try{ doc.querySelectorAll('a').forEach(a => a.addEventListener('click', e => e.preventDefault())); }catch(e){}
+  // Only a look: the Approve / Decline buttons are the customer's, so they're
+  // left out here (they stay in the email itself), and no link can be followed
+  try{
+    doc.querySelectorAll('a[href*="quote-response"]').forEach(a=>{
+      const holder = a.closest('table');
+      if(holder) holder.remove(); else a.remove();
+    });
+    doc.querySelectorAll('a').forEach(a => a.addEventListener('click', e => e.preventDefault()));
+  }catch(e){}
   shut.addEventListener('click', ()=> view.remove());
 }
 
