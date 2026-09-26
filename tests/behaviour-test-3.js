@@ -1670,7 +1670,7 @@ setTimeout(()=>{
     const sent = () => d.getElementById('wcHistoryList').textContent;
     // Each row's title line (the Select bar at the top isn't a row)
     const field = () => Array.from(d.querySelectorAll('#wcSubmittedList > div'))
-      .map(r => { const body = r.lastElementChild; return r.style.borderBottom && body && body.firstChild ? body.firstChild.textContent : null; })
+      .map(r => { const body = Array.from(r.children).find(c => /^1/.test(c.style.flex || '')); return r.style.borderBottom && body && body.firstChild ? body.firstChild.textContent : null; })
       .filter(Boolean).join(' | ');
 
     kind('Quote');

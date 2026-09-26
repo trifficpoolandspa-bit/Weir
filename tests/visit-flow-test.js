@@ -1827,6 +1827,32 @@ async function walkVisit(w, d, maxPresses){
   }
 }
 
+
+// ---- Skip service acts like a submitted report ----
+{
+  console.log('\n=== skip service ===');
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const today = DAYS[new Date().getDay()], other = DAYS[new Date().getDay() === 0 ? 1 : new Date().getDay() - 1];
+  for(const [file, SKIP, KEEP] of [['technician-app.html', today, other], ['admin-readings-app.html', 'Wednesday', 'Thursday']]){
+    const dom = boot(file, {settings: {requireSkipReason: false, requireSkipPhoto: false},
+      customers: [{id: 'j', name: 'John Tyler', active: true, hasPool: true, day: SKIP, extraDays: [KEEP], technicianId: 't1'}]});
+    await wait(1300);
+    const w = dom.window, d = w.document;
+    try{
+      w.eval("currentUser={id:'t1',name:'Pat',full_access:true,isAdmin:true}; if(typeof adminViewTechId!=='undefined'){adminViewTechId='t1'; adminRouteStarted=true;} confirmDialog=()=>Promise.resolve(true); alertDialog=()=>Promise.resolve();");
+      const on = day => { w.eval("selectedHomeDay='" + day + "'; renderHomeList();"); return /John Tyler/.test(d.getElementById('homeCustomerList').textContent); };
+      w.eval("selectedHomeDay='" + SKIP + "'; renderHomeList();");
+      await w.eval("skipService(customers[0])"); await wait(200);
+      check(file + ': a skip takes the customer off the skipped day', !on(SKIP));
+      check(file + ': but not off their other day', on(KEEP));
+      check(file + ': and puts them under Serviced today', w.eval("customers[0].lastServicedDate") === w.eval("todayDateStr()"));
+      await w.eval("reserviceCustomer(customers[0])");
+      check(file + ': Reservice brings back the skipped day', on(SKIP));
+    }catch(e){ check(file + ': skip service', false, e.message); }
+    w.close();
+  }
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 })();
