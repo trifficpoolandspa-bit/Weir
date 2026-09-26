@@ -6843,7 +6843,9 @@ function loadSyncState(companyId){
     // Photos taken in the field: where each one lives, so it can be shown
     photoIndex: (s.photoIndex && typeof s.photoIndex === 'object') ? s.photoIndex : {cursor: null, known: {}},
     lastSyncedAt: s.lastSyncedAt || null,
-    backupAt: s.backupAt || null
+    backupAt: s.backupAt || null,
+    // Set by Restore from backup until everything restored has gone up
+    restoredAt: s.restoredAt || null
   };
 }
 
@@ -7166,11 +7168,21 @@ function syncShowList(list){
 });
 
 let syncRunning = false;
+// Set while a backup is being restored. A sync that was already running when
+// the restore began finished afterwards and wrote its results over the
+// restored data, so a restore waits for it and no new one starts.
+var restoringBackup = false;
+async function waitForSyncToFinish(maxMs){
+  const until = Date.now() + (maxMs || 20000);
+  while(syncRunning && Date.now() < until) await new Promise(r => setTimeout(r, 100));
+}
 let syncAgain = false;
 let syncTimer = null;
 
 async function syncCustomers(){
   if(!siteUser || !siteUser.companyId || !sbSession()) return {ok: false, reason: 'signed-out'};
+  // A restore is putting a backup back: nothing syncs until the page reloads
+  if(restoringBackup) return {ok: false, reason: 'restoring'};
   if(syncRunning){ syncAgain = true; return {ok: false, reason: 'busy'}; }
   syncRunning = true;
   const companyId = siteUser.companyId;
@@ -7233,9 +7245,27 @@ async function syncCustomers(){
       syncScanLocal(state, list);
     }
 
+    // Just restored: a customer this device doesn't have, last changed before the
+    // restore, came after the backup, so it's removed on the server rather than
+    // added here. Anything changed since the restore is new work, and is kept.
+    const pulledAll = rows.slice();
+    if(state.restoredAt){
+      const hereNow = new Set(list.map(c => String(c.id)));
+      for(let i = rows.length - 1; i >= 0; i--){
+        const r = rows[i];
+        const id = String(r.id);
+        if(r.deleted || hereNow.has(id) || state.edits[id]) continue;
+        if(r.updated_at && r.updated_at < state.restoredAt){
+          state.known[id] = {u: r.updated_at, d: false, f: syncFieldHashes(r.data || {})};
+          state.seen[id] = SYNC_GONE;
+          state.edits[id] = {_deleted: state.restoredAt};
+          rows.splice(i, 1);
+        }
+      }
+    }
     const before = syncStableString(list);
     list = syncApplyRows(state, list, rows, keepIds, firstPull);
-    rows.forEach(r=>{ if(!state.cursor || r.updated_at > state.cursor) state.cursor = r.updated_at; });
+    pulledAll.forEach(r=>{ if(!state.cursor || r.updated_at > state.cursor) state.cursor = r.updated_at; });
     result.pulled = rows.length;
     if(syncStableString(list) !== before){
       if(!lsSet('customers', list)){
@@ -7866,7 +7896,17 @@ function syncApplyRecord(kind, id, data, deleted){
       if(password !== undefined) list[i].password = password;
     }
     if(!lsSet('technicians', list)) return false;
-    technicians = list;
+    // Updated in place rather than swapped for new copies: a technician's
+    // profile left open holds on to its technician, and edits made there after a
+    // sync went to a copy the list no longer had, so they didn't stick
+    const byId = {};
+    technicians.forEach(t => { if(t) byId[String(t.id)] = t; });
+    technicians = list.map(fresh=>{
+      const held = byId[String(fresh.id)];
+      if(!held) return fresh;
+      Object.keys(held).forEach(k => { if(!(k in fresh)) delete held[k]; });
+      return Object.assign(held, fresh);
+    });
     try{ if(typeof renderTechnicianList === 'function') renderTechnicianList(); }catch(e){}
     try{ if(typeof populateTechnicianSelect === 'function') populateTechnicianSelect(); }catch(e){}
     return true;
@@ -7997,8 +8037,21 @@ async function syncRecords(state, companyId){
   }
 
   const firstPull = !result.pullFailed && !r.cursor && !Object.keys(r.known).length;
+  // Just restored: as for customers, a removable record this device doesn't
+  // have, last changed before the restore, came after the backup: removed on
+  // the server rather than added here
+  const restoredAt = state.restoredAt || null;
+  const removableKind = kind => ['technician', 'task', 'filter_clean', 'work_order', 'reschedule'].indexOf(kind) !== -1;
+  const hereRecords = restoredAt ? syncLocalRecords() : null;
   rows.forEach(row=>{
     const key = syncRecordKey(row.kind, row.id);
+    if(restoredAt && !row.deleted && removableKind(row.kind) && !hereRecords[key] && !r.edits[key]
+       && row.updated_at && row.updated_at < restoredAt){
+      r.known[key] = {u: row.updated_at, d: false, f: syncFieldHashes(row.data || {})};
+      r.seen[key] = SYNC_GONE;
+      r.edits[key] = {_deleted: restoredAt};
+      return;
+    }
     if(firstPull) delete r.edits[key];
     const pending = r.edits[key];
     const hashes = syncFieldHashes(row.data);
@@ -11324,6 +11377,7 @@ function expireOldQuotes(){
 }
 
 async function takeQuoteAnswers(){
+  if(typeof restoringBackup !== 'undefined' && restoringBackup) return;   // restoring: nothing writes
   try{
     // Expired ones first, then any answers
     if(expireOldQuotes()){
@@ -16177,6 +16231,10 @@ document.getElementById('backupFileInput').addEventListener('change', async (e)=
     }
   }catch(err){}
 
+  // Stop syncing, and let one already running finish, before anything is written
+  restoringBackup = true;
+  try{ await waitForSyncToFinish(); }catch(e){}
+
   try{
     // Clear existing Weir keys, then write the backup in
     const toRemove = [];
@@ -16199,6 +16257,7 @@ document.getElementById('backupFileInput').addEventListener('change', async (e)=
       }
     }catch(e2){}
   }catch(err){
+    restoringBackup = false;
     showToast('Restore failed — your data was not changed');
     return;
   }
