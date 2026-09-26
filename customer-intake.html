@@ -2368,6 +2368,15 @@ function fullAddressFor(c){
   return [c.address, c.city, c.state, c.zip].filter(Boolean).join(', ');
 }
 
+// A customer in a search list: the name, with the full address beneath it, so
+// two customers with the same name can be told apart
+function nameWithAddress(el, c){
+  const addr = fullAddressFor(c || {});
+  el.innerHTML = '<span>' + esc(displayName((c && c.name) || '')) + '</span>'
+    + '<span style="display:block;font-size:11.5px;font-weight:400;color:var(--muted);margin-top:1px;">'
+    + esc(addr || 'No address on file') + '</span>';
+}
+
 document.getElementById('btnGeocodeAll').addEventListener('click', async ()=>{
   const toLocate = customers.filter(c => c.active !== false && c.address && c.address.trim() && (c.lat === undefined || c.lat === null));
   if(toLocate.length === 0){
@@ -4939,7 +4948,7 @@ function renderRecipientPicker(){
 
     const name = document.createElement('span');
     name.style.flex = '1';
-    name.textContent = displayName(cust.name);
+    nameWithAddress(name, cust);
     row.appendChild(name);
 
     const em = document.createElement('span');
@@ -5998,7 +6007,7 @@ function openGroupCustomerPicker(g){
       });
       lbl.appendChild(cb);
       const txt = document.createElement('span');
-      txt.textContent = displayName(cust.name);
+      nameWithAddress(txt, cust);
       lbl.appendChild(txt);
       listEl.appendChild(lbl);
     });
@@ -6944,6 +6953,9 @@ function syncFieldHashes(c){
 // device are dated when the office site next looks.
 function syncScanLocal(state, list, now){
   const stamp = now || new Date().toISOString();
+  // Just restored from a backup: everything restored is a change made at the
+  // moment of the restore, so it wins everywhere (see restoreWins)
+  const restoredAt = state.restoredAt || null;
   const present = new Set();
   (list || []).forEach(c=>{
     if(!c || c.id === undefined || c.id === null) return;
@@ -6955,6 +6967,7 @@ function syncScanLocal(state, list, now){
     const e = Object.assign({}, state.edits[id] || {});
     const keys = new Set(Object.keys(f).concat(k ? Object.keys(k.f || {}) : []));
     keys.forEach(key=>{
+      if(restoredAt && f[key] !== undefined){ if(!e[key] || e[key] < restoredAt) e[key] = restoredAt; return; }
       if(k && k.f && k.f[key] === f[key]){ delete e[key]; return; }
       const noticed = prev && prev !== SYNC_GONE && prev[key] === f[key];
       if(!noticed || !e[key]) e[key] = stamp;
@@ -7389,6 +7402,10 @@ async function syncCustomers(){
 
     const waiting = Object.keys(state.edits).length;
     state.lastSyncedAt = new Date().toISOString();
+    // A restore is done once everything it put back has gone up
+    if(state.restoredAt && !records.failed && !waiting && !Object.keys(syncRecordState(state).edits).length){
+      delete state.restoredAt;
+    }
     saveSyncState(companyId, state);
     if(lastRecordTrouble){
       syncStatus('Last synced ' + new Date(state.lastSyncedAt).toLocaleTimeString()
@@ -7917,6 +7934,7 @@ function syncRecordState(state){
 function syncScanRecords(state, now){
   const r = syncRecordState(state);
   const stamp = now || new Date().toISOString();
+  const restoredAt = state.restoredAt || null;   // just restored: see syncScanLocal
   const local = syncLocalRecords();
   Object.keys(local).forEach(key=>{
     const f = syncFieldHashes(local[key]);
@@ -7925,6 +7943,7 @@ function syncScanRecords(state, now){
     const e = Object.assign({}, r.edits[key] || {});
     const fields = new Set(Object.keys(f).concat(k ? Object.keys(k.f || {}) : []));
     fields.forEach(field=>{
+      if(restoredAt && f[field] !== undefined){ if(!e[field] || e[field] < restoredAt) e[field] = restoredAt; return; }
       if(k && k.f && k.f[field] === f[field]){ delete e[field]; return; }
       const noticed = prev && prev !== SYNC_GONE && prev[field] === f[field];
       if(!noticed || !e[field]) e[field] = stamp;
@@ -8867,7 +8886,7 @@ function renderTaskSuggest(term){
     row.style.cssText = 'display:block;width:100%;text-align:left;padding:9px 12px;'
       + 'border:none;background:none;font-size:13px;cursor:pointer;'
       + 'border-bottom:1px solid var(--line);';
-    row.textContent = displayName(cust.name);
+    nameWithAddress(row, cust);
     row.addEventListener('click', ()=>{
       taskPicked.add(cust.id);
       document.getElementById('taskCustomerSearch').value = '';
@@ -12766,7 +12785,7 @@ function renderGroupPickList(term){
     });
     row.appendChild(box2);
     const name = document.createElement('span');
-    name.textContent = displayName(c.name);
+    nameWithAddress(name, c);
     row.appendChild(name);
 
     // Already somewhere else, or already set up their own way
@@ -13938,7 +13957,7 @@ function renderPhotoTaskCustomers(){
       if(count) count.textContent = photoTaskCustomers.size ? photoTaskCustomers.size + ' chosen' : 'All customers';
     });
     const nm = document.createElement('span');
-    nm.textContent = displayName(c.name);
+    nameWithAddress(nm, c);
     row.appendChild(tick); row.appendChild(nm);
     box.appendChild(row);
   });
@@ -16140,7 +16159,7 @@ document.getElementById('backupFileInput').addEventListener('change', async (e)=
     'Restore this backup from ' + made + '? It contains ' + custCount +
     (custCount === 1 ? ' customer' : ' customers') + ' and ' + techCount +
     (techCount === 1 ? ' technician' : ' technicians') +
-    '. Everything currently in Weir will be replaced. A copy of your current data will download first, so you can undo this.'
+    '. Everything currently in Weir will be replaced \u2014 here, on the server and on the phones. A copy of your current data will download first, so you can undo this.'
   );
   if(!confirmed) return;
 
@@ -16169,6 +16188,16 @@ document.getElementById('backupFileInput').addEventListener('change', async (e)=
     Object.entries(payload.data).forEach(([k, v])=>{
       localStorage.setItem(STORAGE_PREFIX + k, v);
     });
+    // Restore wins: everything just put back is sent to the server and the
+    // phones as the newest change, and whatever the restore took away is
+    // removed there too
+    try{
+      if(typeof siteUser !== 'undefined' && siteUser && siteUser.companyId){
+        const st = loadSyncState(siteUser.companyId);
+        st.restoredAt = new Date().toISOString();
+        saveSyncState(siteUser.companyId, st);
+      }
+    }catch(e2){}
   }catch(err){
     showToast('Restore failed — your data was not changed');
     return;
@@ -17261,7 +17290,7 @@ function openDeleteEquipmentModal(typeName){
         row.appendChild(box);
         const name = document.createElement('span');
         name.style.flex = '1';
-        name.textContent = displayName(cust.name);
+        nameWithAddress(name, cust);
         row.appendChild(name);
         listBox.appendChild(row);
       });
@@ -17796,7 +17825,7 @@ function openAddToCustomersModal(typeName){
 
         const name = document.createElement('span');
         name.style.flex = '1';
-        name.textContent = displayName(cust.name);
+        nameWithAddress(name, cust);
         row.appendChild(name);
 
         // Say so if they already have it, rather than adding a duplicate
