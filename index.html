@@ -220,7 +220,7 @@ function lsSet(key, value){
 //
 // The phone's company and sign-in live under their own prefix, apart from the
 // company's data, so they are never copied into a backup.
-// Shared word for word by index.html, technician-app.html and admin-readings-app.html.
+// Shared word for word by index.html and app.html.
 const FIELD_SUPABASE_URL = WEIR_SERVER_URL;
 const FIELD_SUPABASE_KEY = WEIR_SERVER_KEY;
 // ---------- The move from PoolLog to Weir ----------
@@ -695,9 +695,9 @@ function showError(msg){
   el.style.display = 'block';
 }
 
-// Admin technicians go to the admin app, everyone else to the technician app
+// Technicians and admins use the same app; it shows admins their extras
 function routeFor(tech){
-  return tech.isAdmin ? './admin-readings-app.html' : './technician-app.html';
+  return './app.html';
 }
 
 // Only navigate if the target actually exists. In preview environments the
