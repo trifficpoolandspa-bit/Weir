@@ -1,3 +1,4 @@
+require('./phone-app.js');
 // Photo retention runs against a real IndexedDB, in its own process.
 require('fake-indexeddb/auto');
 const { JSDOM } = require('jsdom');

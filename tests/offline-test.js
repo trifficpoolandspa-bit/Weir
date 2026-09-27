@@ -1,3 +1,4 @@
+require('./phone-app.js');
 // Offline readiness. The app has to open with no signal, so this checks both
 // the service worker's rules and what the technician actually sees.
 require('fake-indexeddb/auto');

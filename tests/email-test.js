@@ -1,3 +1,4 @@
+require('./phone-app.js');
 // Email sending is asynchronous, so it runs in its own process where each
 // send can be awaited properly.
 require('fake-indexeddb/auto');

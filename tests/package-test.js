@@ -1,3 +1,4 @@
+require('./phone-app.js');
 // A service report is one package covering every body of water. Nothing reaches
 // the customer's history until the final submit — and nothing is lost if the
 // app dies halfway through.

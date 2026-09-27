@@ -1,3 +1,4 @@
+require('./phone-app.js');
 // The global error handler. Its whole job is to turn "it froze" into something
 // actionable, so it is worth testing that it fires when it should and stays
 // quiet when it should not.
@@ -58,7 +59,7 @@ console.log('\n=== Closing the camera never raises an error ===');
     try{
       check('  nothing is shown at rest', !banner());
       check('  the build is stamped',
-            /^(website|technician|admin)-\d{4}-\d{2}-\d{2}$/.test(w.eval('APP_VERSION')),
+            /^(website|app)-\d{4}-\d{2}-\d{2}$/.test(w.eval('APP_VERSION')),
             w.eval('APP_VERSION'));
 
       // A real script error

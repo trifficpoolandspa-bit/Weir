@@ -1,3 +1,4 @@
+require('./phone-app.js');
 // Water balance (LSI). The formula is published chemistry, so these checks are
 // against the standard tables rather than against the implementation.
 require('fake-indexeddb/auto');

@@ -1,3 +1,4 @@
+require('./phone-app.js');
 // Part 1 of 4. The suite was one file until it grew past what could
 // finish in a single run — checks at the end silently stopped executing. Each
 // part shares the same setup below and reports its own result.
@@ -1083,6 +1084,107 @@ console.log('\n=== Deleting equipment from chosen customers ===');
   }
 }
 
+
+// ---- One phone app ----
+// The technician app and the admin app are one file, app.html. Admin extras
+// show only for someone with admin access; the old files forward to it.
+console.log('\n=== One phone app: what a technician and an admin each see ===');
+{
+  const asAdmin = w => ['weirdevice:', 'weirdevice:beta-'].forEach(p =>
+    w.localStorage.setItem(p + 'membership', JSON.stringify({full_access: true})));
+  const shown = (d, sel) => Array.from(d.querySelectorAll(sel)).filter(b => b.style.display !== 'none')
+    .map(b => b.dataset.view);
+  const visible = (d, id) => { const el = d.getElementById(id); return !!el && el.style.display !== 'none'; };
+
+  const t = load('app.html'), td = t.dom.window.document, tw = t.dom.window;
+  const a = load('app.html', {beforeParse: asAdmin}), ad = a.dom.window.document, aw = a.dom.window;
+  deferred.push(()=>{
+    check('app.html loads for a technician without errors', t.errors.length === 0, t.errors[0]);
+    check('and for an admin', a.errors.length === 0, a.errors[0]);
+    check('the header says just Weir', td.querySelector('header h1').textContent.trim() === 'Weir'
+          && !td.querySelector('header .brand p'), td.querySelector('header').textContent.trim());
+    check('the sign-in card says Weir, for everyone', /^Weir$/.test(td.querySelector('#loginScreen h2').textContent.trim()));
+    check('a technician sees Today, Serviced and Settings',
+          shown(td, 'nav .tab').join() === 'home,serviced,options', shown(td, 'nav .tab').join());
+    check('on the bottom bar too', shown(td, '.bottombar .tab').join() === 'home,serviced,options', shown(td, '.bottombar .tab').join());
+    check('an admin sees Today, Technicians, Customer, Report and Settings',
+          shown(ad, 'nav .tab').join() === 'home,technicians,customers,report,options', shown(ad, 'nav .tab').join());
+    check('on the bottom bar too', shown(ad, '.bottombar .tab').join() === 'home,technicians,customers,report,options', shown(ad, '.bottombar .tab').join());
+    check('a technician keeps the Voice entry mode setting', visible(td, 'techVoiceCard') && !visible(td, 'adminSettingsCards'));
+    check('an admin keeps the voice button and Technicians tab settings', visible(ad, 'adminSettingsCards') && !visible(ad, 'techVoiceCard'));
+    check('a technician\u2019s Serviced list is its own tab',
+          td.getElementById('view-serviced').contains(td.getElementById('servicedList')));
+    check('an admin\u2019s is inside Report', ad.getElementById('view-report').contains(ad.getElementById('servicedList')));
+    check('a technician picks a report\u2019s customer from the list, as before',
+          visible(td, 'reportCustomerSelect') && !visible(td, 'reportCustomerSearch') && !visible(td, 'reportModeCard'));
+    check('an admin searches for one, as before',
+          !visible(ad, 'reportCustomerSelect') && visible(ad, 'reportCustomerSearch') && visible(ad, 'reportModeCard'));
+    check('each behaves as their old app did (report heading)',
+          tw.eval("techVersion_renderFullCombinedReport.toString()").includes('${reportLabel} service report')
+          && tw.eval("isAdminUser()") === false && aw.eval("isAdminUser()") === true);
+
+    // A technician opening Serviced sees the list, and a report from it opens
+    // without the admin's Serviced / Reports switch
+    tw.eval("switchView('serviced')");
+    check('Serviced opens for a technician', tw.eval('currentViewName') === 'serviced' && visible(td, 'reportModeServiced'));
+    tw.eval("switchView('report', {skipRefresh: true})");
+    check('a report opened from it shows the report, not the switch',
+          visible(td, 'reportModeReports') && !visible(td, 'reportModeCard'));
+    tw.eval("switchView('serviced')");
+    check('and Serviced is still there going back', visible(td, 'reportModeServiced'));
+
+    // Admin access switched off at the office while an admin is on an admin-only tab
+    aw.eval("currentUser = {id: 't1', name: 'Pat', isAdmin: true}; applyRoleUI(); switchView('customers');");
+    aw.eval("fieldCurrentUser = () => ({id: 't1', name: 'Pat', isAdmin: false}); refreshSignedInRole();");
+    check('losing admin access takes the admin tabs away at once',
+          shown(ad, 'nav .tab').join() === 'home,serviced,options', shown(ad, 'nav .tab').join());
+    check('and leaves the admin-only tab for Today', aw.eval('currentViewName') === 'home');
+    aw.eval("fieldCurrentUser = () => ({id: 't1', name: 'Pat', isAdmin: true}); refreshSignedInRole();");
+    check('given back, the admin tabs return', shown(ad, 'nav .tab').join() === 'home,technicians,customers,report,options');
+    check('the Technicians tab setting still hides it for an admin',
+          (aw.eval("appSettings.showTechniciansTab = false; applyRoleUI();"), shown(ad, 'nav .tab').join() === 'home,customers,report,options'));
+    aw.eval("appSettings.showTechniciansTab = true; applyRoleUI();");
+  });
+
+  // Signing out with changes waiting asks first, for admins as well now
+  {
+    const s = load('app.html', {beforeParse: asAdmin}), sw = s.dom.window, sd = sw.document;
+    let asked = '';
+    sw.eval("fieldPendingCount = () => 2;");
+    sw.__ask = (m) => { asked = m; return Promise.resolve(false); };
+    sw.eval("confirmDialog = (m) => window.__ask(m);");
+    sd.getElementById('btnLogout').click();
+    deferred.push(()=>{
+      check('signing out with 2 changes unsent asks first', /2 changes have not reached the office/.test(asked), asked);
+    });
+  }
+
+  // Save report on the last page is the admin's only
+  {
+    const src = fs.readFileSync('app.html', 'utf8');
+    check('Save report is offered to admins only', /if\(isAdminUser\(\) && submitId && headEl && pendingVisit/.test(src));
+  }
+
+}
+{
+  // Read the forwarding pages as they are, past the suites' own mapping
+  const path = require('path');
+  const readRaw = f => require('child_process').execFileSync('cat', [path.resolve(f)], {encoding: 'utf8'});
+  ['technician-app.html', 'admin-readings-app.html'].forEach(f=>{
+    const src = readRaw(f);
+    check(f + ' now only forwards to app.html', /location\.replace\('\.\/app\.html' \+ location\.search \+ location\.hash\)/.test(src)
+          && src.length < 800);
+    let went = null;
+    const dom = new JSDOM(src.replace("location.replace(", "window.__go("), {runScripts: 'dangerously', url: 'https://example.com/Weir/' + f + '?company=ABC#x',
+      beforeParse(w){ w.__go = u => { went = u; }; }});
+    check(f + ' keeps the setup link on the way', went === './app.html?company=ABC#x', went);
+  });
+  const index = readRaw('index.html');
+  check('the sign-in page sends everyone to app.html', /function routeFor\(tech\)\{\s*return '\.\/app\.html';\s*\}/.test(index));
+  const sw = readRaw('sw.js');
+  check('the offline copy includes app.html, under a new cache name',
+        /'\.\/app\.html'/.test(sw) && /weir-cache-v9/.test(sw) && /caches\.match\('\.\/app\.html'/.test(sw));
+}
 
 
 // Checks that had to wait for an app to finish starting up.

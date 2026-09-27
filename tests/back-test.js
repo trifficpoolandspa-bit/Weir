@@ -1,3 +1,4 @@
+require('./phone-app.js');
 // The back button. It must retrace the last few places and then do nothing —
 // never sign the technician out, however many times it is pressed.
 require('fake-indexeddb/auto');

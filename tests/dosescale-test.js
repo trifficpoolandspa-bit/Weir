@@ -1,3 +1,4 @@
+require('./phone-app.js');
 // Dosages scaled by pool volume. The risk here is a pool with no volume on file
 // being treated as zero, so that case is checked hardest.
 require('fake-indexeddb/auto');

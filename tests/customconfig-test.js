@@ -1,3 +1,4 @@
+require('./phone-app.js');
 require('fake-indexeddb/auto');
 const {JSDOM} = require('jsdom');
 const fs = require('fs');

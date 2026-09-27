@@ -1,3 +1,4 @@
+require('./phone-app.js');
 // Photo storage runs against a real IndexedDB, which needs its own process —
 // the main suite keeps the event loop too busy for the async work to finish.
 require('fake-indexeddb/auto');

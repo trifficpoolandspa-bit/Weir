@@ -1,3 +1,4 @@
+require('./phone-app.js');
 // Part 3 of 4. The suite was one file until it grew past what could
 // finish in a single run — checks at the end silently stopped executing. Each
 // part shares the same setup below and reports its own result.

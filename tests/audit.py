@@ -12,7 +12,7 @@ KNOWN_DYNAMIC = {
 }
 
 issues = 0
-for f in ['customer-intake.html','technician-app.html','admin-readings-app.html']:
+for f in ['customer-intake.html','app.html']:
     src = open(f).read()
 
     if '</html>' not in src:
@@ -51,7 +51,9 @@ for f in ['customer-intake.html','technician-app.html','admin-readings-app.html'
                 issues += 1
 
     ids = re.findall(r'id="([^"]+)"', src)
-    dupes = {i for i in ids if ids.count(i) > 1}
+    # Ids built by the page's own code may appear in more than one version of a
+    # function (app.html keeps a technician's and an admin's), only one of which runs
+    dupes = {i for i in ids if ids.count(i) > 1 and i not in KNOWN_DYNAMIC}
     for d in dupes:
         print('DUPLICATE id "%s" in %s' % (d, f)); issues += 1
 

@@ -1,3 +1,4 @@
+require('./phone-app.js');
 // The emailed service report. Built separately from the on-screen version
 // because email clients strip stylesheets, so this checks it stays email-safe.
 require('fake-indexeddb/auto');

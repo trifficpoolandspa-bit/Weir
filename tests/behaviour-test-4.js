@@ -1,3 +1,4 @@
+require('./phone-app.js');
 // Part 4 of 4. The suite was one file until it grew past what could
 // finish in a single run — checks at the end silently stopped executing. Each
 // part shares the same setup below and reports its own result.
@@ -3053,7 +3054,8 @@ async function serverFieldSignIn(){
       p.close();
     }
 
-    console.log('\n=== admin-readings-app.html: offline sign-in is admins only ===');
+    // One app now: without admin access they come in as a technician
+    console.log('\n=== admin-readings-app.html: admin access off means the technician view ===');
     {
       const a = await boot(srv, 'admin-readings-app.html', {storage: seedStorage({'weirdevice:company': JSON.stringify({id: CO, name: 'Triffic Pool and Spa'})})});
       await signIn(a, 'sam', 'sampass12');
@@ -3066,10 +3068,14 @@ async function serverFieldSignIn(){
       a.w.eval('adminLogout()'); await sleep(200);
       await asUser(OWNER, 'select public.update_technician_account($1, $2, $3, $4)', ['t_sam', null, null, false]);
       await signIn(a, 'sam', 'sampass12');
-      check('with admin access off, the admin app refuses them', loginVisible(a.d) && /for admins/.test(errorText(a.d)), errorText(a.d));
+      const tabsOf = x => Array.from(x.d.querySelectorAll('nav .tab')).filter(b => b.style.display !== 'none').map(b => b.dataset.view).join();
+      check('with admin access off, they come in as a technician', !loginVisible(a.d) && a.w.eval('isAdminUser()') === false
+            && tabsOf(a) === 'home,serviced,options', errorText(a.d) + ' ' + tabsOf(a));
+      a.w.eval('logout()'); await sleep(200);
       srv.offline = true;
       await signIn(a, 'sam', 'sampass12');
-      check('and refuses them offline too', loginVisible(a.d), errorText(a.d));
+      check('and offline too', !loginVisible(a.d) && a.w.eval('currentUser && currentUser.id') === 't_sam', errorText(a.d));
+      a.w.eval('logout()'); await sleep(200);
       srv.offline = false;
       await asUser(OWNER, 'select public.update_technician_account($1, $2, $3, $4)', ['t_sam', null, null, true]);
       a.close();
@@ -3872,23 +3878,30 @@ async function serverFieldSignIn(){
       phone.close();
     }
 
-    console.log('\n=== admin-readings-app.html: admin technicians only ===');
+    console.log('\n=== one app: technicians get their view, admins theirs ===');
       p = await boot(srv, 'admin-readings-app.html', {storage: seedStorage({'weirdevice:company': JSON.stringify({id: CO, name: 'Triffic Pool and Spa'})})});
-      check('the admin app asks for a sign-in', loginVisible(p.d));
+      const tabs = () => Array.from(p.d.querySelectorAll('nav .tab')).filter(b => b.style.display !== 'none').map(b => b.dataset.view).join();
+      check('the app asks for a sign-in', loginVisible(p.d));
       await makeTech(OWNER, 'plain', 'plainpass1', 't_plain', 'Plain Tech', false);
       await signIn(p, 'plain', 'plainpass1');
-      check('a plain technician is turned away', loginVisible(p.d) && /for admins/.test(errorText(p.d)), errorText(p.d));
-      check('and not left signed in', !p.storage()['weirdevice:session']);
+      check('a plain technician gets in', !loginVisible(p.d) && p.w.eval('currentUser && currentUser.id') === 't_plain', errorText(p.d));
+      check('with the technician\u2019s tabs', tabs() === 'home,serviced,options', tabs());
+      p.w.eval('logout()'); await sleep(200);
       await signIn(p, 'sam', 'sampass12');
       check('an admin technician gets in', !loginVisible(p.d) && p.w.eval('currentUser && currentUser.id') === 't_sam');
-      check('shown by name', p.d.getElementById('adminSignedInAs').textContent === 'Sam Admin', p.d.getElementById('adminSignedInAs').textContent);
+      check('with the admin tabs', tabs() === 'home,technicians,customers,report,options', tabs());
+      check('shown by name', p.d.getElementById('signedInAs').textContent === 'Sam Admin', p.d.getElementById('signedInAs').textContent);
+      p.w.eval("switchView('customers')");
       await asUser(OWNER, 'select public.update_technician_account($1, $2, $3, $4)', ['t_sam', null, null, false]);
-      p.w.dispatchEvent(new p.w.Event('online')); await sleep(500);
-      check('turning admin access off signs them out of the admin app', loginVisible(p.d) && /Admin access was turned off/.test(errorText(p.d)), errorText(p.d));
+      p.w.dispatchEvent(new p.w.Event('online')); await sleep(2200);
+      check('turning admin access off keeps them signed in', !loginVisible(p.d) && p.w.eval('currentUser && currentUser.id') === 't_sam', errorText(p.d));
+      check('with the technician\u2019s tabs from then on', tabs() === 'home,serviced,options', tabs());
+      check('and off the admin-only tab', p.w.eval('currentViewName') === 'home', p.w.eval('currentViewName'));
       await asUser(OWNER, 'select public.update_technician_account($1, $2, $3, $4)', ['t_sam', null, null, true]);
-      await signIn(p, 'sam', 'sampass12');
+      p.w.dispatchEvent(new p.w.Event('online')); await sleep(2200);
+      check('turned back on, the admin tabs return', tabs() === 'home,technicians,customers,report,options', tabs());
       const adminSaved = p.storage();
-      p.d.getElementById('btnAdminLogout').click(); await sleep(200);
+      p.d.getElementById('btnLogout').click(); await sleep(200);
       check('Sign out works in the admin app', loginVisible(p.d) && !p.storage()['weirdevice:session']);
       p.close();
       srv.offline = true;
@@ -3904,10 +3917,10 @@ async function serverFieldSignIn(){
       check('a setup link opened on the landing page sets the company', p.d.getElementById('loginCompanyName').textContent === 'Triffic Pool and Spa');
       p.d.getElementById('loginUsername').value = 'sam'; p.d.getElementById('loginPassword').value = 'sampass12';
       p.d.getElementById('btnLogin').click(); await sleep(400);
-      check('an admin technician is sent to the admin app', p.w.__went === './admin-readings-app.html', String(p.w.__went));
+      check('an admin technician is sent to the one phone app', p.w.__went === './app.html', String(p.w.__went));
       p.d.getElementById('loginUsername').value = 'plain'; p.d.getElementById('loginPassword').value = 'plainpass1';
       p.d.getElementById('btnLogin').click(); await sleep(400);
-      check('a technician is sent to the technician app', p.w.__went === './technician-app.html', String(p.w.__went));
+      check('a technician is sent to the same app', p.w.__went === './app.html', String(p.w.__went));
       p.d.getElementById('loginUsername').value = 'plain'; p.d.getElementById('loginPassword').value = 'nope';
       p.w.__went = null;
       p.d.getElementById('btnLogin').click(); await sleep(400);

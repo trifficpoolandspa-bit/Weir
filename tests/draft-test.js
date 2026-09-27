@@ -1,3 +1,4 @@
+require('./phone-app.js');
 // Nothing typed into a service report may be lost, except when the technician
 // deliberately cancels the report. This walks every way around a visit.
 require('fake-indexeddb/auto');

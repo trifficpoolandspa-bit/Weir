@@ -1,3 +1,4 @@
+require('./phone-app.js');
 // Short video clips. The recording itself needs a real camera, so these checks
 // cover the parts that can go wrong without one: the cap, format selection,
 // graceful absence, and what gets handed to the share sheet.

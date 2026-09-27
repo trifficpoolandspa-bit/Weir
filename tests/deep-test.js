@@ -1,3 +1,4 @@
+require('./phone-app.js');
 const fs = require('fs');
 const {grabFn, grabBlock} = require('./extract.js');
 const tech = fs.readFileSync('technician-app.html','utf8');

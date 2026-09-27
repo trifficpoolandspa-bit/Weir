@@ -1,3 +1,4 @@
+require('./phone-app.js');
 // End-to-end visits, not features in isolation. Walks a whole service report
 // from opening a customer to submitting the last body of water, checking the
 // technician is never dumped somewhere unexpected.
@@ -545,8 +546,9 @@ async function walkVisit(w, d, maxPresses){
         /function routeDateStr\(\)/.test(src));
   check('nothing stamps work with the day being viewed any more',
         src.indexOf('stamped.setHours(now.getHours()') === -1);
-  check('the technician app already did it this way',
-        /date: new Date\(\)\.toISOString\(\)/.test(fs.readFileSync('technician-app.html', 'utf8')));
+  // One app now: technicians' readings are stamped the same way
+  check('technicians\u2019 readings are stamped the same way',
+        (src.match(/date: visitTimestamp\(\)/g) || []).length === 3 && !/date: new Date\(\)\.toISOString\(\)/.test(src));
 }
 
 
@@ -782,7 +784,9 @@ async function walkVisit(w, d, maxPresses){
   w.console.warn = ()=>{};
   await wait(1300);
   try{
-    w.eval("currentUser = {id:'t1', name:'Pat'}; selectedHomeDay = '" + yesterdayName + "'; renderHomeList();");
+    // On a Sunday, yesterday is last week's Saturday (the week starts on Sunday)
+    w.eval("currentUser = {id:'t1', name:'Pat'}; weekOffset = " + (new Date().getDay() === 0 ? -1 : 0)
+      + "; selectedHomeDay = '" + yesterdayName + "'; renderHomeList();");
     await wait(200);
     const names = Array.from(d.querySelectorAll('#homeCustomerList .cust-name')).map(n => n.textContent.trim());
     check('someone caught up today is off yesterday\u2019s route',
@@ -1662,7 +1666,7 @@ async function walkVisit(w, d, maxPresses){
     check('with no signal it\u2019s held', !!JSON.parse(w.localStorage.getItem('weir:routeOrdersToSend')));
     w.eval("window.__reply = null;"); await w.eval("pushCompanyRouteOrder()");
     check('and sent once there\u2019s signal', !JSON.parse(w.localStorage.getItem('weir:routeOrdersToSend')));
-    check('every sync tries anything waiting', /await pushCompanyRouteOrder\(\);\s*\n\s*\/\/ Tasks ticked off and visits moved here/.test(src));
+    check('every sync tries anything waiting', /await pushCompanyRouteOrder\(\);\s*\n(\s*refreshSignedInRole\(\);\s*\n)?\s*\/\/ Tasks ticked off and visits moved here/.test(src));
     w.close();
 
     // Remove changes
@@ -1675,8 +1679,11 @@ async function walkVisit(w, d, maxPresses){
     w.close();
 
     // The technician app keeps a technician\u2019s order to their own phone
+    // One app now: a technician's Every week and Remove changes never touch it
     const tech = fs.readFileSync('technician-app.html', 'utf8');
-    check('the technician app never changes the company\u2019s route order', !/saveCompanyRouteOrder|pushCompanyRouteOrder/.test(tech));
+    const techBar = require('./extract.js').grabFn(tech, 'techVersion_orderPerm') + require('./extract.js').grabFn(tech, 'techVersion_orderClose');
+    check('the technician app never changes the company\u2019s route order',
+          techBar.length > 200 && !/saveCompanyRouteOrder|pushCompanyRouteOrder|routeOrdersToSend/.test(techBar));
   }catch(e){ check('admin route order', false, e.message); }
 
   // Dragging: side by side only when items really sit on one line
