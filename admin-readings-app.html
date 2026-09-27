@@ -3421,6 +3421,12 @@ async function syncPullRecords(state){
   rows.forEach(row=>{
     const key = row.kind + '\u0002' + row.id;
     const hashes = syncFieldHashes(row.data);
+    // A move cleared here and still on its way to being removed: not put back
+    const clearing = state.work && state.work.edits && state.work.edits[key] && state.work.edits[key]._deleted;
+    if(clearing && !row.deleted){
+      if(!r.cursor || row.updated_at > r.cursor) r.cursor = row.updated_at;
+      return;
+    }
     // What the server last agreed for this record, so unsent changes survive
     const agreed = state.work && state.work.known && state.work.known[key] ? state.work.known[key].f : null;
     if(!syncApplyRecord(row.kind, row.id, row.data, row.deleted, agreed)) return;
@@ -3794,8 +3800,25 @@ function syncScanWork(state, now){
     wk.seen[key] = f;
     if(Object.keys(e).length) wk.edits[key] = e; else delete wk.edits[key];
   });
-  // Nothing on this phone is ever sent as a deletion: only the office deletes
-  Object.keys(wk.edits).forEach(key=>{ if(!local[key]) delete wk.edits[key]; });
+  // Nothing on this phone is sent as a deletion, except a move (reschedule):
+  // phones make and clear those themselves (Reschedule, Change their regular
+  // day). A cleared move that was never removed on the server came straight
+  // back at the next sync, and the customer showed on both days.
+  const pulled = (state.records && state.records.known) || {};
+  const moveKeys = new Set(Object.keys(wk.known).concat(Object.keys(pulled))
+    .filter(key => key.indexOf('reschedule\u0002') === 0));
+  moveKeys.forEach(key=>{
+    if(local[key]) return;
+    const k = wk.known[key] || pulled[key];
+    if(!k || k.d) return;                       // never on the server, or already gone
+    const was = wk.edits[key] && wk.edits[key]._deleted;
+    wk.edits[key] = {_deleted: was || stamp};
+  });
+  Object.keys(wk.edits).forEach(key=>{
+    if(local[key]) return;
+    if(key.indexOf('reschedule\u0002') === 0 && wk.edits[key]._deleted) return;
+    delete wk.edits[key];
+  });
 }
 
 async function syncPushWork(state){
@@ -3808,6 +3831,23 @@ async function syncPushWork(state){
     const kind = key.slice(0, at), id = key.slice(at + 1);
     const pending = Object.assign({}, wk.edits[key]);
     const mine = local[key];
+    if(!mine && kind === 'reschedule' && pending._deleted){
+      // A move cleared on this phone: removed on the server too
+      const base = (wk.known[key] || (state.records && state.records.known && state.records.known[key]) || {}).u || null;
+      const gone = await fieldAuthed('/rest/v1/rpc/push_record_fields', {
+        method: 'POST',
+        body: JSON.stringify({p_kind: kind, p_id: id, p_changes: {_deleted: {t: pending._deleted, v: true}}, p_base: base})
+      });
+      if(gone.offline || gone.revoked || gone.status === 0) return {ok: false, offline: !!gone.offline, pushed: pushed, refused: refused};
+      if(gone.ok && gone.body){
+        wk.known[key] = {u: gone.body.updated_at, d: true, f: {}};
+        if(state.records && state.records.known) state.records.known[key] = {u: gone.body.updated_at, d: true, f: {}};
+        pushed++;
+      }
+      delete wk.edits[key];
+      saveFieldSyncState(state);
+      continue;
+    }
     if(!mine){ delete wk.edits[key]; continue; }
     const changes = {}, sentHash = {};
     Object.keys(pending).forEach(field=>{
