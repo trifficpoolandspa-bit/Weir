@@ -1678,6 +1678,20 @@ async function walkVisit(w, d, maxPresses){
     check('and it goes back to following the website', order() === 'dcba', order());
     w.close();
 
+    // Every week when the day still lists them under another route as well
+    // (Unassigned, from before they were a technician's): reported putting
+    // them straight back
+    ({w, d, order, company} = await start());
+    w.eval("localStorage.setItem('weir:routeOrders', JSON.stringify({'" + day + "': {unassigned: ['a','b','c','d'], t1: ['a','b','c','d'], t2: ['z'], t9: ['h']}})); renderHomeList();");
+    check('with an old copy under Unassigned, the route starts as saved', order() === 'abcd', order());
+    drop(w, ['c','a','b','d']);
+    d.getElementById('orderPermBtn').click(); await wait(200);
+    check('Every week keeps the new order on screen', order() === 'cabd', order());
+    check('the old copy under Unassigned is cleared of them', (company().unassigned || []).length === 0, JSON.stringify(company()));
+    w.eval('renderHomeList()');
+    check('and it stays after a redraw', order() === 'cabd', order());
+    w.close();
+
     // The technician app keeps a technician\u2019s order to their own phone
     // One app now: a technician's Every week and Remove changes never touch it
     const tech = fs.readFileSync('technician-app.html', 'utf8');

@@ -3131,6 +3131,52 @@ async function serverFieldSignIn(){
       admin.close();
     }
 
+    // Reported: Every week on the phone put the moved customers back as if the
+    // change never happened, while Just today kept it
+    console.log('\n=== admin-readings-app.html: Every week keeps the new order, through a sync ===');
+    {
+      await makeTech(OWNER, 'eve', 'evepass1234', 't_eve', 'Eve Admin', true);
+      const t0 = new Date(Date.now() - 3600000).toISOString();
+      for(const [id, name] of [['ew1', 'Weekly One'], ['ew2', 'Weekly Two'], ['ew3', 'Weekly Three']]){
+        await asUser(OWNER, 'select public.push_customer_fields($1,$2::jsonb,null)',
+          [id, JSON.stringify({id: {t: t0, v: id}, name: {t: t0, v: name}, day: {t: t0, v: today}, active: {t: t0, v: true},
+                               hasPool: {t: t0, v: true}, technicianId: {t: t0, v: 't_eve'}})]);
+      }
+      await asUser(OWNER, 'select public.push_record_fields($1,$2,$3::jsonb,null)',
+        ['technician', 't_eve', JSON.stringify({id: {t: t0, v: 't_eve'}, name: {t: t0, v: 'Eve Admin'}})]);
+      // The website's route order, saved an hour ago
+      await asUser(OWNER, 'select public.push_record_fields($1,$2,$3::jsonb,null)',
+        // still listing them under Unassigned too, from before they were given to Eve
+        ['setup', 'routeOrders', JSON.stringify({value: {t: t0, v: {[today]: {unassigned: ['ew1', 'ew2', 'ew3'], t_eve: ['ew1', 'ew2', 'ew3']}}}})]);
+      const ph = await boot(srv, 'admin-readings-app.html', {storage: {
+        'weirdevice:company': JSON.stringify({id: CO, name: 'Triffic Pool and Spa'})}});
+      await signIn(ph, 'eve', 'evepass1234');
+      for(let i = 0; i < 900 && ph.w.eval('syncRunning'); i++) await sleep(10);
+      await sleep(300);
+      ph.w.eval("confirmDialog = () => Promise.resolve(true); renderHomeList();");
+      const weekly = () => routeNames(ph.d).filter(n => /^Weekly/.test(n)).join(' | ');
+      check('the route starts in the website\u2019s order', weekly() === 'Weekly One | Weekly Two | Weekly Three', weekly());
+      // A drag, as the page does it when let go
+      ph.w.eval("const ids = ['ew3','ew1','ew2']; fieldRouteOrder[orderKey(selectedHomeDay, isoForDay(selectedHomeDay))] = ids;"
+        + " saveFieldRouteOrder(); orderBeforeDrag = ['ew1','ew2','ew3']; showOrderBanner(ids); renderHomeList();");
+      check('the drag shows', weekly() === 'Weekly Three | Weekly One | Weekly Two', weekly());
+      ph.d.getElementById('orderPermBtn').click(); await sleep(600);
+      check('Every week keeps it on screen', weekly() === 'Weekly Three | Weekly One | Weekly Two', weekly());
+      for(let i = 0; i < 900 && ph.w.eval('syncRunning'); i++) await sleep(10);
+      await ph.w.eval('fieldSync()');
+      for(let i = 0; i < 900 && ph.w.eval('syncRunning'); i++) await sleep(10);
+      await sleep(300);
+      ph.w.eval('renderHomeList()');
+      check('and after the next sync', weekly() === 'Weekly Three | Weekly One | Weekly Two',
+            weekly() + ' | phone: ' + ph.storage()['weir:routeOrders']);
+      const onServer = (await pool.query("select data from public.company_records where kind = 'setup' and id = 'routeOrders'")).rows[0];
+      check('the office has it too', JSON.stringify(onServer && onServer.data).includes('"t_eve":["ew3","ew1","ew2"]'),
+            JSON.stringify(onServer && onServer.data));
+      check('and their old copy under Unassigned is gone', !/"unassigned":\[[^\]]*ew/.test(JSON.stringify(onServer && onServer.data)),
+            JSON.stringify(onServer && onServer.data));
+      ph.close();
+    }
+
     console.log('\n=== technician-app.html: an admin\'s own route ===');
     {
       // An admin holds every customer in the company, so the route is decided
