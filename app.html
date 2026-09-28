@@ -8335,6 +8335,14 @@ function saveCompanyRouteOrder(day, ids){
     const key = c.technicianId ? String(c.technicianId) : 'unassigned';   // a route is a technician's customers
     (byRoute[key] = byRoute[key] || []).push(c.id);
   });
+  // A customer is on one route only: their technician's. Any older copy of
+  // them under another route that day goes, or it would be read first and
+  // put them back where they were
+  const movedIds = new Set([].concat(...Object.values(byRoute)).map(String));
+  Object.keys(ro[day]).forEach(key=>{
+    if(byRoute[key] || !Array.isArray(ro[day][key])) return;
+    ro[day][key] = ro[day][key].filter(id => !movedIds.has(String(id)));
+  });
   Object.keys(byRoute).forEach(key=>{
     const moved = byRoute[key];
     const before = Array.isArray(ro[day][key]) ? ro[day][key] : [];
