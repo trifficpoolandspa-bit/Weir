@@ -295,9 +295,10 @@ input::placeholder{color:#A9BCB9;}
 .access-row:hover .access-tip,
 .access-row.tip-open .access-tip{opacity:1;visibility:visible;transform:translateY(0);}
 .profile-meta-label{
-  /* Larger, bolder and darker than an eyebrow, so each row's heading stands out */
+  /* Larger and bolder than an eyebrow, in the lighter teal so it stands apart
+     from the near-black value under it */
   display:block;font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:700;
-  color:var(--teal-deep);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;
+  color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;
 }
 .profile-meta-value{font-size:16px;color:var(--ink);line-height:1.4;}
 .pill{
@@ -985,8 +986,8 @@ input::placeholder{color:#A9BCB9;}
 
   <div id="seasonOverlay" style="display:none;position:fixed;inset:0;z-index:320;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
     <div style="background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);">
-      <h2 style="font-size:18px;margin:0 0 6px;">Add a season</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">A season has its own dosage rules and quick buttons, used automatically between these dates every year. It starts as a copy of your year-round ones.</p>
+      <h2 id="seasonHeading" style="font-size:18px;margin:0 0 6px;">Add a season</h2>
+      <p id="seasonIntro" style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">A season has its own dosage rules and quick buttons, used automatically between these dates every year. It starts as a copy of your year-round ones.</p>
       <div class="field">
         <label>Name</label>
         <input id="seasonName" placeholder="Summer" maxlength="30" autocomplete="off">
@@ -1022,6 +1023,8 @@ input::placeholder{color:#A9BCB9;}
         <!-- Seasons: their own dosage rules and quick buttons between two dates (the
              calendar button was taken off Sept 29; Add season opens the window) -->
         <div id="seasonAddRow" style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+          <!-- Shown while a season is chosen in the Seasons strip -->
+          <button type="button" class="btn btn-primary" id="btnEditSeason" style="display:none;width:auto;flex:0 0 auto;">Edit this season</button>
           <button type="button" class="btn btn-ghost" id="btnAddSeason" style="width:auto;flex:0 0 auto;">Add season</button>
         </div>
       </div>
@@ -14497,6 +14500,8 @@ function renderSeasonStrip(){
   if(!box || !seg) return;
   if(selectedChemConfigType === 'custom' || chemSeasons.length === 0){
     box.style.display = 'none';
+    const edit = document.getElementById('btnEditSeason');
+    if(edit) edit.style.display = 'none';
     return;
   }
   box.style.display = 'block';
@@ -14536,9 +14541,19 @@ function renderSeasonNote(){
       : 'Year-round: used on any day outside your seasons.';
   }
   if(remove) remove.style.display = season ? 'inline-flex' : 'none';
+  const edit = document.getElementById('btnEditSeason');
+  if(edit) edit.style.display = season ? 'inline-flex' : 'none';
 }
 
+// The season the window is changing; null while it's adding a new one
+let seasonEditingId = null;
+const SEASON_ADD_INTRO = 'A season has its own dosage rules and quick buttons, used automatically between these dates every year. It starts as a copy of your year-round ones.';
+
 function openSeasonWindow(openCalendar){
+  seasonEditingId = null;
+  document.getElementById('seasonHeading').textContent = 'Add a season';
+  document.getElementById('seasonIntro').textContent = SEASON_ADD_INTRO;
+  document.getElementById('btnSaveSeason').textContent = 'Add season';
   if(chemSeasons.length >= MAX_SEASONS){
     showToast('You can have up to four seasons. Remove one to add another.');
     return;
@@ -14563,7 +14578,30 @@ function openSeasonWindow(openCalendar){
 
 function closeSeasonWindow(){
   document.getElementById('seasonOverlay').style.display = 'none';
+  seasonEditingId = null;
 }
+
+// Edit this season: the same window, filled in with the chosen season's name
+// and dates. Its dosage rules and quick buttons are left as they are.
+function openSeasonEdit(){
+  const season = activeSeason();
+  if(!season) return;
+  seasonEditingId = season.id;
+  document.getElementById('seasonHeading').textContent = 'Edit ' + season.name;
+  document.getElementById('seasonIntro').textContent = 'Change its name or the dates it runs between. Its dosage rules and quick buttons stay as they are.';
+  document.getElementById('btnSaveSeason').textContent = 'Save changes';
+  // The dates are kept without a year; the box shows them in this one
+  const year = new Date().getFullYear();
+  document.getElementById('seasonName').value = season.name || '';
+  document.getElementById('seasonFrom').value = year + '-' + season.start;
+  document.getElementById('seasonTo').value = year + '-' + season.end;
+  const err = document.getElementById('seasonError');
+  err.style.display = 'none';
+  err.textContent = '';
+  document.getElementById('seasonOverlay').style.display = 'flex';
+  document.getElementById('seasonName').focus();
+}
+document.getElementById('btnEditSeason').addEventListener('click', openSeasonEdit);
 
 document.getElementById('btnAddSeason').addEventListener('click', ()=> openSeasonWindow(false));
 document.getElementById('btnCancelSeason').addEventListener('click', closeSeasonWindow);
@@ -14587,11 +14625,13 @@ document.getElementById('btnSaveSeason').addEventListener('click', ()=>{
   const toVal = document.getElementById('seasonTo').value;
   if(!name){ say('Give the season a name.'); return; }
   if(/^year-round$/i.test(name)){ say('Choose another name \u2014 Year-round is the rest of the year.'); return; }
-  if(chemSeasons.some(x => (x.name || '').trim().toLowerCase() === name.toLowerCase())){
+  // The season being edited doesn't count against itself
+  const others = chemSeasons.filter(x => x.id !== seasonEditingId);
+  if(others.some(x => (x.name || '').trim().toLowerCase() === name.toLowerCase())){
     say('There is already a season called ' + name + '.'); return;
   }
   if(!fromVal || !toVal){ say('Pick the first and last day of the season.'); return; }
-  if(chemSeasons.length >= MAX_SEASONS){ say('You can have up to four seasons.'); return; }
+  if(!seasonEditingId && chemSeasons.length >= MAX_SEASONS){ say('You can have up to four seasons.'); return; }
   const season = {
     id: 'season_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
     name: name,
@@ -14604,8 +14644,21 @@ document.getElementById('btnSaveSeason').addEventListener('click', ()=>{
   for(let i = 0; i < 366; i++, day.setDate(day.getDate() + 1)){
     const md = String(day.getMonth() + 1).padStart(2, '0') + '-' + String(day.getDate()).padStart(2, '0');
     if(!seasonCovers(season, md)) continue;
-    const clash = chemSeasons.find(x => seasonCovers(x, md));
+    const clash = others.find(x => seasonCovers(x, md));
     if(clash){ say('Those dates overlap ' + clash.name + ' (' + seasonDatesText(clash) + ').'); return; }
+  }
+  if(seasonEditingId){
+    // Name and dates only; its rules and buttons are kept
+    const kept = chemSeasons.find(x => x.id === seasonEditingId);
+    if(!kept){ closeSeasonWindow(); return; }
+    kept.name = name;
+    kept.start = season.start;
+    kept.end = season.end;
+    saveChemSeasons();
+    closeSeasonWindow();
+    renderSeasonStrip();
+    showToast(name + ' saved \u2014 ' + seasonDatesText(kept));
+    return;
   }
   chemSeasons.push(season);
   saveChemSeasons();
@@ -15378,7 +15431,12 @@ function renderTechProfile(techId){
     if(el) el.textContent = tech.name || 'Technician';
   });
 
-  const refresh = ()=> renderTechProfile(techId);
+  // Redrawn in place: the page doesn't move when a field is saved
+  const refresh = ()=>{
+    const y = window.scrollY;
+    renderTechProfile(techId);
+    if(window.scrollY !== y) window.scrollTo(0, y);
+  };
 
   function row(opts){
     const el = document.createElement('div');
@@ -18782,6 +18840,19 @@ function saveCustomerField(){
 // noted as the press starts, and the rebuilt row opens itself.
 let profileRowWanted = null;
 
+// Noted at the very start of the press, before anything else on the page
+// reacts to it. The helper that makes one click leave a field closes the open
+// row at that same instant, which saves and redraws the profile; noted any
+// later, the pressed row was already gone and only the old row closed, so
+// the new one needed a second click. Customer and technician profiles alike.
+document.addEventListener('pointerdown', e=>{
+  const t = e.target;
+  const row = t && t.closest && t.closest('#profileMeta .profile-meta-row.editable, #techProfileMeta .profile-meta-row.editable');
+  if(!row || row.dataset.editing === 'true') return;
+  const lbl = row.querySelector('.profile-meta-label');
+  if(lbl) profileRowWanted = lbl.textContent;
+}, true);
+
 // Renders one labelled row that turns into an editor when tapped
 function profileRow(container, opts){
   const {label, value, placeholder, editor} = opts;
@@ -18819,7 +18890,7 @@ function profileRow(container, opts){
         // Still open with nothing to save it by: redraw, which closes it
         if(document.querySelector('#profileMeta .profile-meta-row[data-editing="true"]')){
           const cust = customers.find(x => x.id === editingId);
-          if(cust){ viewCustomer(cust); return; }
+          if(cust){ viewCustomerInPlace(cust); return; }
         }
       }
       // The press has done its job: without clearing it, closing this row
@@ -18833,7 +18904,7 @@ function profileRow(container, opts){
         row.dataset.editing = 'false';
         if(profileRowWanted === label) profileRowWanted = null;
         const cust = customers.find(x => x.id === editingId);
-        if(cust) viewCustomer(cust);
+        if(cust) viewCustomerInPlace(cust);
       };
       editor(row, done);
     };
@@ -19515,6 +19586,18 @@ function renderProfileExtraDays(c){
   box.appendChild(add);
 }
 
+// Redrawing the open profile after a field is saved or another one opened:
+// the page stays exactly where it's scrolled to and on the same tab. Opening a
+// customer from the list still brings their profile into view.
+function viewCustomerInPlace(c){
+  const y = window.scrollY;
+  const keep = keepProfileTab;
+  keepProfileTab = true;
+  try{ viewCustomer(c); }
+  finally{ keepProfileTab = keep; }
+  if(window.scrollY !== y) window.scrollTo(0, y);
+}
+
 function viewCustomer(c){
   profileCustomerId = c.id;
   editingId = c.id;
@@ -19552,7 +19635,7 @@ function viewCustomer(c){
       input.remove();
       nameEl.style.display = '';
       nameEl.dataset.editing = 'false';
-      viewCustomer(c);
+      viewCustomerInPlace(c);
     };
     input.addEventListener('blur', commit);
     input.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); input.blur(); } });
@@ -19583,7 +19666,7 @@ function viewCustomer(c){
     c.day = dayPick.value;
     if(Array.isArray(c.extraDays)) c.extraDays = c.extraDays.filter(d => d !== c.day);
     saveCustomerField();
-    viewCustomer(c);
+    viewCustomerInPlace(c);
   });
   dayPill.appendChild(dayPick);
   renderProfileExtraDays(c);
@@ -19630,7 +19713,7 @@ function viewCustomer(c){
       sel.remove();
       techWrap.style.display = 'inline-flex';
       techWrap.dataset.editing = 'false';
-      viewCustomer(c);
+      viewCustomerInPlace(c);
     };
     sel.addEventListener('change', commit);
     sel.addEventListener('blur', commit);
