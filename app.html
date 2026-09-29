@@ -534,8 +534,8 @@ select#customerSelect{font-weight:600;}
         </span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin:10px 0 14px;">
+        <span id="weekLabel" style="flex:1 1 auto;min-width:0;font-size:14px;color:var(--muted);font-weight:600;text-align:left;"></span>
         <button id="prevWeekBtn" class="btn btn-ghost" style="width:auto;padding:6px 13px;font-size:17px;line-height:1;">‹</button>
-        <span id="weekLabel" style="flex:1 1 auto;font-size:14px;color:var(--muted);font-weight:600;text-align:center;"></span>
         <button id="nextWeekBtn" class="btn btn-ghost" style="width:auto;padding:6px 13px;font-size:17px;line-height:1;">›</button>
         <button id="pickDayBtn" title="Jump to a date" style="width:auto;flex-shrink:0;padding:7px 10px;line-height:0;background:var(--teal-pale);border:1.5px solid var(--teal-mid);border-radius:9px;cursor:pointer;">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--teal-deep)" stroke-width="2" stroke-linecap="round">
@@ -2451,6 +2451,7 @@ document.addEventListener('visibilitychange', ()=>{ if(document.hidden) closeRou
 
 function switchView(view, opts){
   opts = opts || {};
+  const cameFrom = currentViewName;
   if(view !== 'home' && currentViewName === 'home') closeRouteBriefs();
 
   // Leaving an open report to another tab — remember it so Today can bring it
@@ -2494,6 +2495,12 @@ function switchView(view, opts){
     // is closed. The route itself is only redrawn when something changed, so
     // the panel has to be closed here rather than waiting for a redraw.
     closeRouteBriefs();
+    // From another tab, Today opens on today, whatever day was being looked
+    // at before. Coming back from a visit keeps the day that visit was on.
+    if(cameFrom && cameFrom !== 'home' && cameFrom !== 'visit'){
+      selectedHomeDay = DAYS_OF_WEEK[new Date().getDay()];
+      weekOffset = 0;
+    }
     renderHomeList();
   }
   if(view === 'serviced'){
@@ -3557,6 +3564,7 @@ function syncApplyRecord(kind, id, data, deleted, agreed){
   }
   if(kind === 'setup'){
     if(deleted || !('value' in data)) return true;
+    if(id === 'routeOrders') officeRouteOrderArrived(lsGet('routeOrders'), data.value);
     const saved = lsSet(id, data.value);
     // The app holds its own copy of the setup from when it started. Writing to
     // storage alone changed nothing on screen until the app was restarted,
@@ -7728,9 +7736,9 @@ function renderTechRoute(){
     && cst.active !== false
     && !movedAway.has(cst.id));
 
+  const movedWho = movedOntoDate(reschedules, iso);
   const movedIn = customers.filter(cst =>
-    movedHere.has(cst.id)
-    && cst.technicianId === selectedTechId
+    movedHereFor(movedWho, cst, selectedTechId)
     && cst.active !== false
     && !base.some(b => b.id === cst.id));
 
@@ -7746,16 +7754,19 @@ function renderTechRoute(){
   const forThisTech = suffix => 'day:' + techRouteDay + (suffix ? '|' + suffix : '');
   // Only a list counts; anything else stored under a key reads as no order
   const listAt = v => (Array.isArray(v) ? v : []).filter(id => ids.includes(id));
-  let order = listAt(orders['date:' + routeIso + '|' + selectedTechId]);
+  // The office's weekly order for this technician's day comes first: it is
+  // what dragging here saves, what the website shows, and what the
+  // technician's phone follows. The day's single list from before orders were
+  // kept per technician is read the same way.
+  const officeDay = lsGet('routeOrders') || {};
+  const dayOrder = officeDay[techRouteDay];
+  let order = listAt(Array.isArray(dayOrder) ? dayOrder
+    : (dayOrder && typeof dayOrder === 'object' ? dayOrder[selectedTechId] : null));
+  // Older orders kept on this phone only, for a day the office has none for
+  if(!order.length) order = listAt(orders['date:' + routeIso + '|' + selectedTechId]);
   if(!order.length) order = listAt(orders[forThisTech(selectedTechId)]);
   if(!order.length) order = listAt(orders['tech:' + forThisTech(selectedTechId)]);
   if(!order.length) order = listAt(orders[forThisTech()]);
-  if(!order.length){
-    // The office's weekly order for the day: this technician's own list, or
-    // the day's single list from before orders were kept per technician
-    const day = orders[techRouteDay];
-    order = listAt(Array.isArray(day) ? day : (day && typeof day === 'object' ? day[selectedTechId] : null));
-  }
   ids.forEach(id => { if(!order.includes(id)) order.push(id); });
   const list = order.map(id => all.find(x => x.id === id)).filter(Boolean);
 
@@ -7814,13 +7825,19 @@ function renderTechRoute(){
     grip.title = 'Drag to reorder';
     grip.style.cssText = 'flex-shrink:0;font-size:19px;color:var(--muted);padding:0 8px 0 2px;';
     attachTouchReorder(grip, row, container, '[data-reorder-key]', (keys)=>{
+      // Saved as the office's weekly order for this technician's day: the one
+      // the website shows and the technician's phone follows. It goes to the
+      // office now, or with the next sync if there's no signal.
       const store = lsGet('routeOrders') || {};
-      // Saved where the route itself looks, so a reorder here is the order
-      // the technician gets
-      store['day:' + techRouteDay + '|' + selectedTechId] = keys;
+      // Orders this screen used to keep on this phone only would still be
+      // read first and hide the new one
+      ['day:', 'tech:day:'].forEach(p => { delete store[p + techRouteDay + '|' + selectedTechId]; });
       lsSet('routeOrders', store);
+      delete fieldRouteOrder['day:' + techRouteDay + '|' + selectedTechId];
+      saveFieldRouteOrder();
+      saveCompanyRouteOrder(techRouteDay, keys);
       renderTechRoute();
-      showToast('Route order saved');
+      showToast('Route order saved for every ' + techRouteDay);
     });
     row.appendChild(grip);
 
@@ -7895,7 +7912,16 @@ function renderTechRoute(){
   });
 }
 
-// Move one customer off this day — once, or for good
+// A technician's name from their id, for the Move window
+function techNameFor(id){
+  if(!id) return 'no technician';
+  const list = (adminTechnicians && adminTechnicians.length) ? adminTechnicians : (lsGet('technicians') || []);
+  const t = list.find(x => x && String(x.id) === String(id));
+  return (t && t.name) || 'another technician';
+}
+
+// Move one customer off this day — to another date, another technician, or
+// both — once, or for good
 function openTechRescheduleModal(customer){
   // Always the customer as they are in the list right now. A sync replaces the
   // whole list with fresh objects, so the one captured when this opened can be
@@ -7908,8 +7934,9 @@ function openTechRescheduleModal(customer){
   overlay.innerHTML = `
     <div class="confirm-box" style="max-width:420px;">
       <h3 style="font-size:15px;margin:0 0 4px;">Move ${customer.name}</h3>
-      <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Currently on ${customer.day || 'no day'}. Pick the new date, then choose whether this is a one-off or their new regular day.</p>
+      <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Currently on ${customer.day || 'no day'} with ${techNameFor(customer.technicianId)}. Pick a new date, another technician, or both, then choose whether this is a one-off or for good.</p>
       <div class="field"><label>New date</label><input type="date" id="trDate"></div>
+      <div class="field"><label>Technician</label><select id="trTech"></select></div>
       <div class="btn-row" style="flex-direction:column;gap:8px;">
         <button class="btn btn-primary" id="trOnce" style="width:100%;">Just this once</button>
         <button class="btn btn-ghost" id="trAlways" style="width:100%;">Change their regular day</button>
@@ -7919,43 +7946,67 @@ function openTechRescheduleModal(customer){
   document.body.appendChild(overlay);
 
   const dateEl = overlay.querySelector('#trDate');
+  // Everyone who can take a route; the customer's own technician first
+  const techEl = overlay.querySelector('#trTech');
+  const techs = (adminTechnicians && adminTechnicians.length ? adminTechnicians : (lsGet('technicians') || []))
+    .filter(t => t && t.id);
+  const ownId = String(customer.technicianId || '');
+  const addOpt = (id, text)=>{ const o = document.createElement('option'); o.value = id; o.textContent = text; techEl.appendChild(o); };
+  addOpt(ownId, (ownId ? techNameFor(ownId) : 'Unassigned') + ' (as now)');
+  techs.forEach(t => { if(String(t.id) !== ownId) addOpt(String(t.id), t.name || 'Technician'); });
+  const newTech = ()=> techEl.value !== ownId ? techEl.value : null;
   const close = ()=> document.body.removeChild(overlay);
   overlay.querySelector('#trCancel').addEventListener('click', close);
   overlay.addEventListener('click', (e)=>{ if(e.target === overlay) close(); });
 
   overlay.querySelector('#trOnce').addEventListener('click', ()=>{
-    const toISO = dateEl.value;
-    if(!toISO){ showToast('Pick a date first'); return; }
+    // Another technician with no new date: same day, their route instead
+    const toISO = dateEl.value || (newTech() ? fromISO : '');
+    if(!toISO){ showToast('Pick a date or another technician first'); return; }
+    if(toISO === fromISO && !newTech()){ showToast('That\u2019s the day they\u2019re already on'); return; }
     // Anything that moved this customer off this day, or onto it, is replaced.
     // Leaving an earlier move in place left them showing on both days.
     const list = (lsGet('rescheduledVisits') || [])
       .filter(r => !(r.customerId === customer.id
         && (r.fromDate === fromISO || r.toDate === fromISO)));
-    list.push({
+    const move = {
       id: 'resched_' + Date.now(), customerId: customer.id,
       fromDate: fromISO, toDate: toISO, createdAt: new Date().toISOString()
-    });
+    };
+    // Who does them that day, when it isn't their own technician
+    if(newTech()) move.technicianId = newTech();
+    list.push(move);
     lsSet('rescheduledVisits', list);
     close();
     renderTechRoute();
     const d = new Date(toISO + 'T12:00:00');
-    showToast(customer.name + ' moved to ' + d.toLocaleDateString(undefined,
-      {weekday:'long', month:'short', day:'numeric'}));
+    const when = d.toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'});
+    showToast(customer.name + ' moved to ' + when + (newTech() ? ' with ' + techNameFor(newTech()) : ''));
   });
 
   overlay.querySelector('#trAlways').addEventListener('click', async ()=>{
     const toISO = dateEl.value;
-    if(!toISO){ showToast('Pick a date first'); return; }
-    const newDay = DAYS_OF_WEEK[new Date(toISO + 'T12:00:00').getDay()];
-    const ok = await confirmDialog('Move ' + customer.name + ' to ' + newDay
-      + ' every week from now on?', 'Change day');
+    const tech = newTech();
+    if(!toISO && !tech){ showToast('Pick a date or another technician first'); return; }
+    // A date changes their regular day; a technician, who has them from now on
+    const newDay = toISO ? DAYS_OF_WEEK[new Date(toISO + 'T12:00:00').getDay()] : null;
+    const parts = [];
+    if(newDay) parts.push('to ' + newDay + ' every week');
+    if(tech) parts.push('to ' + techNameFor(tech) + '\u2019s route');
+    const ok = await confirmDialog('Move ' + customer.name + ' ' + parts.join(' and ') + ' from now on?',
+      tech && !newDay ? 'Change technician' : (tech ? 'Change day and technician' : 'Change day'));
     if(!ok) return;
-    const target = customers.find(x => x.id === customer.id);
     const live = liveCustomer();
-    if(live){ live.day = newDay; clearMovesFor(live.id); saveCustomers(); }
+    if(live){
+      if(newDay) live.day = newDay;
+      if(tech) live.technicianId = tech;
+      clearMovesFor(live.id);
+      saveCustomers();
+    }
     close();
     renderTechRoute();
-    showToast(customer.name + ' now serviced on ' + newDay + 's');
+    showToast(customer.name + (newDay ? ' now serviced on ' + newDay + 's' : '')
+      + (newDay && tech ? ',' : '') + (tech ? ' now on ' + techNameFor(tech) + '\u2019s route' : ''));
   });
 }
 
@@ -8228,6 +8279,20 @@ function loadReschedules(){
   return lsGet('rescheduledVisits') || [];
 }
 
+// Who does a customer moved onto a date: the technician the move names, or
+// their own when it names nobody (a move of date only)
+function movedOntoDate(reschedules, iso){
+  const who = new Map();
+  (reschedules || []).forEach(r=>{
+    if(r && r.toDate === iso) who.set(r.customerId, r.technicianId || null);
+  });
+  return who;
+}
+function movedHereFor(who, customer, techId){
+  if(!who.has(customer.id)) return false;
+  return String(who.get(customer.id) || customer.technicianId || '') === String(techId || '');
+}
+
 function isoForDay(dayName){
   const d = dateForWeekday(dayName);
   if(!d) return '';
@@ -8472,6 +8537,32 @@ async function pushCompanyRouteOrder(){
     }
   }catch(e){}
   return false;
+}
+
+// The office changed this person's weekly order for a day (from the website,
+// or an admin's Technicians tab): that newer order takes over from the
+// every-week order kept on this phone for that day. A Just today order stays.
+// Nothing is dropped the first time the office's orders arrive on a phone.
+function officeRouteOrderArrived(before, after){
+  let me = null;
+  try{ me = currentUser && currentUser.id; }catch(e){}
+  if(!me || !before || typeof before !== 'object' || !after || typeof after !== 'object') return;
+  const mine = (ro, day) => {
+    const d = ro[day];
+    return (d && typeof d === 'object' && !Array.isArray(d) && Array.isArray(d[String(me)])) ? d[String(me)] : null;
+  };
+  let changed = false;
+  ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].forEach(day=>{
+    const now = mine(after, day);
+    if(!now || JSON.stringify(now) === JSON.stringify(mine(before, day))) return;
+    ['day:' + day, 'day:' + day + '|' + me, day].forEach(k=>{
+      if(fieldRouteOrder[k] !== undefined){ delete fieldRouteOrder[k]; changed = true; }
+    });
+  });
+  if(changed){
+    saveFieldRouteOrder();
+    try{ if(typeof currentViewName === 'string' && currentViewName === 'home') renderHomeList(); }catch(e){}
+  }
 }
 
 // Rearranging part of a route: the customers that were on screen swap among
@@ -9414,10 +9505,11 @@ function adminVersion_renderHomeList(){
 
   // Only a reschedule brings a customer onto a day here; a work order or task
   // is its own item and never adds their service
+  const movedWho = movedOntoDate(reschedules, selectedDayISO);
   const movedInCustomers = customers.filter(c =>
     movedHere.has(c.id) && c.active !== false &&
-    // Only for the technician being looked at (everyone under All customers)
-    (!adminViewTechId || c.technicianId === adminViewTechId) &&
+    // Only for the technician doing them that day (everyone under All customers)
+    (!adminViewTechId || movedHereFor(movedWho, c, adminViewTechId)) &&
     // Once serviced they drop off, exactly as a customer whose regular day it is
     !servicedOnDate(c, selectedDayISO) &&
     !baseCustomers.some(b => b.id === c.id));
@@ -9735,7 +9827,7 @@ function techVersion_renderHomeList(){
     // order or task is its own item and never adds their service.
     // A customer moved onto this date only for their own technician; a
     // reschedule is shared with every phone
-    (filterCleanIds.has(c.id) || (movedHere.has(c.id) && currentUser && c.technicianId === currentUser.id)) &&
+    (filterCleanIds.has(c.id) || (currentUser && movedHereFor(movedOntoDate(reschedules, selectedDayISO), c, currentUser.id))) &&
     c.active !== false &&
     // Once serviced they drop off, exactly as a customer whose regular day it
     // is. Without this a customer moved in for the day stayed on the list
@@ -10386,9 +10478,10 @@ function routeOrderToday(){
     .filter(c => currentUser ? c.technicianId === currentUser.id : false)
     .filter(c => !movedAway.has(c.id));
 
+  const movedWho = movedOntoDate(reschedules, iso);
   const extra = customers.filter(c => movedHere.has(c.id) && c.active !== false
     && !base.some(b => b.id === c.id)
-    && (currentUser ? c.technicianId === currentUser.id : false));
+    && (currentUser ? movedHereFor(movedWho, c, currentUser.id) : false));
 
   return orderCustomersForDay(selectedHomeDay, base.concat(extra));
 }

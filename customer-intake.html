@@ -295,8 +295,9 @@ input::placeholder{color:#A9BCB9;}
 .access-row:hover .access-tip,
 .access-row.tip-open .access-tip{opacity:1;visibility:visible;transform:translateY(0);}
 .profile-meta-label{
-  display:block;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;
-  color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:4px;
+  /* Larger, bolder and darker than an eyebrow, so each row's heading stands out */
+  display:block;font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:700;
+  color:var(--teal-deep);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;
 }
 .profile-meta-value{font-size:16px;color:var(--ink);line-height:1.4;}
 .pill{
@@ -488,9 +489,9 @@ input::placeholder{color:#A9BCB9;}
     </div>
     <nav>
       <button class="tab active" data-view="customers">Customers</button>
-      <button class="tab" data-view="map">Route Scheduling</button>
-      <button class="tab" data-view="customerconfig">Customer Customization</button>
       <button class="tab" data-view="technicians">Technicians</button>
+      <button class="tab" data-view="customerconfig">Customer Customization</button>
+      <button class="tab" data-view="map">Route Scheduling</button>
       <button class="tab" data-view="chemconfig">Readings and Dosages</button>
       <button class="tab" data-view="productsservices">Products and Services</button>
       <button class="tab" data-view="workcenter">WorkCenter</button>
@@ -700,6 +701,30 @@ input::placeholder{color:#A9BCB9;}
   </div>
 
   <div class="view" id="view-technicians">
+    <!-- Signing in on a phone sits first, above the tabs, on both of them -->
+    <div class="card" id="techSignInCard">
+      <h2>Signing in on a phone</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 12px;">The first time a technician uses the app on a phone, they open your setup link or type your company code. After that they sign in with just their username and password.</p>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-size:13px;color:var(--muted);">Company code</span>
+        <strong id="techCompanyCode" style="font-size:18px;letter-spacing:0.08em;">&mdash;</strong>
+        <button class="btn btn-ghost" id="btnChangeCompanyCode" type="button" style="width:auto;padding:6px 12px;font-size:12.5px;">Change</button>
+      </div>
+      <div id="techCompanyCodeEdit" style="display:none;margin-top:10px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <input id="techCompanyCodeInput" maxlength="12" placeholder="TRIFFIC" style="max-width:180px;text-transform:uppercase;">
+          <button class="btn btn-primary" id="btnSaveCompanyCode" type="button" style="width:auto;">Save code</button>
+          <button class="btn btn-ghost" id="btnCancelCompanyCode" type="button" style="width:auto;">Cancel</button>
+        </div>
+        <p style="font-size:11.5px;color:var(--muted);margin:6px 0 0;">4 to 12 letters or numbers. Phones already set up keep working.</p>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;">
+        <span style="font-size:13px;color:var(--muted);">Setup link</span>
+        <code id="techSetupLink" style="font-size:12px;word-break:break-all;flex:1;min-width:0;">&mdash;</code>
+        <button class="btn btn-ghost" id="btnCopySetupLink" type="button" style="width:auto;padding:6px 12px;font-size:12.5px;">Copy link</button>
+      </div>
+      <p id="techSignInStatus" style="font-size:11.5px;color:var(--muted);margin:10px 0 0;"></p>
+    </div>
     <!-- In a card like every other tab strip: the same grey reads lighter on
          the page background than it does on white -->
     <div class="card" style="padding:12px;">
@@ -729,29 +754,6 @@ input::placeholder{color:#A9BCB9;}
     <div id="techListPane">
     <div class="card">
       <button class="btn btn-primary" id="btnAddTech" style="width:auto;">+ Add technician</button>
-    </div>
-    <div class="card" id="techSignInCard">
-      <h2>Signing in on a phone</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 12px;">The first time a technician uses the app on a phone, they open your setup link or type your company code. After that they sign in with just their username and password.</p>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span style="font-size:13px;color:var(--muted);">Company code</span>
-        <strong id="techCompanyCode" style="font-size:18px;letter-spacing:0.08em;">&mdash;</strong>
-        <button class="btn btn-ghost" id="btnChangeCompanyCode" type="button" style="width:auto;padding:6px 12px;font-size:12.5px;">Change</button>
-      </div>
-      <div id="techCompanyCodeEdit" style="display:none;margin-top:10px;">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-          <input id="techCompanyCodeInput" maxlength="12" placeholder="TRIFFIC" style="max-width:180px;text-transform:uppercase;">
-          <button class="btn btn-primary" id="btnSaveCompanyCode" type="button" style="width:auto;">Save code</button>
-          <button class="btn btn-ghost" id="btnCancelCompanyCode" type="button" style="width:auto;">Cancel</button>
-        </div>
-        <p style="font-size:11.5px;color:var(--muted);margin:6px 0 0;">4 to 12 letters or numbers. Phones already set up keep working.</p>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;">
-        <span style="font-size:13px;color:var(--muted);">Setup link</span>
-        <code id="techSetupLink" style="font-size:12px;word-break:break-all;flex:1;min-width:0;">&mdash;</code>
-        <button class="btn btn-ghost" id="btnCopySetupLink" type="button" style="width:auto;padding:6px 12px;font-size:12.5px;">Copy link</button>
-      </div>
-      <p id="techSignInStatus" style="font-size:11.5px;color:var(--muted);margin:10px 0 0;"></p>
     </div>
     <div class="card primary" id="techFormCard" style="display:none;">
       <h2 id="techFormHeading">Add a technician</h2>
@@ -795,25 +797,31 @@ input::placeholder{color:#A9BCB9;}
   </div>
 
   <div class="view" id="view-tech-detail">
+    <!-- Laid out like a customer's profile: back and previous / next, then the
+         name with the tabs, then the profile itself -->
     <div class="card">
-      <button class="btn btn-ghost" id="backToTechs" type="button" style="width:auto;">← Back to Technicians</button>
-      <div class="section-head" style="margin-top:12px;">
-        <div>
-          <h2 id="techDetailName">Technician</h2>
-          <p id="techDetailContact" style="font-size:12.5px;color:var(--muted);margin:3px 0 0;"></p>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-ghost" id="backToTechs" type="button" style="width:auto;">← Back to Technicians</button>
+        <div style="margin-left:auto;display:flex;gap:8px;">
+          <button class="btn btn-ghost" id="btnPrevTech" type="button" style="width:auto;">← Previous technician</button>
+          <button class="btn btn-ghost" id="btnNextTech" type="button" style="width:auto;">Next technician →</button>
         </div>
-        <span class="section-count" id="techDetailCount"></span>
       </div>
     </div>
 
     <div class="card">
+      <h2 id="techDetailHeading" style="margin:0 0 14px;color:var(--teal-deep);font-size:26px;line-height:1.2;"></h2>
       <div class="seg-control" id="techTabControl">
         <button class="history-type-btn active" data-techtab="profile" type="button">Profile</button>
         <button class="history-type-btn" data-techtab="customers" type="button">Customers</button>
       </div>
     </div>
 
-    <div class="card" id="techProfileCard">
+    <div class="card primary" id="techProfileCard">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:2px;">
+        <h2 id="techDetailName">Technician</h2>
+        <span class="section-count" id="techDetailCount" style="margin-left:auto;"></span>
+      </div>
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Tap any field to edit it.</p>
       <div id="techProfileMeta"></div>
     </div>
@@ -15046,23 +15054,16 @@ function renderTechnicianList(){
         });
       }
 
-      const nameArea = row.querySelector('.cust-left');
-      nameArea.style.cursor = 'pointer';
-      nameArea.addEventListener('click', (e)=>{
-        // Don't open the profile when the grip was the target
-        if(e.target.closest('.tech-handle')) return;
+      // The whole row opens their profile (not the grip or Delete)
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', (e)=>{
+        if(e.target.closest('.tech-handle, button')) return;
         openTechDetail(t);
       });
       const rightWrap = document.createElement('div');
       rightWrap.style.display = 'flex';
       rightWrap.style.gap = '8px';
       rightWrap.style.flexShrink = '0';
-      const editBtn = document.createElement('button');
-      editBtn.className = 'btn btn-ghost';
-      editBtn.style.padding = '6px 10px';
-      editBtn.style.fontSize = '12px';
-      editBtn.textContent = 'Edit';
-      editBtn.addEventListener('click', ()=>editTechnician(t));
       const delBtn = document.createElement('button');
       delBtn.className = 'btn btn-ghost';
       delBtn.style.padding = '6px 10px';
@@ -15071,7 +15072,6 @@ function renderTechnicianList(){
       delBtn.style.borderColor = '#EFC9BC';
       delBtn.textContent = 'Delete';
       delBtn.addEventListener('click', ()=>deleteTechnician(t));
-      rightWrap.appendChild(editBtn);
       rightWrap.appendChild(delBtn);
       row.appendChild(rightWrap);
       container.appendChild(row);
@@ -15372,6 +15372,10 @@ function renderTechProfile(techId){
   const meta = document.getElementById('techProfileMeta');
   if(!tech || !meta) return;
   meta.innerHTML = '';
+  ['techDetailName', 'techDetailHeading'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.textContent = tech.name || 'Technician';
+  });
 
   const refresh = ()=> renderTechProfile(techId);
 
@@ -15415,18 +15419,11 @@ function renderTechProfile(techId){
   row({label:'Username', value: (acct && acct.username) || tech.username, placeholder:'Add a username', editor: techSignInEditor(tech,'username')});
   row({label:'Password', value: acct ? '••••••••' : '', placeholder: acct ? '' : 'Set a password to create their sign-in', editor: techSignInEditor(tech,'password')});
   checkRow('Admin access', 'isAdmin',
-    'Clicking this will give the technician access to the admin app, allowing them to see all customers and make changes to app and customer info.');
+    'Admins get the admin tabs in the app and can see every customer. Regular technicians only see customers assigned to them.');
   checkRow('Can rearrange their route', 'canReorderRoute',
     'They can drag customers into a different order on their route for the day. Admins can always do this.');
   checkRow('Equipment photo access', 'canPhotoEquipment',
-    'Lets this technician photograph their customers\' equipment from the field app. Photos save to the customer\'s profile.');
-
-  // Photo requirements for this technician specifically
-  const phHead = document.createElement('div');
-  phHead.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;"
-    + 'color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;margin:16px 0 4px;';
-  phHead.textContent = 'What this technician must do';
-  meta.appendChild(phHead);
+    'Lets this technician photograph their customers\' equipment. Photos save to the customer\'s profile.');
 
   // Before and after photo requirements are set per body of water on Readings
   // and Dosages, not per technician — the field apps stopped reading the
@@ -15435,17 +15432,12 @@ function renderTechProfile(techId){
   // The gate photo is set on the Photo requirements tab now, alongside the
   // before and after photos, so there is nothing to set here.
 
+  // A tick box in its own row, with what it does written underneath
   function checkRow(label, field, tip, defaultOn){
-    const el = document.createElement('label');
-    el.className = 'profile-meta-row access-row';
-    el.style.cssText += 'display:flex;align-items:center;gap:10px;cursor:pointer;';
-
-    if(tip){
-      const tipEl = document.createElement('span');
-      tipEl.className = 'access-tip';
-      tipEl.textContent = tip;
-      el.appendChild(tipEl);
-    }
+    const el = document.createElement('div');
+    el.className = 'profile-meta-row';
+    const line = document.createElement('label');
+    line.style.cssText = 'display:flex;align-items:center;gap:10px;cursor:pointer;margin:0;';
 
     const cb = document.createElement('input');
     cb.type = 'checkbox';
@@ -15476,7 +15468,7 @@ function renderTechProfile(techId){
       saveTechField();
       if(field === 'isAdmin') renderTechProfile(tech.id);
     });
-    el.appendChild(cb);
+    line.appendChild(cb);
 
     // While admin access is on, the two it carries cannot be unticked
     if(field === 'canReorderRoute' || field === 'canPhotoEquipment'){
@@ -15489,11 +15481,17 @@ function renderTechProfile(techId){
     }
 
     const lbl = document.createElement('span');
-    lbl.className = 'profile-meta-label';
-    lbl.style.marginBottom = '0';
-    lbl.style.fontSize = '12.5px';
+    lbl.style.cssText = 'font-size:14px;font-weight:500;color:var(--ink);';
     lbl.textContent = label;
-    el.appendChild(lbl);
+    line.appendChild(lbl);
+    el.appendChild(line);
+
+    if(tip){
+      const about = document.createElement('p');
+      about.style.cssText = 'font-size:11.5px;color:var(--muted);margin:6px 0 0 28px;';
+      about.textContent = tip;
+      el.appendChild(about);
+    }
 
     meta.appendChild(el);
   }
@@ -15751,11 +15749,9 @@ function openTechDetail(t){
   document.getElementById('techAssignCard').style.display = 'none';
   techAssignedPage = 1;
   document.getElementById('techDetailName').textContent = t.name;
-  const contactParts = [];
-  if(t.phone) contactParts.push(t.phone);
-  if(t.email) contactParts.push(t.email);
-  document.getElementById('techDetailContact').textContent = contactParts.join(' · ') || 'No contact info on file';
+  document.getElementById('techDetailHeading').textContent = t.name;
   updateTechDetailCount(t.id);
+  refreshTechStepButtons();
   document.querySelectorAll('#techTabControl .history-type-btn').forEach(b=>{
     b.classList.toggle('active', b.dataset.techtab === 'profile');
   });
@@ -15776,6 +15772,88 @@ function openTechDetail(t){
 document.getElementById('backToTechs').addEventListener('click', (e)=>{
   e.preventDefault();
   switchView('technicians');
+});
+
+// Previous and next technician, in the order of the Technicians list, the same
+// as a customer's Previous and Next
+function stepToTechnician(delta){
+  const i = technicians.findIndex(x => x.id === currentTechDetailId);
+  if(i === -1) return;
+  const target = technicians[i + delta];
+  if(!target) return;
+  // Stay on whichever tab is open, as stepping through customers does
+  const active = document.querySelector('#techTabControl .history-type-btn.active');
+  const tab = active ? active.dataset.techtab : 'profile';
+  openTechDetail(target);
+  if(tab !== 'profile'){
+    document.querySelectorAll('#techTabControl .history-type-btn').forEach(b=>{
+      b.classList.toggle('active', b.dataset.techtab === tab);
+    });
+    applyTechTab();
+  }
+}
+
+function refreshTechStepButtons(){
+  const prev = document.getElementById('btnPrevTech');
+  const next = document.getElementById('btnNextTech');
+  if(!prev || !next) return;
+  const i = technicians.findIndex(x => x.id === currentTechDetailId);
+  const atStart = i <= 0;
+  const atEnd = i === -1 || i >= technicians.length - 1;
+  prev.disabled = atStart;
+  prev.style.opacity = atStart ? '0.35' : '';
+  prev.style.cursor = atStart ? 'not-allowed' : '';
+  prev.title = atStart ? 'First technician' : 'Go to ' + (technicians[i - 1].name || 'the previous technician');
+  next.disabled = atEnd;
+  next.style.opacity = atEnd ? '0.35' : '';
+  next.style.cursor = atEnd ? 'not-allowed' : '';
+  next.title = atEnd ? 'Last technician' : 'Go to ' + (technicians[i + 1].name || 'the next technician');
+}
+
+document.getElementById('btnPrevTech').addEventListener('click', ()=> stepToTechnician(-1));
+document.getElementById('btnNextTech').addEventListener('click', ()=> stepToTechnician(1));
+
+// Keys on an open profile. Left and right step to the previous and next
+// technician; Escape goes back to the list, on a technician's or a customer's
+// profile. Never while typing (the keys belong to the field then) or while a
+// window is open (windows close only from their own buttons).
+function profileKeysAllowed(e){
+  if(e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return false;
+  if(document.querySelector('.confirm-overlay')) return false;
+  const open = Array.from(document.querySelectorAll('[id$="Overlay"]'))
+    .some(o => o.style.display && o.style.display !== 'none');
+  if(open) return false;
+  const el = document.activeElement;
+  if(el){
+    const tag = (el.tagName || '').toLowerCase();
+    if(tag === 'input' || tag === 'textarea' || tag === 'select') return false;
+    if(el.isContentEditable) return false;
+  }
+  return true;
+}
+
+document.addEventListener('keydown', (e)=>{
+  if(e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Escape') return;
+  const page = document.getElementById('view-tech-detail');
+  if(!page || !page.classList.contains('active') || !currentTechDetailId) return;
+  if(!profileKeysAllowed(e)) return;
+  const id = e.key === 'Escape' ? 'backToTechs' : (e.key === 'ArrowRight' ? 'btnNextTech' : 'btnPrevTech');
+  const btn = document.getElementById(id);
+  if(!btn || btn.disabled) return;
+  e.preventDefault();
+  btn.click();
+});
+
+// Escape on a customer's profile goes back to the customer list
+document.addEventListener('keydown', (e)=>{
+  if(e.key !== 'Escape') return;
+  const view = document.getElementById('view-customers');
+  if(!view || !view.classList.contains('active') || !profileCustomerId) return;
+  const back = document.getElementById('backToListCard');
+  if(!back || back.style.display === 'none') return;
+  if(!profileKeysAllowed(e)) return;
+  e.preventDefault();
+  document.getElementById('btnBackToList').click();
 });
 
 document.getElementById('btnAddTech').addEventListener('click', ()=>{
