@@ -872,16 +872,17 @@ async function walkVisit(w, d, maxPresses){
 {
   console.log('\n=== a technician\u2019s route is in their order ===');
   const src = fs.readFileSync('admin-readings-app.html', 'utf8');
-  check('the one-off order for that date comes first',
-        /orders\['date:' \+ routeIso \+ '\|' \+ selectedTechId\]/.test(src));
-  check('then the weekly order for that technician',
-        /orders\[forThisTech\(selectedTechId\)\]/.test(src));
-  check('older saves are still understood',
-        /orders\['tech:' \+ forThisTech\(selectedTechId\)\]/.test(src));
-  check('and the office order is the last word',
-        /orders\[forThisTech\(\)\]/.test(src));
-  check('dragging here saves where the route looks',
-        /store\['day:' \+ techRouteDay \+ '\|' \+ selectedTechId\] = keys;/.test(src));
+  // Since Sept 29 the office's weekly order for that technician comes first,
+  // and dragging here saves to it (it used to save to this phone only, where
+  // nothing else read it). Driven for real in part 1.
+  check('the office\u2019s weekly order for that technician comes first',
+        /const dayOrder = officeDay\[techRouteDay\];/.test(src)
+        && src.indexOf('const dayOrder = officeDay[techRouteDay];') < src.indexOf("orders['date:' + routeIso + '|' + selectedTechId]"));
+  check('older orders kept on the phone are still understood',
+        /orders\['date:' \+ routeIso \+ '\|' \+ selectedTechId\]/.test(src)
+        && /orders\['tech:' \+ forThisTech\(selectedTechId\)\]/.test(src));
+  check('dragging here saves the office\u2019s order and sends it',
+        /saveCompanyRouteOrder\(techRouteDay, keys\);/.test(src));
   check('and no longer under a key of its own',
         src.indexOf("store['tech:' + orderKeyName]") === -1);
 }

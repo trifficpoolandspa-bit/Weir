@@ -71,10 +71,11 @@ console.log('\n=== Customer Customization is its own tab ===');
   try{
     const tabs = Array.from(d.querySelectorAll('.tab')).map(t => t.dataset.view);
     check('  the tab exists', tabs.indexOf('customerconfig') !== -1, tabs.join(','));
-    check('  it sits after Route Scheduling',
-          tabs.indexOf('customerconfig') === tabs.indexOf('map') + 1);
-    check('  and before Technicians',
-          tabs.indexOf('customerconfig') === tabs.indexOf('technicians') - 1);
+    // Menu order since Sept 29: Customers, Technicians, Customer Customization, Route Scheduling
+    check('  it sits after Technicians',
+          tabs.indexOf('customerconfig') === tabs.indexOf('technicians') + 1);
+    check('  and before Route Scheduling',
+          tabs.indexOf('customerconfig') === tabs.indexOf('map') - 1);
 
     w.eval("switchView('customerconfig');");
     check('  opening it does not throw', true);

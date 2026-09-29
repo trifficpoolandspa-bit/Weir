@@ -783,9 +783,9 @@ console.log('\n=== Rearranging the route is granted per technician ===');
     // usually ticked
     w.eval("technicians.push({id:'tp9', name:'Profile Tech'}); saveTechnicians();"
       + " openTechDetail(technicians.find(t=>t.id==='tp9'));");
-    const profileRow = label => Array.from(d.querySelectorAll('#techProfileMeta .access-row'))
+    const profileRow = label => Array.from(d.querySelectorAll('#techProfileMeta .profile-meta-row')).filter(r => r.querySelector('input[type=checkbox]'))
       .find(r => r.textContent.indexOf(label) !== -1);
-    const order = Array.from(d.querySelectorAll('#techProfileMeta .access-row')).map(r => r.textContent);
+    const order = Array.from(d.querySelectorAll('#techProfileMeta .profile-meta-row')).filter(r => r.querySelector('input[type=checkbox]')).map(r => r.textContent);
     check('the profile lists Admin access above rearranging',
           order.findIndex(t => t.indexOf('Admin access') !== -1)
           < order.findIndex(t => t.indexOf('rearrange') !== -1), order.join(' | ').slice(0, 120));
@@ -1847,7 +1847,7 @@ async function serverTechniciansTab(){
       check('and the skip requirement too', rf().requireSkipProof === true, JSON.stringify(rf()));
       check('the profile page carries neither', (()=>{
         w.eval("openTechDetail(technicians.find(t => t.name === 'Rule Follower'))");
-        const rows = Array.from(d.querySelectorAll('#techProfileMeta .access-row')).map(r => r.textContent);
+        const rows = Array.from(d.querySelectorAll('#techProfileMeta .profile-meta-row')).filter(r => r.querySelector('input[type=checkbox]')).map(r => r.textContent);
         return !rows.some(r => /closed gate/i.test(r) || /photo and note to skip/i.test(r));
       })());
       w.eval("switchView('technicians')"); await sleep(250);
@@ -1946,7 +1946,7 @@ async function serverTechniciansTab(){
         input.value = value;
         input.dispatchEvent(new w.Event('blur')); await sleep(450);
       };
-      const adminBox = () => { const r = Array.from(d.querySelectorAll('#techProfileMeta .access-row')).find(x => /Admin access/.test(x.textContent)); return r && r.querySelector('input'); };
+      const adminBox = () => { const r = Array.from(d.querySelectorAll('#techProfileMeta .profile-meta-row')).filter(r => r.querySelector('input[type=checkbox]')).find(x => /Admin access/.test(x.textContent)); return r && r.querySelector('input'); };
       const acctOf = async techId => (await members()).find(m => m.technician_id === techId);
 
       await openProfile('Alex Rivera');

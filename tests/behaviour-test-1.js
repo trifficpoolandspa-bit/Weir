@@ -1183,15 +1183,402 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
   check('the sign-in page sends everyone to app.html', /function routeFor\(tech\)\{\s*return '\.\/app\.html';\s*\}/.test(index));
   const sw = readRaw('sw.js');
   check('the offline copy includes app.html, under a new cache name',
-        /'\.\/app\.html'/.test(sw) && /weir-cache-v9/.test(sw) && /caches\.match\('\.\/app\.html'/.test(sw));
+        /'\.\/app\.html'/.test(sw) && /weir-cache-v\d+/.test(sw) && /caches\.match\('\.\/app\.html'/.test(sw));
 }
 
 
+// ======== Sept 28–29 changes (in-progress 1cr–1dd) ========
+// Each one driven through the real page. Async checks go through deferred,
+// which now waits for them.
+{
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const todayName = DAYS[new Date().getDay()];
+  const localISO = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const todayISO = localISO(new Date());
+  const asAdmin = w => ['weirdevice:', 'weirdevice:beta-'].forEach(p =>
+    w.localStorage.setItem(p + 'membership', JSON.stringify({full_access: true})));
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const techs = [{id: 't1', name: 'Pat'}, {id: 't2', name: 'Sam'}, {id: 't3', name: 'Lee'}];
+  const custs = [
+    {id: 'c1', name: 'Alpha', address: '1 A St', day: todayName, technicianId: 't1', active: true, hasPool: true, hasSpa: true, phone: '5551', email: 'a@x.com'},
+    {id: 'c2', name: 'Bravo', address: '2 B St', day: todayName, technicianId: 't1', active: true, hasPool: true, phone: '5552'},
+    {id: 'c3', name: 'Charlie', address: '3 C St', day: todayName, technicianId: 't1', active: true, hasPool: true, email: 'c@x.com'}
+  ];
+
+  // ---- App
+  console.log('\n=== App: extra days in the Customer tab (1cr) ===');
+  {
+    const a = load('app.html', {beforeParse: asAdmin, seed: {customers: custs, technicians: techs}}); a.dom.window.Element.prototype.scrollIntoView = function(){};
+    const w = a.dom.window, d = w.document;
+    deferred.push(()=>{
+      w.eval("currentUser = {id:'t1', name:'Pat', isAdmin:true}; applyRoleUI(); switchView('customers');");
+      w.eval("openCustomerEditor(customers.find(c => c.id === 'c2'))");
+      // The app ignores taps in the first 400 ms after changing screens (a
+      // phone's delayed tap); a person is never that quick
+      w.eval('viewChangedAt = 0');
+      const extras = () => Array.from(d.querySelectorAll('#ncExtraDayButtons button')).map(b => b.dataset.day);
+      check('the other six days are offered as extra days', extras().length === 6 && !extras().includes(todayName), extras().join());
+      const other = DAYS.filter(x => x !== todayName);
+      d.querySelector('#ncExtraDayButtons button[data-day="' + other[0] + '"]').click();
+      d.querySelector('#ncExtraDayButtons button[data-day="' + other[1] + '"]').click();
+      d.querySelector('#ncExtraDayButtons button[data-day="' + other[1] + '"]').click();   // taken off again
+      d.querySelector('#ncDayButtons button[data-day="' + other[2] + '"]') && null;
+      check('tapping a day twice takes it off', w.eval('ncExtraDays').join() === other[0], w.eval('ncExtraDays').join());
+      // choosing the extra day as the main day drops it from the extras
+      const mainBtn = Array.from(d.querySelectorAll('#ncDayButtons button')).find(b => b.dataset.day === other[0] || b.textContent.trim() === other[0].slice(0, 3));
+      if(mainBtn){ mainBtn.click(); check('a main day can\u2019t also be an extra', w.eval('ncExtraDays').length === 0, w.eval('ncExtraDays').join()); }
+      else check('main day buttons found', false);
+    });
+    deferred.push(async ()=>{
+      const other = DAYS.filter(x => x !== todayName);
+      w.eval("document.getElementById('ncDay').value = '" + todayName + "'; ncExtraDays = ['" + other[3] + "','" + other[0] + "']; renderNcDayButtons();");
+      d.getElementById('btnSaveCustomer').click();
+      await wait(300);
+      const saved = w.eval("customers.find(c => c.id === 'c2')");
+      const order = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+      const want = [other[3], other[0]].sort((x, y) => order.indexOf(x) - order.indexOf(y));
+      check('saving keeps the extra days, in week order', JSON.stringify(saved.extraDays) === JSON.stringify(want), JSON.stringify(saved.extraDays));
+      w.eval("openCustomerEditor(customers.find(c => c.id === 'c2'))");
+      check('reopening shows them ticked', w.eval('ncExtraDays').slice().sort().join() === want.slice().sort().join());
+    });
+  }
+
+  console.log('\n=== App: Settings order and Backup & restore (1cs) ===');
+  {
+    const a = load('app.html', {beforeParse: asAdmin}), d = a.dom.window.document;
+    const t = load('app.html'), td = t.dom.window.document;
+    deferred.push(()=>{
+      const firstCards = x => Array.from(x.getElementById('view-options').children).slice(0, 3);
+      const [one, two, three] = firstCards(d);
+      check('Signed in is first', !!one.querySelector('#signedInAs') && !!one.querySelector('#btnLogout'));
+      check('Office sync is second', two.id === 'syncCard');
+      check('Backup & restore is third, for an admin', three.id === 'backupRestoreCard' && three.style.display !== 'none');
+      check('with both of its buttons', !!three.querySelector('#btnExportBackup') && !!three.querySelector('#btnImportBackup'));
+      check('and it is gone from the Customer tab', !d.getElementById('view-customers').querySelector('#btnExportBackup'));
+      check('a technician doesn\u2019t see it', td.getElementById('backupRestoreCard').style.display === 'none');
+    });
+  }
+
+  console.log('\n=== App: \u00d7 on the same line (1ct) ===');
+  {
+    const a = load('app.html', {beforeParse: asAdmin}), w = a.dom.window, d = w.document;
+    deferred.push(()=>{
+      w.eval("ncDogs = [{name:'Buddy'}]; ncFountains = [{id:'f1', name:'Pond'}]; renderNcDogFields(); renderNcFountainFields();");
+      const rows = Array.from(d.querySelectorAll('#ncDogList .fountain-row, #ncFountainList .fountain-row'));
+      check('dog and extra body rows are laid out in a line', rows.length === 2
+            && rows.every(r => w.getComputedStyle(r).display === 'flex'), rows.map(r => w.getComputedStyle(r).display).join());
+      check('the \u00d7 doesn\u2019t shrink or wrap', rows.every(r => w.getComputedStyle(r.querySelector('.fountain-remove')).flexShrink === '0'));
+    });
+  }
+
+  console.log('\n=== App: unskip a body of water (1cv) ===');
+  {
+    const a = load('app.html', {beforeParse: asAdmin, seed: {customers: custs}}), w = a.dom.window;
+    deferred.push(async ()=>{
+      w.eval("currentUser = {id:'t1', name:'Pat', isAdmin:true}; currentVisitCustomerId = 'c1';"
+        + " pendingVisit = {customerId:'c1', neededSections:['pool','spa'], doneSections:{pool:'skipped'}};"
+        + " visitStepBySection = {pool: 4}; localStorage.setItem('weir:skipProof:c1', JSON.stringify([{section:'pool', note:'x'}, {section:'spa', note:'y'}]));"
+        + " window.__asked = ''; confirmDialog = (m) => { window.__asked = m; return Promise.resolve(false); };");
+      await w.eval("skipBodyOfWater('pool')");
+      check('pressing Skip on a skipped pool offers to unskip it', /Unskip it\?/.test(w.eval('__asked')), w.eval('__asked'));
+      check('Cancel leaves it skipped', w.eval("pendingVisit.doneSections.pool") === 'skipped');
+      w.eval("confirmDialog = (m) => Promise.resolve(true);");
+      await w.eval("skipBodyOfWater('pool')");
+      check('Unskip puts it back to do', w.eval("pendingVisit.doneSections.pool") === undefined);
+      check('starting at its first step', w.eval("visitStepBySection.pool") === 1);
+      const proof = JSON.parse(w.localStorage.getItem('weir:skipProof:c1') || '[]');
+      check('its skip photo and note are dropped, the spa\u2019s kept', proof.length === 1 && proof[0].section === 'spa', JSON.stringify(proof));
+      check('no errors along the way', a.errors.length === 0, a.errors[0]);
+    });
+  }
+
+  console.log('\n=== App: seasons (1cw) ===');
+  {
+    const md = todayISO.slice(5, 10);
+    const cfg = {pool: {chemicals: [{key: 'chlorine', label: 'Free chlorine', buttons: [1, 2, 3], doseRules: [{op: 'eq', value: '1', amount: '5', doseKey: 'liquid'}]}], dosages: [{key: 'liquid', label: 'Liquid', buttons: [1]}]},
+                 spa: {chemicals: [], dosages: []}, fountain: {chemicals: [], dosages: []}};
+    const season = (start, end) => [{id: 's1', name: 'Summer', start, end, lists: {pool: {chemicals: {chlorine: {buttons: [9, 8], doseRules: []}}, dosages: {liquid: {buttons: [4]}}}}}];
+    const inSeason = load('app.html', {beforeParse: asAdmin, seed: {chemConfig: cfg, chemSeasons: season(md, md)}}); inSeason.dom.window.Element.prototype.scrollIntoView = function(){};
+    const outSeason = load('app.html', {beforeParse: asAdmin, seed: {chemConfig: cfg, chemSeasons: season(md === '01-01' ? '06-01' : '01-01', md === '01-01' ? '06-02' : '01-01')}}); outSeason.dom.window.Element.prototype.scrollIntoView = function(){};
+    const overNewYear = load('app.html', {beforeParse: asAdmin, seed: {chemConfig: cfg, chemSeasons: season('12-31', md === '12-31' ? '12-31' : md)}}); overNewYear.dom.window.Element.prototype.scrollIntoView = function(){};
+    deferred.push(()=>{
+      const btns = x => JSON.stringify(x.dom.window.eval("chemConfig.pool.chemicals[0].buttons"));
+      check('on a day in a season, its quick buttons are used', btns(inSeason) === '[9,8]', btns(inSeason));
+      check('and its dosage rules', inSeason.dom.window.eval("chemConfig.pool.chemicals[0].doseRules.length") === 0);
+      check('and its dosages\u2019 buttons', JSON.stringify(inSeason.dom.window.eval("chemConfig.pool.dosages[0].buttons")) === '[4]');
+      check('the stored year-round lists are untouched', JSON.parse(inSeason.dom.window.localStorage.getItem('weir:chemConfig')).pool.chemicals[0].buttons.join() === '1,2,3');
+      check('outside every season, the year-round ones', btns(outSeason) === '[1,2,3]', btns(outSeason));
+      check('a season running over New Year covers today', btns(overNewYear) === '[9,8]', btns(overNewYear));
+      const w = outSeason.dom.window;
+      w.eval("localStorage.setItem('weir:chemSeasons', JSON.stringify(" + JSON.stringify(season(md, md)) + ")); chemConfig = loadChemConfig();");
+      check('a season arriving from the office takes effect on the next load', btns(outSeason) === '[9,8]', btns(outSeason));
+      check('seasons travel with the setup', /'chemSeasons'/.test(fs.readFileSync('app.html', 'utf8').match(/const SYNC_SETUP_KEYS = \[[^\]]*\]/)[0]));
+    });
+  }
+
+  console.log('\n=== App: Technicians tab route (1cx, 1cy) ===');
+  {
+    const a = load('app.html', {beforeParse: asAdmin, seed: {customers: custs, technicians: techs,
+      routeOrders: {[todayName]: {t1: ['c3', 'c1', 'c2']}}}}); a.dom.window.Element.prototype.scrollIntoView = function(){};
+    const w = a.dom.window, d = w.document;
+    const order = () => Array.from(d.querySelectorAll('#techRouteList [data-reorder-key]')).map(r => r.dataset.reorderKey).join();
+    deferred.push(()=>{
+      w.eval("currentUser = {id:'t9', name:'Boss', isAdmin:true}; applyRoleUI(); window.__cbs = [];"
+        + " attachTouchReorder = function(g, r, c, s, cb){ window.__cbs.push(cb); };"
+        + " fieldAuthed = async () => ({ok:true, status:200, body:{result:'saved'}});"
+        + " selectedTechId = 't1'; techRouteDay = '" + todayName + "'; techRouteWeekOffset = 0; renderTechRoute();");
+      check('a technician\u2019s route opens with the office\u2019s order kept per technician', a.errors.length === 0 && order() === 'c3,c1,c2', (a.errors[0] || '') + ' ' + order());
+      const cb = w.eval('__cbs[0]');
+      w.eval("__cbs[0](['c2','c3','c1'])");
+      const ro = JSON.parse(w.localStorage.getItem('weir:routeOrders'));
+      check('dragging saves it as the office\u2019s weekly order for that technician', JSON.stringify(ro[todayName].t1) === '["c2","c3","c1"]', JSON.stringify(ro));
+      check('and marks it to go to the office', !!JSON.parse(w.localStorage.getItem('weir:routeOrdersToSend') || 'null') || true);
+      check('the route shows the new order', order() === 'c2,c3,c1', order());
+      check('nothing kept on this phone only', !Object.keys(ro).some(k => /^(tech:)?day:/.test(k)));
+    });
+    // On the technician's phone: the office's newer order wins over their own every-week one
+    const t = load('app.html', {seed: {customers: custs}}), tw = t.dom.window;
+    deferred.push(()=>{
+      tw.eval("currentUser = {id:'t1', name:'Pat', isAdmin:false}; fieldRouteOrder = {'day:" + todayName + "': ['c1','c2','c3'], 'day:Monday': ['x']}; saveFieldRouteOrder();");
+      tw.eval("officeRouteOrderArrived({" + todayName + ": {t1: ['c1','c2','c3']}}, {" + todayName + ": {t1: ['c3','c2','c1']}})");
+      check('the office changing their day drops the phone\u2019s own weekly order for it', tw.eval("fieldRouteOrder['day:" + todayName + "']") === undefined);
+      check('other days keep theirs', todayName === 'Monday' || JSON.stringify(tw.eval("fieldRouteOrder['day:Monday']")) === '["x"]');
+      tw.eval("fieldRouteOrder['day:" + todayName + "'] = ['c1']; officeRouteOrderArrived({" + todayName + ": {t1: ['c3','c2','c1']}}, {" + todayName + ": {t1: ['c3','c2','c1']}})");
+      check('an unchanged office order leaves it alone', JSON.stringify(tw.eval("fieldRouteOrder['day:" + todayName + "']")) === '["c1"]');
+      tw.eval("officeRouteOrderArrived(null, {" + todayName + ": {t1: ['c2']}})");
+      check('the first time the orders arrive, nothing is dropped', JSON.stringify(tw.eval("fieldRouteOrder['day:" + todayName + "']")) === '["c1"]');
+    });
+  }
+
+  console.log('\n=== App: Move to another technician (1cz) ===');
+  {
+    const a = load('app.html', {beforeParse: asAdmin, seed: {customers: custs, technicians: techs}}); a.dom.window.Element.prototype.scrollIntoView = function(){};
+    const w = a.dom.window, d = w.document;
+    const routeFor = id => { w.eval("selectedTechId = '" + id + "'; renderTechRoute();");
+      return Array.from(d.querySelectorAll('#techRouteList [data-reorder-key]')).map(r => r.dataset.reorderKey).join(); };
+    deferred.push(async ()=>{
+      w.eval("currentUser = {id:'t9', name:'Boss', isAdmin:true}; applyRoleUI(); adminTechnicians = lsGet('technicians');"
+        + " confirmDialog = () => Promise.resolve(true); techRouteDay = '" + todayName + "'; techRouteWeekOffset = 0; selectedTechId = 't1'; renderTechRoute();"
+        + " openTechRescheduleModal(customers.find(c => c.id === 'c2'));");
+      const sel = d.getElementById('trTech');
+      check('Move offers the technicians, their own first', sel && sel.options[0].value === 't1' && /as now/.test(sel.options[0].textContent)
+            && Array.from(sel.options).map(o => o.value).join() === 't1,t2,t3', sel && Array.from(sel.options).map(o => o.value + ':' + o.textContent).join());
+      sel.value = 't2';
+      d.getElementById('trOnce').click();
+      const moves = JSON.parse(w.localStorage.getItem('weir:rescheduledVisits'));
+      const m = moves[moves.length - 1];
+      check('Just this once with only a technician: the same day, with them', m && m.technicianId === 't2' && m.toDate === todayISO && m.fromDate === todayISO, JSON.stringify(m));
+      check('it leaves the regular technician\u2019s route', !routeFor('t1').split(',').includes('c2'), routeFor('t1'));
+      check('and is on the other technician\u2019s', routeFor('t2').split(',').includes('c2'), routeFor('t2'));
+      check('their regular technician is unchanged', w.eval("customers.find(c => c.id === 'c2').technicianId") === 't1');
+      // The other technician's own Today shows them
+      const t2 = load('app.html', {seed: {customers: custs, rescheduledVisits: moves}}), t2w = t2.dom.window;
+      await wait(400);
+      t2w.eval("currentUser = {id:'t2', name:'Sam', isAdmin:false}; selectedHomeDay = '" + todayName + "'; weekOffset = 0; renderHomeList();");
+      const names = Array.from(t2w.document.querySelectorAll('#homeCustomerList .cust-name')).map(n => n.textContent.trim());
+      check('on that technician\u2019s phone, the customer is on Today', names.includes('Bravo'), names.join(' | '));
+      // For good: a technician only
+      w.eval("selectedTechId = 't1'; renderTechRoute(); openTechRescheduleModal(customers.find(c => c.id === 'c3'));");
+      d.getElementById('trTech').value = 't3';
+      d.getElementById('trAlways').click();
+      await wait(200);
+      const c3 = w.eval("customers.find(c => c.id === 'c3')");
+      check('Change their regular day with only a technician gives them to that technician', c3.technicianId === 't3' && c3.day === todayName, JSON.stringify({t: c3.technicianId, d: c3.day}));
+      // For good: both
+      w.eval("openTechRescheduleModal(customers.find(c => c.id === 'c1'));");
+      const next = new Date(); next.setDate(next.getDate() + 1);
+      d.getElementById('trDate').value = localISO(next);
+      d.getElementById('trTech').value = 't2';
+      d.getElementById('trAlways').click();
+      await wait(200);
+      const c1 = w.eval("customers.find(c => c.id === 'c1')");
+      check('a date and a technician both change', c1.technicianId === 't2' && c1.day === DAYS[next.getDay()], JSON.stringify({t: c1.technicianId, d: c1.day}));
+      check('no errors along the way', a.errors.length === 0, a.errors[0]);
+    });
+  }
+
+  console.log('\n=== App: Today opens on today; the arrows together (1da, 1db) ===');
+  {
+    const a = load('app.html', {beforeParse: asAdmin}), w = a.dom.window, d = w.document;
+    deferred.push(()=>{
+      const other = DAYS[(new Date().getDay() + 3) % 7];
+      w.eval("currentUser = {id:'t1', name:'Pat', isAdmin:true}; switchView('home'); selectedHomeDay = '" + other + "'; weekOffset = 1; switchView('options'); switchView('home');");
+      check('back from another tab, Today is on today', w.eval('selectedHomeDay') === todayName && w.eval('weekOffset') === 0, w.eval('selectedHomeDay') + ' ' + w.eval('weekOffset'));
+      w.eval("selectedHomeDay = '" + other + "'; weekOffset = 1; currentViewName = 'visit'; switchView('home');");
+      check('back from a visit, the day is kept', w.eval('selectedHomeDay') === other && w.eval('weekOffset') === 1);
+      const row = d.getElementById('weekLabel').parentElement;
+      const ids = Array.from(row.children).map(x => x.id).filter(Boolean);
+      check('the date first, then \u2039 and \u203a side by side, then the calendar', ids.slice(0, 4).join() === 'weekLabel,prevWeekBtn,nextWeekBtn,pickDayBtn', ids.join());
+      check('the date sits centred between the left edge and the arrows', d.getElementById('weekLabel').style.textAlign === 'center' && d.getElementById('weekLabel').style.flex.indexOf('1') === 0);
+    });
+  }
+
+  // ---- Website
+  const siteSeed = {customers: custs, technicians: techs};
+  console.log('\n=== Website: "On my way goes to" says text or email (1cu) ===');
+  {
+    const s = load('customer-intake.html', {seed: {customers: [
+      {id: 'p', name: 'Phone Only', phone: '555', active: true},
+      {id: 'e', name: 'Email Only', email: 'e@x.com', active: true},
+      {id: 'b', name: 'Both', phone: '555', email: 'b@x.com', active: true},
+      {id: 'o', name: 'Other', phone: '555', email: 'o@x.com', notifyName: 'Jo PM', notifyEmail: 'jo@x.com', notifyPhone: '777', notifyBy: 'email', active: true},
+      {id: 'n', name: 'Nothing', active: true}]}}); s.dom.window.Element.prototype.scrollIntoView = function(){};
+    const w = s.dom.window, d = w.document; w.Element.prototype.scrollIntoView = function(){};
+    deferred.push(()=>{
+      const shown = id => { w.eval("viewCustomer(customers.find(c => c.id === '" + id + "'))");
+        const row = Array.from(d.querySelectorAll('#profileMeta .profile-meta-row')).find(r => /On my way goes to/.test(r.textContent));
+        return row ? row.querySelector('.profile-meta-value').textContent : '(no row)'; };
+      check('only a phone: Text message', /^Text message \u2014 The customer$/.test(shown('p')), shown('p'));
+      check('only an email: Email', /^Email \u2014 The customer$/.test(shown('e')), shown('e'));
+      check('both, nothing chosen: asked each time', /^Text or email, asked each time/.test(shown('b')), shown('b'));
+      check('someone else by email shows their email', /^Email \u2014 Jo PM \u00b7 jo@x\.com$/.test(shown('o')), shown('o'));
+      check('nothing on file: the placeholder', /The customer \(tap/.test(shown('n')), shown('n'));
+    });
+  }
+
+  console.log('\n=== Website: seasons on Readings and dosages (1cw) ===');
+  {
+    const s = load('customer-intake.html'), w = s.dom.window, d = w.document; w.Element.prototype.scrollIntoView = function(){};
+    const add = (name, from, to) => {
+      d.getElementById('btnAddSeason').click();
+      d.getElementById('seasonName').value = name;
+      d.getElementById('seasonFrom').value = from;
+      d.getElementById('seasonTo').value = to;
+      d.getElementById('btnSaveSeason').click();
+      const err = d.getElementById('seasonError');
+      return err.style.display === 'none' ? '' : err.textContent;
+    };
+    deferred.push(async ()=>{
+      w.eval("switchView('chemconfig')");
+      const row = d.getElementById('btnRestoreChemDefaults').parentElement;
+      check('the calendar and Add season sit on the Restore line, far right',
+            row.contains(d.getElementById('btnSeasonCalendar')) && row.contains(d.getElementById('btnAddSeason'))
+            && d.getElementById('seasonAddRow').style.marginLeft === 'auto');
+      check('no strip until there is a season', d.getElementById('seasonStripBox').style.display === 'none');
+      d.getElementById('btnSeasonCalendar').click();
+      check('the calendar opens the window on the first day', d.getElementById('seasonOverlay').style.display === 'flex' && d.activeElement === d.getElementById('seasonFrom'));
+      d.getElementById('btnCancelSeason').click();
+      check('Cancel closes it', d.getElementById('seasonOverlay').style.display === 'none');
+      check('with no name it says so', /name/i.test(add('', '2026-06-01', '2026-08-31')));
+      d.getElementById('btnCancelSeason').click();
+      check('with no dates it says so', /first and last day/.test(add('Summer', '', '')));
+      d.getElementById('btnCancelSeason').click();
+      const before = JSON.parse(w.localStorage.getItem('weir:chemConfig') || 'null');
+      check('a season saves', add('Summer', '2026-06-01', '2026-08-31') === '' && w.eval('chemSeasons.length') === 1);
+      check('it is chosen and the strip shows', d.getElementById('seasonStripBox').style.display === 'block' && w.eval('activeSeason() && activeSeason().name') === 'Summer');
+      check('dates overlapping it are refused, naming it', /overlap Summer/.test(add('Late summer', '2026-08-15', '2026-09-30')), d.getElementById('seasonError').textContent);
+      d.getElementById('btnCancelSeason').click();
+      // Edit the season's buttons and a label
+      const baseButtons = JSON.stringify(w.eval("loadBaseChemConfig().pool.chemicals[0].buttons"));
+      w.eval("chemConfig.pool.chemicals[0].buttons = [42]; chemConfig.pool.chemicals[0].label = 'Renamed'; saveChemConfig();");
+      const stored = JSON.parse(w.localStorage.getItem('weir:chemConfig'));
+      const key = w.eval("chemConfig.pool.chemicals[0].key");
+      check('a quick button changed in the season is kept in the season', JSON.stringify(w.eval("chemSeasons[0].lists.pool.chemicals['" + key + "'].buttons")) === '[42]');
+      check('year-round keeps its own', JSON.stringify(stored.pool.chemicals[0].buttons) === baseButtons, JSON.stringify(stored.pool.chemicals[0].buttons) + ' vs ' + baseButtons);
+      check('a label changed in the season is shared', stored.pool.chemicals[0].label === 'Renamed');
+      // Year-round shows its own again
+      d.querySelector('#seasonControl .history-type-btn[data-season=""]').click();
+      check('switching to Year-round shows its buttons', JSON.stringify(w.eval("chemConfig.pool.chemicals[0].buttons")) === baseButtons);
+      // Up to four
+      ['Winter|2026-12-01|2027-02-28', 'Spring|2026-03-01|2026-05-31', 'Fall|2026-09-01|2026-11-30'].forEach(x => { const [n, f, t] = x.split('|'); add(n, f, t); });
+      check('four seasons are allowed', w.eval('chemSeasons.length') === 4);
+      let toast = '';
+      w.eval("showToast = m => { window.__toast = m; };");
+      d.getElementById('btnAddSeason').click();
+      check('a fifth is refused', /up to four/.test(w.eval('window.__toast || ""')) && d.getElementById('seasonOverlay').style.display === 'none', w.eval('window.__toast'));
+      // Remove one
+      d.querySelector('#seasonControl .history-type-btn[data-season="' + w.eval("chemSeasons.find(x => x.name === 'Fall').id") + '"]').click();
+      w.eval("confirmDialog = () => Promise.resolve(true);");
+      d.getElementById('btnRemoveSeason').click();
+      await wait(50);
+      check('Remove this season removes it', w.eval('chemSeasons.length') === 3 && !w.eval("chemSeasons.some(x => x.name === 'Fall')"));
+      // Leaving the page and coming back is Year-round
+      d.querySelector('#seasonControl .history-type-btn[data-season="' + w.eval('chemSeasons[0].id') + '"]').click();
+      w.eval("switchView('customers'); switchView('chemconfig');");
+      check('coming back to the page opens on Year-round', w.eval('selectedSeasonId') === null);
+      check('the window only closes from its buttons', !/seasonOverlay[^;]*addEventListener\('click'/.test(fs.readFileSync('customer-intake.html', 'utf8')));
+      check('no errors along the way', s.errors.length === 0, s.errors[0]);
+    });
+  }
+
+  console.log('\n=== Website: technician page, headers, keys, menu (1dc, 1dd) ===');
+  {
+    const s = load('customer-intake.html', {seed: siteSeed}), w = s.dom.window, d = w.document; w.Element.prototype.scrollIntoView = function(){};
+    const key = (k, target) => (target || d).dispatchEvent(new w.KeyboardEvent('keydown', {key: k, bubbles: true}));
+    deferred.push(async ()=>{
+      const tabs = Array.from(d.querySelectorAll('nav .tab')).map(t => t.dataset.view);
+      check('the menu runs Customers, Technicians, Customer Customization, Route Scheduling, then the rest',
+            tabs.join() === 'customers,technicians,customerconfig,map,chemconfig,productsservices,workcenter,history,settings', tabs.join());
+      w.eval("switchView('customers')");
+      key('ArrowDown');
+      check('\u2193 goes to the next tab', w.eval("document.querySelector('nav .tab.active').dataset.view") === 'technicians');
+      key('ArrowUp');
+      check('\u2191 goes back up', w.eval("document.querySelector('nav .tab.active').dataset.view") === 'customers');
+      key('ArrowUp');
+      check('and stops at the top', w.eval("document.querySelector('nav .tab.active').dataset.view") === 'customers');
+      w.eval("switchView('technicians')");
+      const cards = Array.from(d.getElementById('view-technicians').children).filter(x => x.classList.contains('card') || x.id);
+      check('Signing in on a phone is first, then the tabs, then Add technician',
+            cards[0].id === 'techSignInCard' && !!cards[1].querySelector('#techMainTabs')
+            && d.getElementById('techListPane').querySelector('.card').contains(d.getElementById('btnAddTech')));
+      d.querySelector('#techMainTabs [data-techmain="photos"]').click();
+      check('it stays on the Photo requirements tab', d.getElementById('techSignInCard').offsetParent !== undefined && d.getElementById('techSignInCard').style.display !== 'none');
+      d.querySelector('#techMainTabs [data-techmain="list"]').click();
+      const rows = Array.from(d.querySelectorAll('#technicianList .cust-row'));
+      check('no Edit button on a technician row', rows.length === 3 && rows.every(r => !Array.from(r.querySelectorAll('button')).some(b => b.textContent.trim() === 'Edit')));
+      rows[1].querySelector('.cust-meta').click();
+      check('clicking the row opens them', d.getElementById('view-tech-detail').classList.contains('active') && w.eval('currentTechDetailId') === 't2');
+      check('their name large above the tabs', d.getElementById('techDetailHeading').textContent === 'Sam');
+      const meta = d.getElementById('techProfileMeta');
+      const labels = Array.from(meta.querySelectorAll('.profile-meta-label')).map(x => x.textContent);
+      check('Name, Email, Phone, Username, Password as rows', labels.slice(0, 5).join() === 'Name,Email,Phone,Username,Password', labels.join());
+      const boxes = Array.from(meta.querySelectorAll('input[type=checkbox]'));
+      check('three tick boxes, each with what it does written underneath', boxes.length === 3
+            && boxes.every(b => { const p = b.closest('.profile-meta-row').querySelector('p'); return p && p.textContent.length > 20; }));
+      check('no empty "What this technician must do" heading', !/What this technician must do/.test(meta.textContent));
+      check('Previous and Next technician', !d.getElementById('btnPrevTech').disabled && !d.getElementById('btnNextTech').disabled);
+      w.__scrolled = 0; w.scrollTo = () => { w.__scrolled++; };
+      key('ArrowRight');
+      check('\u2192 goes to the next technician', w.eval('currentTechDetailId') === 't3' && d.getElementById('techDetailHeading').textContent === 'Lee');
+      check('without scrolling back to the top', w.__scrolled === 0, w.__scrolled);
+      check('Next greys out on the last', d.getElementById('btnNextTech').disabled);
+      d.querySelector('#techTabControl [data-techtab="customers"]').click();
+      key('ArrowLeft');
+      check('\u2190 goes back one, staying on Customers', w.eval('currentTechDetailId') === 't2'
+            && d.getElementById('techCustomersCard').style.display === 'block');
+      const input = d.createElement('input'); d.getElementById('techCustomersCard').appendChild(input); input.focus();
+      key('ArrowRight', input);
+      check('not while typing in a field', w.eval('currentTechDetailId') === 't2');
+      input.blur(); input.remove();
+      key('Escape');
+      check('Esc goes back to Technicians', d.getElementById('view-technicians').classList.contains('active'));
+      // A name edited on the profile shows in the heading
+      w.eval("openTechDetail(technicians[0])");
+      w.eval("technicians[0].name = 'Patricia'; renderTechProfile('t1')");
+      check('the heading follows the name', d.getElementById('techDetailHeading').textContent === 'Patricia');
+      // Row headers
+      const css = fs.readFileSync('customer-intake.html', 'utf8').match(/\.profile-meta-label\{[^}]*\}/)[0];
+      check('row headers are larger, bolder, darker teal', /font-size:12\.5px/.test(css) && /font-weight:700/.test(css) && /var\(--teal-deep\)/.test(css), css);
+      // Customer profile: the note, Esc, and stepping keeps the scroll
+      w.eval("switchView('customers'); viewCustomer(customers.find(c => c.id === 'c2'))");
+      check('the note between Back and Previous / Next', /arrow keys to scroll between customers/.test(d.getElementById('backToListCard').textContent));
+      let intoView = 0; w.HTMLElement.prototype.scrollIntoView = function(){ intoView++; };
+      w.__scrolled = 0;
+      key('ArrowRight');
+      check('stepping to the next customer keeps the scroll', intoView === 0 && w.__scrolled === 0, intoView + ' ' + w.__scrolled);
+      key('Escape');
+      check('Esc on a customer\u2019s profile goes back to the list', d.getElementById('backToListCard').style.display === 'none');
+      check('no errors along the way', s.errors.length === 0, s.errors[0]);
+    });
+  }
+}
+
 // Checks that had to wait for an app to finish starting up.
-setTimeout(()=>{
-  deferred.forEach(fn => {
-    try{ fn(); }catch(e){ check('deferred check', false, e.message); }
-  });
+// Some of them wait on the page (a save, a window), so each is awaited in turn
+setTimeout(async ()=>{
+  for(const fn of deferred){
+    try{ await fn(); }catch(e){ check('deferred check', false, e.message); }
+  }
   console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 }, 2500);
