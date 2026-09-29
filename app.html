@@ -7666,9 +7666,7 @@ function renderTechList(){
       const row = document.createElement('div');
       row.className = 'cust-row';
       const count = techCustomerCount(t.id);
-      // Their email on the name's line, in the same small text as the line under it
-      const emailBit = t.email ? `<span class="cust-meta" style="display:inline;margin:0 0 0 8px;font-weight:400;">${t.email}</span>` : '';
-      row.innerHTML = `<div><div class="cust-name">${t.name}${emailBit}</div><div class="cust-meta">${count} ${count === 1 ? 'customer' : 'customers'}${t.phone ? ' · ' + t.phone : ''}</div></div>`;
+      row.innerHTML = `<div><div class="cust-name">${t.name}</div><div class="cust-meta">${count} ${count === 1 ? 'customer' : 'customers'}${t.phone ? ' · ' + t.phone : ''}</div></div>`;
       const right = document.createElement('div');
       right.style.display = 'flex';
       right.style.gap = '8px';
@@ -7997,8 +7995,7 @@ function renderTechRoute(){
     row.appendChild(left);
 
     const moveBtn = document.createElement('button');
-    // Answers a press within 10px of it, not only on the button itself
-    moveBtn.className = 'btn btn-ghost big-hit';
+    moveBtn.className = 'btn btn-ghost';
     // Pressable whether or not they've been serviced: they can still be moved
     // to another day or technician
     moveBtn.style.cssText = 'flex:0 0 auto;width:auto;padding:7px 11px;font-size:12px;';
@@ -8007,7 +8004,18 @@ function renderTechRoute(){
       e.stopPropagation();
       openTechRescheduleModal(cst);
     });
-    row.appendChild(moveBtn);
+    // The press area: the whole height of the row (its 15px top and bottom
+    // padding included), out to its right edge and 10px left of the button
+    const moveCell = document.createElement('div');
+    moveCell.style.cssText = 'flex:0 0 auto;align-self:stretch;display:flex;align-items:center;'
+      + 'margin:-15px -4px -15px 0;padding:0 4px 0 10px;cursor:pointer;';
+    moveCell.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      if(e.target === moveBtn) return;          // the button handles its own
+      openTechRescheduleModal(cst);
+    });
+    moveCell.appendChild(moveBtn);
+    row.appendChild(moveCell);
 
     container.appendChild(row);
   });
