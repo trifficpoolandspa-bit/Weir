@@ -415,7 +415,7 @@ input::placeholder{color:#A9BCB9;}
 .status-tag.high{color:var(--rust);}
 
 /* Today's Route (technician page): a plain table, one line per stop */
-.tw-row{display:grid;grid-template-columns:18px 28px minmax(0,1.2fr) minmax(0,1.8fr) 128px 64px;
+.tw-row{display:grid;grid-template-columns:18px 28px minmax(0,1.2fr) minmax(0,1.8fr) 128px 92px;
   align-items:center;gap:10px;padding:9px 8px;border-bottom:1px solid var(--line);font-size:13.5px;}
 .tw-row:last-child{border-bottom:none;}
 .tw-row.tw-stop{cursor:pointer;transition:background-color .12s ease;}
@@ -424,7 +424,7 @@ input::placeholder{color:#A9BCB9;}
   padding-top:0;cursor:default;}
 .tw-row > span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .tw-num{font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--muted);}
-.tw-name{font-weight:600;color:var(--ink);}
+.tw-name{font-weight:400;color:var(--ink);}
 .tw-addr{color:var(--muted);}
 .tw-grip{color:var(--muted);font-size:16px;cursor:grab;text-align:center;}
 .tw-pill{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;}
@@ -853,9 +853,9 @@ input::placeholder{color:#A9BCB9;}
     <div class="card" id="techRouteWebCard" style="display:none;">
       <!-- A desk layout: the day and its count on the left, the date controls on the right, then a table -->
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
-        <div style="flex:1 1 auto;min-width:0;">
+        <div style="flex:1 1 auto;min-width:0;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;">
+          <span id="twCounts" style="font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;"></span>
           <h2 id="twDayLabel" style="margin:0;font-size:18px;"></h2>
-          <p id="twCounts" style="font-size:12.5px;color:var(--muted);margin:3px 0 0;"></p>
         </div>
         <input type="date" id="twDateInput" title="Jump to a date" style="width:auto;flex:0 0 auto;padding:6px 8px;font-size:13px;">
         <button class="btn btn-ghost" id="twPrev" type="button" title="Previous day" style="width:auto;padding:6px 12px;font-size:16px;line-height:1;">&lsaquo;</button>
@@ -8220,6 +8220,7 @@ function syncApplyRecord(kind, id, data, deleted){
       Object.keys(held).forEach(k => { if(!(k in fresh)) delete held[k]; });
       return Object.assign(held, fresh);
     });
+    technicians = techniciansAlphabetical(technicians);
     try{ if(typeof renderTechnicianList === 'function') renderTechnicianList(); }catch(e){}
     try{ if(typeof populateTechnicianSelect === 'function') populateTechnicianSelect(); }catch(e){}
     return true;
@@ -8239,13 +8240,8 @@ function syncApplyRecord(kind, id, data, deleted){
     // The Technicians list reordered on another computer: this one follows
     if(id === 'technicianOrder' && Array.isArray(data.value)){
       try{
-        const at = new Map(data.value.map((tid, i) => [String(tid), i]));
-        technicians = technicians.slice().sort((a, b)=>{
-          const x = at.has(String(a.id)) ? at.get(String(a.id)) : 1e9;
-          const y = at.has(String(b.id)) ? at.get(String(b.id)) : 1e9;
-          return x - y;
-        });
-        lsSet('technicians', technicians);
+        // Always alphabetical now, whatever order arrives
+        technicians = techniciansAlphabetical(technicians);
         if(typeof renderTechnicianList === 'function') renderTechnicianList();
       }catch(e){}
     }
@@ -14952,7 +14948,11 @@ function saveCustomers(){
   else if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange();
 }
 
-let technicians = lsGet('technicians') || [];
+// Technicians are always in alphabetical order, everywhere they're listed
+function techniciansAlphabetical(list){
+  return (list || []).slice().sort((a, b) => String((a && a.name) || '').localeCompare(String((b && b.name) || ''), undefined, {sensitivity: 'base'}));
+}
+let technicians = techniciansAlphabetical(lsGet('technicians') || []);
 let editingTechId = null;
 movePhotoDefaultsToTechnicians();
 clearFirstOptionals();
@@ -14986,6 +14986,8 @@ function applyAdminCarries(){
 }
 
 function saveTechnicians(){
+  // A new or renamed technician takes their place in alphabetical order
+  technicians = techniciansAlphabetical(technicians);
   const ok = lsSet('technicians', technicians);
   // The list's order goes to the phones too: each technician travels on their
   // own, so the order has to be sent alongside them
@@ -16139,7 +16141,7 @@ function renderTechRouteWeb(){
     move.className = 'btn btn-ghost';
     move.type = 'button';
     move.style.cssText = 'width:auto;padding:4px 10px;font-size:12px;justify-self:end;';
-    move.textContent = 'Move';
+    move.textContent = 'Reschedule';
     move.addEventListener('click', (e)=>{ e.stopPropagation(); twOpenMove(c); });
     row.appendChild(move);
     // The rest of the row opens their report
@@ -16228,7 +16230,7 @@ document.getElementById('twDateInput').addEventListener('change', (e)=>{
 let twMoving = null;
 function twOpenMove(c){
   twMoving = c;
-  document.getElementById('twMoveHeading').textContent = 'Move ' + displayName(c.name);
+  document.getElementById('twMoveHeading').textContent = 'Reschedule ' + displayName(c.name);
   document.getElementById('twMoveIntro').textContent = 'Currently on ' + (c.day || 'no day') + ' with ' + twTechName(c.technicianId)
     + '. Pick a new date, another technician, or both, then choose whether this is a one-off or for good.';
   const date = document.getElementById('twMoveDate');
@@ -19204,6 +19206,106 @@ function switchView(view){
 document.querySelectorAll('nav .tab').forEach(tab=>{
   tab.addEventListener('click', ()=> switchView(tab.dataset.view));
 });
+
+// ---------- The browser's Back and Forward ----------
+// Every place visited is added to the browser's history, so Back goes to
+// exactly where you were before (and Forward returns): the page in the menu,
+// the customer and which of their tabs was open, the technician and their
+// tab, Readings and Dosages' body of water and season, the WorkCenter's
+// section. Going back doesn't undo anything done there, it only goes back.
+let restoringPlace = false;
+let lastPlaceKey = null;
+function sitePlace(){
+  const activeView = document.querySelector('.view.active');
+  const navTab = document.querySelector('nav .tab.active');
+  const place = {v: activeView && activeView.id === 'view-tech-detail' ? 'tech-detail'
+                   : (navTab ? navTab.dataset.view : (activeView ? activeView.id.replace(/^view-/, '') : 'customers'))};
+  const shown = id => { const el = document.getElementById(id); return !!el && el.style.display !== 'none'; };
+  if(place.v === 'customers' && profileCustomerId && shown('backToListCard')){
+    place.c = profileCustomerId;
+    const tab = document.querySelector('#profileTabControl .history-type-btn.active');
+    place.ct = tab ? tab.dataset.tab : 'profile';
+  }
+  if(place.v === 'tech-detail'){
+    place.t = currentTechDetailId;
+    const tab = document.querySelector('#techTabControl .history-type-btn.active');
+    place.tt = tab ? tab.dataset.techtab : 'profile';
+  }
+  if(place.v === 'technicians'){
+    const tab = document.querySelector('#techMainTabs .history-type-btn.active');
+    place.tm = tab ? tab.dataset.techmain : 'list';
+  }
+  if(place.v === 'chemconfig'){
+    place.b = selectedChemConfigType;
+    place.s = selectedSeasonId || null;
+  }
+  if(place.v === 'workcenter') place.w = workCenterMode;
+  return place;
+}
+function placeKey(p){ return JSON.stringify(p); }
+function pressIfThere(selector){
+  const el = document.querySelector(selector);
+  if(el && !el.classList.contains('active')) el.click();
+}
+function goToPlace(p){
+  if(!p || !p.v) return;
+  restoringPlace = true;
+  try{
+    if(p.v === 'tech-detail'){
+      const t = technicians.find(x => x && String(x.id) === String(p.t));
+      switchView('technicians');
+      if(t){
+        openTechDetail(t);
+        if(p.tt && p.tt !== 'profile') pressIfThere('#techTabControl .history-type-btn[data-techtab="' + p.tt + '"]');
+      }
+    } else {
+      switchView(p.v);
+      if(p.v === 'customers' && p.c){
+        const c = customers.find(x => x && String(x.id) === String(p.c));
+        if(c){
+          viewCustomer(c);
+          if(p.ct && p.ct !== 'profile') pressIfThere('#profileTabControl .history-type-btn[data-tab="' + p.ct + '"]');
+        }
+      }
+      if(p.v === 'technicians' && p.tm) pressIfThere('#techMainTabs .history-type-btn[data-techmain="' + p.tm + '"]');
+      if(p.v === 'chemconfig'){
+        if(p.b && p.b !== 'custom') pressIfThere('#chemConfigTypeControl .history-type-btn[data-type="' + p.b + '"]');
+        if(p.s) pressIfThere('#seasonControl .history-type-btn[data-season="' + p.s + '"]');
+      }
+      if(p.v === 'workcenter' && p.w) pressIfThere('#workCenterTypeControl .history-type-btn[data-type="' + p.w + '"]');
+    }
+  }catch(e){}
+  finally{
+    restoringPlace = false;
+    lastPlaceKey = placeKey(sitePlace());
+  }
+}
+// After each press or key, if the place changed, it goes into the history
+function notePlace(){
+  if(restoringPlace) return;
+  let p; try{ p = sitePlace(); }catch(e){ return; }
+  const key = placeKey(p);
+  if(key === lastPlaceKey) return;
+  if(lastPlaceKey === null){ history.replaceState({weirPlace: p}, ''); }
+  else history.pushState({weirPlace: p}, '');
+  lastPlaceKey = key;
+}
+document.addEventListener('click', ()=> setTimeout(notePlace, 0));
+document.addEventListener('keydown', ()=> setTimeout(notePlace, 0));
+window.addEventListener('popstate', (e)=>{
+  const p = e.state && e.state.weirPlace;
+  if(!p) return;
+  // A window open (it closes only from its own buttons): stay put
+  const windowOpen = !!document.querySelector('.confirm-overlay')
+    || Array.from(document.querySelectorAll('[id$="Overlay"]')).some(o => o.style.display && o.style.display !== 'none');
+  if(windowOpen){
+    history.pushState({weirPlace: sitePlace()}, '');
+    return;
+  }
+  goToPlace(p);
+});
+// Where the page starts is the first place in its history
+setTimeout(()=>{ try{ lastPlaceKey = null; notePlace(); }catch(e){} }, 0);
 
 // The down and up arrows go to the next and previous tab in the menu on the
 // left, stopping at either end. Not while typing (the arrow belongs to the

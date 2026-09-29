@@ -844,6 +844,12 @@ select#customerSelect{font-weight:600;}
         <p id="tcPhotoRequireNote" style="display:none;font-size:11.5px;color:var(--rust);margin:8px 0 0;"></p>
       </div>
 
+      <div class="field">
+        <label>Customers</label>
+        <p id="tcCustomerCount" style="font-size:12.5px;color:var(--muted);margin:0 0 8px;"></p>
+        <button class="btn btn-ghost" id="btnTechCustomers" type="button" style="width:100%;">Add or remove customers</button>
+      </div>
+
       <div class="btn-row">
         <button class="btn btn-primary" id="btnSaveTech" style="width:auto;">Save changes</button>
         <button class="btn btn-ghost" id="btnCancelTech">Cancel</button>
@@ -7641,14 +7647,9 @@ let techRouteDay = null;
 // The technicians as the website orders them (anyone not in that order yet
 // goes at the end, as they were)
 function techniciansInOrder(){
-  const list = lsGet('technicians') || [];
-  const order = lsGet('technicianOrder');
-  if(!Array.isArray(order) || !order.length) return list;
-  const at = new Map(order.map((id, i) => [String(id), i]));
-  return list.map((t, i) => ({t, i}))
-    .sort((a, b) => ((at.has(String(a.t && a.t.id)) ? at.get(String(a.t.id)) : 1e9) + a.i / 1e6)
-                  - ((at.has(String(b.t && b.t.id)) ? at.get(String(b.t.id)) : 1e9) + b.i / 1e6))
-    .map(x => x.t);
+  // Always alphabetical, the same as the website (Sept 29)
+  return (lsGet('technicians') || []).slice().sort((a, b) =>
+    String((a && a.name) || '').localeCompare(String((b && b.name) || ''), undefined, {sensitivity: 'base'}));
 }
 
 function loadAdminTechnicians(){
@@ -8022,7 +8023,7 @@ function renderTechRoute(){
     // Pressable whether or not they've been serviced: they can still be moved
     // to another day or technician
     moveBtn.style.cssText = 'flex:0 0 auto;width:auto;padding:7px 11px;font-size:12px;';
-    moveBtn.textContent = 'Move';
+    moveBtn.textContent = 'Reschedule';
     moveBtn.addEventListener('click', (e)=>{
       e.stopPropagation();
       openTechRescheduleModal(cst);
@@ -8069,7 +8070,7 @@ function openTechRescheduleModal(customer, opts){
   overlay.className = 'confirm-overlay';
   overlay.innerHTML = `
     <div class="confirm-box" style="max-width:420px;">
-      <h3 style="font-size:15px;margin:0 0 4px;">${opts.title || 'Move'} ${customer.name}</h3>
+      <h3 style="font-size:15px;margin:0 0 4px;">${opts.title || 'Reschedule'} ${customer.name}</h3>
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Currently on ${customer.day || 'no day'} with ${techNameFor(customer.technicianId)}. Pick a new date, another technician, or both, then choose whether this is a one-off or for good.</p>
       <div class="field"><label>New date</label><input type="date" id="trDate"></div>
       <div class="field"><label>Technician</label><select id="trTech"></select></div>
@@ -8169,8 +8170,79 @@ function openTechEditor(t){
   document.getElementById('tcName').value = t.name || '';
   document.getElementById('tcEmail').value = t.email || '';
   document.getElementById('tcPhone').value = t.phone || '';
+  renderTechCustomerCount();
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
+
+// ---- Edit: add or remove this technician's customers ----
+function renderTechCustomerCount(){
+  const el = document.getElementById('tcCustomerCount');
+  if(!el || !editingTechId) return;
+  const n = techCustomerCount(editingTechId);
+  el.textContent = n ? n + (n === 1 ? ' customer' : ' customers') + ' on their route' : 'No customers yet';
+}
+// Every customer, ticked if they're this technician's. A tick gives them to this
+// technician (from whoever had them); unticking leaves them unassigned. Each
+// tick saves straight away. Closes only from Done.
+function openTechCustomerPicker(){
+  const techId = editingTechId;
+  const tech = adminTechnicians.find(x => x && x.id === techId);
+  if(!tech) return;
+  const techName = id => { const t = adminTechnicians.find(x => x && String(x.id) === String(id)); return (t && t.name) || 'another technician'; };
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-box" style="max-width:460px;width:100%;">
+      <h3 style="font-size:15px;margin:0 0 4px;">Customers for ${esc(tech.name || 'this technician')}</h3>
+      <p style="font-size:11.5px;color:var(--muted);margin:0 0 10px;">Tick a customer to put them on this route; untick to take them off. Each change is saved as you go.</p>
+      <input id="tcPickSearch" placeholder="Search by name or address" autocomplete="off" style="margin-bottom:8px;">
+      <div id="tcPickList" style="max-height:55vh;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:0 8px;"></div>
+      <button class="btn btn-primary" id="tcPickDone" type="button" style="width:100%;margin-top:12px;">Done</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  const list = overlay.querySelector('#tcPickList');
+  const search = overlay.querySelector('#tcPickSearch');
+  const draw = ()=>{
+    const q = search.value.trim().toLowerCase();
+    const all = customers.filter(c => c && c.active !== false)
+      .filter(c => !q || (c.name || '').toLowerCase().includes(q) || (c.address || '').toLowerCase().includes(q))
+      .sort((a, b) => ((a.technicianId === techId ? 0 : 1) - (b.technicianId === techId ? 0 : 1))
+        || String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity: 'base'}));
+    list.innerHTML = '';
+    if(!all.length){ list.innerHTML = '<p style="font-size:12.5px;color:var(--muted);padding:12px 0;margin:0;">No customers match.</p>'; return; }
+    all.forEach(c=>{
+      const row = document.createElement('label');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--line);cursor:pointer;';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = c.technicianId === techId;
+      const other = c.technicianId && c.technicianId !== techId ? ' \u00b7 now ' + techName(c.technicianId) + '\u2019s' : '';
+      const text = document.createElement('span');
+      text.style.cssText = 'min-width:0;flex:1;';
+      text.innerHTML = '<span style="font-size:14px;font-weight:600;">' + esc(c.name || '') + '</span>'
+        + '<span style="display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+        + esc((c.day || 'No day') + other + (c.address ? ' \u00b7 ' + c.address : '')) + '</span>';
+      box.addEventListener('change', async ()=>{
+        const live = customers.find(x => x && x.id === c.id);
+        if(!live) return;
+        live.technicianId = box.checked ? techId : '';
+        await saveCustomers();
+        renderTechCustomerCount();
+        showToast(box.checked ? (live.name + ' added to ' + (tech.name || 'their') + '\u2019s route') : (live.name + ' taken off the route'));
+      });
+      row.appendChild(box);
+      row.appendChild(text);
+      list.appendChild(row);
+    });
+  };
+  search.addEventListener('input', draw);
+  overlay.querySelector('#tcPickDone').addEventListener('click', ()=>{
+    if(overlay.parentNode) document.body.removeChild(overlay);
+    renderTechCustomerCount();
+  });
+  draw();
+}
+document.getElementById('btnTechCustomers').addEventListener('click', openTechCustomerPicker);
 
 
 document.getElementById('btnSaveTech').addEventListener('click', ()=>{
