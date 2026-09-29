@@ -15738,7 +15738,8 @@ document.getElementById('btnAssignSelectNone').addEventListener('click', async (
 
 document.getElementById('btnDoneAssigning').addEventListener('click', closeAssignOverlay);
 
-function openTechDetail(t){
+function openTechDetail(t, opts){
+  opts = opts || {};
   currentTechDetailId = t.id;
   // The day filter starts at All days each time this is opened, rather than
   // keeping whichever day was picked last time
@@ -15766,7 +15767,9 @@ function openTechDetail(t){
   document.querySelectorAll('.tab').forEach(tab=>{
     tab.classList.toggle('active', tab.dataset.view === 'technicians');
   });
-  window.scrollTo({top: 0, behavior: 'smooth'});
+  // Stepping to the previous or next technician leaves the page where it was
+  // scrolled to; opening one from the list starts at the top
+  if(!opts.keepScroll) window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
 document.getElementById('backToTechs').addEventListener('click', (e)=>{
@@ -15784,7 +15787,7 @@ function stepToTechnician(delta){
   // Stay on whichever tab is open, as stepping through customers does
   const active = document.querySelector('#techTabControl .history-type-btn.active');
   const tab = active ? active.dataset.techtab : 'profile';
-  openTechDetail(target);
+  openTechDetail(target, {keepScroll: true});
   if(tab !== 'profile'){
     document.querySelectorAll('#techTabControl .history-type-btn').forEach(b=>{
       b.classList.toggle('active', b.dataset.techtab === tab);
@@ -17368,7 +17371,9 @@ function showCustomerProfileView(){
   refreshCustomerStepButtons();
   clearCustomerSearchField();
   hideCustomerSearchSuggestions();
-  profileTabsCard.scrollIntoView({behavior:'smooth'});
+  // Opening a customer brings their profile into view; stepping to the
+  // previous or next one leaves the page where it was scrolled to
+  if(!keepProfileTab) profileTabsCard.scrollIntoView({behavior:'smooth'});
 }
 
 function showCustomerForm(){
@@ -17387,7 +17392,9 @@ function showCustomerForm(){
   document.getElementById('backToListCard').style.display = 'block';
   clearCustomerSearchField();
   hideCustomerSearchSuggestions();
-  profileTabsCard.scrollIntoView({behavior:'smooth'});
+  // Opening a customer brings their profile into view; stepping to the
+  // previous or next one leaves the page where it was scrolled to
+  if(!keepProfileTab) profileTabsCard.scrollIntoView({behavior:'smooth'});
 }
 
 function hideCustomerForm(){
@@ -18716,6 +18723,21 @@ document.querySelectorAll('nav .tab').forEach(tab=>{
   tab.addEventListener('click', ()=> switchView(tab.dataset.view));
 });
 
+// The down arrow goes to the next tab in the menu on the left, stopping at
+// the last one. Not while typing (the arrow belongs to the field), with a
+// modifier held, or while a window is open.
+document.addEventListener('keydown', (e)=>{
+  if(e.key !== 'ArrowDown') return;
+  if(!profileKeysAllowed(e)) return;
+  const tabs = Array.from(document.querySelectorAll('nav .tab'))
+    .filter(t => t.style.display !== 'none');
+  const at = tabs.findIndex(t => t.classList.contains('active'));
+  const next = tabs[at + 1];
+  if(at === -1 || !next) return;
+  e.preventDefault();
+  next.click();
+});
+
 function saveCustomerField(){
   saveCustomers();
   renderList();
@@ -19352,8 +19374,7 @@ function stepToCustomer(delta){
   keepProfileTab = true;
   try{ viewCustomer(target); }
   finally{ keepProfileTab = false; }
-
-  window.scrollTo({top: 0, behavior: 'smooth'});
+  // The page stays where it was scrolled to, rather than going back to the top
 }
 
 function refreshCustomerStepButtons(){
