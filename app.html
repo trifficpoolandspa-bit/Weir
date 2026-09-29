@@ -169,6 +169,14 @@ textarea{min-height:52px;resize:vertical;}
 .btn-secondary{background:var(--teal-pale);color:var(--teal-deep);}
 .btn-ghost{background:transparent;color:var(--teal-deep);border:1px solid var(--line);}
 .btn-row{display:flex;gap:8px;flex-wrap:wrap;}
+/* A field with its × beside it, on one line */
+.fountain-row{display:flex;gap:8px;margin-bottom:8px;align-items:center;}
+.fountain-row input{flex:1;min-width:0;}
+.fountain-remove{
+  flex-shrink:0;width:34px;height:38px;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;line-height:1;color:var(--rust);border-color:#EFC9BC;
+}
 
 /* Signature element: test-strip visual */
 .strip{
@@ -875,6 +883,11 @@ select#customerSelect{font-weight:600;}
         <div id="ncDayButtons" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
       </div>
       <div class="field">
+        <label>Extra days</label>
+        <p style="font-size:11.5px;color:var(--muted);margin:-4px 0 8px;">For a customer serviced more than once a week. Tap each extra day.</p>
+        <div id="ncExtraDayButtons" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+      </div>
+      <div class="field">
         <label>Assigned technician</label>
         <select id="ncTechnician">
           <option value="">Unassigned</option>
@@ -913,15 +926,6 @@ select#customerSelect{font-weight:600;}
         <button class="btn btn-ghost" id="btnNewCustomerTab" style="width:auto;">+ Add new customer</button>
       </div>
       <div id="customerList"></div>
-    </div>
-    <div class="card">
-      <h2>Backup & restore</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Your data lives on this device only, so it works fully offline — but that also means it can be lost if you clear browser data or switch phones. Back it up regularly.</p>
-      <div class="btn-row">
-        <button class="btn btn-secondary" id="btnExportBackup" style="width:auto;">Download backup (.json)</button>
-        <label class="btn btn-ghost" id="btnImportBackup" style="width:auto;cursor:pointer;">Restore from backup</label>
-      </div>
-      <input type="file" accept="application/json" id="importBackupInput" style="display:none;">
     </div>
   </div>
 
@@ -992,6 +996,32 @@ select#customerSelect{font-weight:600;}
 
   <!-- OPTIONS VIEW -->
   <div class="view" id="view-options">
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div style="display:flex;align-items:baseline;gap:10px;min-width:0;flex:1;">
+          <h2 style="margin:0;flex-shrink:0;">Signed in</h2>
+          <p id="signedInAs" style="font-size:13.5px;font-weight:600;color:var(--teal-deep);margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></p>
+        </div>
+        <button class="btn btn-ghost" id="btnLogout" style="width:auto;flex-shrink:0;">Sign out</button>
+      </div>
+    </div>
+    <div class="card" id="syncCard">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <h2 style="margin:0;">Office sync</h2>
+        <button class="btn btn-ghost" id="btnSyncNow" style="width:auto;margin-left:auto;flex:0 0 auto;">Sync now</button>
+      </div>
+      <p id="fieldSyncStatus" style="font-size:12.5px;color:var(--muted);margin:10px 0 0;">Checking&hellip;</p>
+      <p style="font-size:11.5px;color:var(--muted);margin:8px 0 0;">Everything is saved on this phone first and works with no signal. It goes to the office whenever there is a connection.</p>
+    </div>
+    <div class="card" id="backupRestoreCard" style="display:none;">
+      <h2>Backup & restore</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Your data lives on this device only, so it works fully offline — but that also means it can be lost if you clear browser data or switch phones. Back it up regularly.</p>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="btnExportBackup" style="width:auto;">Download backup (.json)</button>
+        <label class="btn btn-ghost" id="btnImportBackup" style="width:auto;cursor:pointer;">Restore from backup</label>
+      </div>
+      <input type="file" accept="application/json" id="importBackupInput" style="display:none;">
+    </div>
       <!-- Water balance (LSI) is hidden until calcium hardness and water temperature
      are part of the readings. The calculator and the readout are still in the
      app; only this switch is out of sight, so nothing is lost by restoring it. -->
@@ -1020,23 +1050,6 @@ select#customerSelect{font-weight:600;}
 
 
 
-    <div class="card" id="syncCard">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <h2 style="margin:0;">Office sync</h2>
-        <button class="btn btn-ghost" id="btnSyncNow" style="width:auto;margin-left:auto;flex:0 0 auto;">Sync now</button>
-      </div>
-      <p id="fieldSyncStatus" style="font-size:12.5px;color:var(--muted);margin:10px 0 0;">Checking&hellip;</p>
-      <p style="font-size:11.5px;color:var(--muted);margin:8px 0 0;">Everything is saved on this phone first and works with no signal. It goes to the office whenever there is a connection.</p>
-    </div>
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-        <div style="display:flex;align-items:baseline;gap:10px;min-width:0;flex:1;">
-          <h2 style="margin:0;flex-shrink:0;">Signed in</h2>
-          <p id="signedInAs" style="font-size:13.5px;font-weight:600;color:var(--teal-deep);margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></p>
-        </div>
-        <button class="btn btn-ghost" id="btnLogout" style="width:auto;flex-shrink:0;">Sign out</button>
-      </div>
-    </div>
 
     <div class="card" id="techVoiceCard" style="display:none;">
       <div class="field">
@@ -1568,6 +1581,43 @@ function loadChemConfig(){
     });
   });
   if(migrated) lsSet('chemConfig', cfg);
+  // Only ever shown, never saved: the stored lists keep their year-round rules
+  applyTodaysSeason(cfg);
+  return cfg;
+}
+
+// ---------- Seasons ----------
+// Set on the website: up to four seasons, each with its own dosage rules and
+// quick buttons between two dates every year. On a day in a season those are
+// used; any other day, the year-round ones. Checked whenever the setup is
+// loaded, which includes opening every visit.
+const SEASON_FIELDS = ['doseRules', 'doseRulesFrom', 'buttons'];
+function seasonCovers(season, md){
+  const a = season.start, b = season.end;
+  return a <= b ? (md >= a && md <= b) : (md >= a || md <= b);   // Nov to Feb runs over New Year
+}
+function seasonForDate(dateStr){
+  const saved = lsGet('chemSeasons');
+  const seasons = Array.isArray(saved) ? saved.filter(x => x && x.start && x.end) : [];
+  const md = String(dateStr || '').slice(5, 10);
+  return seasons.find(s => seasonCovers(s, md)) || null;
+}
+function applyTodaysSeason(cfg){
+  const season = seasonForDate(todayDateStr());
+  if(!season || !season.lists) return cfg;
+  ['pool', 'spa', 'fountain'].forEach(t=>{
+    ['chemicals', 'dosages'].forEach(list=>{
+      const own = (season.lists[t] && season.lists[t][list]) || {};
+      ((cfg[t] && cfg[t][list]) || []).forEach(item=>{
+        // One added since the season was made keeps the year-round ones
+        if(!item || !item.key || !own[item.key]) return;
+        SEASON_FIELDS.forEach(f=>{
+          if(own[item.key][f] !== undefined) item[f] = JSON.parse(JSON.stringify(own[item.key][f]));
+          else delete item[f];
+        });
+      });
+    });
+  });
   return cfg;
 }
 
@@ -2694,6 +2744,7 @@ function applyRoleUI(){
   applyTechniciansTabVisibility();
   // Settings
   show('adminSettingsCards', admin, 'block');
+  show('backupRestoreCard', admin, 'block');
   show('techVoiceCard', !admin, 'block');
   // Report view: the admin's search and Serviced/Reports switch, the
   // technician's plain customer list
@@ -3229,6 +3280,8 @@ const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGateP
   'showWaterBalance', 'autoNotifyAll', 'autoNotifyAllLead', 'showPoolSizeInProfile',
   'applyPoolDosagesToAll', 'applyPoolChemicalsToAll'];
 const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'routeOrders',
+                         // Seasons' dosage rules and quick buttons, set on the website
+                         'chemSeasons',
                          'reportEmailStyle', 'customerGroups', 'photoDefaults', 'photoEveryone'];
 const SYNC_COMPANY_DETAIL_KEYS = ['companyName', 'ownerName', 'licenseNumber', 'serviceArea',
   'accountEmail', 'accountPhone', 'businessAddress', 'businessCity', 'businessState',
@@ -3508,7 +3561,7 @@ function syncApplyRecord(kind, id, data, deleted, agreed){
     // The app holds its own copy of the setup from when it started. Writing to
     // storage alone changed nothing on screen until the app was restarted,
     // which is why quick buttons set at the office never appeared out here.
-    if(saved && id === 'chemConfig'){
+    if(saved && (id === 'chemConfig' || id === 'chemSeasons')){
       // Only the copy in memory is refreshed. Redrawing the route here would
       // close a customer panel the technician had open.
       try{ chemConfig = loadChemConfig(); }catch(e){}
@@ -6359,6 +6412,7 @@ function resetCustomerForm(){
   ['ncName','ncAddress','ncCity','ncState','ncZip','ncEmail','ncPhone','ncPoolGallons','ncNeighborhoodGateCode','ncGateCode','ncAccessNotes']
     .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   document.getElementById('ncDay').value = 'Monday';
+  ncExtraDays = [];
   renderNcDayButtons();
   document.getElementById('ncHasPool').checked = true;
   document.getElementById('ncHasSpa').checked = false;
@@ -6368,6 +6422,36 @@ function resetCustomerForm(){
   ncDogs = []; renderNcDogFields();
   document.getElementById('newCustomerHeading').textContent = 'New customer';
   document.getElementById('btnSaveCustomer').textContent = 'Save customer';
+}
+
+// Extra service days for a customer serviced more than once a week: the
+// website keeps them beside the main day as extraDays
+let ncExtraDays = [];
+
+// The other six days under Extra days; tapping one adds or takes it off
+function renderNcExtraDayButtons(){
+  const wrap = document.getElementById('ncExtraDayButtons');
+  const field = document.getElementById('ncDay');
+  if(!wrap || !field) return;
+  const main = field.value || 'Monday';
+  ncExtraDays = ncExtraDays.filter(d => d !== main);
+  wrap.innerHTML = '';
+  DAYS_OF_WEEK.forEach(day=>{
+    if(day === main) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-ghost';
+    btn.dataset.day = day;
+    btn.textContent = day.slice(0, 3);
+    const on = ncExtraDays.indexOf(day) !== -1;
+    btn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;flex:0 0 auto;'
+      + (on ? 'background:var(--teal-deep);color:#fff;border-color:var(--teal-deep);' : '');
+    btn.addEventListener('click', ()=>{
+      ncExtraDays = on ? ncExtraDays.filter(d => d !== day) : ncExtraDays.concat(day);
+      renderNcExtraDayButtons();
+    });
+    wrap.appendChild(btn);
+  });
 }
 
 // The day buttons under Service day, with the chosen one filled in
@@ -6391,6 +6475,7 @@ function renderNcDayButtons(){
     });
     wrap.appendChild(btn);
   });
+  renderNcExtraDayButtons();
 }
 
 function showCustomerForm(){
@@ -7041,6 +7126,9 @@ document.getElementById('btnSaveCustomer').addEventListener('click', async ()=>{
   const email = document.getElementById('ncEmail').value.trim();
   const phone = document.getElementById('ncPhone').value.trim();
   const day = document.getElementById('ncDay').value;
+  const WEEK_ORDER = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  const extraDays = ncExtraDays.filter((d, i, a) => d && d !== day && a.indexOf(d) === i)
+    .sort((a, b) => WEEK_ORDER.indexOf(a) - WEEK_ORDER.indexOf(b));
   const hasPool = document.getElementById('ncHasPool').checked;
   const hasSpa = document.getElementById('ncHasSpa').checked;
   const poolGallons = document.getElementById('ncPoolGallons').value.trim();
@@ -7063,6 +7151,8 @@ document.getElementById('btnSaveCustomer').addEventListener('click', async ()=>{
       existing.email = email;
       existing.phone = phone;
       existing.day = day;
+      // Only written when there are some, or there were before
+      if(extraDays.length || Array.isArray(existing.extraDays)) existing.extraDays = extraDays;
       existing.hasPool = hasPool;
       existing.hasSpa = hasSpa;
       existing.poolGallons = poolGallons;
@@ -7083,8 +7173,10 @@ document.getElementById('btnSaveCustomer').addEventListener('click', async ()=>{
   }
 
   const id = 'cust_' + Date.now();
-  customers.push({id, name, address, city, state, zip, email, phone, day, hasPool, hasSpa,
-    poolGallons, technicianId, gateCode, accessNotes, fountains, dogs});
+  const added = {id, name, address, city, state, zip, email, phone, day, hasPool, hasSpa,
+    poolGallons, technicianId, gateCode, accessNotes, fountains, dogs};
+  if(extraDays.length) added.extraDays = extraDays;
+  customers.push(added);
   await saveCustomers();
   resetCustomerForm();
   showToast('Customer added');
@@ -7652,11 +7744,18 @@ function renderTechRoute(){
   const routeIso = techRouteDateISO();
   const orders = Object.assign({}, lsGet('routeOrders') || {}, fieldRouteOrder || {});
   const forThisTech = suffix => 'day:' + techRouteDay + (suffix ? '|' + suffix : '');
-  let order = (orders['date:' + routeIso + '|' + selectedTechId] || []).filter(id => ids.includes(id));
-  if(!order.length) order = (orders[forThisTech(selectedTechId)] || []).filter(id => ids.includes(id));
-  if(!order.length) order = (orders['tech:' + forThisTech(selectedTechId)] || []).filter(id => ids.includes(id));
-  if(!order.length) order = (orders[forThisTech()] || []).filter(id => ids.includes(id));
-  if(!order.length) order = (orders[techRouteDay] || []).filter(id => ids.includes(id));
+  // Only a list counts; anything else stored under a key reads as no order
+  const listAt = v => (Array.isArray(v) ? v : []).filter(id => ids.includes(id));
+  let order = listAt(orders['date:' + routeIso + '|' + selectedTechId]);
+  if(!order.length) order = listAt(orders[forThisTech(selectedTechId)]);
+  if(!order.length) order = listAt(orders['tech:' + forThisTech(selectedTechId)]);
+  if(!order.length) order = listAt(orders[forThisTech()]);
+  if(!order.length){
+    // The office's weekly order for the day: this technician's own list, or
+    // the day's single list from before orders were kept per technician
+    const day = orders[techRouteDay];
+    order = listAt(Array.isArray(day) ? day : (day && typeof day === 'object' ? day[selectedTechId] : null));
+  }
   ids.forEach(id => { if(!order.includes(id)) order.push(id); });
   const list = order.map(id => all.find(x => x.id === id)).filter(Boolean);
 
@@ -10600,6 +10699,7 @@ function openCustomerEditor(customer){
   document.getElementById('ncEmail').value = customer.email || '';
   document.getElementById('ncPhone').value = customer.phone || '';
   document.getElementById('ncDay').value = customer.day || 'Monday';
+  ncExtraDays = (Array.isArray(customer.extraDays) ? customer.extraDays : []).filter(Boolean);
   renderNcDayButtons();
   document.getElementById('ncHasPool').checked = customer.hasPool !== false;
   document.getElementById('ncHasSpa').checked = !!customer.hasSpa;
@@ -13430,6 +13530,27 @@ async function skipBodyOfWater(type){
   const label = type === 'fountain'
     ? (sectionLabel(customers.find(c => c.id === currentVisitCustomerId), sectionId) || 'fountain')
     : type;
+
+  // Already skipped on this visit: offer to put it back on the report
+  if(pendingVisit.customerId === currentVisitCustomerId
+     && pendingVisit.doneSections[sectionId] === 'skipped'){
+    const back = await confirmDialog(
+      'The ' + label + ' is skipped on this visit.\n\n'
+      + 'Unskip it? It goes back on the service report, and you can take its readings and photos.',
+      'Unskip it');
+    if(!back) return;
+    delete pendingVisit.doneSections[sectionId];
+    // The photo and note that justified the skip no longer apply
+    const kept = (lsGet('skipProof:' + currentVisitCustomerId) || []).filter(s => s.section !== sectionId);
+    if(kept.length) lsSet('skipProof:' + currentVisitCustomerId, kept);
+    else lsRemove('skipProof:' + currentVisitCustomerId);
+    // Start it from its first step, like any body not yet done
+    visitStepBySection[sectionId] = 1;
+    renderVisitSectionButtons();
+    showVisitSection(sectionId);
+    showToast(label.charAt(0).toUpperCase() + label.slice(1) + ' back on the report');
+    return;
+  }
 
   // Some technicians must justify a skip with a photo and a note. Set per
   // technician on the Technicians page.

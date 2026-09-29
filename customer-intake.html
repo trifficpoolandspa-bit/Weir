@@ -971,6 +971,31 @@ input::placeholder{color:#A9BCB9;}
     </div>
   </div>
 
+  <div id="seasonOverlay" style="display:none;position:fixed;inset:0;z-index:320;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
+    <div style="background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);">
+      <h2 style="font-size:18px;margin:0 0 6px;">Add a season</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">A season has its own dosage rules and quick buttons, used automatically between these dates every year. It starts as a copy of your year-round ones.</p>
+      <div class="field">
+        <label>Name</label>
+        <input id="seasonName" placeholder="Summer" maxlength="30" autocomplete="off">
+      </div>
+      <div style="display:flex;gap:8px;">
+        <div class="field" style="flex:1;min-width:0;margin-bottom:0;">
+          <label>From</label>
+          <input type="date" id="seasonFrom">
+        </div>
+        <div class="field" style="flex:1;min-width:0;margin-bottom:0;">
+          <label>To</label>
+          <input type="date" id="seasonTo">
+        </div>
+      </div>
+      <p style="font-size:11.5px;color:var(--muted);margin:6px 0 14px;">The year doesn’t matter — the season comes round on the same dates every year.</p>
+      <p id="seasonError" style="display:none;font-size:12.5px;color:var(--rust);margin:0 0 10px;"></p>
+      <button class="btn btn-primary" id="btnSaveSeason" style="width:100%;">Add season</button>
+      <button class="btn btn-ghost" id="btnCancelSeason" style="width:100%;margin-top:8px;">Cancel</button>
+    </div>
+  </div>
+
   <div class="view" id="view-chemconfig">
     <div class="card">
       <h2 id="chemConfigHeading">Readings and Dosages</h2>
@@ -980,7 +1005,24 @@ input::placeholder{color:#A9BCB9;}
         <button class="history-type-btn" data-type="spa">Spa</button>
         <button class="history-type-btn" data-type="fountain">Extra</button>
       </div>
-      <button class="btn btn-ghost" id="btnRestoreChemDefaults" style="width:auto;margin-top:12px;color:var(--rust);border-color:#EFC9BC;">Restore default labels</button>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap;">
+        <button class="btn btn-ghost" id="btnRestoreChemDefaults" style="width:auto;color:var(--rust);border-color:#EFC9BC;">Restore default labels</button>
+        <!-- Seasons: their own dosage rules and quick buttons between two dates -->
+        <div id="seasonAddRow" style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+          <button type="button" class="btn btn-ghost" id="btnSeasonCalendar" aria-label="Pick the dates for a new season" title="Pick the dates for a new season" style="width:40px;height:40px;padding:0;flex:0 0 auto;">
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="14" height="12.5" rx="2"/><path d="M3 8.5h14M7 2.8v3.4M13 2.8v3.4"/></svg>
+          </button>
+          <button type="button" class="btn btn-ghost" id="btnAddSeason" style="width:auto;flex:0 0 auto;">Add season</button>
+        </div>
+      </div>
+      <div id="seasonStripBox" style="display:none;margin-top:14px;">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;margin:0 0 8px;">Seasons</div>
+        <div class="seg-control" id="seasonControl"></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+          <p id="seasonNoteText" style="font-size:12.5px;color:var(--muted);margin:0;flex:1;min-width:0;"></p>
+          <button type="button" class="btn btn-ghost" id="btnRemoveSeason" style="display:none;width:auto;padding:5px 10px;font-size:12px;color:var(--rust);border-color:#EFC9BC;flex:0 0 auto;">Remove this season</button>
+        </div>
+      </div>
     </div>
     <div class="card" id="customConfigPicker" style="display:none;position:relative;z-index:60;overflow:visible;">
       <h2>Custom setup for one customer</h2>
@@ -3366,7 +3408,140 @@ function seedButtonSets(cfg){
 // added to the spa kept vanishing the day after a page load somewhere saved an
 // older or default copy. A real edit saves the lists as they are on the page.
 
+// ---------- Seasons ----------
+// Up to four seasons, each with its own dosage rules and quick buttons, used
+// between two dates every year. Kept apart from the lists themselves
+// (chemSeasons): a season holds only those two things for each chemical and
+// dosage, so labels, units and which ones are recorded stay shared. On days
+// outside every season the year-round rules are used. The phone apps pick the
+// season for the day they're used on.
+const MAX_SEASONS = 4;
+const SEASON_FIELDS = ['doseRules', 'doseRulesFrom', 'buttons'];
+const SEASON_BODIES = ['pool', 'spa', 'fountain'];
+const SEASON_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+// Which season the Readings and dosages page is showing; null is year-round.
+// A var because the lists below are loaded before this line is reached.
+var selectedSeasonId = null;
+
+function loadChemSeasons(){
+  const saved = lsGet('chemSeasons');
+  return Array.isArray(saved) ? saved.filter(x => x && x.id && x.start && x.end) : [];
+}
+let chemSeasons = loadChemSeasons();
+function saveChemSeasons(){ lsSet('chemSeasons', chemSeasons); }
+
+// "MM-DD" from a "YYYY-MM-DD" date
+function seasonMonthDay(iso){ return String(iso || '').slice(5, 10); }
+
+// Whether a day of the year ("MM-DD") falls in a season. A season can run over
+// New Year (Nov to Feb).
+function seasonCovers(season, md){
+  const a = season.start, b = season.end;
+  return a <= b ? (md >= a && md <= b) : (md >= a || md <= b);
+}
+
+// The season in use on a day (local date "YYYY-MM-DD"), or null for year-round
+function seasonForDate(dateStr){
+  const md = seasonMonthDay(dateStr);
+  return chemSeasons.find(s => seasonCovers(s, md)) || null;
+}
+
+function seasonDayText(md){
+  const m = parseInt(md.slice(0, 2), 10), d = parseInt(md.slice(3, 5), 10);
+  return (SEASON_MONTHS[m - 1] || '') + ' ' + d;
+}
+function seasonDatesText(season){
+  return seasonDayText(season.start) + ' \u2013 ' + seasonDayText(season.end);
+}
+
+function activeSeason(){
+  if(!selectedSeasonId) return null;
+  return chemSeasons.find(s => s.id === selectedSeasonId) || null;
+}
+
+// A season's own copy of the dosage rules and quick buttons, taken from lists
+function seasonSnapshot(cfg){
+  const out = {};
+  SEASON_BODIES.forEach(t=>{
+    out[t] = {chemicals: {}, dosages: {}};
+    ['chemicals', 'dosages'].forEach(list=>{
+      ((cfg[t] && cfg[t][list]) || []).forEach(item=>{
+        if(!item || !item.key) return;
+        const held = {};
+        SEASON_FIELDS.forEach(f=>{
+          if(item[f] !== undefined) held[f] = JSON.parse(JSON.stringify(item[f]));
+        });
+        out[t][list][item.key] = held;
+      });
+    });
+  });
+  return out;
+}
+
+// Lists showing a season's rules and buttons. A chemical or dosage added after
+// the season was made has none of its own there, so it keeps the year-round ones.
+function applySeasonTo(cfg, season){
+  const lists = (season && season.lists) || {};
+  SEASON_BODIES.forEach(t=>{
+    ['chemicals', 'dosages'].forEach(list=>{
+      const own = (lists[t] && lists[t][list]) || {};
+      ((cfg[t] && cfg[t][list]) || []).forEach(item=>{
+        if(!item || !item.key || !own[item.key]) return;
+        const held = own[item.key];
+        SEASON_FIELDS.forEach(f=>{
+          if(held[f] !== undefined) item[f] = JSON.parse(JSON.stringify(held[f]));
+          else delete item[f];
+        });
+      });
+    });
+  });
+  return cfg;
+}
+
+// Saving while a season is showing: the lists as they are on the page (a
+// label, a unit, a chemical added or taken away is shared by every season),
+// but each one keeps its year-round rules and buttons
+function mergeSeasonBase(view, base){
+  const out = {};
+  SEASON_BODIES.forEach(t=>{
+    out[t] = Object.assign({}, view[t]);
+    ['chemicals', 'dosages'].forEach(list=>{
+      const baseItems = (base[t] && base[t][list]) || [];
+      out[t][list] = ((view[t] && view[t][list]) || []).map(item=>{
+        const copy = JSON.parse(JSON.stringify(item));
+        const was = item && baseItems.find(b => b && b.key === item.key);
+        if(was){
+          SEASON_FIELDS.forEach(f=>{
+            if(was[f] !== undefined) copy[f] = JSON.parse(JSON.stringify(was[f]));
+            else delete copy[f];
+          });
+        }
+        return copy;
+      });
+    });
+  });
+  return out;
+}
+
+// The dosage setup as the page shows it: year-round, or the chosen season's
 function loadChemConfig(){
+  const cfg = loadBaseChemConfig();
+  const season = activeSeason();
+  if(season) applySeasonTo(cfg, season);
+  return cfg;
+}
+
+// Writes the page's lists: a season's rules and buttons go to that season,
+// everything else to the shared lists
+function storeChemConfig(){
+  const season = activeSeason();
+  if(!season){ lsSet('chemConfig', chemConfig); return; }
+  season.lists = seasonSnapshot(chemConfig);
+  saveChemSeasons();
+  lsSet('chemConfig', mergeSeasonBase(chemConfig, loadBaseChemConfig()));
+}
+
+function loadBaseChemConfig(){
   const stored = lsGet('chemConfig');
   const cfg = !stored
     ? JSON.parse(JSON.stringify(DEFAULT_CHEM_CONFIG))
@@ -3447,7 +3622,7 @@ function saveChemConfig(){
       }
     });
   }
-  lsSet('chemConfig', chemConfig);
+  storeChemConfig();
 }
 
 const DEFAULT_SETTINGS = { showPoolSizeInProfile: true, showGatePhoto: true, pushToTalkEnabled: true, micSide: 'right', showDosageSuggestions: true, showBeforePhotos: true, showAfterPhotos: true, allowRouteReorder: true, showWaterBalance: false, autoNotifyAll: false, autoNotifyAllLead: 2, requireSkipReason: false, requireSkipPhoto: false, applyPoolChemicalsToAll: false, applyPoolDosagesToAll: false };
@@ -7709,6 +7884,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
 // while anything about a phone itself — its camera, its storage, who is signed
 // in on it, which tabs that person wants — stays on that phone.
 const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'routeOrders',
+                         // Seasons' dosage rules and quick buttons
+                         'chemSeasons',
                          'reportEmailStyle', 'customerGroups', 'photoDefaults', 'photoEveryone',
                          // Kept only in the browser they were typed into until
                          // now, so prices set on one device never reached another
@@ -7837,13 +8014,20 @@ function takeWaitingSyncedCopies(){
 }
 
 function refreshSyncedWorkingCopy(id){
-  if((id === 'chemConfig' || id === 'customChemConfig' || id === 'productsServices') && editingSyncedLists()){
+  if((id === 'chemConfig' || id === 'chemSeasons' || id === 'customChemConfig' || id === 'productsServices') && editingSyncedLists()){
     syncCopiesWaiting.add(id);
     syncCopiesArrived[id] = JSON.parse(JSON.stringify(lsGet(id) || (id === 'productsServices' ? [] : {})));
     if(!syncCopiesTimer) syncCopiesTimer = setInterval(takeWaitingSyncedCopies, 500);
     return;
   }
   if(id === 'chemConfig') chemConfig = loadChemConfig();
+  if(id === 'chemSeasons'){
+    // Seasons added, changed or removed on another computer
+    chemSeasons = loadChemSeasons();
+    if(selectedSeasonId && !activeSeason()) selectedSeasonId = null;
+    chemConfig = loadChemConfig();
+    try{ renderSeasonStrip(); }catch(e){}
+  }
   if(id === 'customChemConfig') customConfig = lsGet('customChemConfig') || {};
   if(id === 'routeOrders'){
     routeOrders = lsGet('routeOrders') || {};
@@ -7932,7 +8116,7 @@ function syncApplyRecord(kind, id, data, deleted){
     // The same for the other settings the page keeps a working copy of. A
     // dosage added on another device was saved here but never reached the
     // copy the page edits, so the next save on this computer deleted it.
-    if(id === 'chemConfig' || id === 'customChemConfig' || id === 'routeOrders' || id === 'productsServices'){
+    if(id === 'chemConfig' || id === 'chemSeasons' || id === 'customChemConfig' || id === 'routeOrders' || id === 'productsServices'){
       try{ refreshSyncedWorkingCopy(id); }catch(e){}
     }
     return true;
@@ -12509,7 +12693,7 @@ function restoreOwnLists(listKey){
   chemConfig.fountain[listKey] = JSON.parse(JSON.stringify(saved.fountain || []));
   delete stash[listKey];
   lsSet('chemConfigStash', stash);
-  lsSet('chemConfig', chemConfig);
+  storeChemConfig();
   return true;
 }
 
@@ -14136,6 +14320,15 @@ function applyChemConfigMode(customerMode){
   const bodies = document.getElementById('customBodyList');
   if(bodies && !customerMode) bodies.style.display = 'none';
   if(restore) restore.style.display = customerMode ? 'none' : '';
+  // Seasons belong to the standard lists, not one customer's setup
+  const seasonAdd = document.getElementById('seasonAddRow');
+  if(seasonAdd) seasonAdd.style.display = customerMode ? 'none' : 'flex';
+  if(customerMode){
+    const strip = document.getElementById('seasonStripBox');
+    if(strip) strip.style.display = 'none';
+  } else {
+    renderSeasonStrip();
+  }
   if(desc){
     desc.textContent = customerMode
       ? 'Set up one customer differently from your defaults \u2014 their own readings, dosages, dosage rules and photo requirements, per body of water. Everyone else keeps the standard lists.'
@@ -14285,6 +14478,150 @@ document.getElementById('btnAddDosage').addEventListener('click', ()=>{
   renderChemConfigLists();
   const inputs = document.querySelectorAll('#chemConfigDosagesList input');
   if(inputs.length) inputs[inputs.length - 2].focus();
+});
+
+// The Seasons strip: Year-round and each season, the one in use today marked
+function renderSeasonStrip(){
+  const box = document.getElementById('seasonStripBox');
+  const seg = document.getElementById('seasonControl');
+  if(!box || !seg) return;
+  if(selectedChemConfigType === 'custom' || chemSeasons.length === 0){
+    box.style.display = 'none';
+    return;
+  }
+  box.style.display = 'block';
+  const now = seasonForDate(taskTodayStr());
+  const choices = [{id: null, name: 'Year-round'}].concat(
+    chemSeasons.slice().sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+  seg.innerHTML = '';
+  choices.forEach(ch=>{
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'history-type-btn' + ((ch.id || null) === (selectedSeasonId || null) ? ' active' : '');
+    btn.dataset.season = ch.id || '';
+    const inUse = ch.id ? (now && now.id === ch.id) : !now;
+    btn.textContent = ch.name + (inUse ? ' \u00b7 now' : '');
+    btn.addEventListener('click', ()=>{
+      if((ch.id || null) === (selectedSeasonId || null)) return;
+      selectedSeasonId = ch.id || null;
+      chemConfig = loadChemConfig();
+      seg.querySelectorAll('.history-type-btn').forEach(b=>{
+        b.classList.toggle('active', (b.dataset.season || null) === (selectedSeasonId || null));
+      });
+      renderSeasonNote();
+      renderChemConfigLists();
+    });
+    seg.appendChild(btn);
+  });
+  renderSeasonNote();
+}
+
+function renderSeasonNote(){
+  const text = document.getElementById('seasonNoteText');
+  const remove = document.getElementById('btnRemoveSeason');
+  const season = activeSeason();
+  if(text){
+    text.textContent = season
+      ? season.name + ', ' + seasonDatesText(season) + ' every year. Dosage rules and quick buttons changed here are used only in this season; everything else is shared with year-round.'
+      : 'Year-round: used on any day outside your seasons.';
+  }
+  if(remove) remove.style.display = season ? 'inline-flex' : 'none';
+}
+
+function openSeasonWindow(openCalendar){
+  if(chemSeasons.length >= MAX_SEASONS){
+    showToast('You can have up to four seasons. Remove one to add another.');
+    return;
+  }
+  const overlay = document.getElementById('seasonOverlay');
+  document.getElementById('seasonName').value = '';
+  document.getElementById('seasonFrom').value = '';
+  document.getElementById('seasonTo').value = '';
+  const err = document.getElementById('seasonError');
+  err.style.display = 'none';
+  err.textContent = '';
+  overlay.style.display = 'flex';
+  if(openCalendar){
+    // The calendar opens straight onto picking the first day
+    const from = document.getElementById('seasonFrom');
+    from.focus();
+    try{ if(typeof from.showPicker === 'function') from.showPicker(); }catch(e){}
+  } else {
+    document.getElementById('seasonName').focus();
+  }
+}
+
+function closeSeasonWindow(){
+  document.getElementById('seasonOverlay').style.display = 'none';
+}
+
+document.getElementById('btnSeasonCalendar').addEventListener('click', ()=> openSeasonWindow(true));
+document.getElementById('btnAddSeason').addEventListener('click', ()=> openSeasonWindow(false));
+document.getElementById('btnCancelSeason').addEventListener('click', closeSeasonWindow);
+// Picking the first day moves straight on to the last
+document.getElementById('seasonFrom').addEventListener('change', ()=>{
+  const to = document.getElementById('seasonTo');
+  if(!to.value){
+    to.focus();
+    try{ if(typeof to.showPicker === 'function') to.showPicker(); }catch(e){}
+  }
+});
+document.getElementById('seasonName').addEventListener('keydown', e=>{
+  if(e.key === 'Enter'){ e.preventDefault(); document.getElementById('btnSaveSeason').click(); }
+});
+
+document.getElementById('btnSaveSeason').addEventListener('click', ()=>{
+  const err = document.getElementById('seasonError');
+  const say = msg => { err.textContent = msg; err.style.display = 'block'; };
+  const name = document.getElementById('seasonName').value.trim();
+  const fromVal = document.getElementById('seasonFrom').value;
+  const toVal = document.getElementById('seasonTo').value;
+  if(!name){ say('Give the season a name.'); return; }
+  if(/^year-round$/i.test(name)){ say('Choose another name \u2014 Year-round is the rest of the year.'); return; }
+  if(chemSeasons.some(x => (x.name || '').trim().toLowerCase() === name.toLowerCase())){
+    say('There is already a season called ' + name + '.'); return;
+  }
+  if(!fromVal || !toVal){ say('Pick the first and last day of the season.'); return; }
+  if(chemSeasons.length >= MAX_SEASONS){ say('You can have up to four seasons.'); return; }
+  const season = {
+    id: 'season_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+    name: name,
+    start: seasonMonthDay(fromVal),
+    end: seasonMonthDay(toVal),
+    lists: seasonSnapshot(loadBaseChemConfig())
+  };
+  // One season a day: every day of a leap year is checked against the others
+  const day = new Date(2024, 0, 1);
+  for(let i = 0; i < 366; i++, day.setDate(day.getDate() + 1)){
+    const md = String(day.getMonth() + 1).padStart(2, '0') + '-' + String(day.getDate()).padStart(2, '0');
+    if(!seasonCovers(season, md)) continue;
+    const clash = chemSeasons.find(x => seasonCovers(x, md));
+    if(clash){ say('Those dates overlap ' + clash.name + ' (' + seasonDatesText(clash) + ').'); return; }
+  }
+  chemSeasons.push(season);
+  saveChemSeasons();
+  closeSeasonWindow();
+  selectedSeasonId = season.id;
+  chemConfig = loadChemConfig();
+  renderSeasonStrip();
+  renderChemConfigLists();
+  showToast(name + ' added \u2014 set its dosage rules and quick buttons below');
+});
+
+document.getElementById('btnRemoveSeason').addEventListener('click', async ()=>{
+  const season = activeSeason();
+  if(!season) return;
+  const ok = await confirmDialog('Remove the ' + season.name + ' season (' + seasonDatesText(season) + ')? '
+    + 'Its dosage rules and quick buttons are removed for good, on every device, and the year-round ones are used on those dates instead.',
+    'Delete season');
+  if(!ok) return;
+  chemSeasons = chemSeasons.filter(x => x.id !== season.id);
+  saveChemSeasons();
+  selectedSeasonId = null;
+  chemConfig = loadChemConfig();
+  renderSeasonStrip();
+  renderChemConfigLists();
+  showToast(season.name + ' removed');
 });
 
 document.getElementById('btnRestoreChemDefaults').addEventListener('click', async ()=>{
@@ -18180,6 +18517,12 @@ document.getElementById('btnAddCustomer').addEventListener('click', ()=>{
 });
 
 function switchView(view){
+  // Readings and dosages always opens on year-round; a season stays chosen
+  // only while the page is open
+  if(selectedSeasonId){
+    selectedSeasonId = null;
+    chemConfig = loadChemConfig();
+  }
   // Leaving the filter clean groups for another page starts their minute
   if(view !== 'workcenter' && typeof onFilterGroupsPage === 'function' && onFilterGroupsPage()) filtersLeftAt = Date.now();
   // Customers' answers to quotes, fresh on opening the WorkCenter
@@ -19147,10 +19490,26 @@ function viewCustomer(c){
   profileRow(meta, {label:'Phone', value:c.phone, placeholder:'Add a phone number', editor: inlineText(c,'phone','tel')});
   profileRow(meta, {label:'Email', value:c.email, placeholder:'Add an email', editor: inlineText(c,'email','email')});
 
-  // Who the "On my way" message goes to, when it isn't the customer themselves
-  const notifyLabel = (c.notifyName || c.notifyPhone || c.notifyEmail)
-    ? [c.notifyName, c.notifyPhone].filter(Boolean).join(' \u00b7 ')
-    : '';
+  // Who the "On my way" message goes to, and whether as a text or an email.
+  // Decided the same way the app decides when it sends: the choice made here,
+  // otherwise an email when there is only an address, a text when there is
+  // only a phone, and the technician asked each time when there are both.
+  const notifyPhoneTo = (c.notifyPhone || '').trim() || (c.phone || '').trim();
+  const notifyEmailTo = (c.notifyEmail || '').trim() || (c.email || '').trim();
+  const notifyHasEmail = notifyEmailTo.indexOf('@') !== -1;
+  const notifyChosen = (c.notifyBy || '').trim();
+  const notifyHow = (notifyChosen === 'text' || notifyChosen === 'email') ? notifyChosen
+    : (notifyHasEmail && notifyPhoneTo) ? 'ask'
+    : notifyHasEmail ? 'email'
+    : notifyPhoneTo ? 'text' : '';
+  const notifyHowShown = {text: 'Text message', email: 'Email', ask: 'Text or email, asked each time'}[notifyHow] || '';
+  const notifyOwn = !(c.notifyName || c.notifyPhone || c.notifyEmail);
+  const notifyContact = notifyOwn ? 'The customer'
+    : [c.notifyName, notifyHow === 'email' ? c.notifyEmail : notifyHow === 'text' ? c.notifyPhone
+        : [c.notifyPhone, c.notifyEmail].filter(Boolean).join(' \u00b7 ')].filter(Boolean).join(' \u00b7 ');
+  const notifyLabel = notifyHowShown
+    ? notifyHowShown + ' \u2014 ' + notifyContact
+    : (notifyOwn ? '' : notifyContact);
   profileRow(meta, {
     label: 'On my way goes to',
     value: notifyLabel,
