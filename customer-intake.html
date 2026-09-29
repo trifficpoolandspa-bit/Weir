@@ -987,7 +987,7 @@ input::placeholder{color:#A9BCB9;}
   <div id="seasonOverlay" style="display:none;position:fixed;inset:0;z-index:320;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
     <div style="background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);">
       <h2 id="seasonHeading" style="font-size:18px;margin:0 0 6px;">Add a season</h2>
-      <p id="seasonIntro" style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">A season has its own dosage rules and quick buttons, used automatically between these dates every year. It starts as a copy of your year-round ones.</p>
+      <p id="seasonIntro" style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">A season has its own chemicals, dosages, dosage rules and quick buttons, used automatically between these dates every year. It starts as a copy of your year-round ones.</p>
       <div class="field">
         <label>Name</label>
         <input id="seasonName" placeholder="Summer" maxlength="30" autocomplete="off">
@@ -1020,7 +1020,7 @@ input::placeholder{color:#A9BCB9;}
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap;">
         <button class="btn btn-ghost" id="btnRestoreChemDefaults" style="width:auto;color:var(--rust);border-color:#EFC9BC;">Restore default labels</button>
-        <!-- Seasons: their own dosage rules and quick buttons between two dates (the
+        <!-- Seasons: their own setup between two dates (the
              calendar button was taken off Sept 29; Add season opens the window) -->
         <div id="seasonAddRow" style="display:flex;align-items:center;gap:8px;margin-left:auto;">
           <!-- Shown while a season is chosen in the Seasons strip -->
@@ -3422,12 +3422,12 @@ function seedButtonSets(cfg){
 // older or default copy. A real edit saves the lists as they are on the page.
 
 // ---------- Seasons ----------
-// Up to four seasons, each with its own dosage rules and quick buttons, used
-// between two dates every year. Kept apart from the lists themselves
-// (chemSeasons): a season holds only those two things for each chemical and
-// dosage, so labels, units and which ones are recorded stay shared. On days
-// outside every season the year-round rules are used. The phone apps pick the
-// season for the day they're used on.
+// Up to four seasons, each with its own whole setup (chemicals, dosages,
+// labels, units, dosage rules and quick buttons), used between two dates every
+// year. Kept apart from year-round's lists (chemSeasons): changing a season
+// never changes year-round or another season. On days outside every season
+// the year-round setup is used. The phone apps pick the season for the day
+// they're used on.
 const MAX_SEASONS = 4;
 const SEASON_FIELDS = ['doseRules', 'doseRulesFrom', 'buttons'];
 const SEASON_BODIES = ['pool', 'spa', 'fountain'];
@@ -3472,29 +3472,33 @@ function activeSeason(){
   return chemSeasons.find(s => s.id === selectedSeasonId) || null;
 }
 
-// A season's own copy of the dosage rules and quick buttons, taken from lists
+// A season's own copy of the whole setup for each body of water: its own
+// chemicals and dosages (a chemical taken off in Summer stays in Winter and
+// year-round), their labels and units, dosage rules and quick buttons
 function seasonSnapshot(cfg){
   const out = {};
   SEASON_BODIES.forEach(t=>{
-    out[t] = {chemicals: {}, dosages: {}};
-    ['chemicals', 'dosages'].forEach(list=>{
-      ((cfg[t] && cfg[t][list]) || []).forEach(item=>{
-        if(!item || !item.key) return;
-        const held = {};
-        SEASON_FIELDS.forEach(f=>{
-          if(item[f] !== undefined) held[f] = JSON.parse(JSON.stringify(item[f]));
-        });
-        out[t][list][item.key] = held;
-      });
-    });
+    if(cfg[t]) out[t] = JSON.parse(JSON.stringify(cfg[t]));
   });
   return out;
 }
 
-// Lists showing a season's rules and buttons. A chemical or dosage added after
-// the season was made has none of its own there, so it keeps the year-round ones.
+// Seasons saved before Sept 29 held only rules and buttons, keyed by
+// chemical; they're read as year-round with those laid over
+function seasonHasFullLists(season){
+  const lists = season && season.lists;
+  return !!lists && SEASON_BODIES.some(t => lists[t] && Array.isArray(lists[t].chemicals));
+}
+
 function applySeasonTo(cfg, season){
   const lists = (season && season.lists) || {};
+  // A season with its own lists: those, whole
+  if(seasonHasFullLists(season)){
+    SEASON_BODIES.forEach(t=>{
+      if(lists[t] && Array.isArray(lists[t].chemicals)) cfg[t] = JSON.parse(JSON.stringify(lists[t]));
+    });
+    return cfg;
+  }
   SEASON_BODIES.forEach(t=>{
     ['chemicals', 'dosages'].forEach(list=>{
       const own = (lists[t] && lists[t][list]) || {};
@@ -3511,31 +3515,6 @@ function applySeasonTo(cfg, season){
   return cfg;
 }
 
-// Saving while a season is showing: the lists as they are on the page (a
-// label, a unit, a chemical added or taken away is shared by every season),
-// but each one keeps its year-round rules and buttons
-function mergeSeasonBase(view, base){
-  const out = {};
-  SEASON_BODIES.forEach(t=>{
-    out[t] = Object.assign({}, view[t]);
-    ['chemicals', 'dosages'].forEach(list=>{
-      const baseItems = (base[t] && base[t][list]) || [];
-      out[t][list] = ((view[t] && view[t][list]) || []).map(item=>{
-        const copy = JSON.parse(JSON.stringify(item));
-        const was = item && baseItems.find(b => b && b.key === item.key);
-        if(was){
-          SEASON_FIELDS.forEach(f=>{
-            if(was[f] !== undefined) copy[f] = JSON.parse(JSON.stringify(was[f]));
-            else delete copy[f];
-          });
-        }
-        return copy;
-      });
-    });
-  });
-  return out;
-}
-
 // The dosage setup as the page shows it: year-round, or the chosen season's
 function loadChemConfig(){
   const cfg = loadBaseChemConfig();
@@ -3544,14 +3523,13 @@ function loadChemConfig(){
   return cfg;
 }
 
-// Writes the page's lists: a season's rules and buttons go to that season,
-// everything else to the shared lists
+// Writes the page's lists: to the chosen season only, whole, or to
+// year-round. Changing a season never touches year-round or another season.
 function storeChemConfig(){
   const season = activeSeason();
   if(!season){ lsSet('chemConfig', chemConfig); return; }
   season.lists = seasonSnapshot(chemConfig);
   saveChemSeasons();
-  lsSet('chemConfig', mergeSeasonBase(chemConfig, loadBaseChemConfig()));
 }
 
 function loadBaseChemConfig(){
@@ -7906,7 +7884,9 @@ const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'r
                          // What goes at the top and bottom of a quote email
                          'quoteEmailStyle',
                          // The last quote / work order numbers used, so numbering carries on from any computer
-                         'quoteCounter', 'workOrderCounter'];
+                         'quoteCounter', 'workOrderCounter',
+                         // The order of the Technicians list, which the phones follow
+                         'technicianOrder'];
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
   'requireSkipPhoto', 'requireSkipReason', 'allowRouteReorder', 'showDosageSuggestions',
   'showWaterBalance', 'autoNotifyAll', 'autoNotifyAllLead', 'showPoolSizeInProfile',
@@ -7975,6 +7955,8 @@ function foldInArrivedCopy(id){
   const arrived = syncCopiesArrived[id];
   delete syncCopiesArrived[id];
   if(!arrived || typeof arrived !== 'object') return;
+  // A season on screen is its own lists; what arrived is year-round's
+  if(id === 'chemConfig' && activeSeason()) return;
   if(id === 'chemConfig'){
     ['pool', 'spa', 'fountain'].forEach(t=>{
       if(!arrived[t]) return;
@@ -8120,6 +8102,19 @@ function syncApplyRecord(kind, id, data, deleted){
     if(!lsSet(id, data.value)) return false;
     // The page works from its own copy of the groups. Left alone it goes on
     // showing the old list, and the next save writes it back over this one.
+    // The Technicians list reordered on another computer: this one follows
+    if(id === 'technicianOrder' && Array.isArray(data.value)){
+      try{
+        const at = new Map(data.value.map((tid, i) => [String(tid), i]));
+        technicians = technicians.slice().sort((a, b)=>{
+          const x = at.has(String(a.id)) ? at.get(String(a.id)) : 1e9;
+          const y = at.has(String(b.id)) ? at.get(String(b.id)) : 1e9;
+          return x - y;
+        });
+        lsSet('technicians', technicians);
+        if(typeof renderTechnicianList === 'function') renderTechnicianList();
+      }catch(e){}
+    }
     if(id === 'customerGroups'){
       try{
         customerGroups = lsGet('customerGroups') || [];
@@ -14539,7 +14534,7 @@ function renderSeasonNote(){
   const season = activeSeason();
   if(text){
     text.textContent = season
-      ? season.name + ', ' + seasonDatesText(season) + ' every year. Dosage rules and quick buttons changed here are used only in this season; everything else is shared with year-round.'
+      ? season.name + ', ' + seasonDatesText(season) + ' every year. Everything changed here belongs to ' + season.name + ' only: its chemicals and dosages, labels, units, dosage rules and quick buttons.'
       : 'Year-round: used on any day outside your seasons.';
   }
   if(remove) remove.style.display = season ? 'inline-flex' : 'none';
@@ -14549,7 +14544,7 @@ function renderSeasonNote(){
 
 // The season the window is changing; null while it's adding a new one
 let seasonEditingId = null;
-const SEASON_ADD_INTRO = 'A season has its own dosage rules and quick buttons, used automatically between these dates every year. It starts as a copy of your year-round ones.';
+const SEASON_ADD_INTRO = 'A season has its own chemicals, dosages, dosage rules and quick buttons, used automatically between these dates every year. It starts as a copy of your year-round ones.';
 
 function openSeasonWindow(openCalendar){
   seasonEditingId = null;
@@ -14584,13 +14579,13 @@ function closeSeasonWindow(){
 }
 
 // Edit this season: the same window, filled in with the chosen season's name
-// and dates. Its dosage rules and quick buttons are left as they are.
+// and dates. Its chemicals, dosages, rules and buttons are left as they are.
 function openSeasonEdit(){
   const season = activeSeason();
   if(!season) return;
   seasonEditingId = season.id;
   document.getElementById('seasonHeading').textContent = 'Edit ' + season.name;
-  document.getElementById('seasonIntro').textContent = 'Change its name or the dates it runs between. Its dosage rules and quick buttons stay as they are.';
+  document.getElementById('seasonIntro').textContent = 'Change its name or the dates it runs between. Its chemicals, dosages, rules and buttons stay as they are.';
   document.getElementById('btnSaveSeason').textContent = 'Save changes';
   // The dates are kept without a year; the box shows them in this one
   const year = new Date().getFullYear();
@@ -14669,14 +14664,14 @@ document.getElementById('btnSaveSeason').addEventListener('click', ()=>{
   chemConfig = loadChemConfig();
   renderSeasonStrip();
   renderChemConfigLists();
-  showToast(name + ' added \u2014 set its dosage rules and quick buttons below');
+  showToast(name + ' added \u2014 its setup below is its own');
 });
 
 document.getElementById('btnRemoveSeason').addEventListener('click', async ()=>{
   const season = activeSeason();
   if(!season) return;
   const ok = await confirmDialog('Remove the ' + season.name + ' season (' + seasonDatesText(season) + ')? '
-    + 'Its dosage rules and quick buttons are removed for good, on every device, and the year-round ones are used on those dates instead.',
+    + 'Its own chemicals, dosages, rules and buttons are removed for good, on every device, and the year-round setup is used on those dates instead.',
     'Delete season');
   if(!ok) return;
   chemSeasons = chemSeasons.filter(x => x.id !== season.id);
@@ -14858,6 +14853,10 @@ function applyAdminCarries(){
 
 function saveTechnicians(){
   const ok = lsSet('technicians', technicians);
+  // The list's order goes to the phones too: each technician travels on their
+  // own, so the order has to be sent alongside them
+  const order = technicians.filter(t => t && t.id).map(t => String(t.id));
+  if(JSON.stringify(order) !== JSON.stringify(lsGet('technicianOrder') || [])) lsSet('technicianOrder', order);
   if(!ok){ showToast('Could not save — your browser storage may be full'); return; }
   // Tell sync at once, the same as saving a customer does. Without this the
   // change waited for the next scheduled sync, and a pull arriving first
