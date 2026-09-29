@@ -34,6 +34,8 @@ input, textarea, select, [contenteditable], [contenteditable] *{
 
 
 :root{
+  --stops-green:#2E7D32;   /* Today's stops left numbers */
+  --jobs-amber:#D97706;    /* Today's jobs left numbers */
   --ink:#0F2E2E;
   --surface:#EDF3F2;
   --card:#FFFFFF;
@@ -540,13 +542,13 @@ select#customerSelect{font-weight:600;}
           <span id="voiceModeText">Voice entry off</span>
         </span>
       </div>
-      <div style="display:flex;align-items:baseline;justify-content:center;gap:18px;flex-wrap:wrap;margin-top:8px;">
+      <div style="display:flex;align-items:baseline;justify-content:center;gap:18px;flex-wrap:wrap;margin-top:16px;">
         <span style="display:inline-flex;align-items:baseline;gap:6px;">
-          <span id="homeStopCount" style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:var(--teal-deep);"></span>
+          <span id="homeStopCount" style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:var(--stops-green);"></span>
           <span id="homeStopLabel" style="font-size:13px;font-weight:600;color:var(--muted);"></span>
         </span>
         <span style="display:inline-flex;align-items:baseline;gap:6px;">
-          <span id="homeJobCount" style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:var(--gold);"></span>
+          <span id="homeJobCount" style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:var(--jobs-amber);"></span>
           <span id="homeJobLabel" style="font-size:13px;font-weight:600;color:var(--muted);"></span>
         </span>
       </div>
@@ -9594,11 +9596,12 @@ function adminVersion_renderHomeList(){
   const stopEl = document.getElementById('homeStopCount');
   const stopLabelEl = document.getElementById('homeStopLabel');
   if(stopEl){
-    stopEl.textContent = totalStops ? remaining + ' of ' + totalStops : '';
-    stopEl.title = totalStops ? remaining + ' of ' + totalStops + ' stops left today' : '';
+    // Always shown, even with no stops at all (0 of 0)
+    stopEl.textContent = remaining + ' of ' + totalStops;
+    stopEl.title = remaining + ' of ' + totalStops + ' stops left today';
   }
   if(stopLabelEl){
-    stopLabelEl.textContent = totalStops ? 'stops left' : '';
+    stopLabelEl.textContent = 'stops left';
   }
 
   // Jobs: every work order and task on this day counts as one, however many a
@@ -9928,11 +9931,12 @@ function techVersion_renderHomeList(){
   const stopEl = document.getElementById('homeStopCount');
   const stopLabelEl = document.getElementById('homeStopLabel');
   if(stopEl){
-    stopEl.textContent = totalStops ? remaining + ' of ' + totalStops : '';
-    stopEl.title = totalStops ? remaining + ' of ' + totalStops + ' stops left today' : '';
+    // Always shown, even with no stops at all (0 of 0)
+    stopEl.textContent = remaining + ' of ' + totalStops;
+    stopEl.title = remaining + ' of ' + totalStops + ' stops left today';
   }
   if(stopLabelEl){
-    stopLabelEl.textContent = totalStops ? 'stops left' : '';
+    stopLabelEl.textContent = 'stops left';
   }
 
   // Jobs: every work order and task on this day counts as one, however many a
