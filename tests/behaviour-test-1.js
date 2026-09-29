@@ -1408,7 +1408,7 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
       check('back from a visit, the day is kept', w.eval('selectedHomeDay') === other && w.eval('weekOffset') === 1);
       const row = d.getElementById('weekLabel').parentElement;
       const ids = Array.from(row.children).map(x => x.id).filter(Boolean);
-      check('the date first, then \u2039 and \u203a side by side, then the calendar', ids.slice(0, 4).join() === 'weekLabel,prevWeekBtn,nextWeekBtn,pickDayBtn', ids.join());
+      check('the date first, then the calendar, then \u2039 and \u203a side by side', ids.slice(0, 4).join() === 'weekLabel,pickDayBtn,prevWeekBtn,nextWeekBtn', ids.join());
       check('the date sits centred between the left edge and the arrows', d.getElementById('weekLabel').style.textAlign === 'center' && d.getElementById('weekLabel').style.flex.indexOf('1') === 0);
     });
   }
@@ -1451,12 +1451,13 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
     deferred.push(async ()=>{
       w.eval("switchView('chemconfig')");
       const row = d.getElementById('btnRestoreChemDefaults').parentElement;
-      check('the calendar and Add season sit on the Restore line, far right',
-            row.contains(d.getElementById('btnSeasonCalendar')) && row.contains(d.getElementById('btnAddSeason'))
+      // The calendar button came off Sept 29; Add season is the way in
+      check('Add season sits on the Restore line, far right, with no calendar button',
+            row.contains(d.getElementById('btnAddSeason')) && !d.getElementById('btnSeasonCalendar')
             && d.getElementById('seasonAddRow').style.marginLeft === 'auto');
       check('no strip until there is a season', d.getElementById('seasonStripBox').style.display === 'none');
-      d.getElementById('btnSeasonCalendar').click();
-      check('the calendar opens the window on the first day', d.getElementById('seasonOverlay').style.display === 'flex' && d.activeElement === d.getElementById('seasonFrom'));
+      d.getElementById('btnAddSeason').click();
+      check('Add season opens the window on the name', d.getElementById('seasonOverlay').style.display === 'flex' && d.activeElement === d.getElementById('seasonName'));
       d.getElementById('btnCancelSeason').click();
       check('Cancel closes it', d.getElementById('seasonOverlay').style.display === 'none');
       check('with no name it says so', /name/i.test(add('', '2026-06-01', '2026-08-31')));
