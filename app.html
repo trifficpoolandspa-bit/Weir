@@ -375,9 +375,9 @@ textarea{min-height:52px;resize:vertical;}
 .ob-close{background:#fff;color:#B8492E;border-color:#EFC0B4 !important;}
 
 /* The day, date arrows and counts stay put while the route list scrolls */
-#homeHeaderCard{
+#homeHeaderCard, #techRouteHeadCard{
   position:sticky;
-  top:0;
+  top:var(--sticky-top, 0px);
   z-index:25;
   margin-bottom:12px;
   box-shadow:0 4px 12px rgba(15,46,46,0.06);
@@ -388,14 +388,14 @@ textarea{min-height:52px;resize:vertical;}
 /* The Serviced today / Reports switch stays put while the list scrolls */
 #reportModeCard{
   position:sticky;
-  top:0;
+  top:var(--sticky-top, 0px);
   z-index:25;
   margin-bottom:12px;
   box-shadow:0 4px 12px rgba(15,46,46,0.06);
 }
 #visitSectionCard{
   position:sticky;
-  top:0;
+  top:var(--sticky-top, 0px);
   z-index:25;
   margin-bottom:12px;
   box-shadow:0 4px 12px rgba(15,46,46,0.06);
@@ -468,6 +468,7 @@ select#customerSelect{font-weight:600;}
 }
 @media (max-width:639px){
   nav{display:none;}
+  header{display:none;}
 }
 </style>
 </head>
@@ -533,8 +534,8 @@ select#customerSelect{font-weight:600;}
           <span id="homeJobLabel" style="font-size:11.5px;font-weight:600;color:var(--muted);"></span>
         </span>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;margin:10px 0 14px;">
-        <span id="weekLabel" style="flex:1 1 auto;min-width:0;font-size:14px;color:var(--muted);font-weight:600;text-align:left;"></span>
+      <div style="display:flex;align-items:center;gap:8px;margin:10px 0 0;">
+        <span id="weekLabel" style="flex:1 1 auto;min-width:0;font-size:14px;color:var(--muted);font-weight:600;text-align:center;"></span>
         <button id="prevWeekBtn" class="btn btn-ghost" style="width:auto;padding:6px 13px;font-size:17px;line-height:1;">‹</button>
         <button id="nextWeekBtn" class="btn btn-ghost" style="width:auto;padding:6px 13px;font-size:17px;line-height:1;">›</button>
         <button id="pickDayBtn" title="Jump to a date" style="width:auto;flex-shrink:0;padding:7px 10px;line-height:0;background:var(--teal-pale);border:1.5px solid var(--teal-mid);border-radius:9px;cursor:pointer;">
@@ -548,6 +549,9 @@ select#customerSelect{font-weight:600;}
       <p id="homeDateInfo" style="display:none;"></p>
       <select id="adminViewTech" style="display:none;"><option value="">All customers</option></select>
       <div id="dayTabs" style="display:none;"></div>
+    </div>
+    <!-- The route, in its own card, scrolling under the one above -->
+    <div class="card" id="homeListCard">
       <div class="card" id="routeTaskCard" style="display:none;margin-bottom:12px;padding:14px;">
         <h2 style="margin:0 0 4px;font-size:15px;">Jobs for today</h2>
         <p style="font-size:11.5px;color:var(--muted);margin:0 0 4px;">Sent from the office</p>
@@ -802,7 +806,8 @@ select#customerSelect{font-weight:600;}
       </div>
     </div>
 
-    <div class="card" id="techRouteCard" style="display:none;">
+    <div id="techRouteCard" style="display:none;">
+    <div class="card" id="techRouteHeadCard">
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;">
         <div style="display:flex;align-items:baseline;gap:12px;flex:1;min-width:0;">
           <h2 id="techRouteDayName" style="display:none;">Thursday</h2>
@@ -822,7 +827,7 @@ select#customerSelect{font-weight:600;}
       <p id="techRouteName" style="font-size:13.5px;font-weight:600;color:var(--teal-deep);margin:6px 0 0;">Technician</p>
       <p id="techRouteMeta" style="display:none;"></p>
 
-      <div style="display:flex;align-items:center;gap:8px;margin:10px 0 14px;">
+      <div style="display:flex;align-items:center;gap:8px;margin:10px 0 0;">
         <button id="techPrevDay" class="btn btn-ghost" style="width:auto;padding:6px 13px;font-size:17px;line-height:1;">&lsaquo;</button>
         <span id="techDayLabel" style="flex:1 1 auto;font-size:14px;color:var(--muted);font-weight:600;text-align:center;"></span>
         <button id="techNextDay" class="btn btn-ghost" style="width:auto;padding:6px 13px;font-size:17px;line-height:1;">&rsaquo;</button>
@@ -834,9 +839,12 @@ select#customerSelect{font-weight:600;}
         </button>
         <input type="date" id="techPickDayInput" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;">
       </div>
-
+    </div>
+    <!-- The route, in its own card, scrolling under the one above -->
+    <div class="card" id="techRouteListCard">
       <div class="btn-row" id="techDayFilter" style="display:none;"></div>
       <div id="techRouteList"></div>
+    </div>
     </div>
   </div>
 
@@ -7899,8 +7907,9 @@ function renderTechRoute(){
 
     const moveBtn = document.createElement('button');
     moveBtn.className = 'btn btn-ghost';
-    moveBtn.style.cssText = 'flex:0 0 auto;width:auto;padding:7px 11px;font-size:12px;'
-      + (done ? 'opacity:0.4;pointer-events:none;' : '');
+    // Pressable whether or not they've been serviced: they can still be moved
+    // to another day or technician
+    moveBtn.style.cssText = 'flex:0 0 auto;width:auto;padding:7px 11px;font-size:12px;';
     moveBtn.textContent = 'Move';
     moveBtn.addEventListener('click', (e)=>{
       e.stopPropagation();
@@ -7922,18 +7931,22 @@ function techNameFor(id){
 
 // Move one customer off this day — to another date, another technician, or
 // both — once, or for good
-function openTechRescheduleModal(customer){
+function openTechRescheduleModal(customer, opts){
+  // opts, from Reschedule on Today: the day on screen, what to redraw after,
+  // the window's title, and whether the calendar opens straight away
+  opts = opts || {};
+  const redraw = ()=> (opts.after || renderTechRoute)();
   // Always the customer as they are in the list right now. A sync replaces the
   // whole list with fresh objects, so the one captured when this opened can be
   // an orphan: changing its day changed nothing that gets saved, and the old
   // day kept showing them.
   const liveCustomer = () => customers.find(c => c && c.id === customer.id) || customer;
-  const fromISO = techRouteDateISO();
+  const fromISO = opts.fromISO || techRouteDateISO();
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
   overlay.innerHTML = `
     <div class="confirm-box" style="max-width:420px;">
-      <h3 style="font-size:15px;margin:0 0 4px;">Move ${customer.name}</h3>
+      <h3 style="font-size:15px;margin:0 0 4px;">${opts.title || 'Move'} ${customer.name}</h3>
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Currently on ${customer.day || 'no day'} with ${techNameFor(customer.technicianId)}. Pick a new date, another technician, or both, then choose whether this is a one-off or for good.</p>
       <div class="field"><label>New date</label><input type="date" id="trDate"></div>
       <div class="field"><label>Technician</label><select id="trTech"></select></div>
@@ -7952,16 +7965,29 @@ function openTechRescheduleModal(customer){
     .filter(t => t && t.id);
   const ownId = String(customer.technicianId || '');
   const addOpt = (id, text)=>{ const o = document.createElement('option'); o.value = id; o.textContent = text; techEl.appendChild(o); };
-  addOpt(ownId, (ownId ? techNameFor(ownId) : 'Unassigned') + ' (as now)');
+  addOpt(ownId, ownId ? techNameFor(ownId) + ' (assigned)' : 'Unassigned');
   techs.forEach(t => { if(String(t.id) !== ownId) addOpt(String(t.id), t.name || 'Technician'); });
   const newTech = ()=> techEl.value !== ownId ? techEl.value : null;
+  // Starts on today; the new date is usually soon
+  dateEl.value = todayDateStr();
+  // From Reschedule the calendar is the first thing up (inside the press)
+  if(opts.openCalendar){
+    try{ if(typeof dateEl.showPicker === 'function') dateEl.showPicker(); else dateEl.focus(); }
+    catch(e){ try{ dateEl.focus(); }catch(e2){} }
+  }
+  let dateTouched = false;
+  ['input', 'change'].forEach(ev => dateEl.addEventListener(ev, ()=>{ dateTouched = true; }));
+  // The date counts once it's been changed, or when no other technician is
+  // chosen (then today is the move). Another technician with the date left
+  // alone keeps the day they're on.
+  const pickedDate = ()=> (dateTouched || !newTech()) ? dateEl.value : '';
   const close = ()=> document.body.removeChild(overlay);
   overlay.querySelector('#trCancel').addEventListener('click', close);
   overlay.addEventListener('click', (e)=>{ if(e.target === overlay) close(); });
 
   overlay.querySelector('#trOnce').addEventListener('click', ()=>{
     // Another technician with no new date: same day, their route instead
-    const toISO = dateEl.value || (newTech() ? fromISO : '');
+    const toISO = pickedDate() || (newTech() ? fromISO : '');
     if(!toISO){ showToast('Pick a date or another technician first'); return; }
     if(toISO === fromISO && !newTech()){ showToast('That\u2019s the day they\u2019re already on'); return; }
     // Anything that moved this customer off this day, or onto it, is replaced.
@@ -7978,14 +8004,14 @@ function openTechRescheduleModal(customer){
     list.push(move);
     lsSet('rescheduledVisits', list);
     close();
-    renderTechRoute();
+    redraw();
     const d = new Date(toISO + 'T12:00:00');
     const when = d.toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'});
     showToast(customer.name + ' moved to ' + when + (newTech() ? ' with ' + techNameFor(newTech()) : ''));
   });
 
   overlay.querySelector('#trAlways').addEventListener('click', async ()=>{
-    const toISO = dateEl.value;
+    const toISO = pickedDate();
     const tech = newTech();
     if(!toISO && !tech){ showToast('Pick a date or another technician first'); return; }
     // A date changes their regular day; a technician, who has them from now on
@@ -8004,7 +8030,7 @@ function openTechRescheduleModal(customer){
       saveCustomers();
     }
     close();
-    renderTechRoute();
+    redraw();
     showToast(customer.name + (newDay ? ' now serviced on ' + newDay + 's' : '')
       + (newDay && tech ? ',' : '') + (tech ? ' now on ' + techNameFor(tech) + '\u2019s route' : ''));
   });
@@ -8300,6 +8326,13 @@ function isoForDay(dayName){
 }
 
 function openRescheduleModal(customer){
+  // An admin gets the Technicians tab's Move window: another date, another
+  // technician, or both
+  if(isAdminUser()){
+    openTechRescheduleModal(customer, {fromISO: isoForDay(selectedHomeDay), after: renderHomeList,
+      title: 'Reschedule', openCalendar: true});
+    return;
+  }
   // Always the customer as they are in the list right now. A sync replaces the
   // whole list with fresh objects, so the one captured when this opened can be
   // an orphan: changing its day changed nothing that gets saved, and the old
@@ -8324,6 +8357,12 @@ function openRescheduleModal(customer){
   const dateEl = overlay.querySelector('#rsDate');
   // Starts on today; the new date is usually soon
   dateEl.value = todayDateStr();
+  // The calendar is the first thing up, still inside the press on Reschedule
+  // (a browser only opens it for a press). Where it can't, the box is ready.
+  try{
+    if(typeof dateEl.showPicker === 'function') dateEl.showPicker();
+    else dateEl.focus();
+  }catch(e){ try{ dateEl.focus(); }catch(e2){} }
   const cleanup = ()=> document.body.removeChild(overlay);
   overlay.querySelector('#rsCancel').addEventListener('click', cleanup);
   overlay.addEventListener('click', (e)=>{ if(e.target === overlay) cleanup(); });
@@ -15666,6 +15705,15 @@ attachAllPhoneFormatting();
     });
   }).observe(document.body, {childList: true, subtree: true, characterData: true});
 })();
+
+// Where the header shows, sticky cards sit under it rather than behind it
+function setStickyTop(){
+  const h = document.querySelector('header');
+  const px = (h && getComputedStyle(h).display !== 'none') ? h.offsetHeight : 0;
+  document.documentElement.style.setProperty('--sticky-top', px + 'px');
+}
+window.addEventListener('resize', setStickyTop);
+setStickyTop();
 </script>
 </body>
 </html>
