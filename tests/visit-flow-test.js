@@ -1102,7 +1102,7 @@ async function walkVisit(w, d, maxPresses){
 
       // Reschedule starts on today
       w.eval("openRescheduleModal(customers.find(c => c.id === 'b'));");
-      check(file + ': Reschedule\u2019s New date starts on today', d.getElementById('rsDate').value === w.eval('todayDateStr()'));
+      check(file + ': Reschedule\u2019s New date starts empty', (d.getElementById('rsDate') || d.getElementById('trDate')).value === '');
     }catch(e){ check(file + ': jobs', false, e.message); }
     w.close();
 
@@ -1304,9 +1304,9 @@ async function walkVisit(w, d, maxPresses){
       const w3 = dom3.window, d3 = w3.document;
       try{
         w3.eval("currentUser = {id:'t1', name:'Alex', isAdmin:true}; openRescheduleModal(customers[0]);");
-        check(file + ': Reschedule\u2019s New date starts on today', d3.getElementById('rsDate').value === w3.eval('todayDateStr()'),
-              d3.getElementById('rsDate').value);
-        d3.getElementById('rsCancel').click();
+        check(file + ': Reschedule\u2019s New date starts empty', (d3.getElementById('rsDate') || d3.getElementById('trDate')).value === '',
+              (d3.getElementById('rsDate') || d3.getElementById('trDate')).value);
+        (d3.getElementById('rsCancel') || d3.getElementById('trCancel')).click();
 
         w3.eval("currentVisitCustomerId = null; captureFromCamera = async ()=> 'data:image/jpeg;base64,g';"
           + " window.__opened = []; openPhotoFullSize = src => window.__opened.push(src); renderCustomPhotoBlocks('pool', 'before');");
@@ -1464,8 +1464,8 @@ async function walkVisit(w, d, maxPresses){
     w = dom.window; d = w.document;
     try{
       w.eval("currentUser = {id:'t1', name:'Alex', isAdmin:true}; openRescheduleModal(customers[0]);");
-      check(file + ': the reschedule window starts on today', d.getElementById('rsDate').value === w.eval('todayDateStr()'), d.getElementById('rsDate').value);
-      d.getElementById('rsCancel').click();
+      check(file + ': the reschedule window starts empty', (d.getElementById('rsDate') || d.getElementById('trDate')).value === '', (d.getElementById('rsDate') || d.getElementById('trDate')).value);
+      (d.getElementById('rsCancel') || d.getElementById('trCancel')).click();
 
       w.eval("currentVisitCustomerId = null; localStorage.setItem('weir:photoEveryone', JSON.stringify({cp_9: {pool: true}}));"
         + " captureFromCamera = async ()=> 'data:image/jpeg;base64,x'; window.__big = []; openPhotoFullSize = s => window.__big.push(s);"
@@ -1588,7 +1588,7 @@ async function walkVisit(w, d, maxPresses){
 
       // Reschedule starts on today
       w.eval("openRescheduleModal(customers.find(c => c.id === 'b'));");
-      check(file + ': Reschedule\u2019s New date starts on today', d.getElementById('rsDate').value === w.eval('todayDateStr()'));
+      check(file + ': Reschedule\u2019s New date starts empty', (d.getElementById('rsDate') || d.getElementById('trDate')).value === '');
 
       // The Skip button is red, and extra photos are thumbnails and named in the email
       const skip = d.getElementById('btnPoolSkip');
