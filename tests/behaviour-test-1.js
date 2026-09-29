@@ -1559,7 +1559,7 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
       check('the heading follows the name', d.getElementById('techDetailHeading').textContent === 'Patricia');
       // Row headers
       const css = fs.readFileSync('customer-intake.html', 'utf8').match(/\.profile-meta-label\{[^}]*\}/)[0];
-      check('row headers are larger, bolder, darker teal', /font-size:12\.5px/.test(css) && /font-weight:700/.test(css) && /var\(--teal-deep\)/.test(css), css);
+      check('row headers are larger, bolder, in the lighter teal', /font-size:12\.5px/.test(css) && /font-weight:700/.test(css) && /var\(--teal-mid\)/.test(css), css);
       // Customer profile: the note, Esc, and stepping keeps the scroll
       w.eval("switchView('customers'); viewCustomer(customers.find(c => c.id === 'c2'))");
       check('the note between Back and Previous / Next', /arrow keys to scroll between customers/.test(d.getElementById('backToListCard').textContent));
