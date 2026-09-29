@@ -612,6 +612,29 @@ select#customerSelect{font-weight:600;}
       <div id="visitHistoryList"></div>
     </div>
 
+    <!-- A skipped body of water: shown instead of its readings until Unskip -->
+    <div class="card" id="visitSkippedSection" style="display:none;">
+      <h2 style="text-align:center;color:var(--rust);font-size:22px;margin:4px 0 4px;">Skipped</h2>
+      <p id="skippedIntro" style="text-align:center;font-size:13px;color:var(--muted);margin:0 0 16px;"></p>
+      <div id="skippedProof" style="display:none;">
+        <div class="field">
+          <label>Photo</label>
+          <div id="skippedPhotoBox" style="display:flex;justify-content:center;margin-bottom:8px;"></div>
+          <div class="btn-row">
+            <button class="btn btn-ghost" type="button" id="btnSkippedRetake" style="flex:1;">Take photo</button>
+            <button class="btn btn-ghost" type="button" id="btnSkippedRemovePhoto" style="flex:1;color:var(--rust);border-color:#EFC9BC;">Remove photo</button>
+          </div>
+          <input type="file" accept="image/*" capture="environment" id="skippedPhotoFile" style="display:none;">
+        </div>
+        <div class="field">
+          <label>Note</label>
+          <textarea id="skippedNote" rows="3" placeholder="Why it was skipped" style="min-height:74px;"></textarea>
+        </div>
+        <p id="skippedNeed" style="display:none;font-size:12.5px;color:var(--rust);margin:0 0 12px;"></p>
+      </div>
+      <button class="btn btn-primary" type="button" id="btnUnskip" style="width:100%;">Unskip</button>
+    </div>
+
     <div class="card" id="visitEquipmentSection" style="display:none;">
       <h2>Equipment</h2>
       <p class="voice-hint" style="margin:0 0 14px;">Tap the camera icon next to any item to view or add its photos.</p>
@@ -1014,8 +1037,8 @@ select#customerSelect{font-weight:600;}
     <div id="reportModeServiced" style="display:none;">
         <div class="card" style="padding:10px 12px;">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <div id="servicedDayLabel" style="font-size:13.5px;font-weight:600;color:var(--ink);text-align:center;flex:1;min-width:0;">Today</div>
             <button class="btn btn-ghost" id="servicedPrevDay" type="button" style="width:auto;padding:6px 12px;">&lsaquo;</button>
-            <div id="servicedDayLabel" style="font-size:13.5px;font-weight:600;color:var(--ink);text-align:center;flex:1;">Today</div>
             <button class="btn btn-ghost" id="servicedNextDay" type="button" style="width:auto;padding:6px 12px;">&rsaquo;</button>
           </div>
         </div>
@@ -7004,8 +7027,10 @@ function openPhotoFullSize(dataUrl){
   // Styled exactly like the camera's Cancel and Flash buttons, so the two
   // full-screen views read as the same app rather than two different ones.
   const bar = document.createElement('div');
+  // No band of its own: the bubble sits on the dimmed screen (Sept 29; it had
+  // a thick black band round it)
   bar.style.cssText = 'flex:0 0 auto;padding:18px 20px calc(18px + env(safe-area-inset-bottom));'
-    + 'display:flex;align-items:center;justify-content:center;background:#000;';
+    + 'display:flex;align-items:center;justify-content:center;background:transparent;';
 
   const hint = document.createElement('div');
   hint.textContent = 'Tap the photo to close';
@@ -11732,7 +11757,9 @@ function adminVersion_renderVisitSectionButtons(){
     btn.style.width = 'auto';
     btn.style.fontWeight = '700';
     const done = pendingVisit.doneSections[sectionId] !== undefined;
-    btn.textContent = (done ? '✓ ' : '') + sectionLabel(customer, sectionId);
+    btn.textContent = pendingVisit.doneSections[sectionId] === 'skipped'
+      ? sectionLabel(customer, sectionId) + ' \u00b7 skipped'
+      : (done ? '✓ ' : '') + sectionLabel(customer, sectionId);
 
     // Section colour coding: pool = ocean blue, spa = fire red, fountain = green
     const SECTION_COLOURS = {
@@ -11830,7 +11857,9 @@ function techVersion_renderVisitSectionButtons(){
     btn.style.width = 'auto';
     btn.style.fontWeight = '700';
     const done = pendingVisit.doneSections[sectionId] !== undefined;
-    btn.textContent = (done ? '✓ ' : '') + sectionLabel(customer, sectionId);
+    btn.textContent = pendingVisit.doneSections[sectionId] === 'skipped'
+      ? sectionLabel(customer, sectionId) + ' \u00b7 skipped'
+      : (done ? '✓ ' : '') + sectionLabel(customer, sectionId);
 
     // Section colour coding: pool = ocean blue, spa = fire red, fountain = green
     const SECTION_COLOURS = {
@@ -11925,6 +11954,9 @@ function hideAllVisitSections(){
    'visitSpaBeforePhotoSection','visitSpaSection','visitSpaProductsSection','visitSpaPhotoSection','visitSpaSaveSection',
    'visitFountainBeforePhotoSection','visitFountainSection','visitFountainProductsSection','visitFountainPhotoSection','visitFountainSaveSection'
   ].forEach(id => { const el = document.getElementById(id); if(el) el.style.display = 'none'; });
+  const skipped = document.getElementById('visitSkippedSection');
+  if(skipped) skipped.style.display = 'none';
+  skippedScreenFor = null;
 }
 
 let currentVisibleSection = null;
@@ -12962,6 +12994,15 @@ function restoreFinishedSection(type){
 }
 
 function showVisitSection(sectionId){
+  // A skipped body whose required photo or note was taken away: nowhere else
+  // until they're back, or it's unskipped
+  if(skippedScreenFor && sectionId !== skippedScreenFor && skippedProofMissing(skippedScreenFor)){
+    const need = document.getElementById('skippedNeed');
+    const msg = 'Take a photo and write a note for the skipped ' + skippedLabel(skippedScreenFor) + ' before moving on, or press Unskip.';
+    if(need){ need.textContent = msg; need.style.display = 'block'; }
+    showToast(msg);
+    return;
+  }
   // Preserve whatever's in progress before leaving the current section
   stashFountainDraft();
   if(currentVisibleSection){
@@ -12988,6 +13029,12 @@ function showVisitSection(sectionId){
     document.getElementById('visitEquipmentSection').style.display = 'block';
     renderVisitSectionButtons();
     window.scrollTo({top: 0, behavior: 'smooth'});
+    return;
+  }
+
+  if(pendingVisit && pendingVisit.customerId === currentVisitCustomerId
+     && pendingVisit.doneSections[sectionId] === 'skipped'){
+    showSkippedScreen(sectionId);
     return;
   }
 
@@ -13925,12 +13972,127 @@ async function skipBodyOfWater(type){
   showToast(label.charAt(0).toUpperCase() + label.slice(1) + ' skipped');
 }
 
+// Which skipped body the Skipped screen is showing (null when it isn't up).
+// var: hideAllVisitSections can run before this line does.
+var skippedScreenFor = null;
+function skippedLabel(sectionId){
+  if(sectionId === 'pool' || sectionId === 'spa') return sectionId;
+  const customer = customers.find(c => c.id === currentVisitCustomerId);
+  return sectionLabel(customer, sectionId) || 'body of water';
+}
+function skipProofEntry(sectionId){
+  const list = lsGet('skipProof:' + currentVisitCustomerId) || [];
+  return list.find(x => x && x.section === sectionId) || null;
+}
+function saveSkipProofEntry(sectionId, changes){
+  const list = lsGet('skipProof:' + currentVisitCustomerId) || [];
+  const e = list.find(x => x && x.section === sectionId);
+  if(!e) return;
+  Object.assign(e, changes);
+  lsSet('skipProof:' + currentVisitCustomerId, list);
+}
+// Skipped with a photo and note (they were required): both must still be there
+function skippedProofMissing(sectionId){
+  const e = skipProofEntry(sectionId);
+  if(!e) return false;
+  return !e.photo || !String(e.note || '').trim();
+}
+function showSkippedScreen(sectionId){
+  skippedScreenFor = null;              // set again below, after the redraw
+  hideAllVisitSections();
+  hideStepBar();
+  if(sectionId === 'pool' || sectionId === 'spa') currentVisibleSection = sectionId;
+  else { currentVisitFountainId = sectionId; currentVisibleSection = 'fountain'; }
+  skippedScreenFor = sectionId;
+  const label = skippedLabel(sectionId);
+  document.getElementById('skippedIntro').textContent = 'No readings or photos for the ' + label + ' on this visit.';
+  const e = skipProofEntry(sectionId);
+  const proof = document.getElementById('skippedProof');
+  proof.style.display = e ? 'block' : 'none';
+  document.getElementById('skippedNeed').style.display = 'none';
+  if(e){
+    renderSkippedPhoto(e);
+    document.getElementById('skippedNote').value = e.note || '';
+  }
+  document.getElementById('visitSkippedSection').style.display = 'block';
+  renderVisitSectionButtons();
+}
+// The photo small, like every photo on a report; tap for full size
+function renderSkippedPhoto(e){
+  const box = document.getElementById('skippedPhotoBox');
+  box.innerHTML = '';
+  if(e.photo){
+    const img = document.createElement('img');
+    img.src = e.photo;
+    img.alt = 'Why it was skipped';
+    img.title = 'Tap to see it full size';
+    img.style.cssText = 'max-width:25%;min-width:96px;border-radius:10px;border:1px solid var(--line);display:block;cursor:zoom-in;';
+    img.addEventListener('click', ()=> openPhotoFullSize(e.photo));
+    box.appendChild(img);
+  } else {
+    const none = document.createElement('p');
+    none.style.cssText = 'font-size:12.5px;color:var(--muted);margin:0;';
+    none.textContent = 'No photo yet.';
+    box.appendChild(none);
+  }
+  document.getElementById('btnSkippedRetake').textContent = e.photo ? 'Retake photo' : 'Take photo';
+  document.getElementById('btnSkippedRemovePhoto').style.display = e.photo ? '' : 'none';
+}
+document.getElementById('btnSkippedRetake').addEventListener('click', ()=> document.getElementById('skippedPhotoFile').click());
+document.getElementById('skippedPhotoFile').addEventListener('change', async (ev)=>{
+  const f = ev.target.files && ev.target.files[0];
+  ev.target.value = '';
+  if(!f || !skippedScreenFor) return;
+  try{
+    const data = await resizeImageFile(f, 1200, 0.7);
+    saveSkipProofEntry(skippedScreenFor, {photo: data});
+    renderSkippedPhoto(skipProofEntry(skippedScreenFor));
+    if(!skippedProofMissing(skippedScreenFor)) document.getElementById('skippedNeed').style.display = 'none';
+  }catch(err){ showToast('That photo could not be read. Try again.'); }
+});
+document.getElementById('btnSkippedRemovePhoto').addEventListener('click', ()=>{
+  if(!skippedScreenFor) return;
+  saveSkipProofEntry(skippedScreenFor, {photo: null});
+  renderSkippedPhoto(skipProofEntry(skippedScreenFor));
+});
+// The note saves as it's typed
+document.getElementById('skippedNote').addEventListener('input', (ev)=>{
+  if(!skippedScreenFor) return;
+  saveSkipProofEntry(skippedScreenFor, {note: ev.target.value});
+  if(!skippedProofMissing(skippedScreenFor)) document.getElementById('skippedNeed').style.display = 'none';
+});
+// Unskip: one tap puts it back on the report, at its first step
+document.getElementById('btnUnskip').addEventListener('click', ()=>{
+  const id = skippedScreenFor;
+  if(!id || !pendingVisit) return;
+  delete pendingVisit.doneSections[id];
+  const kept = (lsGet('skipProof:' + currentVisitCustomerId) || []).filter(s => s.section !== id);
+  if(kept.length) lsSet('skipProof:' + currentVisitCustomerId, kept);
+  else lsRemove('skipProof:' + currentVisitCustomerId);
+  skippedScreenFor = null;
+  visitStepBySection[id] = 1;
+  renderVisitSectionButtons();
+  showVisitSection(id);
+  const label = skippedLabel(id);
+  showToast(label.charAt(0).toUpperCase() + label.slice(1) + ' back on the report');
+});
+
 function markSectionDone(sectionId, readingId){
   if(!pendingVisit || pendingVisit.customerId !== currentVisitCustomerId) return;
   pendingVisit.doneSections[sectionId] = readingId;
   renderVisitSectionButtons();
   const allDone = pendingVisit.neededSections.length > 0
     && pendingVisit.neededSections.every(id => pendingVisit.doneSections[id] !== undefined);
+  const missingProof = pendingVisit.neededSections.find(id =>
+    pendingVisit.doneSections[id] === 'skipped' && skippedProofMissing(id));
+  if(allDone && missingProof){
+    showSkippedScreen(missingProof);
+    const msg = 'Take a photo and write a note for the skipped ' + skippedLabel(missingProof) + ' before the report can go, or press Unskip.';
+    const need = document.getElementById('skippedNeed');
+    if(need){ need.textContent = msg; need.style.display = 'block'; }
+    showToast(msg);
+    return;
+  }
   if(allDone){
     finalizeVisitSend();
     return;
