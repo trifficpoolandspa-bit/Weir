@@ -1361,7 +1361,7 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
         + " confirmDialog = () => Promise.resolve(true); techRouteDay = '" + todayName + "'; techRouteWeekOffset = 0; selectedTechId = 't1'; renderTechRoute();"
         + " openTechRescheduleModal(customers.find(c => c.id === 'c2'));");
       const sel = d.getElementById('trTech');
-      check('Move offers the technicians, their own first', sel && sel.options[0].value === 't1' && /as now/.test(sel.options[0].textContent)
+      check('Move offers the technicians, their own first', sel && sel.options[0].value === 't1' && /\(assigned\)/.test(sel.options[0].textContent)
             && Array.from(sel.options).map(o => o.value).join() === 't1,t2,t3', sel && Array.from(sel.options).map(o => o.value + ':' + o.textContent).join());
       sel.value = 't2';
       d.getElementById('trOnce').click();
