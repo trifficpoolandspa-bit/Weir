@@ -1019,11 +1019,9 @@ input::placeholder{color:#A9BCB9;}
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap;">
         <button class="btn btn-ghost" id="btnRestoreChemDefaults" style="width:auto;color:var(--rust);border-color:#EFC9BC;">Restore default labels</button>
-        <!-- Seasons: their own dosage rules and quick buttons between two dates -->
+        <!-- Seasons: their own dosage rules and quick buttons between two dates (the
+             calendar button was taken off Sept 29; Add season opens the window) -->
         <div id="seasonAddRow" style="display:flex;align-items:center;gap:8px;margin-left:auto;">
-          <button type="button" class="btn btn-ghost" id="btnSeasonCalendar" aria-label="Pick the dates for a new season" title="Pick the dates for a new season" style="width:40px;height:40px;padding:0;flex:0 0 auto;">
-            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="14" height="12.5" rx="2"/><path d="M3 8.5h14M7 2.8v3.4M13 2.8v3.4"/></svg>
-          </button>
           <button type="button" class="btn btn-ghost" id="btnAddSeason" style="width:auto;flex:0 0 auto;">Add season</button>
         </div>
       </div>
@@ -14567,7 +14565,6 @@ function closeSeasonWindow(){
   document.getElementById('seasonOverlay').style.display = 'none';
 }
 
-document.getElementById('btnSeasonCalendar').addEventListener('click', ()=> openSeasonWindow(true));
 document.getElementById('btnAddSeason').addEventListener('click', ()=> openSeasonWindow(false));
 document.getElementById('btnCancelSeason').addEventListener('click', closeSeasonWindow);
 // Picking the first day moves straight on to the last
@@ -15395,12 +15392,40 @@ function renderTechProfile(techId){
     val.textContent = opts.value || opts.placeholder || '—';
     el.appendChild(val);
     if(opts.editor){
+      // The row's value as it is now, for putting it back after an edit
+      const show = ()=>{
+        const v = opts.valueOf ? opts.valueOf() : opts.value;
+        val.className = 'profile-meta-value' + (v ? '' : ' placeholder');
+        val.textContent = v || opts.placeholder || '\u2014';
+      };
       const open = ()=>{
         if(el.dataset.editing === 'true') return;
+        // The press has done its job; left set, the row reopened itself the
+        // next time the profile was redrawn (as on a customer's profile)
+        if(profileRowWanted === opts.label) profileRowWanted = null;
         el.dataset.editing = 'true';
         el.classList.remove('editable');
         val.style.display = 'none';
-        opts.editor(el, ()=>{ el.dataset.editing = 'false'; refresh(); });
+        opts.editor(el, ()=>{
+          el.dataset.editing = 'false';
+          if(profileRowWanted === opts.label) profileRowWanted = null;
+          // Another field is already open (the click that closed this one, or
+          // one opened while a username or password was being saved):
+          // redrawing the whole profile now would throw it away and need a
+          // second click. Only this row is put back.
+          if(meta.querySelector('.profile-meta-row[data-editing="true"]')){
+            Array.from(el.children).forEach(ch => { if(ch !== lbl && ch !== val) ch.remove(); });
+            show();
+            val.style.display = '';
+            el.classList.add('editable');
+            ['techDetailName', 'techDetailHeading'].forEach(id=>{
+              const h = document.getElementById(id);
+              if(h) h.textContent = tech.name || 'Technician';
+            });
+            return;
+          }
+          refresh();
+        });
       };
       const want = ()=>{ if(el.dataset.editing !== 'true') profileRowWanted = opts.label; };
       el.addEventListener('mousedown', want);
@@ -15416,12 +15441,16 @@ function renderTechProfile(techId){
     meta.appendChild(el);
   }
 
-  row({label:'Name', value: tech.name, placeholder:'Add a name', editor: techInlineText(tech,'name')});
-  row({label:'Email', value: tech.email, placeholder:'Add an email', editor: techInlineText(tech,'email','email')});
-  row({label:'Phone', value: tech.phone, placeholder:'Add a phone number', editor: techInlineText(tech,'phone','tel')});
+  row({label:'Name', value: tech.name, valueOf: ()=> tech.name, placeholder:'Add a name', editor: techInlineText(tech,'name')});
+  row({label:'Email', value: tech.email, valueOf: ()=> tech.email, placeholder:'Add an email', editor: techInlineText(tech,'email','email')});
+  row({label:'Phone', value: tech.phone, valueOf: ()=> tech.phone, placeholder:'Add a phone number', editor: techInlineText(tech,'phone','tel')});
   const acct = techAccounts ? techAccounts[tech.id] : null;
-  row({label:'Username', value: (acct && acct.username) || tech.username, placeholder:'Add a username', editor: techSignInEditor(tech,'username')});
-  row({label:'Password', value: acct ? '••••••••' : '', placeholder: acct ? '' : 'Set a password to create their sign-in', editor: techSignInEditor(tech,'password')});
+  const acctNow = ()=> techAccounts ? techAccounts[tech.id] : null;
+  row({label:'Username', value: (acct && acct.username) || tech.username,
+       valueOf: ()=> (acctNow() && acctNow().username) || tech.username,
+       placeholder:'Add a username', editor: techSignInEditor(tech,'username')});
+  row({label:'Password', value: acct ? '••••••••' : '', valueOf: ()=> acctNow() ? '••••••••' : '',
+       placeholder: acct ? '' : 'Set a password to create their sign-in', editor: techSignInEditor(tech,'password')});
   checkRow('Admin access', 'isAdmin',
     'Admins get the admin tabs in the app and can see every customer. Regular technicians only see customers assigned to them.');
   checkRow('Can rearrange their route', 'canReorderRoute',
@@ -18772,6 +18801,27 @@ function profileRow(container, opts){
   if(editor){
     const open = ()=>{
       if(row.dataset.editing === 'true') return;
+      // One row open at a time. Anything else open is saved and closed first
+      // (its Done, or leaving its box, which saves), and this row opens with
+      // the one click: saving redraws the profile, and the redrawn copy of
+      // this row opens itself.
+      const others = Array.from(document.querySelectorAll('#profileMeta .profile-meta-row[data-editing="true"]'))
+        .filter(r => r !== row);
+      if(others.length){
+        profileRowWanted = label;
+        others.forEach(r=>{
+          const doneBtn = Array.from(r.querySelectorAll('button')).find(b => b.textContent.trim() === 'Done');
+          if(doneBtn){ doneBtn.click(); return; }
+          const box = r.querySelector('input, textarea, select');
+          if(box && document.activeElement === box) box.blur();
+        });
+        if(!row.isConnected) return;          // redrawn: the new copy opens itself
+        // Still open with nothing to save it by: redraw, which closes it
+        if(document.querySelector('#profileMeta .profile-meta-row[data-editing="true"]')){
+          const cust = customers.find(x => x.id === editingId);
+          if(cust){ viewCustomer(cust); return; }
+        }
+      }
       // The press has done its job: without clearing it, closing this row
       // rebuilt the profile and the rebuilt row opened itself straight away,
       // so Done needed pressing twice
@@ -18966,6 +19016,9 @@ function inlineNotifyContact(cust){
     const phoneEl = box('notifyPhone', 'Phone');
     phoneEl.type = 'tel';
     phoneEl.style.flex = '1';
+    // (623) 555-0142 as it's typed, like the customer's own phone
+    phoneEl.value = formatPhoneNumber(phoneEl.value);
+    attachPhoneFormatting(phoneEl);
     const emailEl = box('notifyEmail', 'Email');
     emailEl.type = 'email';
     emailEl.style.flex = '1';
@@ -19014,7 +19067,7 @@ function inlineNotifyContact(cust){
 
     function commit(){
       cust.notifyName = nameEl.value.trim();
-      cust.notifyPhone = phoneEl.value.trim();
+      cust.notifyPhone = formatPhoneNumber(phoneEl.value.trim());
       cust.notifyEmail = emailEl.value.trim();
       cust.notifyBy = howPick.value;
       saveCustomerField();
@@ -19607,9 +19660,11 @@ function viewCustomer(c){
     : notifyPhoneTo ? 'text' : '';
   const notifyHowShown = {text: 'Text message', email: 'Email', ask: 'Text or email, asked each time'}[notifyHow] || '';
   const notifyOwn = !(c.notifyName || c.notifyPhone || c.notifyEmail);
+  // The phone shown the same way as the customer's own, (623) 555-0142
+  const notifyPhoneShown = formatPhoneNumber(c.notifyPhone || '');
   const notifyContact = notifyOwn ? 'The customer'
-    : [c.notifyName, notifyHow === 'email' ? c.notifyEmail : notifyHow === 'text' ? c.notifyPhone
-        : [c.notifyPhone, c.notifyEmail].filter(Boolean).join(' \u00b7 ')].filter(Boolean).join(' \u00b7 ');
+    : [c.notifyName, notifyHow === 'email' ? c.notifyEmail : notifyHow === 'text' ? notifyPhoneShown
+        : [notifyPhoneShown, c.notifyEmail].filter(Boolean).join(' \u00b7 ')].filter(Boolean).join(' \u00b7 ');
   const notifyLabel = notifyHowShown
     ? notifyHowShown + ' \u2014 ' + notifyContact
     : (notifyOwn ? '' : notifyContact);
