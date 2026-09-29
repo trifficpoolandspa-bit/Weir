@@ -15432,7 +15432,8 @@ function attachAdminLoginHandlers(){
     hideLogin();
     applyRoleUI();
     if(isAdminUser()) adminStartOnOwnRoute();
-    try{ renderHomeList(); }catch(e){}
+    // Whoever signs in lands on Today, on today's list
+    try{ openOnToday(); }catch(e){}
     watchAdminAccount();
     startFieldSync();
   }
@@ -15451,7 +15452,8 @@ function guardAdminSession(){
     hideLogin();
     applyRoleUI();
     if(isAdminUser()) adminStartOnOwnRoute();
-    try{ renderHomeList(); }catch(e){}
+    // Whoever signs in lands on Today, on today's list
+    try{ openOnToday(); }catch(e){}
     watchAdminAccount();
     startFieldSync();
   } else {
@@ -15750,6 +15752,32 @@ function setStickyTop(){
 }
 window.addEventListener('resize', setStickyTop);
 setStickyTop();
+
+// Today, on today's list: where the app opens after signing in, and every
+// time it comes back to the front, unless something is being worked on
+function openOnToday(){
+  selectedHomeDay = DAYS_OF_WEEK[new Date().getDay()];
+  weekOffset = 0;
+  if(currentViewName !== 'home') switchView('home');
+  else renderHomeList();
+}
+// Left alone: a report open, a customer or technician being edited, a window
+// up, or nobody signed in. Taking a photo leaves the app for the camera, and
+// coming back must not throw away what was being done.
+function busyForOpenOnToday(){
+  if(currentViewName === 'visit') return true;
+  const shown = id => { const el = document.getElementById(id); return !!el && el.style.display !== 'none'; };
+  if(shown('newCustomerCard') || shown('techFormCard')) return true;
+  if(document.querySelector('.confirm-overlay')) return true;
+  const login = document.getElementById('loginScreen');
+  if(login && login.style.display !== 'none') return true;
+  let who = null; try{ who = currentUser; }catch(e){}
+  return !who;
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden || busyForOpenOnToday()) return;
+  openOnToday();
+});
 </script>
 </body>
 </html>
