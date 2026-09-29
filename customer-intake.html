@@ -818,6 +818,7 @@ input::placeholder{color:#A9BCB9;}
       <h2 id="techDetailHeading" style="margin:0 0 14px;color:var(--teal-deep);font-size:26px;line-height:1.2;"></h2>
       <div class="seg-control" id="techTabControl">
         <button class="history-type-btn active" data-techtab="profile" type="button">Profile</button>
+        <button class="history-type-btn" data-techtab="route" type="button">Today's Route</button>
         <button class="history-type-btn" data-techtab="customers" type="button">Customers</button>
       </div>
     </div>
@@ -829,6 +830,38 @@ input::placeholder{color:#A9BCB9;}
       </div>
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Tap any field to edit it.</p>
       <div id="techProfileMeta"></div>
+    </div>
+
+    <!-- Today's Route: the technician's route for a day, as their phone has it -->
+    <div class="card" id="techRouteWebCard" style="display:none;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span id="twDayLabel" style="flex:1 1 auto;min-width:0;text-align:center;font-size:15px;font-weight:600;color:var(--muted);"></span>
+        <input type="date" id="twDateInput" title="Jump to a date" style="width:auto;flex:0 0 auto;padding:6px 8px;font-size:13px;">
+        <button class="btn btn-ghost" id="twPrev" type="button" style="width:auto;padding:6px 13px;font-size:17px;line-height:1;">&lsaquo;</button>
+        <button class="btn btn-ghost" id="twNext" type="button" style="width:auto;padding:6px 13px;font-size:17px;line-height:1;">&rsaquo;</button>
+      </div>
+      <p id="twCounts" style="text-align:center;font-size:13px;color:var(--muted);margin:10px 0 12px;"></p>
+      <div id="twOrderBar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;background:var(--gold-pale);border:1px solid #E0B877;border-radius:10px;padding:10px 12px;margin:0 0 12px;">
+        <span id="twOrderText" style="flex:1 1 auto;font-size:13px;color:var(--ink);"></span>
+        <button class="btn btn-ghost" id="twOrderToday" type="button" style="width:auto;padding:6px 12px;font-size:12.5px;">Just today</button>
+        <button class="btn btn-primary" id="twOrderWeek" type="button" style="width:auto;padding:6px 12px;font-size:12.5px;">Every week</button>
+        <button class="btn btn-ghost" id="twOrderUndo" type="button" style="width:auto;padding:6px 12px;font-size:12.5px;color:var(--rust);border-color:#EFC9BC;">Remove changes</button>
+      </div>
+      <div id="twList"></div>
+    </div>
+
+    <!-- Move one customer from Today's Route: another date, another technician, or both -->
+    <div id="twMoveOverlay" style="display:none;position:fixed;inset:0;z-index:320;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
+      <div style="background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);">
+        <h2 id="twMoveHeading" style="font-size:18px;margin:0 0 4px;">Move</h2>
+        <p id="twMoveIntro" style="font-size:12.5px;color:var(--muted);margin:0 0 14px;"></p>
+        <div class="field"><label>New date</label><input type="date" id="twMoveDate"></div>
+        <div class="field"><label>Technician</label><select id="twMoveTech"></select></div>
+        <p id="twMoveError" style="display:none;font-size:12.5px;color:var(--rust);margin:0 0 10px;"></p>
+        <button class="btn btn-primary" id="twMoveOnce" type="button" style="width:100%;">Just this once</button>
+        <button class="btn btn-ghost" id="twMoveAlways" type="button" style="width:100%;margin-top:8px;">Change their regular day</button>
+        <button class="btn btn-ghost" id="twMoveCancel" type="button" style="width:100%;margin-top:8px;">Cancel</button>
+      </div>
     </div>
 
     <div class="card" id="techCustomersCard" style="display:none;">
@@ -3524,12 +3557,90 @@ function loadChemConfig(){
 }
 
 // Writes the page's lists: to the chosen season only, whole, or to
-// year-round. Changing a season never touches year-round or another season.
+// year-round. Changing a season never touches year-round or another season;
+// changing year-round is carried into every season as well (Sept 29).
 function storeChemConfig(){
   const season = activeSeason();
-  if(!season){ lsSet('chemConfig', chemConfig); return; }
+  if(!season){
+    const before = lsGet('chemConfig');
+    lsSet('chemConfig', chemConfig);
+    if(before && chemSeasons.length) carryYearRoundIntoSeasons(before, chemConfig);
+    return;
+  }
   season.lists = seasonSnapshot(chemConfig);
   saveChemSeasons();
+}
+
+// What changed on year-round, done to every season too: a chemical or dosage
+// added, taken off or moved, and anything changed on one (its name, unit,
+// required tick, dosage rules, quick buttons...). Only what changed is carried,
+// so what a season set differently on everything else stays as it is.
+function carryYearRoundIntoSeasons(before, after){
+  const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+  const clone = v => JSON.parse(JSON.stringify(v));
+  let touched = false;
+  chemSeasons.forEach(season=>{
+    // A season from before it had its own lists becomes its own copy first
+    if(!seasonHasFullLists(season)){
+      season.lists = seasonSnapshot(applySeasonTo(clone(before), season));
+    }
+    SEASON_BODIES.forEach(t=>{
+      const was = before[t] || {}, now = after[t] || {};
+      const own = season.lists[t] = season.lists[t] || clone(now);
+      // Anything on the body of water itself (not the two lists)
+      Object.keys(Object.assign({}, was, now)).forEach(prop=>{
+        if(prop === 'chemicals' || prop === 'dosages') return;
+        if(same(was[prop], now[prop])) return;
+        if(now[prop] === undefined) delete own[prop]; else own[prop] = clone(now[prop]);
+        touched = true;
+      });
+      ['chemicals', 'dosages'].forEach(k=>{
+        const oldList = (was[k] || []).filter(x => x && x.key);
+        const newList = (now[k] || []).filter(x => x && x.key);
+        let mine = (own[k] || []).slice();
+        const oldBy = new Map(oldList.map(x => [x.key, x]));
+        const newKeys = new Set(newList.map(x => x.key));
+        // Taken off year-round: off the season too
+        const gone = oldList.filter(x => !newKeys.has(x.key)).map(x => x.key);
+        if(gone.length){ mine = mine.filter(x => !(x && gone.includes(x.key))); touched = true; }
+        newList.forEach((item, i)=>{
+          const prev = oldBy.get(item.key);
+          const at = mine.findIndex(x => x && x.key === item.key);
+          if(!prev){
+            // New on year-round: added to the season after the one above it
+            if(at !== -1) return;
+            const above = i > 0 ? newList[i - 1].key : null;
+            const pos = above === null ? -1 : mine.findIndex(x => x && x.key === above);
+            mine.splice(pos + 1, 0, clone(item));
+            touched = true;
+            return;
+          }
+          if(at === -1) return;         // the season took it off itself: left off
+          // Each thing that changed on it, and only that
+          Object.keys(Object.assign({}, prev, item)).forEach(prop=>{
+            if(same(prev[prop], item[prop])) return;
+            if(item[prop] === undefined) delete mine[at][prop]; else mine[at][prop] = clone(item[prop]);
+            touched = true;
+          });
+        });
+        // Moved on year-round: the ones both share take year-round's order,
+        // in the places they already hold; the season's own stay put
+        const oldOrder = oldList.map(x => x.key).filter(key => newKeys.has(key));
+        const newOrder = newList.map(x => x.key).filter(key => oldBy.has(key));
+        if(!same(oldOrder, newOrder)){
+          const shared = new Set(newOrder);
+          const slots = [];
+          mine.forEach((x, i) => { if(x && shared.has(x.key)) slots.push(i); });
+          const byKey = new Map(mine.filter(x => x && shared.has(x.key)).map(x => [x.key, x]));
+          const ordered = newOrder.filter(key => byKey.has(key)).map(key => byKey.get(key));
+          slots.forEach((slot, n) => { mine[slot] = ordered[n]; });
+          touched = true;
+        }
+        own[k] = mine;
+      });
+    });
+  });
+  if(touched) saveChemSeasons();
 }
 
 function loadBaseChemConfig(){
@@ -7885,6 +7996,8 @@ const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'r
                          'quoteEmailStyle',
                          // The last quote / work order numbers used, so numbering carries on from any computer
                          'quoteCounter', 'workOrderCounter',
+                         // Just today route orders set on Today's Route (the phones use them)
+                         'routeOrdersOnce',
                          // The order of the Technicians list, which the phones follow
                          'technicianOrder'];
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
@@ -14535,7 +14648,7 @@ function renderSeasonNote(){
   if(text){
     text.textContent = season
       ? season.name + ', ' + seasonDatesText(season) + ' every year. Everything changed here belongs to ' + season.name + ' only: its chemicals and dosages, labels, units, dosage rules and quick buttons.'
-      : 'Year-round: used on any day outside your seasons.';
+      : 'Year-round: used on any day outside your seasons. Anything changed here is changed in every season too.';
   }
   if(remove) remove.style.display = season ? 'inline-flex' : 'none';
   const edit = document.getElementById('btnEditSeason');
@@ -15308,6 +15421,8 @@ function applyTechTab(){
   const tab = active ? active.dataset.techtab : 'profile';
   document.getElementById('techProfileCard').style.display = tab === 'profile' ? 'block' : 'none';
   document.getElementById('techCustomersCard').style.display = tab === 'customers' ? 'block' : 'none';
+  document.getElementById('techRouteWebCard').style.display = tab === 'route' ? 'block' : 'none';
+  if(tab === 'route') renderTechRouteWeb();
   if(tab !== 'customers'){
     const assignCard = document.getElementById('techAssignCard');
     if(assignCard) assignCard.style.display = 'none';
@@ -15833,6 +15948,9 @@ document.getElementById('btnDoneAssigning').addEventListener('click', closeAssig
 function openTechDetail(t, opts){
   opts = opts || {};
   currentTechDetailId = t.id;
+  // Today's Route opens on today for each technician
+  twDateISO = null;
+  if(typeof twEndOrder === 'function') twEndOrder();
   // The day filter starts at All days each time this is opened, rather than
   // keeping whichever day was picked last time
   techAssignedDayFilter = '';
@@ -15906,6 +16024,227 @@ function refreshTechStepButtons(){
 }
 
 document.getElementById('btnPrevTech').addEventListener('click', ()=> stepToTechnician(-1));
+
+// ---------- Today's Route (technician page) ----------
+// The technician's route for a day, the same as their phone and the app's
+// Technicians tab show it: which stops are done, the order (drag to change it,
+// then just today or every week), and Move to another date or technician.
+let twDateISO = null;                 // the day showing; today when the tab opens
+let twPending = null;                 // a drag waiting for an answer: {techId, iso, ids}
+let twShown = [];
+const twLocalISO = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const twDayName = iso => DAYS_OF_WEEK[new Date(iso + 'T12:00:00').getDay()];
+function twTechName(id){
+  const t = technicians.find(x => x && String(x.id) === String(id));
+  return (t && t.name) || (id ? 'another technician' : 'no technician');
+}
+function twServicedOn(c, iso){
+  const list = Array.isArray(c.servicedFor) ? c.servicedFor : [];
+  if(list.length) return list.some(x => x && x.day === iso);
+  return c.lastServicedDate === iso;
+}
+function twRouteFor(techId, iso){
+  const day = twDayName(iso);
+  const moves = lsGet('rescheduledVisits') || [];
+  const movedAway = new Set(moves.filter(r => r && r.fromDate === iso).map(r => r.customerId));
+  const movedTo = new Map();
+  moves.forEach(r => { if(r && r.toDate === iso) movedTo.set(r.customerId, r.technicianId || null); });
+  const base = customers.filter(c => c && c.active !== false && String(c.technicianId || '') === String(techId)
+    && customerServicedOn(c, day) && !movedAway.has(c.id));
+  const movedIn = customers.filter(c => c && c.active !== false && movedTo.has(c.id)
+    && String(movedTo.get(c.id) || c.technicianId || '') === String(techId) && !base.some(b => b.id === c.id));
+  const all = base.concat(movedIn);
+  const ids = all.map(c => c.id);
+  const listAt = v => (Array.isArray(v) ? v : []).filter(id => ids.includes(id));
+  const ro = lsGet('routeOrders') || {};
+  const dayOrder = ro[day];
+  const once = ((lsGet('routeOrdersOnce') || {})[iso] || {})[techId];
+  let order = (twPending && twPending.techId === techId && twPending.iso === iso) ? listAt(twPending.ids) : [];
+  if(!order.length) order = listAt(once);
+  if(!order.length) order = listAt(Array.isArray(dayOrder) ? dayOrder
+    : (dayOrder && typeof dayOrder === 'object' ? dayOrder[techId] : null));
+  ids.forEach(id => { if(!order.includes(id)) order.push(id); });
+  return {list: order.map(id => all.find(c => c.id === id)).filter(Boolean), movedIn: new Set(movedIn.map(c => c.id))};
+}
+function renderTechRouteWeb(){
+  const techId = currentTechDetailId;
+  const box = document.getElementById('twList');
+  if(!box || !techId) return;
+  if(!twDateISO) twDateISO = twLocalISO(new Date());
+  if(twPending && (twPending.techId !== techId || twPending.iso !== twDateISO)) twEndOrder();
+  const d = new Date(twDateISO + 'T12:00:00');
+  const todayISO = twLocalISO(new Date());
+  const rel = twDateISO === todayISO ? 'Today' : '';
+  document.getElementById('twDayLabel').textContent = (rel ? rel + ' \u00b7 ' : '')
+    + d.toLocaleDateString(undefined, {weekday: 'long', month: 'short', day: 'numeric'});
+  document.getElementById('twDateInput').value = twDateISO;
+  const {list, movedIn} = twRouteFor(techId, twDateISO);
+  twShown = list.map(c => c.id);
+  const done = list.filter(c => twServicedOn(c, twDateISO)).length;
+  document.getElementById('twCounts').textContent = (list.length - done) + ' of ' + list.length + ' stops left';
+  box.innerHTML = '';
+  if(!list.length){ box.innerHTML = emptyState('No customers on this day.'); return; }
+  list.forEach(c=>{
+    const served = twServicedOn(c, twDateISO);
+    const row = document.createElement('div');
+    row.className = 'cust-row';
+    row.dataset.reorderKey = c.id;
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;';
+    const grip = document.createElement('span');
+    grip.textContent = '\u2261';
+    grip.title = 'Drag to reorder';
+    grip.style.cssText = 'color:var(--muted);font-size:19px;flex-shrink:0;padding:0 8px 0 2px;cursor:grab;';
+    row.appendChild(grip);
+    const info = document.createElement('div');
+    info.style.cssText = 'flex:1 1 auto;min-width:0;' + (served ? 'opacity:0.6;' : '');
+    const tag = (bg, text) => '<span style="background:' + bg + ';color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;margin-left:6px;vertical-align:middle;">' + text + '</span>';
+    info.innerHTML = '<div class="cust-name">' + esc(displayName(c.name))
+      + (served ? tag('var(--green)', 'DONE') : '') + (movedIn.has(c.id) ? tag('var(--gold)', 'MOVED HERE') : '') + '</div>'
+      + '<div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(c.address || 'No address on file') + '</div>';
+    row.appendChild(info);
+    const move = document.createElement('button');
+    move.className = 'btn btn-ghost';
+    move.type = 'button';
+    move.style.cssText = 'width:auto;flex:0 0 auto;padding:6px 12px;font-size:12px;';
+    move.textContent = 'Move';
+    move.addEventListener('click', (e)=>{ e.stopPropagation(); twOpenMove(c); });
+    row.appendChild(move);
+    attachTouchReorder(grip, row, box, '[data-reorder-key]', (keys)=>{
+      twPending = {techId: techId, iso: twDateISO, ids: keys.slice()};
+      renderTechRouteWeb();
+      const bar = document.getElementById('twOrderBar');
+      document.getElementById('twOrderText').textContent = 'Order changed \u2014 keep it for '
+        + twDayName(twDateISO) + ' only, or every week?';
+      bar.style.display = 'flex';
+    });
+    box.appendChild(row);
+  });
+}
+function twEndOrder(){
+  twPending = null;
+  const bar = document.getElementById('twOrderBar');
+  if(bar) bar.style.display = 'none';
+}
+document.getElementById('twOrderUndo').addEventListener('click', ()=>{ twEndOrder(); renderTechRouteWeb(); });
+document.getElementById('twOrderToday').addEventListener('click', ()=>{
+  const p = twPending; if(!p) return;
+  // The office's one-off order for that technician and date, which their phone uses
+  const once = lsGet('routeOrdersOnce') || {};
+  const today = twLocalISO(new Date());
+  Object.keys(once).forEach(k => { if(k < today) delete once[k]; });
+  once[p.iso] = once[p.iso] || {};
+  once[p.iso][p.techId] = p.ids.slice();
+  lsSet('routeOrdersOnce', once);
+  if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange();
+  twEndOrder();
+  renderTechRouteWeb();
+  showToast('Order kept for ' + new Date(p.iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'long', month: 'short', day: 'numeric'}) + ' only');
+});
+document.getElementById('twOrderWeek').addEventListener('click', ()=>{
+  const p = twPending; if(!p) return;
+  const day = twDayName(p.iso);
+  const ro = lsGet('routeOrders') || {};
+  if(!ro[day] || Array.isArray(ro[day]) || typeof ro[day] !== 'object') ro[day] = {};
+  // Only the stops on screen swap among the places they held; the rest of the
+  // week's route keeps its order
+  const before = Array.isArray(ro[day][p.techId]) ? ro[day][p.techId].slice() : [];
+  const onScreen = new Set(p.ids);
+  const slots = []; before.forEach((id, i) => { if(onScreen.has(id)) slots.push(i); });
+  const out = before.slice(); const queue = p.ids.slice();
+  slots.forEach(i => { out[i] = queue.shift(); });
+  ro[day][p.techId] = out.concat(queue.filter(id => !before.includes(id)));
+  lsSet('routeOrders', ro);
+  routeOrders = ro;
+  // A Just today for that date would still win over it
+  const once = lsGet('routeOrdersOnce') || {};
+  if(once[p.iso] && once[p.iso][p.techId]){ delete once[p.iso][p.techId]; lsSet('routeOrdersOnce', once); }
+  if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange();
+  twEndOrder();
+  renderTechRouteWeb();
+  showToast('Order saved for every ' + day);
+});
+document.getElementById('twPrev').addEventListener('click', ()=>{
+  const d = new Date(twDateISO + 'T12:00:00'); d.setDate(d.getDate() - 1); twDateISO = twLocalISO(d); renderTechRouteWeb();
+});
+document.getElementById('twNext').addEventListener('click', ()=>{
+  const d = new Date(twDateISO + 'T12:00:00'); d.setDate(d.getDate() + 1); twDateISO = twLocalISO(d); renderTechRouteWeb();
+});
+document.getElementById('twDateInput').addEventListener('change', (e)=>{
+  if(e.target.value){ twDateISO = e.target.value; renderTechRouteWeb(); }
+});
+
+// The Move window, as on the app: a date, another technician, or both
+let twMoving = null;
+function twOpenMove(c){
+  twMoving = c;
+  document.getElementById('twMoveHeading').textContent = 'Move ' + displayName(c.name);
+  document.getElementById('twMoveIntro').textContent = 'Currently on ' + (c.day || 'no day') + ' with ' + twTechName(c.technicianId)
+    + '. Pick a new date, another technician, or both, then choose whether this is a one-off or for good.';
+  const date = document.getElementById('twMoveDate');
+  date.value = '';                    // empty: moving only to another technician keeps the day
+  const sel = document.getElementById('twMoveTech');
+  sel.innerHTML = '';
+  const own = String(c.technicianId || '');
+  const add = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); };
+  add(own, own ? twTechName(own) + ' (assigned)' : 'Unassigned');
+  technicians.forEach(t => { if(t && t.id && String(t.id) !== own) add(String(t.id), t.name || 'Technician'); });
+  const err = document.getElementById('twMoveError'); err.style.display = 'none'; err.textContent = '';
+  document.getElementById('twMoveOverlay').style.display = 'flex';
+}
+function twCloseMove(){ document.getElementById('twMoveOverlay').style.display = 'none'; twMoving = null; }
+document.getElementById('twMoveCancel').addEventListener('click', twCloseMove);
+function twMoveSay(m){ const err = document.getElementById('twMoveError'); err.textContent = m; err.style.display = 'block'; }
+function twNewTech(){
+  const v = document.getElementById('twMoveTech').value;
+  return (twMoving && v !== String(twMoving.technicianId || '')) ? v : null;
+}
+document.getElementById('twMoveOnce').addEventListener('click', ()=>{
+  const c = twMoving; if(!c) return;
+  const fromISO = twDateISO;
+  const tech = twNewTech();
+  const toISO = document.getElementById('twMoveDate').value || (tech ? fromISO : '');
+  if(!toISO){ twMoveSay('Pick a date or another technician first.'); return; }
+  if(toISO === fromISO && !tech){ twMoveSay('That\u2019s the day they\u2019re already on.'); return; }
+  // Anything that moved them off this day, or onto it, is replaced
+  const list = (lsGet('rescheduledVisits') || []).filter(r => !(r && r.customerId === c.id
+    && (r.fromDate === fromISO || r.toDate === fromISO)));
+  const move = {id: 'resched_' + Date.now(), customerId: c.id, fromDate: fromISO, toDate: toISO, createdAt: new Date().toISOString()};
+  if(tech) move.technicianId = tech;
+  list.push(move);
+  lsSet('rescheduledVisits', list);
+  if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange();
+  twCloseMove();
+  renderTechRouteWeb();
+  showToast(displayName(c.name) + ' moved to ' + new Date(toISO + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'long', month: 'short', day: 'numeric'})
+    + (tech ? ' with ' + twTechName(tech) : ''));
+});
+document.getElementById('twMoveAlways').addEventListener('click', async ()=>{
+  const c = twMoving; if(!c) return;
+  const tech = twNewTech();
+  const toISO = document.getElementById('twMoveDate').value;
+  if(!toISO && !tech){ twMoveSay('Pick a date or another technician first.'); return; }
+  const newDay = toISO ? twDayName(toISO) : null;
+  const parts = [];
+  if(newDay) parts.push('to ' + newDay + ' every week');
+  if(tech) parts.push('to ' + twTechName(tech) + '\u2019s route');
+  const ok = await confirmDialog('Move ' + displayName(c.name) + ' ' + parts.join(' and ') + ' from now on?',
+    tech && !newDay ? 'Change technician' : (tech ? 'Change day and technician' : 'Change day'));
+  if(!ok) return;
+  const live = customers.find(x => x && x.id === c.id);
+  if(live){
+    if(newDay) live.day = newDay;
+    if(tech) live.technicianId = tech;
+    // Their one-off moves no longer apply
+    const kept = (lsGet('rescheduledVisits') || []).filter(r => !(r && r.customerId === live.id));
+    lsSet('rescheduledVisits', kept);
+    saveCustomers();
+  }
+  twCloseMove();
+  renderTechRouteWeb();
+  if(typeof renderTechAssignedList === 'function' && currentTechDetailId) renderTechAssignedList(currentTechDetailId);
+  showToast(displayName(c.name) + (newDay ? ' now serviced on ' + newDay + 's' : '') + (newDay && tech ? ',' : '')
+    + (tech ? ' now on ' + twTechName(tech) + '\u2019s route' : ''));
+});
 document.getElementById('btnNextTech').addEventListener('click', ()=> stepToTechnician(1));
 
 // Keys on an open profile. Left and right step to the previous and next

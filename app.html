@@ -1041,6 +1041,8 @@ select#customerSelect{font-weight:600;}
             <button class="btn btn-ghost" id="servicedPrevDay" type="button" style="width:auto;padding:6px 12px;">&lsaquo;</button>
             <button class="btn btn-ghost" id="servicedNextDay" type="button" style="width:auto;padding:6px 12px;">&rsaquo;</button>
           </div>
+          <!-- An admin picks whose services to see; their own to start with -->
+          <select id="servicedTechSel" aria-label="Technician" style="display:none;margin-top:8px;"></select>
         </div>
       <div class="card">
         <h2 id="servicedHeading">Serviced today</h2>
@@ -2653,6 +2655,11 @@ document.addEventListener('click', (ev)=>{
         openVisit(visitDraft.customerId);
         return;
       }
+      // Any report left open for another tab, even with nothing typed yet
+      if(t.dataset.view === 'home' && !navigatingBack && reportLeftOpen()){
+        openVisit(visitLeftOpenFor);
+        return;
+      }
     }catch(e){ /* fall through to the normal tab change */ }
 
     switchView(t.dataset.view);
@@ -2829,6 +2836,7 @@ function applyRoleUI(){
   // Report view: the admin's search and Serviced/Reports switch, the
   // technician's plain customer list
   show('reportModeCard', admin, 'block');
+  show('servicedTechSel', admin, 'block');
   show('reportCustomerSearch', admin, 'block');
   if(!admin){ show('btnClearReportCustomer', false); show('reportCustomerSuggestions', false); }
   show('reportCustomerSelect', !admin, 'block');
@@ -7034,8 +7042,9 @@ function openPhotoFullSize(dataUrl){
 
   const hint = document.createElement('div');
   hint.textContent = 'Tap the photo to close';
+  // Solid: the same grey it looked before, with nothing showing through
   hint.style.cssText = 'flex:0 0 auto;padding:12px 18px;font-size:15px;border:none;'
-    + 'border-radius:10px;background:rgba(255,255,255,0.15);color:#fff;'
+    + 'border-radius:10px;background:#3E4746;color:#fff;'
     + "font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;pointer-events:none;";
   bar.appendChild(hint);
 
@@ -9683,7 +9692,10 @@ function noteServicedFor(customer){
   // One note per day: servicing a day again replaces its note rather than
   // adding a second (two notes needed two presses of Reservice)
   const list = (Array.isArray(customer.servicedFor) ? customer.servicedFor : []).filter(x => x && x.day !== day);
-  list.push({day: day, on: on});
+  // Who did it, so Serviced can show each technician their own
+  let by = null;
+  try{ by = currentUser && currentUser.id ? String(currentUser.id) : null; }catch(e){}
+  list.push(by ? {day: day, on: on, by: by} : {day: day, on: on});
   customer.servicedFor = list.slice(-20);
 }
 
@@ -10439,13 +10451,18 @@ function renderServicedList(){
   // A technician sees only the pools assigned to them, plus any moved to them
   // just for that day; an admin sees everyone's
   let me = null;
-  try{ me = (!isAdminUser() && currentUser) ? String(currentUser.id) : null; }catch(e){}
+  try{
+    me = isAdminUser() ? (renderServicedTechPicker() || null)
+       : (currentUser ? String(currentUser.id) : null);
+  }catch(e){}
   const moves = me ? loadReschedules() : [];
-  const isMine = (c, dayISO) => !me || String(c.technicianId || '') === me
+  // Who a service belongs to: whoever did it; for one noted before that was
+  // kept, their technician (or whoever it was moved to that day)
+  const isMine = (c, dayISO, by) => !me || (by ? String(by) === me : (String(c.technicianId || '') === me
     || moves.some(r => r && r.customerId === c.id && r.technicianId && String(r.technicianId) === me
-         && (r.toDate === today || (dayISO && r.toDate === dayISO)));
+         && (r.toDate === today || (dayISO && r.toDate === dayISO)))));
   customers.filter(c => c.active !== false).forEach(c=>{
-    const done = (Array.isArray(c.servicedFor) ? c.servicedFor : []).filter(x => x && x.on === today && isMine(c, x.day));
+    const done = (Array.isArray(c.servicedFor) ? c.servicedFor : []).filter(x => x && x.on === today && isMine(c, x.day, x.by));
     if(!isMine(c, null) && done.length === 0) return;
     const days = Array.from(new Set(done.map(x => x.day)));
     if(days.length) days.forEach(d => servicedRows.push({c, day: d}));
@@ -10529,7 +10546,36 @@ function renderServicedList(){
   });
 }
 
+// An admin's Serviced: whose services to show (everyone, or one technician;
+// their own to start with). Returns the chosen technician's id, or '' for everyone.
+var servicedTechChoice = null;
+function renderServicedTechPicker(){
+  const sel = document.getElementById('servicedTechSel');
+  if(!sel) return '';
+  if(servicedTechChoice === null){
+    let mine = ''; try{ mine = currentUser && currentUser.id ? String(currentUser.id) : ''; }catch(e){}
+    servicedTechChoice = mine;
+  }
+  sel.innerHTML = '';
+  const add = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); };
+  add('', 'Everyone');
+  const techs = (typeof techniciansInOrder === 'function') ? techniciansInOrder() : (lsGet('technicians') || []);
+  techs.forEach(t => { if(t && t.id) add(String(t.id), t.name || 'Technician'); });
+  let who = null; try{ who = currentUser; }catch(e){}
+  if(who && who.id && !Array.from(sel.options).some(o => o.value === String(who.id))) add(String(who.id), who.name || 'Me');
+  if(!Array.from(sel.options).some(o => o.value === servicedTechChoice)) servicedTechChoice = '';
+  sel.value = servicedTechChoice;
+  return servicedTechChoice;
+}
+document.getElementById('servicedTechSel').addEventListener('change', (e)=>{
+  servicedTechChoice = e.target.value;
+  renderServicedList();
+});
+
 async function reserviceCustomer(customer, forDay){
+  // The customer as they are in the list right now, not the copy the row was
+  // drawn with (a sync in between replaces every customer with a fresh copy)
+  customer = customers.find(x => x && x.id === customer.id) || customer;
   // The original report stays exactly as it was. This flag marks the NEXT
   // report as a redo so the two can be told apart.
   customer.pendingRedo = true;
@@ -10560,7 +10606,19 @@ async function reserviceCustomer(customer, forDay){
     await saveSkippedVisits(customer.id, filtered);
   }
 
-  showToast(customer.name + ' moved back to Today\'s list');
+  // Reserviced by an admin: on the admin's own Today list, just for today,
+  // rather than back with the technician who sent the report
+  let who = null; try{ who = currentUser; }catch(e){}
+  if(isAdminUser() && who && who.id && String(customer.technicianId || '') !== String(who.id)){
+    const list = loadReschedules().filter(r => !(r && r.customerId === customer.id
+      && (r.fromDate === today || r.toDate === today)));
+    list.push({id: 'resched_' + Date.now(), customerId: customer.id, fromDate: today, toDate: today,
+      technicianId: String(who.id), createdAt: new Date().toISOString()});
+    lsSet('rescheduledVisits', list);
+    showToast(customer.name + ' moved to your Today list');
+  } else {
+    showToast(customer.name + ' moved back to Today\'s list');
+  }
   renderServicedList();
   renderHomeList();
 }
@@ -13863,7 +13921,22 @@ function askSkipProof(label){
     const errEl = overlay.querySelector('#skipProofErr');
     const say = (m)=>{ errEl.textContent = m; errEl.style.display = 'block'; };
 
-    overlay.querySelector('#skipProofPhotoBtn').addEventListener('click', ()=> fileEl.click());
+    overlay.querySelector('#skipProofPhotoBtn').addEventListener('click', async ()=>{
+      // The app's own camera, like every other photo: one tap of the shutter and
+      // it's back here with Remove photo. The phone's camera app (which asks
+      // for a tick first) is only used if this one can't open.
+      try{
+        const data = await captureFromCamera(900, 0.5);
+        if(!data) return;
+        photoData = data;
+        overlay.querySelector('#skipProofImg').src = photoData;
+        overlay.querySelector('#skipProofPreview').style.display = 'block';
+        overlay.querySelector('#skipProofPhotoBtn').textContent = 'Retake photo';
+        errEl.style.display = 'none';
+      }catch(err){
+        fileEl.click();
+      }
+    });
 
     // Same as every other photo in the app: tap to see it full size
     overlay.querySelector('#skipProofImg').addEventListener('click', ()=>{
@@ -14046,7 +14119,22 @@ function renderSkippedPhoto(e){
   document.getElementById('btnSkippedRetake').textContent = e.photo ? 'Retake photo' : 'Take photo';
   document.getElementById('btnSkippedRemovePhoto').style.display = e.photo ? '' : 'none';
 }
-document.getElementById('btnSkippedRetake').addEventListener('click', ()=> document.getElementById('skippedPhotoFile').click());
+document.getElementById('btnSkippedRetake').addEventListener('click', async ()=>{
+  if(!skippedScreenFor) return;
+  const id = skippedScreenFor;
+  // The app's own camera, straight back here; the phone's camera app only if it can't open
+  try{
+    const data = await captureFromCamera(900, 0.5);
+    if(!data) return;
+    saveSkipProofEntry(id, {photo: data});
+    if(skippedScreenFor === id){
+      renderSkippedPhoto(skipProofEntry(id));
+      if(!skippedProofMissing(id)) document.getElementById('skippedNeed').style.display = 'none';
+    }
+  }catch(err){
+    document.getElementById('skippedPhotoFile').click();
+  }
+});
 document.getElementById('skippedPhotoFile').addEventListener('change', async (ev)=>{
   const f = ev.target.files && ev.target.files[0];
   ev.target.value = '';
@@ -16110,8 +16198,19 @@ function busyForOpenOnToday(){
 }
 document.addEventListener('visibilitychange', ()=>{
   if(document.hidden || busyForOpenOnToday()) return;
+  // A report left open for another tab: back into the report, not the list
+  if(reportLeftOpen()){
+    try{ openVisit(visitLeftOpenFor); return; }catch(e){}
+  }
   openOnToday();
 });
+// A report was open when another tab was pressed, and hasn't been finished,
+// cancelled, or left for the route since
+function reportLeftOpen(){
+  return !!(visitLeftOpenFor && currentViewName !== 'visit'
+    && customers.some(c => c && c.id === visitLeftOpenFor));
+}
+
 </script>
 </body>
 </html>
