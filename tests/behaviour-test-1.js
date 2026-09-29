@@ -1109,7 +1109,8 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
     check('on the bottom bar too', shown(td, '.bottombar .tab').join() === 'home,serviced,options', shown(td, '.bottombar .tab').join());
     check('an admin sees Today, Technicians, Customer, Report and Settings',
           shown(ad, 'nav .tab').join() === 'home,technicians,customers,report,options', shown(ad, 'nav .tab').join());
-    check('on the bottom bar too', shown(ad, '.bottombar .tab').join() === 'home,technicians,customers,report,options', shown(ad, '.bottombar .tab').join());
+    // The bottom bar has Report before Customer (Sept 29)
+    check('on the bottom bar too, Report before Customer', shown(ad, '.bottombar .tab').join() === 'home,technicians,report,customers,options', shown(ad, '.bottombar .tab').join());
     check('a technician keeps the Voice entry mode setting', visible(td, 'techVoiceCard') && !visible(td, 'adminSettingsCards'));
     check('an admin keeps the voice button and Technicians tab settings', visible(ad, 'adminSettingsCards') && !visible(ad, 'techVoiceCard'));
     check('a technician\u2019s Serviced list is its own tab',
@@ -1640,8 +1641,8 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
             && tw.contains(d.getElementById('techPrevDay')) && !tw.contains(d.getElementById('techRouteList')));
       const st = id => d.getElementById(id).getAttribute('style');
       check('bigger counters on Today', /font-size:20px/.test(st('homeStopCount')) && /font-size:20px/.test(st('homeJobCount')));
-      check('stops left ocean blue, jobs left amber', /var\(--stops-blue\)/.test(st('homeStopCount')) && /var\(--jobs-amber\)/.test(st('homeJobCount'))
-            && /--stops-blue:#1565C0/.test(css) && /--jobs-amber:#D97706/.test(css));
+      check('stops left and jobs left both amber', /var\(--jobs-amber\)/.test(st('homeStopCount')) && /var\(--jobs-amber\)/.test(st('homeJobCount'))
+            && /--jobs-amber:#D97706/.test(css));
       check('more space under the day row', /margin-top:16px/.test(d.getElementById('homeStopCount').parentElement.parentElement.getAttribute('style')));
       check('bigger date and arrows', /font-size:16px/.test(st('weekLabel')) && /font-size:21px/.test(st('prevWeekBtn')) && /font-size:21px/.test(st('nextWeekBtn')));
       check('bigger counters on a technician\u2019s route', /font-size:20px/.test(st('techRouteLeft')) && /font-size:21px/.test(st('techPrevDay')));
