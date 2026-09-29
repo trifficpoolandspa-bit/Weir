@@ -12216,8 +12216,8 @@ function openDoseRulesModal(item){
       doseSel.addEventListener('change', ()=>{ rule.doseKey = doseSel.value; saveActiveConfig(); });
       row.appendChild(doseSel);
 
-      // Scale this rule's amount by the pool's own volume. Off by default, so
-      // rules already written keep meaning exactly what they say.
+      // Scale this rule's amount by the pool's own volume. On for a new rule
+      // (Sept 29); a rule written before keeps exactly what it says.
       const scaleWrap = document.createElement('label');
       scaleWrap.title = 'Treat the amount as "per 10,000 gallons" and scale it '
         + 'to each pool\u2019s own size. Pools with no volume on file keep the '
@@ -12267,7 +12267,9 @@ function openDoseRulesModal(item){
     }
     if(doses.length === 0){ showToast('Add a dosage to this list first'); return; }
     item.doseRules = item.doseRules || [];
-    item.doseRules.push({op:'eq', value:'', amount:'', doseKey: doses[0].key});
+    // A new rule starts with "by pool size" ticked (its amount per 10,000
+    // gallons, scaled to each pool). Rules already written keep what they say.
+    item.doseRules.push({op:'eq', value:'', amount:'', doseKey: doses[0].key, scaleByVolume: true});
     saveActiveConfig();
     render();
   });
