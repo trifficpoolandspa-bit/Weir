@@ -414,6 +414,23 @@ input::placeholder{color:#A9BCB9;}
 .status-tag.low{color:var(--gold);}
 .status-tag.high{color:var(--rust);}
 
+/* Today's Route (technician page): a plain table, one line per stop */
+.tw-row{display:grid;grid-template-columns:18px 28px minmax(0,1.2fr) minmax(0,1.8fr) 128px 64px;
+  align-items:center;gap:10px;padding:9px 8px;border-bottom:1px solid var(--line);font-size:13.5px;}
+.tw-row:last-child{border-bottom:none;}
+.tw-row.tw-stop{cursor:pointer;transition:background-color .12s ease;}
+.tw-row.tw-stop:hover{background:var(--teal-pale);}
+.tw-head{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;
+  padding-top:0;cursor:default;}
+.tw-row > span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.tw-num{font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--muted);}
+.tw-name{font-weight:600;color:var(--ink);}
+.tw-addr{color:var(--muted);}
+.tw-grip{color:var(--muted);font-size:16px;cursor:grab;text-align:center;}
+.tw-pill{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;}
+.tw-pill.done{border:1px solid var(--green);color:var(--green);padding:1px 7px;}
+.tw-pill.todo{background:var(--surface-alt);color:var(--muted);}
+.tw-pill.moved{background:var(--gold-pale);color:var(--gold);margin-left:4px;}
 .hist-row{
   display:grid;grid-template-columns:110px 1fr 1fr 1fr 1fr 1fr 34px;
   gap:6px;padding:9px 4px;border-bottom:1px solid var(--line);font-size:12.5px;
@@ -834,19 +851,23 @@ input::placeholder{color:#A9BCB9;}
 
     <!-- Today's Route: the technician's route for a day, as their phone has it -->
     <div class="card" id="techRouteWebCard" style="display:none;">
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span id="twDayLabel" style="flex:1 1 auto;min-width:0;text-align:center;font-size:15px;font-weight:600;color:var(--muted);"></span>
+      <!-- A desk layout: the day and its count on the left, the date controls on the right, then a table -->
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+        <div style="flex:1 1 auto;min-width:0;">
+          <h2 id="twDayLabel" style="margin:0;font-size:18px;"></h2>
+          <p id="twCounts" style="font-size:12.5px;color:var(--muted);margin:3px 0 0;"></p>
+        </div>
         <input type="date" id="twDateInput" title="Jump to a date" style="width:auto;flex:0 0 auto;padding:6px 8px;font-size:13px;">
-        <button class="btn btn-ghost" id="twPrev" type="button" style="width:auto;padding:6px 13px;font-size:17px;line-height:1;">&lsaquo;</button>
-        <button class="btn btn-ghost" id="twNext" type="button" style="width:auto;padding:6px 13px;font-size:17px;line-height:1;">&rsaquo;</button>
+        <button class="btn btn-ghost" id="twPrev" type="button" title="Previous day" style="width:auto;padding:6px 12px;font-size:16px;line-height:1;">&lsaquo;</button>
+        <button class="btn btn-ghost" id="twNext" type="button" title="Next day" style="width:auto;padding:6px 12px;font-size:16px;line-height:1;">&rsaquo;</button>
       </div>
-      <p id="twCounts" style="text-align:center;font-size:13px;color:var(--muted);margin:10px 0 12px;"></p>
       <div id="twOrderBar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;background:var(--gold-pale);border:1px solid #E0B877;border-radius:10px;padding:10px 12px;margin:0 0 12px;">
         <span id="twOrderText" style="flex:1 1 auto;font-size:13px;color:var(--ink);"></span>
         <button class="btn btn-ghost" id="twOrderToday" type="button" style="width:auto;padding:6px 12px;font-size:12.5px;">Just today</button>
         <button class="btn btn-primary" id="twOrderWeek" type="button" style="width:auto;padding:6px 12px;font-size:12.5px;">Every week</button>
         <button class="btn btn-ghost" id="twOrderUndo" type="button" style="width:auto;padding:6px 12px;font-size:12.5px;color:var(--rust);border-color:#EFC9BC;">Remove changes</button>
       </div>
+      <div class="tw-row tw-head"><span></span><span>#</span><span>Customer</span><span>Address</span><span>Status</span><span></span></div>
       <div id="twList"></div>
     </div>
 
@@ -15209,18 +15230,8 @@ function renderTechnicianList(){
       if(acct) metaParts.push('Signs in as ' + acct.username + (acct.is_admin ? ' · Admin' : ''));
       else if(techAccounts) metaParts.push('No sign-in yet');
       metaParts.push(assignedCount + (assignedCount === 1 ? ' customer assigned' : ' customers assigned'));
-      row.innerHTML = `<div class="cust-left"><span class="tech-handle" title="Drag to reorder" style="color:var(--muted);font-size:19px;flex-shrink:0;padding:0 8px 0 2px;">&#8801;</span><div class="cust-avatar">${initialOf(t.name)}</div><div class="cust-info"><div class="cust-name">${t.name}</div><div class="cust-meta">${metaParts.join(' · ')}</div></div></div>`;
-      const grip = row.querySelector('.tech-handle');
-      if(grip){
-        attachTouchReorder(grip, row, container, '[data-reorder-key]', (keys)=>{
-          const byId = {};
-          technicians.forEach(x => { byId[x.id] = x; });
-          technicians = keys.map(k => byId[k]).filter(Boolean);
-          saveTechnicians();
-          renderTechnicianList();
-          populateTechnicianSelect();
-        });
-      }
+      row.innerHTML = `<div class="cust-left"><div class="cust-avatar">${initialOf(t.name)}</div><div class="cust-info"><div class="cust-name">${t.name}</div><div class="cust-meta">${metaParts.join(' · ')}</div></div></div>`;
+      // (Sept 29: technicians are no longer reordered by dragging here)
 
       // The whole row opens their profile (not the grip or Delete)
       row.style.cursor = 'pointer';
@@ -16066,6 +16077,11 @@ function twRouteFor(techId, iso){
   ids.forEach(id => { if(!order.includes(id)) order.push(id); });
   return {list: order.map(id => all.find(c => c.id === id)).filter(Boolean), movedIn: new Set(movedIn.map(c => c.id))};
 }
+// Moved to another technician just for that date (not only to another day)
+function twJustToday(c, iso){
+  return (lsGet('rescheduledVisits') || []).some(r => r && r.customerId === c.id && r.toDate === iso
+    && r.technicianId && String(r.technicianId) !== String(c.technicianId || ''));
+}
 function renderTechRouteWeb(){
   const techId = currentTechDetailId;
   const box = document.getElementById('twList');
@@ -16075,40 +16091,62 @@ function renderTechRouteWeb(){
   const d = new Date(twDateISO + 'T12:00:00');
   const todayISO = twLocalISO(new Date());
   const rel = twDateISO === todayISO ? 'Today' : '';
-  document.getElementById('twDayLabel').textContent = (rel ? rel + ' \u00b7 ' : '')
-    + d.toLocaleDateString(undefined, {weekday: 'long', month: 'short', day: 'numeric'});
+  document.getElementById('twDayLabel').textContent = (rel ? rel + ', ' : '')
+    + d.toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric'});
   document.getElementById('twDateInput').value = twDateISO;
   const {list, movedIn} = twRouteFor(techId, twDateISO);
   twShown = list.map(c => c.id);
   const done = list.filter(c => twServicedOn(c, twDateISO)).length;
-  document.getElementById('twCounts').textContent = (list.length - done) + ' of ' + list.length + ' stops left';
+  document.getElementById('twCounts').textContent = list.length
+    ? done + ' of ' + list.length + ' done \u00b7 ' + (list.length - done) + ' left'
+    : 'No stops';
+  const head = document.querySelector('#techRouteWebCard .tw-head');
+  if(head) head.style.display = list.length ? '' : 'none';
   box.innerHTML = '';
   if(!list.length){ box.innerHTML = emptyState('No customers on this day.'); return; }
-  list.forEach(c=>{
+  list.forEach((c, i)=>{
     const served = twServicedOn(c, twDateISO);
     const row = document.createElement('div');
-    row.className = 'cust-row';
+    row.className = 'tw-row tw-stop';
     row.dataset.reorderKey = c.id;
-    row.style.cssText = 'display:flex;align-items:center;gap:10px;';
+    row.title = 'Open ' + displayName(c.name) + '\u2019s report';
     const grip = document.createElement('span');
+    grip.className = 'tw-grip';
     grip.textContent = '\u2261';
     grip.title = 'Drag to reorder';
-    grip.style.cssText = 'color:var(--muted);font-size:19px;flex-shrink:0;padding:0 8px 0 2px;cursor:grab;';
     row.appendChild(grip);
-    const info = document.createElement('div');
-    info.style.cssText = 'flex:1 1 auto;min-width:0;' + (served ? 'opacity:0.6;' : '');
-    const tag = (bg, text) => '<span style="background:' + bg + ';color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;margin-left:6px;vertical-align:middle;">' + text + '</span>';
-    info.innerHTML = '<div class="cust-name">' + esc(displayName(c.name))
-      + (served ? tag('var(--green)', 'DONE') : '') + (movedIn.has(c.id) ? tag('var(--gold)', 'MOVED HERE') : '') + '</div>'
-      + '<div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(c.address || 'No address on file') + '</div>';
-    row.appendChild(info);
+    const num = document.createElement('span');
+    num.className = 'tw-num';
+    num.textContent = String(i + 1);
+    row.appendChild(num);
+    const name = document.createElement('span');
+    name.className = 'tw-name';
+    name.textContent = displayName(c.name);
+    row.appendChild(name);
+    const addr = document.createElement('span');
+    addr.className = 'tw-addr';
+    addr.textContent = c.address || 'No address on file';
+    row.appendChild(addr);
+    const status = document.createElement('span');
+    let when = '';
+    if(served && c.lastServicedAt && String(c.lastServicedAt).slice(0, 10) <= twDateISO){
+      try{ when = ' ' + new Date(c.lastServicedAt).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'}); }catch(e){}
+    }
+    status.innerHTML = (served ? '<span class="tw-pill done">Done' + esc(when) + '</span>' : '<span class="tw-pill todo">To do</span>')
+      + (movedIn.has(c.id) ? '<span class="tw-pill moved">' + (twJustToday(c, twDateISO) ? 'Just today' : 'Moved') + '</span>' : '');
+    row.appendChild(status);
     const move = document.createElement('button');
     move.className = 'btn btn-ghost';
     move.type = 'button';
-    move.style.cssText = 'width:auto;flex:0 0 auto;padding:6px 12px;font-size:12px;';
+    move.style.cssText = 'width:auto;padding:4px 10px;font-size:12px;justify-self:end;';
     move.textContent = 'Move';
     move.addEventListener('click', (e)=>{ e.stopPropagation(); twOpenMove(c); });
     row.appendChild(move);
+    // The rest of the row opens their report
+    row.addEventListener('click', (e)=>{
+      if(e.target.closest('button, .tw-grip')) return;
+      twOpenReport(c, served);
+    });
     attachTouchReorder(grip, row, box, '[data-reorder-key]', (keys)=>{
       twPending = {techId: techId, iso: twDateISO, ids: keys.slice()};
       renderTechRouteWeb();
@@ -16119,6 +16157,19 @@ function renderTechRouteWeb(){
     });
     box.appendChild(row);
   });
+}
+
+// A stop pressed: their Service reports, on that day's report when there is one
+function twOpenReport(c, served){
+  switchView('customers');
+  viewCustomer(c);
+  const tab = document.querySelector('#profileTabControl .history-type-btn[data-tab="history"]');
+  if(tab) tab.click();
+  historyDateFilter = served ? twDateISO : '';
+  const box = document.getElementById('historyDateFilter');
+  if(box) box.value = historyDateFilter;
+  try{ showHistory(c.id, c.name); }catch(e){}
+  if(!served) showToast(displayName(c.name) + ' has no report for that day yet \u2014 showing their reports');
 }
 function twEndOrder(){
   twPending = null;

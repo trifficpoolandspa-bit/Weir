@@ -34,8 +34,7 @@ input, textarea, select, [contenteditable], [contenteditable] *{
 
 
 :root{
-  --stops-blue:#1565C0;    /* Today's stops left numbers (ocean blue) */
-  --jobs-amber:#D97706;    /* Today's jobs left numbers */
+  --jobs-amber:#D97706;    /* the stops left and jobs left numbers (Today and a technician's route) */
   --ink:#0F2E2E;
   --surface:#EDF3F2;
   --card:#FFFFFF;
@@ -550,7 +549,7 @@ select#customerSelect{font-weight:600;}
       </div>
       <div style="display:flex;align-items:baseline;justify-content:center;gap:18px;flex-wrap:wrap;margin-top:16px;">
         <span style="display:inline-flex;align-items:baseline;gap:6px;">
-          <span id="homeStopCount" style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:var(--stops-blue);"></span>
+          <span id="homeStopCount" style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:var(--jobs-amber);"></span>
           <span id="homeStopLabel" style="font-size:13px;font-weight:600;color:var(--muted);"></span>
         </span>
         <span style="display:inline-flex;align-items:baseline;gap:6px;">
@@ -862,7 +861,7 @@ select#customerSelect{font-weight:600;}
           <h2 id="techRouteDayName" style="display:none;">Thursday</h2>
           <span style="display:inline-flex;align-items:baseline;gap:16px;flex-wrap:wrap;">
             <span style="display:inline-flex;align-items:baseline;gap:6px;">
-              <span id="techRouteLeft" style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:var(--stops-blue);"></span>
+              <span id="techRouteLeft" style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:var(--jobs-amber);"></span>
               <span id="techRouteLeftLabel" style="font-size:13px;font-weight:600;color:var(--muted);">stops left</span>
             </span>
             <span style="display:inline-flex;align-items:baseline;gap:6px;">
@@ -1191,8 +1190,8 @@ select#customerSelect{font-weight:600;}
   <button class="tab active" data-view="home"><i>&#9679;</i>Today</button>
   <button class="tab" data-view="serviced"><i>&#9679;</i>Serviced</button>
   <button class="tab" data-view="technicians" id="navTechniciansBottom"><i>&#9679;</i>Techs</button>
-  <button class="tab" data-view="customers"><i>&#9679;</i>Customer</button>
   <button class="tab" data-view="report"><i>&#9679;</i>Report</button>
+  <button class="tab" data-view="customers"><i>&#9679;</i>Customer</button>
   <button class="tab" data-view="options"><i>&#9679;</i>Settings</button>
 </div>
 
@@ -2881,8 +2880,15 @@ function refreshSignedInRole(){
   if(u.isAdmin) adminStartOnOwnRoute();
   applyRoleUI();
 }
-document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) setTimeout(refreshSignedInRole, 1500); });
-window.addEventListener('online', ()=> setTimeout(refreshSignedInRole, 1500));
+// Asks the office for this person's access now, and switches the tabs the
+// moment the answer is back (not after a guessed wait). Run with every sync,
+// when the app comes back to the front, and when signal returns.
+async function checkAccessNow(){
+  try{ await fieldCheckAccount(false, reason => adminLogout(fieldGoneMessage(reason))); }catch(e){}
+  refreshSignedInRole();
+}
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) checkAccessNow(); });
+window.addEventListener('online', ()=> checkAccessNow());
 
 // ---- From the technician app, used by its versions above ----
 function servicedForDay(c, dayISO){
@@ -4586,7 +4592,8 @@ async function fieldSync(){
     // A route order made permanent here, if it hasn't gone yet
     await pushCompanyRouteOrder();
     await pushOnceRouteOrders();
-    refreshSignedInRole();
+    // Admin access turned on or off at the office shows with every sync
+    await checkAccessNow();
 
     // Tasks ticked off and visits moved here
     const work = await syncPushWork(state);
@@ -7675,7 +7682,14 @@ function renderTechList(){
       const row = document.createElement('div');
       row.className = 'cust-row';
       const count = techCustomerCount(t.id);
-      row.innerHTML = `<div><div class="cust-name">${t.name}</div><div class="cust-meta">${count} ${count === 1 ? 'customer' : 'customers'}${t.phone ? ' · ' + t.phone : ''}</div></div>`;
+      // Customers moved to them just once, today or later (someone else's customer)
+      const todayISO = todayDateStr();
+      const temp = new Set(loadReschedules().filter(r => r && r.technicianId && String(r.technicianId) === String(t.id)
+        && (r.toDate || '') >= todayISO
+        && customers.some(c => c && c.id === r.customerId && String(c.technicianId || '') !== String(t.id)))
+        .map(r => r.customerId)).size;
+      const tempBit = temp ? temp + ' temporary ' + (temp === 1 ? 'customer' : 'customers') + ' \u00b7 ' : '';
+      row.innerHTML = `<div><div class="cust-name">${t.name}</div><div class="cust-meta">${tempBit}${count} ${count === 1 ? 'customer' : 'customers'}</div></div>`;
       const right = document.createElement('div');
       right.style.display = 'flex';
       right.style.gap = '8px';
@@ -7993,7 +8007,7 @@ function renderTechRoute(){
     left.innerHTML = '<div class="cust-name"'
       + (done ? ' style="color:var(--muted);"' : '') + '>' + cst.name
       + (done ? tag('var(--green)', 'DONE \u203a') : '')
-      + (moved ? tag('var(--gold)', 'MOVED HERE') : '')
+      + (moved ? tag('var(--gold)', movedJustTodayTo(cst, iso) ? 'JUST TODAY' : 'MOVED HERE') : '')
       + '</div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
       + (done && cst.lastServicedAt
           ? 'Completed ' + new Date(cst.lastServicedAt).toLocaleTimeString(undefined,
@@ -8425,6 +8439,11 @@ function movedOntoDate(reschedules, iso){
     if(r && r.toDate === iso) who.set(r.customerId, r.technicianId || null);
   });
   return who;
+}
+// Moved to another technician just for that date (not only to another day)
+function movedJustTodayTo(customer, iso){
+  return loadReschedules().some(r => r && r.customerId === customer.id && r.toDate === iso
+    && r.technicianId && String(r.technicianId) !== String(customer.technicianId || ''));
 }
 function movedHereFor(who, customer, techId){
   if(!who.has(customer.id)) return false;
@@ -9867,7 +9886,7 @@ function adminVersion_renderHomeList(){
     row.dataset.customerRow = c.id;
     row.style.flexWrap = 'nowrap';
     row.innerHTML = `<div style="display:flex;align-items:center;min-width:0;flex:1 1 auto;">
-        <div style="min-width:0;flex:1 1 auto;"><div class="cust-name">${c.name}</div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.address || 'No address on file'}</div></div>
+        <div style="min-width:0;flex:1 1 auto;"><div class="cust-name">${c.name}${movedJustTodayTo(c, selectedDayISO) ? ' <span style="background:var(--gold);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;vertical-align:middle;margin-left:6px;">JUST TODAY</span>' : ''}</div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.address || 'No address on file'}</div></div>
       </div>`;
 
     if(canReorder){
@@ -10199,7 +10218,7 @@ function techVersion_renderHomeList(){
     row.dataset.customerRow = c.id;
     row.style.flexWrap = 'nowrap';
     row.innerHTML = `<div style="display:flex;align-items:center;min-width:0;flex:1 1 auto;">
-        <div style="min-width:0;flex:1 1 auto;"><div class="cust-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.name}${filterCleanIds.has(c.id) ? ' <span style="background:var(--gold);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;vertical-align:middle;margin-left:6px;">FILTER CLEAN</span>' : ''}</div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.address || 'No address on file'}</div></div>
+        <div style="min-width:0;flex:1 1 auto;"><div class="cust-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.name}${filterCleanIds.has(c.id) ? ' <span style="background:var(--gold);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;vertical-align:middle;margin-left:6px;">FILTER CLEAN</span>' : ''}${movedJustTodayTo(c, selectedDayISO) ? ' <span style="background:var(--gold);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;vertical-align:middle;margin-left:6px;">JUST TODAY</span>' : ''}</div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.address || 'No address on file'}</div></div>
       </div>`;
 
     if(canReorder){
@@ -13578,7 +13597,8 @@ function openVisit(...args){
 async function adminVersion_openVisit(customerId){
   // Admins can service any day — useful for catching up or working ahead.
   // It confirms first, and says plainly what date the report will carry.
-  if(!viewingToday()){
+  const resumingThisReport = !!(pendingVisit && pendingVisit.customerId === customerId);
+  if(!viewingToday() && !resumingThisReport){
     const d = dateForWeekday(selectedHomeDay);
     const when = d ? d.toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'}) : selectedHomeDay;
     const today = new Date().toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'});
