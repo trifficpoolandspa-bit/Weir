@@ -2646,10 +2646,25 @@ function switchView(view, opts){
     try{ renderTechRoute(); }catch(e){}
   }
   if(view === 'customers' && !keepAsLeft){
+    // A search typed before leaving doesn't stay once the 30 seconds are up
+    const search = document.getElementById('adminCustomerSearch');
+    if(search) search.value = '';
+    adminCustomerSearchTerm = '';
+    const clear = document.getElementById('btnClearAdminCustomerSearch');
+    if(clear) clear.style.display = 'none';
     renderCustomerList();
     hideCustomerForm();
   }
-  if(view === 'report' && !opts.skipRefresh && !keepAsLeft) refreshReportSelectors();
+  if(view === 'report' && !opts.skipRefresh && !keepAsLeft){
+    // Nor the customer searched for on Report
+    const sel = document.getElementById('reportCustomerSelect');
+    if(sel) sel.value = '';
+    const search = document.getElementById('reportCustomerSearch');
+    if(search) search.value = '';
+    const clear = document.getElementById('btnClearReportCustomer');
+    if(clear) clear.style.display = 'none';
+    refreshReportSelectors();
+  }
   if(view === 'report' && !isAdminUser()) document.getElementById('reportModeReports').style.display = 'block';
   if(view === 'options') renderOfflineStatus();
   if(view === 'home'){
