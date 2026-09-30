@@ -2663,6 +2663,15 @@ function switchView(view, opts){
     if(search) search.value = '';
     const clear = document.getElementById('btnClearReportCustomer');
     if(clear) clear.style.display = 'none';
+    // ...and the page back as it starts: no dates, no report, no buttons
+    const dates = document.getElementById('reportReadingSelect');
+    if(dates) dates.innerHTML = '';
+    try{ availableReportDates = []; }catch(e){}
+    const out = document.getElementById('reportOutput');
+    if(out) out.innerHTML = '';
+    ['reportActions', 'btnDownloadPhoto', 'btnSharePhoto', 'reportDateHint'].forEach(id=>{
+      const el = document.getElementById(id); if(el) el.style.display = 'none';
+    });
     refreshReportSelectors();
   }
   if(view === 'report' && !isAdminUser()) document.getElementById('reportModeReports').style.display = 'block';
