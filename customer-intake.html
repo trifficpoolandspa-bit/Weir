@@ -860,6 +860,8 @@ input::placeholder{color:#A9BCB9;}
         <h2 id="twDayLabel" style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:18px;text-align:center;white-space:nowrap;"></h2>
         <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;min-width:0;">
           <input type="date" id="twDateInput" title="Jump to a date" style="width:140px;flex:0 1 auto;min-width:0;padding:6px 8px;font-size:13px;">
+          <!-- Back to today in one press -->
+          <button class="btn btn-primary" id="twToday" type="button" title="Go to today" style="width:auto;flex:0 0 auto;padding:6px 12px;font-size:13px;">Today</button>
           <button class="btn btn-ghost" id="twPrev" type="button" title="Previous day" style="width:auto;padding:6px 12px;font-size:16px;line-height:1;">&lsaquo;</button>
           <button class="btn btn-ghost" id="twNext" type="button" title="Next day" style="width:auto;padding:6px 12px;font-size:16px;line-height:1;">&rsaquo;</button>
         </div>
@@ -16329,6 +16331,10 @@ document.getElementById('twPrev').addEventListener('click', ()=>{
 });
 document.getElementById('twNext').addEventListener('click', ()=>{
   const d = new Date(twDateISO + 'T12:00:00'); d.setDate(d.getDate() + 1); twDateISO = twLocalISO(d); renderTechRouteWeb();
+});
+document.getElementById('twToday').addEventListener('click', ()=>{
+  twDateISO = twLocalISO(new Date());
+  renderTechRouteWeb();
 });
 document.getElementById('twDateInput').addEventListener('change', (e)=>{
   if(e.target.value){ twDateISO = e.target.value; renderTechRouteWeb(); }
