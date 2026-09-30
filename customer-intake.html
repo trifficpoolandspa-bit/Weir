@@ -15333,16 +15333,15 @@ async function deleteTechnician(t){
   const warning = assignedCount
     ? ` ${assignedCount} customer${assignedCount === 1 ? ' is' : 's are'} currently assigned to them — they'll become unassigned.`
     : '';
-  const acct = techAccounts ? techAccounts[t.id] : null;
-  const signIn = acct
-    ? ' Their sign-in stops at once. A phone still signed in can upload visits it was holding for 7 days, and nothing else.'
-    : '';
+  // Deleting removes them completely and at once: their sign-in (the username
+  // is free straight away), their profile and its history on the server.
+  // Service reports they submitted stay, as the customers' history.
+  const signIn = ' Their sign-in and profile are removed completely, straight away. Service reports they submitted stay with the customers.';
   const confirmed = await confirmDialog(`Delete ${escapeSyncText(t.name)}?${warning}${signIn}`);
   if(!confirmed) return;
-  if(acct || techAccounts === null){
-    const gone = await removeTechnicianSignIn(t.id);
-    if(!gone.ok){ showToast(gone.message); return; }
-  }
+  // Always asked of the server, whether or not this computer knows of a sign-in
+  const gone = await removeTechnicianSignIn(t.id);
+  if(!gone.ok){ showToast(gone.message); return; }
   technicians = technicians.filter(x => x.id !== t.id);
   customers.forEach(c=>{ if(c.technicianId === t.id) c.technicianId = ''; });
   saveTechnicians();
