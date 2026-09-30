@@ -170,6 +170,16 @@ textarea{min-height:52px;resize:vertical;}
 .btn-secondary{background:var(--teal-pale);color:var(--teal-deep);}
 .btn-ghost{background:transparent;color:var(--teal-deep);border:1px solid var(--line);}
 .btn-row{display:flex;gap:8px;flex-wrap:wrap;}
+/* The last 4 weeks of readings: swipes sideways, reading names pinned on the left */
+.recent-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;-webkit-overflow-scrolling:touch;}
+.recent-table{border-collapse:separate;border-spacing:0;font-size:12.5px;width:100%;}
+.recent-table th,.recent-table td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap;}
+.recent-table tr:last-child td{border-bottom:none;}
+.recent-table th{background:var(--surface-alt);color:var(--muted);font-weight:600;}
+.recent-table .rt-name{position:sticky;left:0;text-align:left;background:var(--card);font-weight:600;color:var(--ink);min-width:92px;}
+.recent-table th.rt-name{background:var(--teal-pale);color:var(--teal-deep);}
+.recent-table td.rt-val{font-family:'JetBrains Mono',monospace;color:var(--ink);}
+.recent-table td.rt-none{color:var(--muted);}
 /* A button that also answers a press just outside it: an invisible 10px
    margin all round belongs to the button */
 .big-hit{position:relative;}
@@ -677,6 +687,7 @@ select#customerSelect{font-weight:600;}
         <button class="btn" id="btnPoolSkip" type="button" style="width:auto;background:var(--rust);color:var(--card);border:1.5px solid var(--rust);">Skip this pool</button>
       </div>
       <div id="poolServiceChecks" style="display:none;margin-bottom:14px;"></div>
+      <div id="poolRecentReadings"></div>
       <div id="poolChemFields"></div>
       <div id="pool_waterBalance" style="display:none;margin:10px 0 0;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--surface-alt);"></div>
     </div>
@@ -740,6 +751,7 @@ select#customerSelect{font-weight:600;}
       <div class="btn-row" id="spaSkipRow" style="margin-bottom:12px;justify-content:center;">
         <button class="btn" id="btnSpaSkip" type="button" style="width:auto;background:var(--rust);color:var(--card);border:1.5px solid var(--rust);">Skip this spa</button>
       </div>
+      <div id="spaRecentReadings"></div>
       <div id="spaChemFields"></div>
       <div id="spa_waterBalance" style="display:none;margin:10px 0 0;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--surface-alt);"></div>
     </div>
@@ -791,6 +803,7 @@ select#customerSelect{font-weight:600;}
       <div class="btn-row" id="fountainSkipRow" style="margin-bottom:12px;justify-content:center;">
         <button class="btn" id="btnFountainSkip" type="button" style="width:auto;background:var(--rust);color:var(--card);border:1.5px solid var(--rust);">Skip this fountain</button>
       </div>
+      <div id="fountainRecentReadings"></div>
       <div id="fountainChemFields"></div>
       <div id="fountain_waterBalance" style="display:none;margin:10px 0 0;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--surface-alt);"></div>
     </div>
@@ -2295,6 +2308,51 @@ function listsForBody(customerId, bodyKey, fallbackType){
   return chemConfig[fallbackType];
 }
 
+// The readings page: every visit in the last 4 weeks for this body of water,
+// newest on the left, one row per reading this setup records (the same order
+// as the fields below). Swipes sideways; the reading names stay put. Nothing
+// shows when there were no visits in that time.
+const RECENT_READINGS_DAYS = 28;
+async function renderRecentReadings(type, chemList){
+  const box = document.getElementById(type + 'RecentReadings');
+  const cid = currentVisitCustomerId;
+  if(!box) return;
+  box.innerHTML = '';
+  if(!cid || !Array.isArray(chemList) || !chemList.length) return;
+  let list = [];
+  try{
+    list = type === 'fountain'
+      ? (currentVisitFountainId ? await loadFountainReadings(cid, currentVisitFountainId) : [])
+      : await loadReadings(cid, type);
+  }catch(e){ list = []; }
+  // Another visit may have opened while these were loading
+  if(currentVisitCustomerId !== cid) return;
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - RECENT_READINGS_DAYS);
+  const cutISO = cutoff.toISOString();
+  const visits = (list || []).filter(r => r && r.date && String(r.date) >= cutISO.slice(0, 10))
+    .slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  if(!visits.length) return;
+  const shown = v => v !== '' && v !== undefined && v !== null;
+  const day = d => { try{ return new Date(d).toLocaleDateString(undefined, {month:'short', day:'numeric'}); }catch(e){ return String(d).slice(0, 10); } };
+  let html = '<div style="display:flex;align-items:baseline;justify-content:space-between;margin:0 0 6px;">'
+    + '<span style="font-size:13px;font-weight:700;color:var(--teal-deep);">Last 4 weeks</span>'
+    + (visits.length > 3 ? '<span style="font-size:11px;color:var(--muted);">swipe for more \u2192</span>' : '')
+    + '</div><div class="recent-wrap"><table class="recent-table"><thead><tr><th class="rt-name">Reading</th>';
+  visits.forEach(v => { html += '<th>' + esc(day(v.date)) + '</th>'; });
+  html += '</tr></thead><tbody>';
+  chemList.forEach(ch=>{
+    html += '<tr><td class="rt-name">' + esc(ch.label || ch.key) + '</td>';
+    visits.forEach(v=>{
+      const val = v[ch.key];
+      html += shown(val) ? '<td class="rt-val">' + esc(String(val)) + '</td>' : '<td class="rt-none">\u2014</td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  box.style.marginBottom = '14px';
+  box.innerHTML = html;
+}
+
 function renderAllConfigFields(){
   const cid = currentVisitCustomerId;
   const poolL = cid ? listsForBody(cid, 'pool', 'pool') : chemConfig.pool;
@@ -2313,6 +2371,12 @@ function renderAllConfigFields(){
   renderConfigFields('spaDoseFields', spaL.dosages, 'spa', 'dose');
   renderConfigFields('fountainChemFields', fountL.chemicals, 'fountain', 'chem');
   renderConfigFields('fountainDoseFields', fountL.dosages, 'fountain', 'dose');
+  // The last 4 weeks' readings above each body's fields
+  try{
+    renderRecentReadings('pool', poolL.chemicals);
+    renderRecentReadings('spa', spaL.chemicals);
+    renderRecentReadings('fountain', fountL.chemicals);
+  }catch(e){}
   // Draw the strips straight away so every chemical pad is visible before any reading is entered
   renderStripPreview();
   renderSpaStripPreview();
@@ -2528,10 +2592,23 @@ function closeRouteBriefs(){
 // the background — closes any open row, so Today always comes back tidy
 document.addEventListener('visibilitychange', ()=>{ if(document.hidden) closeRouteBriefs(); });
 
+// The tabs that come back as they were left, and for how long
+var TAB_KEEPS = ['serviced', 'technicians', 'customers', 'report', 'options'];
+var TAB_KEEP_MS = 30000;
+var tabLeftAt = {};
+var tabScrollAt = {};
 function switchView(view, opts){
   opts = opts || {};
   if(view !== 'technicians' && typeof techOrderPending !== 'undefined' && techOrderPending) endTechOrder();
   const cameFrom = currentViewName;
+  if(cameFrom && cameFrom !== view && TAB_KEEPS.indexOf(cameFrom) !== -1){
+    tabLeftAt[cameFrom] = Date.now();
+    tabScrollAt[cameFrom] = window.scrollY;
+  }
+  // Back within 30 seconds: as it was left. Opening a particular report
+  // (skipRefresh) still shows that report.
+  const keepAsLeft = !opts.skipRefresh && TAB_KEEPS.indexOf(view) !== -1 && cameFrom !== view
+    && !!tabLeftAt[view] && (Date.now() - tabLeftAt[view]) < TAB_KEEP_MS;
   if(view !== 'home' && currentViewName === 'home') closeRouteBriefs();
 
   // Leaving an open report to another tab — remember it so Today can bring it
@@ -2545,8 +2622,8 @@ function switchView(view, opts){
   viewChangedAt = Date.now();
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+view).classList.add('active');
-  // Always land at the top rather than wherever the last page was scrolled to
-  window.scrollTo(0, 0);
+  // Land at the top, or where it was left when it's coming back as it was
+  window.scrollTo(0, keepAsLeft ? (tabScrollAt[view] || 0) : 0);
   document.querySelectorAll('.tab').forEach(t=>{
     t.classList.toggle('active', t.dataset.view === view);
   });
@@ -2558,16 +2635,21 @@ function switchView(view, opts){
     visitVoiceController.stopListening();
     releaseVisitWakeLock();
   }
-  if(view === 'technicians'){
+  if(view === 'technicians' && !keepAsLeft){
     selectedTechId = null;
     editingTechId = null;
     renderTechList();
   }
-  if(view === 'customers'){
+  // Back to a technician's route as it was left: drawn again from what's saved
+  // (a drag left unanswered was let go on the way out)
+  if(view === 'technicians' && keepAsLeft && selectedTechId && !editingTechId){
+    try{ renderTechRoute(); }catch(e){}
+  }
+  if(view === 'customers' && !keepAsLeft){
     renderCustomerList();
     hideCustomerForm();
   }
-  if(view === 'report' && !opts.skipRefresh) refreshReportSelectors();
+  if(view === 'report' && !opts.skipRefresh && !keepAsLeft) refreshReportSelectors();
   if(view === 'report' && !isAdminUser()) document.getElementById('reportModeReports').style.display = 'block';
   if(view === 'options') renderOfflineStatus();
   if(view === 'home'){
@@ -2583,11 +2665,11 @@ function switchView(view, opts){
     }
     renderHomeList();
   }
-  if(view === 'serviced'){
+  if(view === 'serviced' && !keepAsLeft){
     servicedDayOffset = 0;             // always arrives on today
     renderServicedList();
   }
-  if(view === 'report' && isAdminUser()){
+  if(view === 'report' && isAdminUser() && !keepAsLeft){
     // The tab always opens on Serviced today. Arriving from a customer row or
     // a technician's route goes straight to the report itself, so those pass
     // skipRefresh and pick the mode themselves.
@@ -7722,7 +7804,9 @@ function renderTechList(){
 
 function openTechRoute(t){
   selectedTechId = t.id;
-  techRouteDay = techRouteDay || DAYS_OF_WEEK[new Date().getDay()];
+  // Always today when a route is opened (it used to keep the last day looked at)
+  techRouteDay = DAYS_OF_WEEK[new Date().getDay()];
+  techRouteWeekOffset = 0;
   document.getElementById('techListCard').style.display = 'none';
   document.getElementById('techFormCard').style.display = 'none';
   document.getElementById('techRouteCard').style.display = 'block';
@@ -8008,7 +8092,7 @@ function renderTechRoute(){
     left.innerHTML = '<div class="cust-name"'
       + (done ? ' style="color:var(--muted);"' : '') + '>' + cst.name
       + (done ? tag('var(--green)', 'DONE \u203a') : '')
-      + (moved ? tag('var(--gold)', movedJustTodayTo(cst, iso) ? 'JUST TODAY' : 'MOVED HERE') : '')
+      + (moved ? tag('var(--gold)', 'JUST TODAY') : '')
       + '</div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
       + (done && cst.lastServicedAt
           ? 'Completed ' + new Date(cst.lastServicedAt).toLocaleTimeString(undefined,
@@ -8115,21 +8199,11 @@ function openTechRescheduleModal(customer, opts){
     const toISO = pickedDate() || (newTech() ? fromISO : '');
     if(!toISO){ showToast('Pick a date or another technician first'); return; }
     if(toISO === fromISO && !newTech()){ showToast('That\u2019s the day they\u2019re already on'); return; }
-    // Anything that moved this customer off this day, or onto it, is replaced.
-    // Leaving an earlier move in place left them showing on both days.
-    const list = (lsGet('rescheduledVisits') || [])
-      .filter(r => !(r.customerId === customer.id
-        && (r.fromDate === fromISO || r.toDate === fromISO)));
-    const move = {
-      id: 'resched_' + Date.now(), customerId: customer.id,
-      fromDate: fromISO, toDate: toISO, createdAt: new Date().toISOString()
-    };
-    // Who does them that day, when it isn't their own technician
-    if(newTech()) move.technicianId = newTech();
-    list.push(move);
-    lsSet('rescheduledVisits', list);
+    // Replaces any earlier move, starting from their usual day (see saveMoveJustOnce)
+    const home = saveMoveJustOnce(customer.id, fromISO, toISO, newTech());
     close();
     redraw();
+    if(home){ showToast(customer.name + ' back on their usual day'); return; }
     const d = new Date(toISO + 'T12:00:00');
     const when = d.toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'});
     showToast(customer.name + ' moved to ' + when + (newTech() ? ' with ' + techNameFor(newTech()) : ''));
@@ -8514,8 +8588,31 @@ function movedOntoDate(reschedules, iso){
 }
 // Moved to another technician just for that date (not only to another day)
 function movedJustTodayTo(customer, iso){
+  // Moved onto this date just once: from another day, or to another technician
   return loadReschedules().some(r => r && r.customerId === customer.id && r.toDate === iso
-    && r.technicianId && String(r.technicianId) !== String(customer.technicianId || ''));
+    && (r.reservice || r.fromDate !== iso || (r.technicianId && String(r.technicianId) !== String(customer.technicianId || ''))));
+}
+// Saves a "just this once" move of a customer off one date and onto another
+// (and, if given, to another technician). If they're only on that date
+// because of an earlier move, the new move starts from their usual day and
+// replaces the earlier one; otherwise a copy came back on the usual day.
+// Moving them back to their usual day with their own technician just
+// removes the move. Returns true when that happened.
+function saveMoveJustOnce(customerId, fromISO, toISO, techId){
+  const all = loadReschedules();
+  const prior = all.find(r => r && r.customerId === customerId && r.toDate === fromISO && r.fromDate);
+  const origin = prior ? prior.fromDate : fromISO;
+  const list = all.filter(r => !(r && r.customerId === customerId
+    && (r.fromDate === fromISO || r.toDate === fromISO || r.fromDate === origin)));
+  const home = toISO === origin && !techId;
+  if(!home){
+    const move = {id: 'resched_' + Date.now(), customerId: customerId, fromDate: origin, toDate: toISO,
+      createdAt: new Date().toISOString()};
+    if(techId) move.technicianId = techId;
+    list.push(move);
+  }
+  lsSet('rescheduledVisits', list);
+  return home;
 }
 function movedHereFor(who, customer, techId){
   if(!who.has(customer.id)) return false;
@@ -8573,20 +8670,11 @@ function openRescheduleModal(customer){
   overlay.querySelector('#rsOnce').addEventListener('click', ()=>{
     const toISO = dateEl.value;
     if(!toISO){ showToast('Pick a date first'); return; }
-    // Anything that moved this customer off this day, or onto it, is replaced.
-    // Leaving an earlier move in place left them showing on both days.
-    const list = loadReschedules().filter(r => !(r.customerId === customer.id
-      && (r.fromDate === fromISO || r.toDate === fromISO)));
-    list.push({
-      id: 'resched_' + Date.now(),
-      customerId: customer.id,
-      fromDate: fromISO,
-      toDate: toISO,
-      createdAt: new Date().toISOString()
-    });
-    lsSet('rescheduledVisits', list);
+    // Replaces any earlier move, starting from their usual day (see saveMoveJustOnce)
+    const home = saveMoveJustOnce(customer.id, fromISO, toISO, null);
     cleanup();
     renderHomeList();
+    if(home){ showToast(customer.name + ' back on their usual day'); return; }
     const d = new Date(toISO + 'T12:00:00');
     showToast(customer.name + ' moved to ' + d.toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'}));
   });
@@ -9803,7 +9891,22 @@ function customerServicedOn(c, day){
 }
 
 function renderHomeList(...args){
-  return isAdminUser() ? adminVersion_renderHomeList.apply(this, args) : techVersion_renderHomeList.apply(this, args);
+  const box = document.getElementById('homeCustomerList');
+  const open = box && box.querySelector('.route-brief');
+  const openFor = open ? open.dataset.for : null;
+  const result = isAdminUser() ? adminVersion_renderHomeList.apply(this, args) : techVersion_renderHomeList.apply(this, args);
+  // Open again the one that was open, if it's still on the list
+  if(openFor && box && !box.querySelector('.route-brief')){
+    const row = box.querySelector('[data-customer-row="' + openFor + '"]');
+    if(row){
+      try{
+        row.click();
+        const panel = box.querySelector('.route-brief');
+        if(panel) panel.style.animation = 'none';     // no slide-in: it never went away
+      }catch(e){}
+    }
+  }
+  return result;
 }
 function adminVersion_renderHomeList(){
   renderDayTabs();
@@ -10557,7 +10660,11 @@ function renderServicedList(){
     if(!isMine(c, null) && done.length === 0) return;
     const days = Array.from(new Set(done.map(x => x.day)));
     if(days.length) days.forEach(d => servicedRows.push({c, day: d}));
-    else if(c.lastServicedDate === today) servicedRows.push({c, day: null});
+    // Only a record from before each service was noted (no entry at all for
+    // today) falls back to "serviced today"; one done today by someone else
+    // stays theirs alone
+    else if(c.lastServicedDate === today
+            && !(Array.isArray(c.servicedFor) ? c.servicedFor : []).some(x => x && x.on === today)) servicedRows.push({c, day: null});
   });
   const servicedCustomers = servicedRows
     // Most recently serviced at the top, the longest ago at the bottom. Anything
@@ -10700,12 +10807,15 @@ async function reserviceCustomer(customer, forDay){
   // Reserviced by an admin: on the admin's own Today list, just for today,
   // rather than back with the technician who sent the report
   let who = null; try{ who = currentUser; }catch(e){}
-  if(isAdminUser() && who && who.id && String(customer.technicianId || '') !== String(who.id)){
-    const list = loadReschedules().filter(r => !(r && r.customerId === customer.id
-      && (r.fromDate === today || r.toDate === today)));
-    list.push({id: 'resched_' + Date.now(), customerId: customer.id, fromDate: today, toDate: today,
-      technicianId: String(who.id), createdAt: new Date().toISOString()});
-    lsSet('rescheduledVisits', list);
+  // Always a "just today" move to the admin who pressed it, whoever's
+  // customer it is (their own included), replacing any move touching today,
+  // and marked as a reservice so it shows JUST TODAY even on their own customer
+  if(isAdminUser() && who && who.id){
+    saveMoveJustOnce(customer.id, today, today, String(who.id));
+    const moves = loadReschedules();
+    moves.forEach(r => { if(r && r.customerId === customer.id && r.toDate === today
+      && String(r.technicianId || '') === String(who.id)) r.reservice = true; });
+    lsSet('rescheduledVisits', moves);
     showToast(customer.name + ' moved to your Today list');
   } else {
     showToast(customer.name + ' moved back to Today\'s list');
