@@ -852,14 +852,16 @@ input::placeholder{color:#A9BCB9;}
     <!-- Today's Route: the technician's route for a day, as their phone has it -->
     <div class="card" id="techRouteWebCard" style="display:none;">
       <!-- A desk layout: the day and its count on the left, the date controls on the right, then a table -->
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
-        <div style="flex:1 1 auto;min-width:0;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;">
-          <span id="twCounts" style="font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;"></span>
-          <h2 id="twDayLabel" style="margin:0;font-size:18px;"></h2>
+      <!-- The count on the left, the date in the exact middle, the date controls on the right -->
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:12px;margin-bottom:26px;">
+        <span id="twCounts" style="font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;"></span>
+        <!-- The same font as the site's other headings (Space Grotesk), 18px -->
+        <h2 id="twDayLabel" style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:18px;text-align:center;white-space:nowrap;"></h2>
+        <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;min-width:0;">
+          <input type="date" id="twDateInput" title="Jump to a date" style="width:140px;flex:0 1 auto;min-width:0;padding:6px 8px;font-size:13px;">
+          <button class="btn btn-ghost" id="twPrev" type="button" title="Previous day" style="width:auto;padding:6px 12px;font-size:16px;line-height:1;">&lsaquo;</button>
+          <button class="btn btn-ghost" id="twNext" type="button" title="Next day" style="width:auto;padding:6px 12px;font-size:16px;line-height:1;">&rsaquo;</button>
         </div>
-        <input type="date" id="twDateInput" title="Jump to a date" style="width:auto;flex:0 0 auto;padding:6px 8px;font-size:13px;">
-        <button class="btn btn-ghost" id="twPrev" type="button" title="Previous day" style="width:auto;padding:6px 12px;font-size:16px;line-height:1;">&lsaquo;</button>
-        <button class="btn btn-ghost" id="twNext" type="button" title="Next day" style="width:auto;padding:6px 12px;font-size:16px;line-height:1;">&rsaquo;</button>
       </div>
       <div id="twOrderBar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;background:var(--gold-pale);border:1px solid #E0B877;border-radius:10px;padding:10px 12px;margin:0 0 12px;">
         <span id="twOrderText" style="flex:1 1 auto;font-size:13px;color:var(--ink);"></span>
@@ -871,8 +873,20 @@ input::placeholder{color:#A9BCB9;}
       <div id="twList"></div>
     </div>
 
+    <!-- Reservice a stop: back on the chosen technician's Today, just for today -->
+    <div id="twReserviceOverlay" style="display:none;position:fixed;inset:0;z-index:260;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
+      <div style="background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);">
+        <h2 id="twReserviceHeading" style="font-size:18px;margin:0 0 4px;">Reservice</h2>
+        <p id="twReserviceIntro" style="font-size:12.5px;color:var(--muted);margin:0 0 14px;"></p>
+        <div class="field"><label>Technician</label><select id="twReserviceTech"></select></div>
+        <button class="btn btn-primary" id="twReserviceGo" type="button" style="width:100%;">Reservice</button>
+        <button class="btn btn-ghost" id="twReserviceCancel" type="button" style="width:100%;margin-top:8px;">Cancel</button>
+      </div>
+    </div>
+
     <!-- Move one customer from Today's Route: another date, another technician, or both -->
-    <div id="twMoveOverlay" style="display:none;position:fixed;inset:0;z-index:320;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
+    <!-- Below the confirm question (300), which it asks: above it, the question hid behind it -->
+    <div id="twMoveOverlay" style="display:none;position:fixed;inset:0;z-index:260;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
       <div style="background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);">
         <h2 id="twMoveHeading" style="font-size:18px;margin:0 0 4px;">Move</h2>
         <p id="twMoveIntro" style="font-size:12.5px;color:var(--muted);margin:0 0 14px;"></p>
@@ -3583,7 +3597,9 @@ function loadChemConfig(){
 function storeChemConfig(){
   const season = activeSeason();
   if(!season){
-    const before = lsGet('chemConfig');
+    // Year-round as it was: what's saved, or the starting setup if it's never
+    // been saved (without this, a first change never reached the seasons)
+    const before = lsGet('chemConfig') || loadBaseChemConfig();
     lsSet('chemConfig', chemConfig);
     if(before && chemSeasons.length) carryYearRoundIntoSeasons(before, chemConfig);
     return;
@@ -5911,7 +5927,7 @@ function setFilterCleanOrder(g){
 // window): coming back finds every group closed
 // (var, so they exist from the moment the page starts, whichever runs first)
 var filtersLeftAt = null;
-var FILTERS_CLOSE_MS = 60 * 1000;
+var FILTERS_CLOSE_MS = 20 * 1000;          // 20 seconds (Sept 29; was a minute)
 function onFilterGroupsPage(){
   const page = document.getElementById('view-workcenter');
   return !!(page && page.classList.contains('active') && workCenterMode === 'filters');
@@ -10970,7 +10986,7 @@ document.getElementById('wcType').addEventListener('change', applyWorkOrderType)
 // within it and it's all still there, after that the form starts blank. Held
 // only in this page, so a reload clears it too. Quote and Work Order share one
 // set of boxes, which is why each needs its own held copy.
-const WC_DRAFT_MS = 60 * 1000;
+const WC_DRAFT_MS = 20 * 1000;             // 20 seconds (Sept 29; was a minute)
 const wcDrafts = {};
 
 function captureWcDraft(type){
@@ -15961,8 +15977,9 @@ document.getElementById('btnDoneAssigning').addEventListener('click', closeAssig
 function openTechDetail(t, opts){
   opts = opts || {};
   currentTechDetailId = t.id;
-  // Today's Route opens on today for each technician
-  twDateISO = null;
+  // Today's Route opens on today for a technician opened from the list;
+  // Previous / Next technician keeps the date that's showing
+  if(!opts.keepScroll) twDateISO = null;
   if(typeof twEndOrder === 'function') twEndOrder();
   // The day filter starts at All days each time this is opened, rather than
   // keeping whichever day was picked last time
@@ -16135,14 +16152,18 @@ function renderTechRouteWeb(){
       try{ when = ' ' + new Date(c.lastServicedAt).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'}); }catch(e){}
     }
     status.innerHTML = (served ? '<span class="tw-pill done">Done' + esc(when) + '</span>' : '<span class="tw-pill todo">To do</span>')
-      + (movedIn.has(c.id) ? '<span class="tw-pill moved">' + (twJustToday(c, twDateISO) ? 'Just today' : 'Moved') + '</span>' : '');
+      + (movedIn.has(c.id) ? '<span class="tw-pill moved" title="Put them back on their usual day" style="cursor:pointer;">Just today</span>' : '');
     row.appendChild(status);
+    // The Just today badge: put them back on their usual day and technician
+    const justToday = status.querySelector('.tw-pill.moved');
+    if(justToday) justToday.addEventListener('click', (e)=>{ e.stopPropagation(); twUndoMove(c); });
     const move = document.createElement('button');
     move.className = 'btn btn-ghost';
     move.type = 'button';
     move.style.cssText = 'width:auto;padding:4px 10px;font-size:12px;justify-self:end;';
-    move.textContent = 'Reschedule';
-    move.addEventListener('click', (e)=>{ e.stopPropagation(); twOpenMove(c); });
+    // A stop already done is reserviced; the rest rescheduled
+    move.textContent = served ? 'Reservice' : 'Reschedule';
+    move.addEventListener('click', (e)=>{ e.stopPropagation(); if(served) twOpenReservice(c); else twOpenMove(c); });
     row.appendChild(move);
     // The rest of the row opens their report
     row.addEventListener('click', (e)=>{
@@ -16161,17 +16182,103 @@ function renderTechRouteWeb(){
   });
 }
 
+// Takes away a one-off move onto this day, so they're back on their usual
+// day with their usual technician
+async function twUndoMove(c){
+  const iso = twDateISO;
+  const ok = await confirmDialog('Put ' + esc(displayName(c.name)) + ' back on their usual day'
+    + (c.day ? ' (' + esc(c.day) + ')' : '') + ' with ' + esc(twTechName(c.technicianId)) + '? '
+    + 'This removes the \u201cjust today\u201d move.', 'Put back');
+  if(!ok) return;
+  const list = (lsGet('rescheduledVisits') || []).filter(r => !(r && r.customerId === c.id && r.toDate === iso));
+  lsSet('rescheduledVisits', list);
+  if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange();
+  renderTechRouteWeb();
+  showToast(displayName(c.name) + ' back on their usual day');
+}
+
+// Reservice: the report stays as it is, the stop comes off the done list, and
+// it goes on the chosen technician's Today list, just for today (marked as a
+// reservice, so it says Just today)
+let twReservicing = null;
+function twOpenReservice(c){
+  twReservicing = c;
+  document.getElementById('twReserviceHeading').textContent = 'Reservice ' + displayName(c.name);
+  document.getElementById('twReserviceIntro').textContent = 'Their report for '
+    + new Date(twDateISO + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'long', month: 'short', day: 'numeric'})
+    + ' stays as it is. Whose Today list should they go on, just for today?';
+  const sel = document.getElementById('twReserviceTech');
+  sel.innerHTML = '';
+  const routeTech = String(currentTechDetailId || c.technicianId || '');
+  technicians.forEach(t=>{
+    if(!t || !t.id) return;
+    const o = document.createElement('option');
+    o.value = String(t.id);
+    o.textContent = (t.name || 'Technician') + (String(t.id) === String(c.technicianId || '') ? ' (assigned)' : '');
+    sel.appendChild(o);
+  });
+  if(Array.from(sel.options).some(o => o.value === routeTech)) sel.value = routeTech;
+  document.getElementById('twReserviceOverlay').style.display = 'flex';
+}
+function twCloseReservice(){ document.getElementById('twReserviceOverlay').style.display = 'none'; twReservicing = null; }
+document.getElementById('twReserviceCancel').addEventListener('click', twCloseReservice);
+document.getElementById('twReserviceGo').addEventListener('click', ()=>{
+  const c = twReservicing; if(!c) return;
+  const tech = document.getElementById('twReserviceTech').value;
+  const live = customers.find(x => x && x.id === c.id);
+  if(!live || !tech) return;
+  const today = twLocalISO(new Date());
+  // The next report is marked a redo; that day's service comes off
+  live.pendingRedo = true;
+  if(Array.isArray(live.servicedFor)) live.servicedFor = live.servicedFor.filter(x => x && x.day !== twDateISO);
+  const stillToday = (live.servicedFor || []).some(x => x && x.on === today);
+  live.lastServicedDate = stillToday ? today : null;
+  if(!stillToday){ delete live.lastServiceDurationMs; delete live.lastServicedAt; }
+  saveCustomers();
+  // On the chosen technician's Today, just for today, replacing any move that
+  // touches today (from their usual day, as other one-off moves do)
+  const all = lsGet('rescheduledVisits') || [];
+  const prior = all.find(r => r && r.customerId === live.id && r.toDate === today && r.fromDate);
+  const origin = prior ? prior.fromDate : today;
+  const list = all.filter(r => !(r && r.customerId === live.id
+    && (r.fromDate === today || r.toDate === today || r.fromDate === origin)));
+  list.push({id: 'resched_' + Date.now(), customerId: live.id, fromDate: origin, toDate: today,
+    technicianId: tech, reservice: true, createdAt: new Date().toISOString()});
+  lsSet('rescheduledVisits', list);
+  if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange();
+  twCloseReservice();
+  renderTechRouteWeb();
+  showToast(displayName(live.name) + ' back on ' + twTechName(tech) + '\u2019s Today list, just for today');
+});
+
 // A stop pressed: their Service reports, on that day's report when there is one
 function twOpenReport(c, served){
   switchView('customers');
   viewCustomer(c);
   const tab = document.querySelector('#profileTabControl .history-type-btn[data-tab="history"]');
   if(tab) tab.click();
-  historyDateFilter = served ? twDateISO : '';
+  // Every report listed, with that day's report opened (on whichever page it's on)
+  historyDateFilter = '';
   const box = document.getElementById('historyDateFilter');
-  if(box) box.value = historyDateFilter;
+  if(box) box.value = '';
+  const dayOf = d => {
+    const t = String(d || '');
+    if(/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+    const x = new Date(t);
+    return isNaN(x) ? t.slice(0, 10) : twLocalISO(x);
+  };
+  let match = null, at = 0;
+  try{
+    const visits = reportVisitsFor(c);
+    at = visits.findIndex(v => v.parts.some(p => dayOf(p.r && p.r.date) === twDateISO));
+    match = at >= 0 ? visits[at] : null;
+  }catch(e){}
+  historyOpenId = match ? match.id : null;
+  historyOpenBody = null;
+  historyPageKey = c.id + '|visits|';
+  historyPage = match ? Math.floor(at / HISTORY_PER_PAGE) + 1 : 1;
   try{ showHistory(c.id, c.name); }catch(e){}
-  if(!served) showToast(displayName(c.name) + ' has no report for that day yet \u2014 showing their reports');
+  if(!match) showToast(displayName(c.name) + ' has no report for that day \u2014 showing all their reports');
 }
 function twEndOrder(){
   twPending = null;
@@ -16258,16 +16365,26 @@ document.getElementById('twMoveOnce').addEventListener('click', ()=>{
   const toISO = document.getElementById('twMoveDate').value || (tech ? fromISO : '');
   if(!toISO){ twMoveSay('Pick a date or another technician first.'); return; }
   if(toISO === fromISO && !tech){ twMoveSay('That\u2019s the day they\u2019re already on.'); return; }
-  // Anything that moved them off this day, or onto it, is replaced
-  const list = (lsGet('rescheduledVisits') || []).filter(r => !(r && r.customerId === c.id
-    && (r.fromDate === fromISO || r.toDate === fromISO)));
-  const move = {id: 'resched_' + Date.now(), customerId: c.id, fromDate: fromISO, toDate: toISO, createdAt: new Date().toISOString()};
-  if(tech) move.technicianId = tech;
-  list.push(move);
+  // If they're only on this day because of an earlier move, the new move
+  // starts from their usual day and replaces it (otherwise a copy came back
+  // on the usual day). Back to the usual day with their own technician just
+  // removes the move.
+  const all = lsGet('rescheduledVisits') || [];
+  const prior = all.find(r => r && r.customerId === c.id && r.toDate === fromISO && r.fromDate);
+  const origin = prior ? prior.fromDate : fromISO;
+  const list = all.filter(r => !(r && r.customerId === c.id
+    && (r.fromDate === fromISO || r.toDate === fromISO || r.fromDate === origin)));
+  const home = toISO === origin && !tech;
+  if(!home){
+    const move = {id: 'resched_' + Date.now(), customerId: c.id, fromDate: origin, toDate: toISO, createdAt: new Date().toISOString()};
+    if(tech) move.technicianId = tech;
+    list.push(move);
+  }
   lsSet('rescheduledVisits', list);
   if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange();
   twCloseMove();
   renderTechRouteWeb();
+  if(home){ showToast(displayName(c.name) + ' back on their usual day'); return; }
   showToast(displayName(c.name) + ' moved to ' + new Date(toISO + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'long', month: 'short', day: 'numeric'})
     + (tech ? ' with ' + twTechName(tech) : ''));
 });
@@ -19085,9 +19202,28 @@ document.getElementById('btnAddCustomer').addEventListener('click', ()=>{
   showCustomerForm();
 });
 
+// Every page comes back exactly as it was left if it's opened again soon:
+// 30 seconds (the WorkCenter 20). After that it opens as it normally does.
+var WEB_KEEP_MS = 30 * 1000;
+var WEB_KEEP_MS_WORKCENTER = 20 * 1000;
+var webLeftAt = {}, webLeftScroll = {}, webLeftEl = {}, webLeftSeason = {};
 function switchView(view){
+  const fromTab = document.querySelector('nav .tab.active');
+  const fromPage = fromTab ? fromTab.dataset.view : null;
+  if(fromPage && fromPage !== view){
+    const activeEl = document.querySelector('.view.active');
+    webLeftAt[fromPage] = Date.now();
+    webLeftScroll[fromPage] = window.scrollY;
+    webLeftEl[fromPage] = activeEl ? activeEl.id : null;
+    webLeftSeason[fromPage] = selectedSeasonId || null;
+  }
+  const keepFor = view === 'workcenter' ? WEB_KEEP_MS_WORKCENTER : WEB_KEEP_MS;
+  let keep = !!(fromPage && fromPage !== view && webLeftAt[view] && (Date.now() - webLeftAt[view]) < keepFor);
+  // Readings and Dosages after Customer Customization (the same screen) starts fresh
+  if(keep && view === 'chemconfig' && selectedChemConfigType === 'custom') keep = false;
+  if(keep && view === 'customerconfig' && selectedChemConfigType !== 'custom') keep = false;
   // Readings and dosages always opens on year-round; a season stays chosen
-  // only while the page is open
+  // only while the page is open (and comes back if the page is, within the time)
   if(selectedSeasonId){
     selectedSeasonId = null;
     chemConfig = loadChemConfig();
@@ -19107,7 +19243,7 @@ function switchView(view){
   // Coming to Account from anywhere else always starts on Business. Only
   // staying on the Account page keeps whichever tab was chosen.
   const acctView = document.getElementById('view-account');
-  if(view === 'account' && !(acctView && acctView.classList.contains('active'))){
+  if(view === 'account' && !keep && !(acctView && acctView.classList.contains('active'))){
     accountTab = 'business';
   }
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
@@ -19116,6 +19252,12 @@ function switchView(view){
   // screen, so there is no separate element to show for it.
   const el = document.getElementById('view-' + view);
   if(el) el.classList.add('active');
+  // Back as it was: a technician's own page, if that was what was showing
+  if(keep && webLeftEl[view] && webLeftEl[view] !== 'view-' + view){
+    const was = document.getElementById(webLeftEl[view]);
+    if(was){ if(el) el.classList.remove('active'); was.classList.add('active'); }
+  }
+  if(keep && view === 'customerconfig') document.getElementById('view-chemconfig').classList.add('active');
 
   document.querySelectorAll('.tab').forEach(t=>{
     t.classList.toggle('active', t.dataset.view === view);
@@ -19123,7 +19265,12 @@ function switchView(view){
   if(view === 'settings') renderStorageMeter();
   if(view === 'settings') renderOfflineStatus();
   if(view === 'account') renderAccount();
-  if(view === 'chemconfig'){
+  if(view === 'chemconfig' && keep && webLeftSeason[view]){
+    // The season that was showing
+    const btn = document.querySelector('#seasonControl .history-type-btn[data-season="' + webLeftSeason[view] + '"]');
+    if(btn) btn.click();
+  }
+  if(view === 'chemconfig' && !keep){
     selectedChemConfigType = 'pool';
     document.querySelectorAll('#chemConfigTypeControl .history-type-btn').forEach(b=>{
       b.classList.toggle('active', b.dataset.type === 'pool');
@@ -19131,7 +19278,7 @@ function switchView(view){
     applyChemConfigMode(false);
     renderChemConfigLists();
   }
-  if(view === 'customerconfig'){
+  if(view === 'customerconfig' && !keep){
     // Same editing screen, fixed to one customer. Sharing it avoids a second
     // set of list containers with duplicate ids.
     document.getElementById('view-chemconfig').classList.add('active');
@@ -19146,12 +19293,12 @@ function switchView(view){
     customerGroups = lsGet('customerGroups') || [];
     renderGroupList();
   }
-  if(view === 'productsservices') renderProductsServicesList();
-  if(view === 'customers'){
+  if(view === 'productsservices' && !keep) renderProductsServicesList();
+  if(view === 'customers' && !keep){
     customerPage = 1;
     hideCustomerForm();
   }
-  if(view === 'technicians'){
+  if(view === 'technicians' && !keep){
     resetTechForm();
     hideTechForm();
     renderCompanySignIn();
@@ -19166,7 +19313,10 @@ function switchView(view){
     if(listPane) listPane.style.display = '';
     if(photoCard) photoCard.style.display = 'none';
   }
-  if(view === 'map'){
+  if(view === 'map' && keep){
+    setTimeout(()=>{ if(routeMapInstance) routeMapInstance.invalidateSize(); }, 50);
+  }
+  if(view === 'map' && !keep){
     selectedMapDay = DAYS_OF_WEEK[new Date().getDay()];
     selectedRoute = null;
     renderRoutesList();
@@ -19180,12 +19330,16 @@ function switchView(view){
       renderRouteMapPins();
     }, 50);
   }
-  if(view === 'history'){
+  if(view === 'history' && !keep){
     billingPage = 1;
     openBillingIds.clear();
     renderBilling();
   }
-  if(view === 'workcenter'){
+  if(view === 'workcenter' && keep){
+    // As it was: what was typed on the form comes back (it was held on the way out)
+    try{ restoreWcDraft(document.getElementById('wcType').value); applyWorkOrderType(); }catch(e){}
+  }
+  if(view === 'workcenter' && !keep){
     applyWorkCenterMode('quotes');
     resetWorkOrderForm(true);
     document.getElementById('wcCustomer').value = '';
@@ -19200,7 +19354,9 @@ function switchView(view){
     restoreWcDraft(document.getElementById('wcType').value);
     applyWorkOrderType();
   }
-  window.scrollTo({top: 0, behavior: 'smooth'});
+  // Where it was scrolled to, when it's coming back as it was
+  if(keep) window.scrollTo(0, webLeftScroll[view] || 0);
+  else window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
 document.querySelectorAll('nav .tab').forEach(tab=>{
