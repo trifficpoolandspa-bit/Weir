@@ -415,7 +415,8 @@ input::placeholder{color:#A9BCB9;}
 .status-tag.high{color:var(--rust);}
 
 /* Today's Route (technician page): a plain table, one line per stop */
-.tw-row{display:grid;grid-template-columns:18px 28px minmax(0,1.2fr) minmax(0,1.8fr) 128px 92px;
+/* Status is wide enough for Done with its time and the Just today badge side by side */
+.tw-row{display:grid;grid-template-columns:18px 28px minmax(0,1.2fr) minmax(0,1.5fr) 220px 92px;
   align-items:center;gap:10px;padding:9px 8px;border-bottom:1px solid var(--line);font-size:13.5px;}
 .tw-row:last-child{border-bottom:none;}
 .tw-row.tw-stop{cursor:pointer;transition:background-color .12s ease;}
