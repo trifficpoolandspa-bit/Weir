@@ -1101,6 +1101,20 @@ select#customerSelect{font-weight:600;}
       </div>
       <input type="file" accept="application/json" id="importBackupInput" style="display:none;">
     </div>
+      <!-- The "Last 4 weeks" readings table on visits: on or off for the company -->
+      <div class="card" id="recentReadingsCard">
+        <div class="field">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
+            <h2 style="margin:0;">Previous readings on visits</h2>
+            <label class="toggle-switch">
+              <input type="checkbox" id="settingRecentReadings">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">On by default. When on, each visit's readings page shows a "Last 4 weeks" table of that body of water's past readings above today's fields. Applies to everyone in the company, on the phones and the website alike.</p>
+        </div>
+      </div>
+
       <!-- Water balance (LSI) is hidden until calcium hardness and water temperature
      are part of the readings. The calculator and the readout are still in the
      app; only this switch is out of sight, so nothing is lost by restoring it. -->
@@ -2318,6 +2332,9 @@ async function renderRecentReadings(type, chemList){
   const cid = currentVisitCustomerId;
   if(!box) return;
   box.innerHTML = '';
+  box.style.marginBottom = '';
+  // Switched off in Settings (on unless turned off)
+  if(appSettings && appSettings.showRecentReadings === false) return;
   if(!cid || !Array.isArray(chemList) || !chemList.length) return;
   let list = [];
   try{
@@ -2947,6 +2964,7 @@ function applyRoleUI(){
   // Report view: the admin's search and Serviced/Reports switch, the
   // technician's plain customer list
   show('reportModeCard', admin, 'block');
+  show('recentReadingsCard', admin, 'block');
   show('servicedTechSel', admin, 'block');
   show('reportCustomerSearch', admin, 'block');
   if(!admin){ show('btnClearReportCustomer', false); show('reportCustomerSuggestions', false); }
@@ -3482,6 +3500,8 @@ const SYNC_LIST_FIELDS = ['equipment', 'dogs', 'fountains'];
 const SYNC_SEP = '\u0001';
 const SYNC_ORDER = '__order';
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
+  // The "Last 4 weeks" readings table on visits
+  'showRecentReadings',
   'requireSkipPhoto', 'requireSkipReason', 'allowRouteReorder', 'showDosageSuggestions',
   'showWaterBalance', 'autoNotifyAll', 'autoNotifyAllLead', 'showPoolSizeInProfile',
   'applyPoolDosagesToAll', 'applyPoolChemicalsToAll'];
@@ -11837,6 +11857,13 @@ document.getElementById('settingTechniciansTab').addEventListener('change', (e)=
 });
 
 
+document.getElementById('settingRecentReadings').addEventListener('change', (e)=>{
+  appSettings.showRecentReadings = e.target.checked;
+  saveSettings();
+  try{ renderAllConfigFields(); }catch(err){}
+  showToast(appSettings.showRecentReadings ? 'Previous readings shown on visits' : 'Previous readings hidden on visits');
+});
+
 document.getElementById('settingWaterBalance').addEventListener('change', (e)=>{
   appSettings.showWaterBalance = e.target.checked;
   saveSettings();
@@ -12791,8 +12818,12 @@ function syncStepChrome(){
         setTimeout(()=>{ visitSaveOnly = false; }, 4000);
       });
       headEl.insertBefore(save, back);
+      // Right beside Back: the heading takes the room on the left and every
+      // button after it (Skip if there is one, Save report, Back) sits to the right
+      save.style.justifySelf = 'end';
       headEl.style.display = 'grid';
-      headEl.style.gridTemplateColumns = '1fr auto 1fr';
+      headEl.style.columnGap = '8px';
+      headEl.style.gridTemplateColumns = 'minmax(0,1fr)' + ' auto'.repeat(Math.max(1, headEl.children.length - 1));
       h.style.minWidth = '0';
       h.style.justifySelf = 'start';
       back.style.justifySelf = 'end';
@@ -16119,6 +16150,7 @@ async function init(){
   if(who) who.textContent = currentUser ? currentUser.name : 'Dev mode';
   document.getElementById('settingVoiceMode').checked = appSettings.voiceModeEnabled;
   document.getElementById('settingWaterBalance').checked = appSettings.showWaterBalance === true;
+  document.getElementById('settingRecentReadings').checked = appSettings.showRecentReadings !== false;
   updateVoiceModeIndicator();
   document.getElementById('settingTechniciansTab').checked = appSettings.showTechniciansTab !== false;
   document.getElementById('settingPushToTalk').checked = appSettings.pushToTalkEnabled !== false;

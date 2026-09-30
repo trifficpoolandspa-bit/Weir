@@ -558,7 +558,9 @@ input::placeholder{color:#A9BCB9;}
       <div class="btn-row">
         <button class="btn btn-primary" id="btnAddCustomer" style="width:auto;">+ Add a customer</button>
         <button class="btn btn-ghost" id="btnImportCustomers" style="width:auto;">Import customers</button>
-        <button class="btn btn-ghost" id="btnRestoreCustomers" style="width:auto;margin-left:auto;">Restore customers</button>
+        <!-- Every customer and their details as a spreadsheet (opens in Excel or Google Sheets) -->
+        <button class="btn btn-ghost" id="btnExportCustomers" style="width:auto;margin-left:auto;">Export customers</button>
+        <button class="btn btn-ghost" id="btnRestoreCustomers" style="width:auto;">Restore customers</button>
       </div>
       <input type="file" accept=".csv,text/csv" id="importCsvInput" style="display:none;">
     </div>
@@ -773,9 +775,6 @@ input::placeholder{color:#A9BCB9;}
     </div>
 
     <div id="techListPane">
-    <div class="card">
-      <button class="btn btn-primary" id="btnAddTech" style="width:auto;">+ Add technician</button>
-    </div>
     <div class="card primary" id="techFormCard" style="display:none;">
       <h2 id="techFormHeading">Add a technician</h2>
       <div class="field"><label>Name</label><input id="techName" placeholder="Sam Rivera"></div>
@@ -808,9 +807,13 @@ input::placeholder{color:#A9BCB9;}
       </div>
     </div>
     <div class="card">
-      <div class="section-head">
+      <!-- The count, then + Add technician, at the right of the heading's row -->
+      <div class="section-head" style="align-items:center;">
         <h2>All technicians</h2>
-        <span class="section-count" id="techCount"></span>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span class="section-count" id="techCount"></span>
+          <button class="btn btn-primary" id="btnAddTech" style="width:auto;">+ Add technician</button>
+        </div>
       </div>
       <div id="technicianList"></div>
     </div>
@@ -1289,6 +1292,12 @@ input::placeholder{color:#A9BCB9;}
              the number at the far right: the same place for quotes and work orders -->
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <input type="date" id="wcDate" style="width:auto;min-width:0;padding-right:12px;">
+          <!-- Quotes only: how long the customer has to answer -->
+          <label id="wcExpiresWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;white-space:nowrap;margin:0;">
+            Expires in
+            <input type="number" id="wcExpiresDays" min="1" max="365" step="1" value="30" inputmode="numeric" style="width:72px;padding:8px 10px;text-align:center;">
+            days
+          </label>
           <label id="wcPhotoRequiredWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
             <input type="checkbox" id="wcPhotoRequired" checked style="margin:0;"> Photo required
           </label>
@@ -1716,6 +1725,20 @@ input::placeholder{color:#A9BCB9;}
   </div>
 
   <div class="view" id="view-settings">
+      <!-- The "Last 4 weeks" readings table on the phones' visits: on or off for the company -->
+      <div class="card">
+        <div class="field">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
+            <h2 style="margin:0;">Previous readings on visits</h2>
+            <label class="toggle-switch">
+              <input type="checkbox" id="settingRecentReadings">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">On by default. When on, each visit's readings page in the app shows a "Last 4 weeks" table of that body of water's past readings above today's fields. Applies to everyone in the company.</p>
+        </div>
+      </div>
+
       <!-- Water balance (LSI) is hidden until calcium hardness and water temperature
      are part of the readings. The calculator and the readout are still in the
      app; only this switch is out of sight, so nothing is lost by restoring it. -->
@@ -7047,6 +7070,10 @@ async function attemptSiteLogin(){
   };
   lsSet('ownerSession', true);
   document.getElementById('sitePassword').value = '';
+  // This browser's copy must be this company's before anything syncs
+  const match = siteMatchCompany(siteUser.companyId);
+  if(match === 'blocked'){ await siteBlockedByOtherCompany(); return; }
+  if(match === 'reload') return;
   try{ switchView('customers'); }catch(e){}
   hideSiteLogin();
   startCustomerSync();
@@ -7073,6 +7100,10 @@ async function guardSiteSession(){
     companyCode: me.companyCode || null
   };
   lsSet('ownerSession', true);
+  // This browser's copy must be this company's before anything syncs
+  const match = siteMatchCompany(siteUser.companyId);
+  if(match === 'blocked'){ await siteBlockedByOtherCompany(); return false; }
+  if(match === 'reload') return false;
   hideSiteLogin();
   startCustomerSync();
   return true;
@@ -7818,6 +7849,69 @@ function syncNoteLocalChange(){
   syncTimer = setTimeout(()=> syncCustomers(), 2000);
 }
 
+
+// ---- One company's data per browser ----
+// This browser keeps a copy of the signed-in company's customers, technicians
+// and settings, and sync sends that copy up. Signing in as a different company
+// used to send the previous company's copy into the new one (Sept 30: Triffic's
+// test customers ended up in Affinity Pools). Now the copy is marked with its
+// company; signing in as another company clears it first (after making sure
+// nothing of the previous company's is still waiting to go up) and starts the
+// new company fresh from the server. How this browser is signed in stays.
+const SITE_DATA_COMPANY_KEY = 'dataCompany';
+const SITE_KEEP_KEYS = ['sbSession', 'ownerSession', SITE_DATA_COMPANY_KEY];
+function siteOtherCompaniesHere(companyId){
+  const ids = [];
+  for(let i = 0; i < localStorage.length; i++){
+    const k = localStorage.key(i);
+    if(k && k.indexOf(SYNC_PREFIX + 'state:') === 0){
+      const id = k.slice((SYNC_PREFIX + 'state:').length);
+      if(id && id !== String(companyId)) ids.push(id);
+    }
+  }
+  return ids;
+}
+function siteHasUnsent(companyId){
+  const st = loadSyncState(companyId);
+  const recs = (st.records && st.records.edits) || {};
+  return Object.keys(st.edits || {}).length + Object.keys(recs).length > 0;
+}
+// Returns 'ok' to carry on, 'reload' when the page is being reloaded fresh,
+// or 'blocked' when another company's changes are still waiting to go up
+function siteMatchCompany(companyId){
+  const mark = lsGet(SITE_DATA_COMPANY_KEY);
+  if(mark === String(companyId)) return 'ok';
+  const others = siteOtherCompaniesHere(companyId);
+  // No mark yet and nobody else's data here: this browser's copy is this company's
+  if(!mark && !others.length){ lsSet(SITE_DATA_COMPANY_KEY, String(companyId)); return 'ok'; }
+  // Another company's copy is here. Anything of theirs not yet sent stops it.
+  const theirs = mark ? [mark].concat(others.filter(o => o !== mark)) : others;
+  if(theirs.some(siteHasUnsent)) return 'blocked';
+  const drop = [];
+  for(let i = 0; i < localStorage.length; i++){
+    const k = localStorage.key(i);
+    if(!k) continue;
+    if(k.indexOf(SYNC_PREFIX) === 0){ drop.push(k); continue; }
+    if(k.indexOf(STORAGE_PREFIX) === 0 && SITE_KEEP_KEYS.indexOf(k.slice(STORAGE_PREFIX.length)) === -1) drop.push(k);
+  }
+  drop.forEach(k => { try{ localStorage.removeItem(k); }catch(e){} });
+  lsSet(SITE_DATA_COMPANY_KEY, String(companyId));
+  // Start again from the top: every list on the page was loaded from the old copy
+  try{ location.reload(); }catch(e){}
+  return 'reload';
+}
+async function siteBlockedByOtherCompany(){
+  await sbSignOut();
+  lsSet('ownerSession', false);
+  siteUser = null;
+  showSiteLogin();
+  const err = document.getElementById('siteLoginError');
+  const msg = 'This computer still has changes for another company that haven\u2019t reached the office yet. '
+    + 'Sign in as that company first so they can go up, then sign in here.';
+  if(err){ err.textContent = msg; err.style.display = 'block'; }
+  else showToast(msg);
+}
+
 function startCustomerSync(){
   syncCustomers();
   if(!startCustomerSync.started){
@@ -8041,6 +8135,8 @@ const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'r
                          // The order of the Technicians list, which the phones follow
                          'technicianOrder'];
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
+  // The "Last 4 weeks" readings table on the phones' visits
+  'showRecentReadings',
   'requireSkipPhoto', 'requireSkipReason', 'allowRouteReorder', 'showDosageSuggestions',
   'showWaterBalance', 'autoNotifyAll', 'autoNotifyAllLead', 'showPoolSizeInProfile',
   'applyPoolDosagesToAll', 'applyPoolChemicalsToAll'];
@@ -10201,6 +10297,8 @@ document.getElementById('btnAddLineItem').addEventListener('click', ()=>{
 function resetWorkOrderForm(backToQuote){
   const qn = document.getElementById('wcQuoteName');
   if(qn) qn.value = '';
+  const qx = document.getElementById('wcExpiresDays');
+  if(qx) qx.value = String(QUOTE_ANSWER_DAYS || 30);
   // A new work order starts with Photo required on
   const photoReq = document.getElementById('wcPhotoRequired');
   if(photoReq) photoReq.checked = true;
@@ -10926,6 +11024,8 @@ function applyWorkOrderType(){
   // the number for quotes and work orders
   const qName = document.getElementById('wcQuoteNameField');
   if(qName) qName.style.display = chosen === 'Quote' ? '' : 'none';
+  const qExp = document.getElementById('wcExpiresWrap');
+  if(qExp) qExp.style.display = chosen === 'Quote' ? 'inline-flex' : 'none';
   const qNum = document.getElementById('wcQuoteNumber');
   if(qNum){ const numbered = chosen === 'Quote' || chosen === 'Work Order'; qNum.style.display = numbered ? '' : 'none'; if(numbered) showNextQuoteNumber(); }
 
@@ -11019,6 +11119,7 @@ function captureWcDraft(type){
       date: document.getElementById('wcDate').value,
       photoRequired: document.getElementById('wcPhotoRequired').checked,
       quoteName: document.getElementById('wcQuoteName').value,
+      expiresDays: document.getElementById('wcExpiresDays').value,
       techs: pickedTechIds(document.getElementById('wcTechnician')),
       repeat: document.getElementById('wcRepeat').value,
       customEvery: (document.getElementById('wcCustomEvery') || {}).value,
@@ -11069,6 +11170,7 @@ function restoreWcDraft(type){
     document.getElementById('wcDate').value = st.date;
     document.getElementById('wcPhotoRequired').checked = !!st.photoRequired;
     document.getElementById('wcQuoteName').value = st.quoteName || '';
+    document.getElementById('wcExpiresDays').value = st.expiresDays || String(QUOTE_ANSWER_DAYS || 30);
     setPickedTechIds(document.getElementById('wcTechnician'), st.techs);
     document.getElementById('wcRepeat').value = st.repeat;
     if(document.getElementById('wcCustomEvery')) document.getElementById('wcCustomEvery').value = st.customEvery;
@@ -11346,11 +11448,13 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
     // Approve / Deny buttons: a secret code for this quote, saved on the server
     // before sending (without it, the email just goes without the buttons)
     const quoteId = 'wo_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
-    const respondUrl = await registerQuoteResponse(quoteId);
+    const expiresDays = type === 'Quote' ? quoteExpiresDays() : null;
+    if(expiresDays) message += `\n\nThis quote expires in ${expiresDays} ${expiresDays === 1 ? 'day' : 'days'}.`;
+    const respondUrl = await registerQuoteResponse(quoteId, expiresDays);
     // This quote's number: the next one up
     const quoteNumber = nextQuoteNumber();
     lsSet('quoteCounter', quoteNumber);
-    const emailHtml = quoteEmailHtml(customer, type, quoteDateText, validItems, total, notes, null, respondUrl, quoteNumber);
+    const emailHtml = quoteEmailHtml(customer, type, quoteDateText, validItems, total, notes, null, respondUrl, quoteNumber, expiresDays);
     const sent = await sendQuoteEmail(customer, subject, emailHtml, message);
     if(sent) sentCount++;
 
@@ -11368,6 +11472,8 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
       total,
       date: quoteDate || '',
       createdAt: new Date().toISOString(),
+      // How many days the customer has to answer (quotes only)
+      expiresDays: expiresDays || undefined,
       status: sent ? 'sent' : 'draft'
     });
   }
@@ -11399,7 +11505,7 @@ function loadQuoteEmailStyle(){
   return Object.assign({}, QUOTE_EMAIL_DEFAULTS, lsGet('quoteEmailStyle') || {});
 }
 
-function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOverride, respondUrl, quoteNumber){
+function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOverride, respondUrl, quoteNumber, expiresDays){
   const style = lsGet('reportEmailStyle') || {};
   const q = styleOverride || loadQuoteEmailStyle();
   const colour = style.colour || '#134E4A';
@@ -11475,6 +11581,11 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
         + '<div style="font-size:14px;color:#4A5A58;line-height:1.5;white-space:pre-wrap;">' + esc(notes) + '</div></td></tr>' : '')
     // Footer
     + '<tr><td style="padding:26px;">'
+    // How long this quote is good for (quotes sent with a set number of days)
+    + (expiresDays ? '<div style="font-size:13.5px;color:#4A5A58;margin:0 0 4px;">This quote expires in <strong>'
+        + expiresDays + (expiresDays === 1 ? ' day' : ' days') + '</strong>, on '
+        + esc(new Date(Date.now() + expiresDays * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'}))
+        + '.</div>' : '')
     // Approve / Deny, when the quote can take an answer
     + (respondUrl ? '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 6px;width:100%;"><tr>'
         + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">Approve</a></td>'
@@ -11676,7 +11787,14 @@ function showSentQuoteEmail(w){
 // 17). The email's buttons open the quote-response function, which asks the
 // customer to confirm and records the answer. Each sync picks answers up and
 // files the quote into History as Approved or Denied.
-async function registerQuoteResponse(quoteId){
+// The days set on the Quote form (1 to 365; 30 if left blank)
+function quoteExpiresDays(){
+  const el = document.getElementById('wcExpiresDays');
+  const n = Math.round(Number(el && el.value));
+  return n >= 1 && n <= 365 ? n : QUOTE_ANSWER_DAYS;
+}
+
+async function registerQuoteResponse(quoteId, expiresDays){
   try{
     if(typeof siteUser === 'undefined' || !siteUser || !siteUser.companyId) return null;
     const bytes = new Uint8Array(16);
@@ -11685,8 +11803,10 @@ async function registerQuoteResponse(quoteId){
     const res = await sbFetch('/rest/v1/quote_responses?on_conflict=company_id,quote_id', {
       method: 'POST',
       headers: {'Prefer': 'resolution=merge-duplicates,return=minimal'},
-      // Sent now: the customer has 30 days from this sending to answer
-      body: JSON.stringify({company_id: siteUser.companyId, quote_id: quoteId, token: token, outcome: null, responded_at: null, created_at: new Date().toISOString()})
+      // Sent now: the customer has the quote's days (30 unless set) from this
+      // sending to answer. expires_days needs snippet 20 on the server.
+      body: JSON.stringify(Object.assign({company_id: siteUser.companyId, quote_id: quoteId, token: token, outcome: null, responded_at: null, created_at: new Date().toISOString()},
+        expiresDays && expiresDays !== QUOTE_ANSWER_DAYS ? {expires_days: expiresDays} : {}))
     });
     if(!res || !res.ok) return null;
     // The page on this website that asks the customer to confirm (Supabase shows
@@ -11699,17 +11819,20 @@ async function registerQuoteResponse(quoteId){
 // A quote the customer hasn't answered 30 days after it was sent has expired:
 // it moves from Current to History, tagged EXPIRED (grey). The customer can no
 // longer answer it either (the quote-response function says it's expired).
-const QUOTE_ANSWER_DAYS = 30;
+// var: the Quote form can be emptied before this line has run
+var QUOTE_ANSWER_DAYS = 30;
 function expireOldQuotes(){
-  const cutoff = Date.now() - QUOTE_ANSWER_DAYS * 24 * 60 * 60 * 1000;
   let changed = false;
   (workOrders || []).forEach(w=>{
     if(!w || (w.type || 'Quote') !== 'Quote' || w.closed || w.status === 'draft') return;
+    // Each quote's own days (30 for quotes sent before they could be set)
+    const days = Number(w.expiresDays) || QUOTE_ANSWER_DAYS;
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
     const sent = new Date(w.createdAt || 0).getTime();
     if(sent && sent < cutoff){
       w.closed = true;
       w.expired = true;
-      w.expiredAt = new Date(sent + QUOTE_ANSWER_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      w.expiredAt = new Date(sent + days * 24 * 60 * 60 * 1000).toISOString();
       changed = true;
     }
   });
@@ -11782,6 +11905,7 @@ function loadWorkOrderIntoForm(w){
     if(dateEl) dateEl.value = w.date || '';
     document.getElementById('wcPhotoRequired').checked = !!w.photoRequired;
     document.getElementById('wcQuoteName').value = w.name || '';
+    document.getElementById('wcExpiresDays').value = String(w.expiresDays || QUOTE_ANSWER_DAYS || 30);
 
     currentLineItems = (w.lineItems || []).map(li => ({...li}));
     renderLineItems();
@@ -20620,6 +20744,70 @@ function guessColumn(headers, field){
   return -1;
 }
 
+// Export customers: one row per customer, every detail in its own column, as a
+// .csv file that Excel, Numbers and Google Sheets open as a spreadsheet
+function exportCustomersCsv(){
+  const list = (customers || []).filter(c => c && !c._deleted);
+  if(!list.length){ showToast('No customers to export yet'); return; }
+  const techName = id => { const t = (technicians || []).find(x => x && String(x.id) === String(id)); return t ? (t.name || '') : ''; };
+  const size = (c, key) => {
+    const w = c.waterSizes && c.waterSizes[key];
+    if(w && w.amount) return w.amount + (w.unit ? ' ' + w.unit : '');
+    return key === 'pool' && c.poolGallons ? String(c.poolGallons) + ' gallons' : '';
+  };
+  const extras = c => (Array.isArray(c.fountains) ? c.fountains : []).filter(Boolean)
+    .map(f => (f.name || 'Extra body of water') + (size(c, f.id) ? ' (' + size(c, f.id) + ')' : '')).join('; ');
+  const dogs = c => (Array.isArray(c.dogs) ? c.dogs : []).filter(Boolean)
+    .map(d => typeof d === 'string' ? d : (d.name || '')).filter(Boolean).join('; ');
+  const notifyTo = c => {
+    if(!c.notifyName && !c.notifyPhone && !c.notifyEmail) return 'The customer';
+    return [c.notifyName, c.notifyPhone, c.notifyEmail].filter(Boolean).join(' / ');
+  };
+  const cols = [
+    ['Name', c => c.name],
+    ['Address', c => c.address],
+    ['City', c => c.city],
+    ['State', c => c.state],
+    ['ZIP', c => c.zip],
+    ['Phone', c => c.phone],
+    ['Email', c => c.email],
+    ['Service day', c => c.day],
+    ['Extra days', c => (Array.isArray(c.extraDays) ? c.extraDays : []).join('; ')],
+    ['Technician', c => techName(c.technicianId)],
+    ['Active', c => c.active === false ? 'No' : 'Yes'],
+    ['Pool', c => c.hasPool === false ? 'No' : 'Yes'],
+    ['Pool size', c => size(c, 'pool')],
+    ['Spa', c => c.hasSpa ? 'Yes' : 'No'],
+    ['Spa size', c => size(c, 'spa')],
+    ['Other bodies of water', c => extras(c)],
+    ['Dogs', c => dogs(c)],
+    ['Yard gate code', c => c.gateCode],
+    ['Neighborhood gate code', c => c.neighborhoodGateCode],
+    ['Access notes', c => c.accessNotes],
+    ['On my way goes to', c => notifyTo(c)],
+    ['On my way by', c => c.notifyBy === 'email' ? 'Email' : c.notifyBy === 'text' ? 'Text' : 'Asked each time'],
+    ['Automatic on my way', c => c.autoNotify ? 'Yes' + (c.autoNotifyLead ? ' (' + c.autoNotifyLead + ' stops ahead)' : '') : 'No']
+  ];
+  const cell = v => {
+    const t = v === undefined || v === null ? '' : String(v);
+    return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+  };
+  const sorted = list.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity: 'base'}));
+  const lines = [cols.map(c => cell(c[0])).join(',')]
+    .concat(sorted.map(c => cols.map(col => cell(col[1](c))).join(',')));
+  // The mark at the start tells Excel the file is UTF-8 (so accents and — show right)
+  const blob = new Blob(['\ufeff' + lines.join('\r\n')], {type: 'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const d = new Date();
+  const stamp = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  a.download = 'weir-customers-' + stamp + '.csv';
+  a.click();
+  setTimeout(()=> URL.revokeObjectURL(a.href), 1000);
+  showToast(sorted.length + (sorted.length === 1 ? ' customer' : ' customers') + ' exported');
+}
+document.getElementById('btnExportCustomers').addEventListener('click', exportCustomersCsv);
+
 document.getElementById('btnImportCustomers').addEventListener('click', ()=>{
   document.getElementById('importCsvInput').click();
 });
@@ -21202,6 +21390,12 @@ document.getElementById('settingPushToTalk').checked = appSettings.pushToTalkEna
 renderMicSideButtons();
 document.getElementById('settingShowDosageSuggestions').checked = appSettings.showDosageSuggestions;
 document.getElementById('settingWaterBalance').checked = appSettings.showWaterBalance === true;
+document.getElementById('settingRecentReadings').checked = appSettings.showRecentReadings !== false;
+document.getElementById('settingRecentReadings').addEventListener('change', (e)=>{
+  appSettings.showRecentReadings = e.target.checked;
+  saveSettings();
+  showToast(appSettings.showRecentReadings ? 'Previous readings shown on visits' : 'Previous readings hidden on visits');
+});
 document.getElementById('settingAutoNotifyAll').checked = appSettings.autoNotifyAll === true;
 document.getElementById('settingAutoNotifyLead').value = String(appSettings.autoNotifyAllLead || 2);
 document.getElementById('settingAutoNotifyLeadField').style.display =
