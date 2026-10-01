@@ -710,7 +710,8 @@ input::placeholder{color:#A9BCB9;}
     </div>
 
     <div class="card" id="allCustomersCard" style="overflow:visible;">
-      <div class="section-head">
+      <!-- The count right beside the heading -->
+      <div class="section-head" style="justify-content:flex-start;">
         <h2>All customers</h2>
         <span class="section-count" id="listCount"></span>
       </div>
@@ -807,13 +808,13 @@ input::placeholder{color:#A9BCB9;}
       </div>
     </div>
     <div class="card">
-      <!-- The count, then + Add technician, at the right of the heading's row -->
+      <!-- The count right beside the heading; + Add technician at the far right -->
       <div class="section-head" style="align-items:center;">
-        <h2>All technicians</h2>
-        <div style="display:flex;align-items:center;gap:12px;">
+        <div style="display:flex;align-items:baseline;gap:10px;min-width:0;">
+          <h2>All technicians</h2>
           <span class="section-count" id="techCount"></span>
-          <button class="btn btn-primary" id="btnAddTech" style="width:auto;">+ Add technician</button>
         </div>
+        <button class="btn btn-primary" id="btnAddTech" style="width:auto;">+ Add technician</button>
       </div>
       <div id="technicianList"></div>
     </div>
@@ -11109,7 +11110,7 @@ document.getElementById('wcType').addEventListener('change', applyWorkOrderType)
 // within it and it's all still there, after that the form starts blank. Held
 // only in this page, so a reload clears it too. Quote and Work Order share one
 // set of boxes, which is why each needs its own held copy.
-const WC_DRAFT_MS = 60 * 1000;             // a minute (back from 20 seconds, Sept 30)
+const WC_DRAFT_MS = 30 * 1000;             // 30 seconds (Sept 30)
 const wcDrafts = {};
 
 function captureWcDraft(type){
