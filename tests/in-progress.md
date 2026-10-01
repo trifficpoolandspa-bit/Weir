@@ -525,7 +525,7 @@ Last updated: Sept 27, 2026
 **1ee. Website: + Add technician on the All technicians row** — *not yet tested (Sept 30)*
 *(File: `customer-intake.html`)*
 1ee.1. The separate card holding + Add technician is gone; the button sits at the top right of the All technicians card, on the heading's row, with the technician count just left of it. **Tyrus tested Sept 30 ✓**
-1ee.2. *(Sept 30)* The counts sit right beside their headings: "All technicians  2 technicians" with + Add technician at the far right, and "All customers  60 customers" (was at the far right). *Not yet tested.*
+1ee.2. *(Sept 30)* The counts sit right beside their headings: "All technicians  2 technicians" with + Add technician at the far right, and "All customers  60 customers" (was at the far right). *Not yet tested.* **Tyrus tested Oct 1 ✓**
 
 **1ef. Save report beside Back** — *not yet tested (Sept 30)*
 *(File: `app.html`)*
@@ -553,7 +553,7 @@ Last updated: Sept 27, 2026
 **1ej. Website: the 30-second page memory taken out** — *not yet tested (Sept 30)*
 *(File: `customer-intake.html`)*
 1ej.1. Tyrus: too odd. Every website page opens as it normally does again (1dz undone). The WorkCenter's Quote / Work Order / Task form holds what was typed for a minute again (was cut to 20 seconds by 1dz), and filter clean groups close after a minute away again (also cut to 20 seconds). Browser Back / Forward (1dv) is unchanged. **Tyrus tested Sept 30 ✓**
-1ej.2. *(Sept 30)* The WorkCenter form's hold (Quote / Work Order / Task, what was typed) is now 30 seconds. Filter clean groups still close after a minute away. *Not yet tested.*
+1ej.2. *(Sept 30)* The WorkCenter form's hold (Quote / Work Order / Task, what was typed) is now 30 seconds. Filter clean groups still close after a minute away. *Not yet tested.* **Tyrus tested Oct 1 ✓**
 
 **1ek. Quote Current: Resend** — *not yet tested (Sept 30)*
 *(File: `customer-intake.html`)*
@@ -561,24 +561,29 @@ Last updated: Sept 27, 2026
 
 **1el. App: tap-to-talk microphone on every note box** — *not yet tested (Sept 30)*
 *(File: `app.html`)*
-1el.1. Every note box in the app (visit notes for pool / spa / others, skip reason and skip note, access and equipment notes, job notes, and any made later) gets a small round microphone at its bottom right. One tap starts voice-to-text (no holding); the words are added to the end of the note and saved as if typed. It keeps listening while it hears speech, restarting itself through the phone's own pauses, and stops after 6 seconds with nothing heard, on a second tap, when the note box goes away, or when the app is left. Separate from the hold-to-talk readings button (it won't start while that one is listening). Needs the browser's speech recognition (Chrome on Android; Safari on iPhone — may not be available inside an iPhone home-screen app).
+1el.1. Every note box in the app (visit notes for pool / spa / others, skip reason and skip note, access and equipment notes, job notes, and any made later) gets a small round microphone at its bottom right. One tap starts voice-to-text (no holding); the words are added to the end of the note and saved as if typed. It keeps listening while it hears speech, restarting itself through the phone's own pauses, and stops after 6 seconds with nothing heard, on a second tap, when the note box goes away, or when the app is left. Separate from the hold-to-talk readings button (it won't start while that one is listening). Needs the browser's speech recognition (Chrome on Android; Safari on iPhone — may not be available inside an iPhone home-screen app). **Tyrus tested Oct 1 ✓**
+1el.2. *(Reported Oct 1)* Words repeated a lot. Android's speech in continuous mode hands back each phrase again as it grows, all marked final, so words were added over and over. Now each listen is one phrase (the mic restarts itself between phrases, so it still keeps going while you talk), and a phrase that only repeats or extends the last one adds just the new words. *Not yet tested.*
 
 **1em. Visit video (office only, kept 7 days)** — *not yet tested (Sept 30); snippet 22 run and checked on live and beta (push_photo takes 'video', videos office only, clean-up includes videos over 7 days, bucket 10 MB)*
 *(Files: `app.html`, `customer-intake.html`, `tests/sql/22 - visit videos.sql`)*
-1em.1. Website → Technicians → Photo requirements: a **Video** row between After photo and Closed gate photo, with the note "Optional, up to 15 seconds, one per visit. Seen by the office only, never sent to the customer. Videos delete themselves after 7 days to save storage." One tick per technician (and Everyone), no Optional or Required: a tick lets them take one (`allowVideo` on the technician; Everyone = photoEveryone.video.video). Its count reads "N technicians can".
-1em.2. App: on the last body of water's after-photos page, under the after photo, a blue "Video (optional)" box with the same note and **Record video** (the app's own recorder, 15 s hard stop, recorded at ~1.2 Mbit/s so 15 s is about 2–3 MB; over 9.5 MB is refused). One video: once recorded it shows with **Remove video**. Not on filter cleans. Saved with the last report as `video`, uploaded like a photo (kind 'video'), never inside the visit; the phone lets its copy go 7 days after uploading.
-1em.3. Owners and admins see **▶ Watch video** on the report (app Report tab, admin version only; website service report), played from the phone's copy or fetched from the office; after 7 days it reads "Video deleted after 7 days". Never in the customer's email (the email's photo list doesn't include it). Technicians can't see videos on the server (snippet 22's read rule).
+1em.1. Website → Technicians → Photo requirements: a **Video** row between After photo and Closed gate photo, with the note "Optional, up to 15 seconds, one per visit. Seen by the office only, never sent to the customer. Videos delete themselves after 7 days to save storage." One tick per technician (and Everyone), no Optional or Required: a tick lets them take one (`allowVideo` on the technician; Everyone = photoEveryone.video.video). Its count reads "N technicians can". **Tyrus tested Oct 1 ✓**
+1em.2. App: on the last body of water's after-photos page, under the after photo, a blue "Video (optional)" box with the same note and **Record video** (the app's own recorder, 15 s hard stop, recorded at ~1.2 Mbit/s so 15 s is about 2–3 MB; over 9.5 MB is refused). One video: once recorded it shows with **Remove video**. Not on filter cleans. Saved with the last report as `video`, uploaded like a photo (kind 'video'), never inside the visit; the phone lets its copy go 7 days after uploading. **Tyrus tested Oct 1 ✓**
+1em.3. Owners and admins see **▶ Watch video** on the report (app Report tab, admin version only; website service report), played from the phone's copy or fetched from the office; after 7 days it reads "Video deleted after 7 days". Never in the customer's email (the email's photo list doesn't include it). Technicians can't see videos on the server (snippet 22's read rule). **Tyrus tested Oct 1 ✓**
 1em.4. Server (snippet 22): push_photo accepts kind 'video'; videos readable by owners/admins only; photos_past_keeping lists videos over 7 days old, so the office website's daily clean-up deletes them from storage; the bucket limit is 10 MB (was 5 MB). The clean-up runs when the office website is open (once a day).
-1em.5. *(Sept 30)* Up to **3 videos** per visit, numbered in the order recorded: each shows with its own Remove; the button reads "Record another (2 of 3)" and goes at 3. Saved as `video` + `videoMore`, uploaded as their own videos a second apart (order kept). Reports show "Watch video 1 / 2 / 3" (just "Watch video" for one). The Photo requirements note and the app's box say "up to 3 videos of 15 seconds each". *Not yet tested.*
+1em.5. *(Sept 30)* Up to **3 videos** per visit, numbered in the order recorded: each shows with its own Remove; the button reads "Record another (2 of 3)" and goes at 3. Saved as `video` + `videoMore`, uploaded as their own videos a second apart (order kept). Reports show "Watch video 1 / 2 / 3" (just "Watch video" for one). The Photo requirements note and the app's box say "up to 3 videos of 15 seconds each". *Not yet tested.* **Tyrus tested Oct 1 ✓**
+1em.6. *(Oct 1)* Photo requirements: the Video row is first (above Before photo), and its note shows only while the row is open. *Not yet tested.*
+1em.7. *(Reported Oct 1)* In the app the report showed the video twice (the website was fine): the report is drawn twice in quick succession after a visit, and each drawing added its own button. Now any earlier video buttons are cleared before they're added. The video window (app and website) has **Download video**, saving it as .mp4 or .webm (whichever the phone recorded). *Not yet tested.*
+1em.8. *(Oct 1)* One button on the report (app and website): "▶ Watch video", or "▶ Watch videos (3)". It opens one window titled "Video 1 of 3" with ‹ › to step between them (a sideways swipe too, in the app), Download video for the one showing, and Close. Each video is sized to itself (no black bars beside a tall phone video). *Not yet tested.*
 
 **1en. Equipment: backwashed / salt cell cleaned on a date** — *not yet tested (Sept 30)*
 *(Files: `customer-intake.html`, `app.html`)*
-1en.1. Website → customer → Equipment: a Sand or DE filter gets a **Backwashed** button, and a Chlorination set to Salt Cell a **Cleaned** button, between its choice buttons and the Type box. It reads "Backwashed Sep 28" (the later of the date set here and the last visit a technician ticked it on) or "Backwashed: set date". Pressing it asks for the day (today to start, no future dates): Save, Clear date, Cancel. Kept on the equipment item (`lastBackwashed`, `saltCellCleanedOn`).
-1en.2. App: the visit's "Filter backwashed" / "Salt cell cleaned" buttons say "Last done …" from the later of that office date and the last visit it was ticked on.
+1en.1. Website → customer → Equipment: a Sand or DE filter gets a **Backwashed** button, and a Chlorination set to Salt Cell a **Cleaned** button, between its choice buttons and the Type box. It reads "Backwashed Sep 28" (the later of the date set here and the last visit a technician ticked it on) or "Backwashed: set date". Pressing it asks for the day (today to start, no future dates): Save, Clear date, Cancel. Kept on the equipment item (`lastBackwashed`, `saltCellCleanedOn`). **Tyrus tested Oct 1 ✓**
+1en.2. App: the visit's "Filter backwashed" / "Salt cell cleaned" buttons say "Last done …" from the later of that office date and the last visit it was ticked on. **Tyrus tested Oct 1 ✓**
+1en.3. *(Oct 1)* That "Last done …" now sits inside the Filter backwashed / Salt cell cleaned button, on a small second line, instead of underneath it. *Not yet tested.*
 
 **1eo. Website: ← → between customers on every customer tab** — *not yet tested (Sept 30)*
 *(File: `customer-intake.html`)*
-1eo.1. *(Reported)* The left and right arrow keys only stepped between customers on the Profile tab: they waited for the profile card, which only shows there. Now they work on Profile, Equipment, Service Reports and Quotes and Orders (anywhere the Back / Previous / Next bar shows), staying on the same tab. Still not while typing or with a window open.
+1eo.1. *(Reported)* The left and right arrow keys only stepped between customers on the Profile tab: they waited for the profile card, which only shows there. Now they work on Profile, Equipment, Service Reports and Quotes and Orders (anywhere the Back / Previous / Next bar shows), staying on the same tab. Still not while typing or with a window open. **Tyrus tested Oct 1 ✓**
 
 **1ep. Website: a picture closes on an outside click or Escape** — *not yet tested (Sept 30)*
 *(File: `customer-intake.html`)*
@@ -586,19 +591,19 @@ Last updated: Sept 27, 2026
 
 **1eq. Up to three photos per before / after / closed gate step** — *not yet tested (Sept 30)*
 *(Files: `app.html`, `customer-intake.html`)*
-1eq.1. App: every before, after and closed gate step takes up to 3 photos. They show as thumbnails numbered 1–3 in the order taken (no number with just one), each with its own × to remove it; the button reads "Take another (2 of 3)" and disappears at 3. Required photos still need just one.
-1eq.2. The first stays in the step's usual field (`photo`, `beforePhoto`, `gatePhoto`); 2 and 3 go in `photoMore` / `beforePhotoMore` / `gatePhotoMore`, kept in the photo database, restored when a report is reopened (and when moving between extra bodies of water), and uploaded as their own photos of the same kind, a second and two apart so the office keeps their order.
-1eq.3. The customer's email: the same labels, numbered in the order taken ("Pool after 1", "Pool after 2", "Gate 1"…); one photo keeps its plain label. The email now carries up to 15 photos (was 10); any past that go as links, as before.
-1eq.4. The app's report shows all after photos (numbered when more than one). The website's service reports and photo window show every before and after photo, numbered ("Before 1", "After 2"), rebuilt in order from what the phones uploaded.
+1eq.1. App: every before, after and closed gate step takes up to 3 photos. They show as thumbnails numbered 1–3 in the order taken (no number with just one), each with its own × to remove it; the button reads "Take another (2 of 3)" and disappears at 3. Required photos still need just one. **Tyrus tested Oct 1 ✓**
+1eq.2. The first stays in the step's usual field (`photo`, `beforePhoto`, `gatePhoto`); 2 and 3 go in `photoMore` / `beforePhotoMore` / `gatePhotoMore`, kept in the photo database, restored when a report is reopened (and when moving between extra bodies of water), and uploaded as their own photos of the same kind, a second and two apart so the office keeps their order. **Tyrus tested Oct 1 ✓**
+1eq.3. The customer's email: the same labels, numbered in the order taken ("Pool after 1", "Pool after 2", "Gate 1"…); one photo keeps its plain label. The email now carries up to 15 photos (was 10); any past that go as links, as before. **Tyrus tested Oct 1 ✓**
+1eq.4. The app's report shows all after photos (numbered when more than one). The website's service reports and photo window show every before and after photo, numbered ("Before 1", "After 2"), rebuilt in order from what the phones uploaded. **Tyrus tested Oct 1 ✓**
 
 **1er. One body of water reads the pool's photo requirements** — *not yet tested (Sept 30)*
 *(File: `app.html`)*
-1er.1. *(Reported)* A spa-only customer wasn't asked for an after photo when only pools had it ticked. Now a customer with exactly one body of water (just a spa, or just one extra) is asked for photos as a pool would be: the Photo requirements ticks (each technician's and Everyone's), the company's own photos, and Readings and Dosages' require-photo settings all read the pool's. The visit is still labelled Spa / the extra's own name. Customers with two or more bodies of water are unchanged.
+1er.1. *(Reported)* A spa-only customer wasn't asked for an after photo when only pools had it ticked. Now a customer with exactly one body of water (just a spa, or just one extra) is asked for photos as a pool would be: the Photo requirements ticks (each technician's and Everyone's), the company's own photos, and Readings and Dosages' require-photo settings all read the pool's. The visit is still labelled Spa / the extra's own name. Customers with two or more bodies of water are unchanged. **Tyrus tested Oct 1 ✓**
 
 **1es. App: photos are removed from the full-size view** — *not yet tested (Sept 30)*
 *(File: `app.html`)*
-1es.1. No more Remove photo buttons (or the × on thumbnails). To remove a photo: tap it to open it full size, then **Delete photo**, a rust button just above the "Tap the photo to close" bubble. It closes the view, removes that one photo and says "Photo deleted". Covers the before / after / closed gate photos (each of up to three), the company's own photos, a job's photo, the skip window's photo and the skipped screen's photo. Tapping the photo still just closes it. Equipment photo galleries keep their own Remove.
-1es.2. *(Sept 30)* Every photo step's subtext now reads "Tap a photo to access the delete button.": before and after photos (pool, spa, extras, and the filter-clean wording) and the closed gate photo. *Not yet tested.*
+1es.1. No more Remove photo buttons (or the × on thumbnails). To remove a photo: tap it to open it full size, then **Delete photo**, a rust button just above the "Tap the photo to close" bubble. It closes the view, removes that one photo and says "Photo deleted". Covers the before / after / closed gate photos (each of up to three), the company's own photos, a job's photo, the skip window's photo and the skipped screen's photo. Tapping the photo still just closes it. Equipment photo galleries keep their own Remove. **Tyrus tested Oct 1 ✓**
+1es.2. *(Sept 30)* Every photo step's subtext now reads "Tap a photo to access the delete button.": before and after photos (pool, spa, extras, and the filter-clean wording) and the closed gate photo. *Not yet tested.* **Tyrus tested Oct 1 ✓**
 
 **1et. App: left-handed mode** — *not yet tested (Sept 30)*
 *(File: `app.html`)*
@@ -608,28 +613,30 @@ Last updated: Sept 27, 2026
 - Serviced (an admin's Report tab, a technician's Serviced Pools): ‹ › on the left, the day centred to their right.
 - Every visit step on every body of water: Return to route / Back on the left and the heading on the right (with Skip still in the middle, and an admin's Save report still beside Back).
 - Customer rows are unchanged (On my way stays on the right). Done with CSS on a class on the page, so nothing else changes.
-1et.2. *(Sept 30)* Turning left-handed mode on puts the voice entry microphone on the left of the step button (Voice entry → Left of button); it can be switched back to Right of button with left-handed mode still on. Turning left-handed mode off puts it back on the right. Left-handed mode is kept with this phone's own settings (like the microphone's side). *Not yet tested.*
+1et.2. *(Sept 30)* Turning left-handed mode on puts the voice entry microphone on the left of the step button (Voice entry → Left of button); it can be switched back to Right of button with left-handed mode still on. Turning left-handed mode off puts it back on the right. Left-handed mode is kept with this phone's own settings (like the microphone's side). *Not yet tested.* **Tyrus tested Oct 1 ✓**
 
 **1eu. App: Skip button** — *not yet tested (Sept 30)*
 *(File: `app.html`)*
-1eu.1. "Skip this pool / spa / fountain" now just says **Skip**, and sits right beside Return to route / Back on the readings step's heading row (it was centred). In left-handed mode it stays beside them, on the left.
+1eu.1. "Skip this pool / spa / fountain" now just says **Skip**, and sits right beside Return to route / Back on the readings step's heading row (it was centred). In left-handed mode it stays beside them, on the left. **Tyrus tested Oct 1 ✓**
 
 **1ev. App: a visit reads as one card** — *not yet tested (Sept 30)*
 *(File: `app.html`)*
 1ev.1. The Pool / Spa / Fountain / Equipment tabs card joins onto whatever is showing below it (the step, the equipment page, the skipped screen), and on the last step the service notes and Submit join onto the after photos: square where they meet, a thin line between parts, rounded only at the very top and bottom. Follows every change of step or tab by itself (it watches which cards are showing). The tabs still stay at the top while scrolling.
+1ev.2. *(Reported Oct 1)* Scrolling a report moved the tabs card up a little, and the readings showed past its corners. The tabs are now held like Today's header: they stay exactly where they start, with a solid page-coloured backing above and beside them, so the report disappears as it reaches the bottom edge of the tabs (square there when joined). *Not yet tested.*
 
 **1ew. Voice entry setting's wording** — *not yet tested (Sept 30)*
 *(Files: `app.html`, `customer-intake.html`)*
-1ew.1. The Voice entry description in Settings (app and website) now says to **hold** the microphone and speak readings **and** dosages, and that it only listens while it's held (it said tap / or / while speaking).
+1ew.1. The Voice entry description in Settings (app and website) now says to **hold** the microphone and speak readings **and** dosages, and that it only listens while it's held (it said tap / or / while speaking). **Tyrus tested Oct 1 ✓**
 
 **1ex. App: "Return to pool / spa" on later bodies of water** — *not yet tested (Sept 30)*
 *(File: `app.html`)*
-1ex.1. *(Reported)* After submitting the pool, the spa's first step said "Return to route". Now only the first body of water's first step says Return to route; every later one says "← Return to pool", "← Return to spa", or the extra's own name (the body of water before it in the visit's order) and goes back to that body of water where it was left. The phone's own Back on that step does the same.
+1ex.1. *(Reported)* After submitting the pool, the spa's first step said "Return to route". Now only the first body of water's first step says Return to route; every later one says "← Return to pool", "← Return to spa", or the extra's own name (the body of water before it in the visit's order) and goes back to that body of water where it was left. The phone's own Back on that step does the same. **Tyrus tested Oct 1 ✓**
 
 **1ey. App: counts read "5/8 stops", "1/2 jobs"** — *not yet tested (Sept 30)*
 *(File: `app.html`)*
-1ey.1. On Today and a technician's route (Techs tab) the counts read left / the day's total with a slash ("0/0", "5/8 stops", "1/2 jobs") instead of "5 of 8 stops left". The total is the day's whole count (left + done), so it holds while the first number counts down. The website's Today's Route keeps its own wording.
-1ey.2. *(Sept 30)* Those counts are dark teal now (#114B4F, the app's dark teal), not amber. *Not yet tested.*
+1ey.1. On Today and a technician's route (Techs tab) the counts read left / the day's total with a slash ("0/0", "5/8 stops", "1/2 jobs") instead of "5 of 8 stops left". The total is the day's whole count (left + done), so it holds while the first number counts down. The website's Today's Route keeps its own wording. **Tyrus tested Oct 1 ✓**
+1ey.2. *(Sept 30)* Those counts are dark teal now (#114B4F, the app's dark teal), not amber. *Not yet tested.* **Tyrus tested Oct 1 ✓**
+1ey.3. *(Oct 1)* About double the space between "stops" and the jobs number, on Today and a technician's route. *Not yet tested.*
 
 **1ez. Website: On my way message on the profile** — *not yet tested (Sept 30)*
 *(File: `customer-intake.html`)*
@@ -637,34 +644,42 @@ Last updated: Sept 27, 2026
 
 **1fa. App: quick buttons on one line** — *not yet tested (Sept 30)*
 *(File: `app.html`)*
-1fa.1. The quick buttons under each reading and dosage on a visit sit on a single line; when there are more than fit, the line swipes sideways to the rest (no scrollbar shown). Each button keeps its own width.
+1fa.1. The quick buttons under each reading and dosage on a visit sit on a single line; when there are more than fit, the line swipes sideways to the rest (no scrollbar shown). Each button keeps its own width. **Tyrus tested Oct 1 ✓**
 
 **1fb. App: automatic On my way texts** — *not yet tested (Sept 30)*
 *(File: `app.html`)*
 1fb.1. *(Reported)* Finishing the stop two before a customer set for automatic On my way didn't open the text. Two causes: (a) a phone only lets a web app open Messages straight after a tap, and by the time the report finished saving the Submit tap was too old, so the opening was quietly refused; (b) "2 stops away" was counted along the whole route order, so stops done out of order could make it miss.
-1fb.2. Now: after each finished stop, the stops still to do are listed in route order, and the first customer set for automatic who is now within their number of stops (e.g. the next 2) and hasn't had one today gets it. A text comes up as a window — "Automatic On my way · <name> is 2 stops away / your next stop" — with **Open text message** (opens Messages with the text ready) and **Not now**. An email (customer set to email) still goes from the office by itself. Each customer is told once a day.
+1fb.2. Now: after each finished stop, the stops still to do are listed in route order, and the first customer set for automatic who is now within their number of stops (e.g. the next 2) and hasn't had one today gets it. A text comes up as a window — "Automatic On my way · <name> is 2 stops away / your next stop" — with **Open text message** (opens Messages with the text ready) and **Not now**. An email (customer set to email) still goes from the office by itself. Each customer is told once a day. **Tyrus tested Oct 1 ✓**
 
 **1fc. Skipped bodies of water and skipped visits on the reports and in the history** — *not yet tested (Sept 30)*
 *(Files: `app.html`, `customer-intake.html`)*
-1fc.1. *(Reported)* A body of water skipped on a visit left no trace: no reading was saved and the report left it out, and its note and photo were never kept. Now, when the visit finishes, each skipped body is saved as a "skipped" reading (with the technician's note, and the photo kept with it as its own photo, not emailed), so:
+1fc.1. *(Reported)* A body of water skipped on a visit left no trace: no reading was saved and the report left it out, and its note and photo were never kept. Now, when the visit finishes, each skipped body is saved as a "skipped" reading (with the technician's note, and the photo kept with it as its own photo, not emailed), so: **Tyrus tested Oct 1 ✓**
 - the app's report shows that body with "Skipped this visit" and the reason (marked internal); the customer's email shows the body with "Skipped this visit" and no reason;
 - the visit's Reading history shows a "Skipped" row, and the Last 4 weeks table a column marked Skipped;
 - the website's service report for it has a red Skipped badge and "Spa skipped on this visit" with the reason; the visit's row says "Spa (skipped)", and History / Billing "· skipped".
-1fc.2. A whole visit skipped (Skip Service) now also shows: a "Service skipped" row in the app's Reading history and a Skipped column in the Last 4 weeks table, and on the website a "Service skipped" report in the customer's Service reports (with the reason), without a Delete button (undone with Reservice on the phone).
+1fc.2. A whole visit skipped (Skip Service) now also shows: a "Service skipped" row in the app's Reading history and a Skipped column in the Last 4 weeks table, and on the website a "Service skipped" report in the customer's Service reports (with the reason), without a Delete button (undone with Reservice on the phone). **Tyrus tested Oct 1 ✓**
 
 **1fd. App: readings history table — 3 months, fixed window, chemicals added option** — *not yet tested (Sept 30)*
 *(Files: `app.html`, `customer-intake.html`)*
-1fd.1. The table above a visit's readings is now **Last 3 months** (was 4 weeks). It's a fixed window showing the dates and three rows; it scrolls down for the rest of the rows and sideways for older dates, with the dates and the row names held in place while scrolling.
-1fd.2. New company setting **Show chemicals added too** (website Settings, and admins in the app, under Previous readings on visits; off to start; `showRecentDosages`). When on, a "Chemicals added" section under the readings lists what was put in at each of those visits, with units; — where nothing was added.
+1fd.1. The table above a visit's readings is now **Last 3 months** (was 4 weeks). It's a fixed window showing the dates and three rows; it scrolls down for the rest of the rows and sideways for older dates, with the dates and the row names held in place while scrolling. **Tyrus tested Oct 1 ✓**
+1fd.2. New company setting **Show chemicals added too** (website Settings, and admins in the app, under Previous readings on visits; off to start; `showRecentDosages`). When on, a "Chemicals added" section under the readings lists what was put in at each of those visits, with units; — where nothing was added. **Tyrus tested Oct 1 ✓**
+1fd.3. *(Oct 1)* The dates row is the same height as every other row (one fixed row height for all; a skipped date reads "Sep 23 · Skipped" on one line), and the window shows exactly the dates and three rows. *Not yet tested.*
+1fd.4. *(Reported Oct 1)* (a) The dates row was see-through while scrolling: its colour (`--surface-alt`) isn't defined in the app, so it had none. The dates row, the Reading column and the Chemicals added heading row now have solid colours. (b) Dosages showed no unit: each dosage row now names its unit ("Acid (gal)") and its amounts carry it, using the unit set on Readings and Dosages, or the built-in one for a standard dosage set up without one. *Not yet tested.*
 
 **1fe. Quick buttons in number order** — *not yet tested (Sept 30)*
 *(Files: `customer-intake.html`, `app.html`)*
-1fe.1. On Readings and Dosages and Customer Customization (and seasons), a field's quick buttons run lowest to highest: top to bottom in the website's Quick buttons window, left to right in the app. A changed number moves to its place when you leave the box; a new button (0) goes into place once its number is typed. Dragging a list into an order of its own marks it (`buttonsOrdered`) and that order is kept as it is, everywhere; **Sort low to high** in the window puts it back in number order. Lists set before this show sorted until someone drags them.
+1fe.1. On Readings and Dosages and Customer Customization (and seasons), a field's quick buttons run lowest to highest: top to bottom in the website's Quick buttons window, left to right in the app. A changed number moves to its place when you leave the box; a new button (0) goes into place once its number is typed. Dragging a list into an order of its own marks it (`buttonsOrdered`) and that order is kept as it is, everywhere; **Sort low to high** in the window puts it back in number order. Lists set before this show sorted until someone drags them. **Tyrus tested Oct 1 ✓**
 
 **1ff. Website: quick button colours in one go** — *not yet tested (Sept 30)*
 *(File: `customer-intake.html`)*
-1ff.1. Each Quick buttons window (Readings and Dosages, Customer Customization, seasons) has **All colors** at the far right of the + Add button row: pick a colour and every button in that list takes it.
-1ff.2. Beside **+ Add chemical**: **All quick button colors**. Pick a colour and every quick button on this body of water (its chemicals and its dosages) takes it; tick **Apply to all bodies of water** in the chooser to do pool, spa and extras together. On Customer Customization, "all" covers that customer's own setups (bodies still following the company's setup aren't changed).
+1ff.1. Each Quick buttons window (Readings and Dosages, Customer Customization, seasons) has **All colors** at the far right of the + Add button row: pick a colour and every button in that list takes it. **Tyrus tested Oct 1 ✓**
+1ff.2. Beside **+ Add chemical**: **All quick button colors**. Pick a colour and every quick button on this body of water (its chemicals and its dosages) takes it; tick **Apply to all bodies of water** in the chooser to do pool, spa and extras together. On Customer Customization, "all" covers that customer's own setups (bodies still following the company's setup aren't changed). **Tyrus tested Oct 1 ✓**
+1ff.3. *(Oct 1)* New buttons start in the chosen colour: a field's own **All colors** choice first (`buttonColor` on the field), otherwise the body of water's **All quick button colors** (`defaultButtonColor` on its lists), otherwise blue. Using All quick button colors again recolours everything there and clears the fields' own choices (they were just painted over). Button order is never changed by either. *Not yet tested.*
+
+**1fg. Report emails: photo labels above the photos, in teal** — *not yet tested (Oct 1); deployed on live and beta*
+*(File: `functions/send-report/index.ts`)*
+1fg.1. In the service report email, each photo's label ("Pool before", "Spa after 2", "Gate") now sits above its photo, in the app's teal (#1F8A8C, semi-bold), instead of grey underneath. The function was checked to match the repo's copy on both servers before the change, then redeployed on live and beta.
+1fg.2. *(Oct 1)* The labels are centred above their photos: in the email (redeployed on live and beta), on the app's report ("After 1", "After 2", with the photo centred), and in the website's service report photo strip. *Not yet tested.*
 
 **2. Only a real phone or browser can prove these** *(built, approved and suite-tested)*
 2.1. Open in Outlook: does its Bcc line fill in by itself, or does it need pasting? (The addresses are copied either way.)
