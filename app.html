@@ -5661,7 +5661,7 @@ function openVideoFullScreen(src, onDelete){
   const holder = document.createElement('div');
   holder.style.cssText = 'flex:1;min-height:0;width:100%;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
   const v = document.createElement('video');
-  v.controls = true; v.playsInline = true; v.autoplay = true; v.src = src;
+  v.controls = true; v.setAttribute('controlsList', 'nofullscreen noremoteplayback'); v.disablePictureInPicture = true; v.playsInline = true; v.autoplay = true; v.src = src;
   v.style.cssText = 'max-width:100%;max-height:100%;width:auto;height:auto;border-radius:10px;background:#000;';
   v.addEventListener('click', e => e.stopPropagation());
   holder.appendChild(v);
@@ -7045,10 +7045,14 @@ async function recordClip(opts){
       + 'phone and send it the usual way.', 'Not supported');
     return null;
   }
-  // Sideways allowed while recording, if the phone permits it without going
-  // full screen (full screen brings Chrome's 'to exit full screen' bubble)
+  // Sideways allowed while recording. Android only lets the screen turn while
+  // the page is full screen, which brings Chrome's own 'to exit full screen'
+  // bubble for a moment; Tyrus chose landscape over losing the bubble (Oct 1).
   let turned = false;
   try{
+    if(document.documentElement.requestFullscreen && !document.fullscreenElement){
+      await document.documentElement.requestFullscreen({navigationUI: 'hide'});
+    }
     if(screen.orientation && screen.orientation.lock){ await screen.orientation.lock('any'); turned = true; }
   }catch(e){}
   const uprightAgain = async ()=>{
@@ -7277,7 +7281,15 @@ function captureFromCamera(maxDim, quality){
       showFlashButton(true);
     });
 
+    // Which way up the phone is held, from its tilt sensor (no permission on Android)
+    let tilt = {x: 0, y: 9.8};
+    const onMotion = (e)=>{
+      const g = e && e.accelerationIncludingGravity;
+      if(g && typeof g.x === 'number' && typeof g.y === 'number') tilt = {x: g.x, y: g.y};
+    };
+    try{ window.addEventListener('devicemotion', onMotion); }catch(e){}
     function stop(){
+      try{ window.removeEventListener('devicemotion', onMotion); }catch(e){}
       // Turn the torch off before releasing the camera, or it can stay lit.
       // applyConstraints returns a promise, so the try/catch around it caught
       // nothing — on some Android devices it rejects with "setPhotoOptions
@@ -7390,10 +7402,25 @@ function captureFromCamera(maxDim, quality){
       if(done || !video.videoWidth) return;
       done = true;
       const scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight));
+      const w = Math.round(video.videoWidth * scale), h = Math.round(video.videoHeight * scale);
+      // Held on its side while the screen stays upright: turn the photo to match
+      const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent || '');
+      const screenUpright = window.innerHeight >= window.innerWidth;
+      let turn = 0;
+      if(!isIOS && screenUpright && Math.abs(tilt.x) > 6.5 && Math.abs(tilt.x) > Math.abs(tilt.y)){
+        turn = tilt.x > 0 ? -90 : 90;      // top of the phone to the left : to the right
+      }
       const canvas = document.createElement('canvas');
-      canvas.width = Math.round(video.videoWidth * scale);
-      canvas.height = Math.round(video.videoHeight * scale);
-      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+      canvas.width = turn ? h : w;
+      canvas.height = turn ? w : h;
+      const ctx = canvas.getContext('2d');
+      if(turn){
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate(turn * Math.PI / 180);
+        ctx.drawImage(video, -w / 2, -h / 2, w, h);
+      } else {
+        ctx.drawImage(video, 0, 0, w, h);
+      }
       const data = canvas.toDataURL('image/jpeg', quality);
       stop();
       resolve(data);
@@ -15804,7 +15831,7 @@ async function openVisitVideos(list){
     if(!url){ box.textContent = 'This video couldn\u2019t be loaded (no signal, or past its 7 days).'; return; }
     box.innerHTML = '';
     const v = document.createElement('video');
-    v.controls = true; v.playsInline = true; v.src = url;
+    v.controls = true; v.setAttribute('controlsList', 'nofullscreen noremoteplayback'); v.disablePictureInPicture = true; v.playsInline = true; v.src = url;
     // As wide as the video itself, no wider: no black bars beside a tall video
     v.style.cssText = 'display:block;max-width:100%;max-height:60vh;width:auto;height:auto;margin:0 auto;border-radius:10px;background:transparent;';
     box.appendChild(v);
