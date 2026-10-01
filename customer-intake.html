@@ -4670,7 +4670,7 @@ function renderGlobalHistory(){
           if(!data) return;
           const holder = document.createElement('div');
           const cap = document.createElement('div');
-          cap.style.cssText = 'font-size:11px;color:var(--muted);margin-bottom:4px;';
+          cap.style.cssText = 'font-size:11px;color:var(--muted);margin-bottom:4px;text-align:center;';
           cap.textContent = t;
           const img = document.createElement('img');
           img.src = data;
@@ -12694,7 +12694,16 @@ function pickQuickColor(title, offerAllBodies){
     overlay.querySelector('[data-cancel]').addEventListener('click', ()=> done(null));
   });
 }
-// Every button in one list, one colour (blue stays a plain number)
+// The colour a new button starts in: this field's own All colors choice wins,
+// then the body of water's All quick button colors, then blue
+function newButtonColor(item){
+  if(item && item.buttonColor && QUICK_BUTTON_COLORS[item.buttonColor]) return item.buttonColor;
+  const lists = typeof activeConfigLists === 'function' ? activeConfigLists() : null;
+  if(lists && lists.defaultButtonColor && QUICK_BUTTON_COLORS[lists.defaultButtonColor]) return lists.defaultButtonColor;
+  return 'blue';
+}
+// Every button in one list, one colour (blue stays a plain number). The order
+// of the buttons is left exactly as it was.
 function colorAllButtons(item, key){
   if(!item || !Array.isArray(item.buttons)) return 0;
   item.buttons = item.buttons.map(b => { const v = btnValue(b); return key === 'blue' ? v : {v: v, c: key}; });
@@ -12902,7 +12911,9 @@ function openQuickButtonsModal(item){
     addRow.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
     addBtn.addEventListener('click', ()=>{
       if(!Array.isArray(item.buttons)) item.buttons = [];
-      item.buttons.push(0);
+      // In the colour chosen for this field, or for the whole body of water
+      const c = newButtonColor(item);
+      item.buttons.push(c === 'blue' ? 0 : {v: 0, c: c});
       saveActiveConfig();
       renderBody();
       // Ready to type straight away: the new button's number is waiting with
@@ -12942,6 +12953,7 @@ function openQuickButtonsModal(item){
         const pick = await pickQuickColor('Colour for every button here', false);
         if(!pick) return;
         colorAllButtons(item, pick.key);
+        item.buttonColor = pick.key;          // new buttons here start in it too
         saveActiveConfig();
         renderBody();
         showToast('All ' + (item.label || 'these') + ' buttons ' + QUICK_BUTTON_COLORS[pick.key].label.toLowerCase());
@@ -14501,14 +14513,15 @@ function renderPhotoRequirements(){
   // Nothing here depends on Settings any more: the photo steps always exist,
   // and this tab is the only thing that decides who must take what.
   const built = [
+    // Short videos, never required: a tick lets that technician take them.
+    // At the top (Oct 1).
+    {step: 'video', label: 'Video', off: false,
+     note: 'Optional, up to 3 videos of 15 seconds each per visit. Seen by the office only, never sent to the customer. Videos delete themselves after 7 days to save storage.',
+     bodies: {}, oneTick: true},
     {step: 'before', label: 'Before photo', off: false, why: '',
      bodies: {pool: true, spa: true, fountain: true}},
     {step: 'after', label: 'After photo', off: false, why: '',
      bodies: {pool: true, spa: true, fountain: true}},
-    // One short video per visit, never required: a tick lets that technician take one
-    {step: 'video', label: 'Video', off: false,
-     note: 'Optional, up to 3 videos of 15 seconds each per visit. Seen by the office only, never sent to the customer. Videos delete themselves after 7 days to save storage.',
-     bodies: {}, oneTick: true},
     // One photo for the whole visit, so its list is a single tick per person
     {step: 'gate', label: 'Closed gate photo', off: false, why: '',
      bodies: {}, oneTick: true},
@@ -14546,7 +14559,7 @@ function renderPhotoRequirements(){
       name.addEventListener('click', ()=> openPhotoTask(entry.task));
     }
     left.appendChild(name);
-    if(entry.note){
+    if(entry.note && photoStepOpen === entry.step){
       // A line of its own under the name
       left.style.flexWrap = 'wrap';
       const note = document.createElement('div');
@@ -14978,7 +14991,13 @@ document.getElementById('btnAllQuickColors').addEventListener('click', async ()=
     if(here) lists = [here];
   }
   let n = 0;
-  lists.forEach(l => ['chemicals', 'dosages'].forEach(part => (l[part] || []).forEach(it => { n += colorAllButtons(it, pick.key); })));
+  lists.forEach(l=>{
+    l.defaultButtonColor = pick.key;      // new buttons on this body of water start in it
+    ['chemicals', 'dosages'].forEach(part => (l[part] || []).forEach(it=>{
+      n += colorAllButtons(it, pick.key);
+      delete it.buttonColor;              // the page-wide choice was just applied over them
+    }));
+  });
   saveActiveConfig();
   renderChemConfigLists();
   showToast(n + ' quick button' + (n === 1 ? '' : 's') + ' now ' + QUICK_BUTTON_COLORS[pick.key].label.toLowerCase()
@@ -17894,49 +17913,81 @@ function ensureMapLibrary(){
 }
 // The visit's video: fetched from the office's storage when pressed, never
 // kept on this computer (videos go after 7 days)
-function visitVideoButton(ref, n){
+function visitVideoButton(refs){
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'btn btn-ghost';
   btn.style.cssText = 'width:auto;padding:6px 12px;font-size:12.5px;margin:8px 0 0 8px;';
-  btn.textContent = '\u25b6 Watch video' + (n ? ' ' + n : '');
+  btn.textContent = '\u25b6 Watch video' + (refs.length > 1 ? 's (' + refs.length + ')' : '');
   btn.title = 'The technician\u2019s video \u2014 office only, not in the customer\u2019s email';
-  btn.addEventListener('click', e=>{ e.stopPropagation(); openVisitVideo(ref); });
+  btn.addEventListener('click', e=>{ e.stopPropagation(); openVisitVideos(refs); });
   return btn;
 }
-async function openVisitVideo(ref){
+// The visit's videos in one window: ‹ › (or a swipe) between them, each sized
+// to the video itself so a phone video isn't framed in black on both sides.
+// Fetched from the office's storage when shown, never kept on this computer.
+async function openVisitVideos(refs){
+  const vids = (refs || []).filter(Boolean);
+  if(!vids.length) return;
+  let at = 0, url = null, vtype = '';
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
-  overlay.innerHTML = '<div class="confirm-box" style="max-width:640px;width:100%;">'
-    + '<h3 style="font-size:16px;margin:0 0 4px;">Visit video</h3>'
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:460px;width:100%;">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 4px;">'
+    + '<h3 style="font-size:16px;margin:0;" data-title>Visit video</h3>'
+    + '<span data-nav style="display:none;align-items:center;gap:6px;">'
+    + '<button type="button" class="btn btn-ghost" data-prev style="width:auto;padding:4px 12px;font-size:18px;line-height:1;">\u2039</button>'
+    + '<button type="button" class="btn btn-ghost" data-next style="width:auto;padding:4px 12px;font-size:18px;line-height:1;">\u203a</button>'
+    + '</span></div>'
     + '<p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Office only, not emailed \u00b7 kept 7 days</p>'
     + '<div data-v style="min-height:120px;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--muted);">Loading\u2026</div>'
-    + '<button class="btn btn-primary" type="button" data-close style="width:100%;margin-top:12px;">Close</button></div>';
+    + '<button type="button" class="btn btn-ghost" data-dl style="width:100%;margin-top:10px;display:none;">Download video</button>'
+    + '<button class="btn btn-primary" type="button" data-close style="width:100%;margin-top:8px;">Close</button></div>';
   document.body.appendChild(overlay);
-  let url = null;
-  overlay.querySelector('[data-close]').addEventListener('click', ()=>{
-    if(url){ try{ URL.revokeObjectURL(url); }catch(e){} }
-    overlay.remove();
-  });
   const box = overlay.querySelector('[data-v]');
-  const id = isPhotoRef(ref) ? ref.slice(PHOTO_REF.length) : null;
-  const rec = id && siteUser && siteUser.companyId
-    ? syncPhotoIndex(loadSyncState(siteUser.companyId)).known[id] : null;
-  if(rec && rec.path && !rec.deleted){
-    try{
-      const session = sbSession();
-      const r = await fetch(SUPABASE_URL + '/storage/v1/object/' + SYNC_PHOTO_BUCKET + '/' + rec.path, {
-        headers: {'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + (session && session.access_token)}
-      });
-      if(r.ok) url = URL.createObjectURL(await r.blob());
-    }catch(e){}
+  const dl = overlay.querySelector('[data-dl]');
+  const free = ()=>{ if(url){ try{ URL.revokeObjectURL(url); }catch(e){} } url = null; };
+  async function show(){
+    free();
+    vtype = '';
+    dl.style.display = 'none';
+    box.textContent = 'Loading\u2026';
+    overlay.querySelector('[data-title]').textContent = vids.length > 1 ? 'Video ' + (at + 1) + ' of ' + vids.length : 'Visit video';
+    const ref = vids[at];
+    const id = isPhotoRef(ref) ? ref.slice(PHOTO_REF.length) : null;
+    const rec = id && siteUser && siteUser.companyId
+      ? syncPhotoIndex(loadSyncState(siteUser.companyId)).known[id] : null;
+    if(rec && rec.path && !rec.deleted){
+      try{
+        const session = sbSession();
+        const r = await fetch(SUPABASE_URL + '/storage/v1/object/' + SYNC_PHOTO_BUCKET + '/' + rec.path, {
+          headers: {'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + (session && session.access_token)}
+        });
+        if(r.ok){ const bl = await r.blob(); vtype = bl.type || ''; url = URL.createObjectURL(bl); }
+      }catch(e){}
+    }
+    if(!url){ box.textContent = 'This video isn\u2019t available (past its 7 days, or no connection).'; return; }
+    box.innerHTML = '';
+    const v = document.createElement('video');
+    v.controls = true; v.playsInline = true; v.src = url;
+    v.style.cssText = 'display:block;max-width:100%;max-height:65vh;width:auto;height:auto;margin:0 auto;border-radius:10px;background:transparent;';
+    box.appendChild(v);
+    dl.style.display = '';
   }
-  if(!url){ box.textContent = 'This video isn\u2019t available (past its 7 days, or no connection).'; return; }
-  box.innerHTML = '';
-  const v = document.createElement('video');
-  v.controls = true; v.playsInline = true; v.src = url;
-  v.style.cssText = 'width:100%;max-height:65vh;border-radius:10px;background:#000;';
-  box.appendChild(v);
+  dl.addEventListener('click', ()=>{
+    if(!url) return;
+    const a2 = document.createElement('a');
+    a2.href = url;
+    a2.download = 'weir-video-' + new Date().toISOString().slice(0, 10) + (vids.length > 1 ? '-' + (at + 1) : '') + (/webm/i.test(vtype) ? '.webm' : '.mp4');
+    document.body.appendChild(a2); a2.click(); a2.remove();
+  });
+  if(vids.length > 1){
+    overlay.querySelector('[data-nav]').style.display = 'inline-flex';
+    overlay.querySelector('[data-prev]').addEventListener('click', ()=>{ at = (at - 1 + vids.length) % vids.length; show(); });
+    overlay.querySelector('[data-next]').addEventListener('click', ()=>{ at = (at + 1) % vids.length; show(); });
+  }
+  overlay.querySelector('[data-close]').addEventListener('click', ()=>{ free(); overlay.remove(); });
+  show();
 }
 
 function visitLocationButton(customer, loc){
@@ -18065,7 +18116,7 @@ function buildReportDoc(customerId, name, customer, type, r, onDelete){
         if(!data) return;
         const holder = document.createElement('div');
         const cap = document.createElement('div');
-        cap.style.cssText = 'font-size:11px;color:var(--muted);margin-bottom:4px;';
+        cap.style.cssText = 'font-size:11px;color:var(--muted);margin-bottom:4px;text-align:center;';
         cap.textContent = lbl;
         const img = document.createElement('img');
         // A reference is fetched from the database; anything older is already
@@ -18107,7 +18158,8 @@ function buildReportDoc(customerId, name, customer, type, r, onDelete){
   if(r && r.video){
     const headText = doc.querySelector('.report-head > div') || doc;
     const vids = [r.video].concat(r.videoMore || []).filter(Boolean);
-    vids.forEach((ref, i)=> headText.appendChild(visitVideoButton(ref, vids.length > 1 ? i + 1 : 0)));
+    // One button for all of them; the window steps between
+    headText.appendChild(visitVideoButton(vids));
   }
   return doc;
 }
