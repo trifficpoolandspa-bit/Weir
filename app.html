@@ -34,7 +34,7 @@ input, textarea, select, [contenteditable], [contenteditable] *{
 
 
 :root{
-  --jobs-amber:#D97706;    /* the stops left and jobs left numbers (Today and a technician's route) */
+  --jobs-amber:#114B4F;    /* the stops and jobs counts (Today and a technician's route): dark teal, Sept 30 */
   --ink:#0F2E2E;
   --surface:#EDF3F2;
   --card:#FFFFFF;
@@ -170,12 +170,19 @@ textarea{min-height:52px;resize:vertical;}
 .btn-secondary{background:var(--teal-pale);color:var(--teal-deep);}
 .btn-ghost{background:transparent;color:var(--teal-deep);border:1px solid var(--line);}
 .btn-row{display:flex;gap:8px;flex-wrap:wrap;}
+/* Quick buttons: one swipeable line, each at its own width */
+.quick-row > .btn{flex:0 0 auto !important;}
+.quick-row::-webkit-scrollbar{display:none;}
 /* The last 4 weeks of readings: swipes sideways, reading names pinned on the left */
 .recent-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;-webkit-overflow-scrolling:touch;}
 .recent-table{border-collapse:separate;border-spacing:0;font-size:12.5px;width:100%;}
 .recent-table th,.recent-table td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap;}
 .recent-table tr:last-child td{border-bottom:none;}
-.recent-table th{background:var(--surface-alt);color:var(--muted);font-weight:600;}
+.recent-table th{background:var(--surface-alt);color:var(--muted);font-weight:600;position:sticky;top:0;z-index:1;}
+.recent-wrap.fixed{max-height:132px;overflow:auto;}
+.recent-table th.rt-name{z-index:2;}
+.recent-table tr.rt-group td{background:var(--surface-alt);color:var(--muted);font-weight:600;text-align:left;font-size:11.5px;}
+.recent-table tr.rt-group td.rt-name{background:var(--surface-alt);color:var(--muted);}
 .recent-table .rt-name{position:sticky;left:0;text-align:left;background:var(--card);font-weight:600;color:var(--ink);min-width:92px;}
 .recent-table th.rt-name{background:var(--teal-pale);color:var(--teal-deep);}
 .recent-table td.rt-val{font-family:'JetBrains Mono',monospace;color:var(--ink);}
@@ -548,7 +555,7 @@ select#customerSelect{font-weight:600;}
       <!-- Day and the reverse button on one line, the counts on their own line
            underneath. They used to share a line with the heading, which left
            the button competing with them for the right-hand edge. -->
-      <div style="display:flex;align-items:center;gap:12px;">
+      <div id="homeHeadRow" style="display:flex;align-items:center;gap:12px;">
         <h2 style="margin:0;" id="homeDayHeading">Today</h2>
         <button class="btn btn-ghost" id="btnReverseRoute" type="button"
           style="width:auto;margin-left:auto;flex:0 0 auto;padding:7px 12px;font-size:12.5px;white-space:nowrap;">Reverse route order</button>
@@ -567,7 +574,7 @@ select#customerSelect{font-weight:600;}
           <span id="homeJobLabel" style="font-size:13px;font-weight:600;color:var(--muted);"></span>
         </span>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;margin:10px 0 0;">
+      <div id="homeDateRow" style="display:flex;align-items:center;gap:8px;margin:10px 0 0;">
         <span id="weekLabel" style="flex:1 1 auto;min-width:0;font-size:16px;color:var(--muted);font-weight:600;text-align:center;"></span>
         <button id="pickDayBtn" title="Jump to a date" style="width:auto;flex-shrink:0;padding:9px 12px;line-height:0;background:var(--teal-pale);border:1.5px solid var(--teal-mid);border-radius:9px;cursor:pointer;">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--teal-deep)" stroke-width="2" stroke-linecap="round">
@@ -667,7 +674,7 @@ select#customerSelect{font-weight:600;}
     <div class="card" id="visitPoolBeforePhotoSection" style="display:none;">
       <div id="customPhotos_pool_before" style="display:none;"></div>
       <h2>Before Photos</h2>
-      <p class="voice-hint" style="margin:0 0 14px;">Take a photo of the pool before you start work.</p>
+      <p class="voice-hint" style="margin:0 0 14px;">Tap a photo to access the delete button.</p>
       <div id="photoPreviewWrapBefore" style="display:none;margin-bottom:12px;">
         <img id="photoPreviewBefore" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="Before photo preview">
       </div>
@@ -684,7 +691,7 @@ select#customerSelect{font-weight:600;}
            button: the dosages fill themselves in, so that step gets skipped
            past, but the readings are typed one by one. -->
       <div class="btn-row" id="poolSkipRow" style="margin-bottom:12px;justify-content:center;">
-        <button class="btn" id="btnPoolSkip" type="button" style="width:auto;background:var(--rust);color:var(--card);border:1.5px solid var(--rust);">Skip this pool</button>
+        <button class="btn" id="btnPoolSkip" type="button" style="width:auto;background:var(--rust);color:var(--card);border:1.5px solid var(--rust);">Skip</button>
       </div>
       <div id="poolServiceChecks" style="display:none;margin-bottom:14px;"></div>
       <div id="poolRecentReadings"></div>
@@ -700,10 +707,10 @@ select#customerSelect{font-weight:600;}
     <div class="card" id="visitPoolPhotoSection" style="display:none;">
       <div id="customPhotos_pool_after" style="display:none;"></div>
       <h2>After Photos</h2>
-      <p class="voice-hint" style="margin:0 0 14px;">Take a photo of the pool now that the work is done.</p>
+      <p class="voice-hint" style="margin:0 0 14px;">Tap a photo to access the delete button.</p>
       <div id="gatePhotoBlock" style="display:none;margin-bottom:16px;padding:14px;border:1.5px solid #E8B5A8;border-radius:11px;background:#FBEAE6;text-align:center;">
         <div style="font-size:14px;font-weight:700;color:#B8492E;margin-bottom:4px;">Closed gate photo required</div>
-        <p style="font-size:12px;color:#8C4429;margin:0 0 12px;">Photograph the gate closed or locked before submitting.</p>
+        <p style="font-size:12px;color:#8C4429;margin:0 0 12px;">Tap a photo to access the delete button.</p>
         <button type="button" class="btn" id="btnTakeGatePhoto" style="width:auto;padding:14px 28px;font-size:16px;background:#B8492E;color:#fff;border:1.5px solid #B8492E;margin:0 auto;">Take gate photo</button>
         <input type="file" accept="image/*" capture="environment" id="inGatePhoto" style="display:none;">
         <div id="gatePhotoWrap" style="display:none;margin-top:12px;">
@@ -720,6 +727,14 @@ select#customerSelect{font-weight:600;}
         <button class="btn btn-ghost" id="btnRemovePhoto" style="width:auto;display:none;color:var(--rust);border-color:#EFC9BC;">Remove photo</button>
       </div>
       <input type="file" accept="image/*" capture="environment" id="inPhoto" style="display:none;">
+      <!-- One short video for the visit, if the office allows it for this
+           technician. Seen by the office only, never sent to the customer. -->
+      <div id="visitVideoBlock" style="display:none;margin-top:6px;padding:14px;border:1.5px solid #A8CBE0;border-radius:11px;background:#EEF6FB;text-align:center;">
+        <div style="font-size:14px;font-weight:700;color:#0B6FA4;margin-bottom:4px;">Videos (optional)</div>
+        <p style="font-size:12px;color:#3E5B6E;margin:0 0 12px;">Up to 3 videos of 15 seconds each, for the office only &mdash; they aren&rsquo;t sent to the customer. Videos delete themselves after 7 days to save storage.</p>
+        <button type="button" class="btn" id="btnRecordVisitVideo" style="width:auto;padding:12px 24px;font-size:15px;background:#0B6FA4;color:#fff;border:1.5px solid #0B6FA4;margin:0 auto;">Record video</button>
+        <div id="visitVideoWrap" style="display:none;margin-top:12px;"></div>
+      </div>
     </div>
 
     <div class="card" id="visitPoolSaveSection" style="display:none;">
@@ -734,7 +749,7 @@ select#customerSelect{font-weight:600;}
     <div class="card" id="visitSpaBeforePhotoSection" style="display:none;">
       <div id="customPhotos_spa_before" style="display:none;"></div>
       <h2>Before Photos</h2>
-      <p class="voice-hint" style="margin:0 0 14px;">Take a photo of the pool before you start work.</p>
+      <p class="voice-hint" style="margin:0 0 14px;">Tap a photo to access the delete button.</p>
       <div id="photoPreviewWrapBeforeSpa" style="display:none;margin-bottom:12px;">
         <img id="photoPreviewBeforeSpa" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="Before photo preview">
       </div>
@@ -749,7 +764,7 @@ select#customerSelect{font-weight:600;}
       <h2>Chemical Readings</h2>
 
       <div class="btn-row" id="spaSkipRow" style="margin-bottom:12px;justify-content:center;">
-        <button class="btn" id="btnSpaSkip" type="button" style="width:auto;background:var(--rust);color:var(--card);border:1.5px solid var(--rust);">Skip this spa</button>
+        <button class="btn" id="btnSpaSkip" type="button" style="width:auto;background:var(--rust);color:var(--card);border:1.5px solid var(--rust);">Skip</button>
       </div>
       <div id="spaRecentReadings"></div>
       <div id="spaChemFields"></div>
@@ -764,7 +779,7 @@ select#customerSelect{font-weight:600;}
     <div class="card" id="visitSpaPhotoSection" style="display:none;">
       <div id="customPhotos_spa_after" style="display:none;"></div>
       <h2>After Photos</h2>
-      <p class="voice-hint" style="margin:0 0 14px;">Take a photo of the pool now that the work is done.</p>
+      <p class="voice-hint" style="margin:0 0 14px;">Tap a photo to access the delete button.</p>
       <div id="photoPreviewWrapSpa" style="display:none;margin-bottom:12px;">
         <img id="photoPreviewSpa" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="Visit photo preview">
       </div>
@@ -787,7 +802,7 @@ select#customerSelect{font-weight:600;}
     <div class="card" id="visitFountainBeforePhotoSection" style="display:none;">
       <div id="customPhotos_fountain_before" style="display:none;"></div>
       <h2>Before Photos</h2>
-      <p class="voice-hint" style="margin:0 0 14px;">Take a photo of the pool before you start work.</p>
+      <p class="voice-hint" style="margin:0 0 14px;">Tap a photo to access the delete button.</p>
       <div id="photoPreviewWrapBeforeFountain" style="display:none;margin-bottom:12px;">
         <img id="photoPreviewBeforeFountain" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="Before photo preview">
       </div>
@@ -801,7 +816,7 @@ select#customerSelect{font-weight:600;}
     <div class="card" id="visitFountainSection" style="display:none;">
       <h2 id="visitFountainTitle">Chemical Readings</h2>
       <div class="btn-row" id="fountainSkipRow" style="margin-bottom:12px;justify-content:center;">
-        <button class="btn" id="btnFountainSkip" type="button" style="width:auto;background:var(--rust);color:var(--card);border:1.5px solid var(--rust);">Skip this fountain</button>
+        <button class="btn" id="btnFountainSkip" type="button" style="width:auto;background:var(--rust);color:var(--card);border:1.5px solid var(--rust);">Skip</button>
       </div>
       <div id="fountainRecentReadings"></div>
       <div id="fountainChemFields"></div>
@@ -816,7 +831,7 @@ select#customerSelect{font-weight:600;}
     <div class="card" id="visitFountainPhotoSection" style="display:none;">
       <div id="customPhotos_fountain_after" style="display:none;"></div>
       <h2>After Photos</h2>
-      <p class="voice-hint" style="margin:0 0 14px;">Take a photo of the pool now that the work is done.</p>
+      <p class="voice-hint" style="margin:0 0 14px;">Tap a photo to access the delete button.</p>
       <div id="photoPreviewWrapFountain" style="display:none;margin-bottom:12px;">
         <img id="photoPreviewFountain" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="Visit photo preview">
       </div>
@@ -875,17 +890,17 @@ select#customerSelect{font-weight:600;}
     <div id="techRouteCard" style="display:none;">
     <div class="sticky-head" id="techRouteHeadWrap">
     <div class="card" id="techRouteHeadCard">
-      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-        <div style="display:flex;align-items:baseline;gap:12px;flex:1;min-width:0;">
+      <div id="techRouteHeadRow" style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div id="techRouteCounts" style="display:flex;align-items:baseline;gap:12px;flex:1;min-width:0;">
           <h2 id="techRouteDayName" style="display:none;">Thursday</h2>
           <span style="display:inline-flex;align-items:baseline;gap:16px;flex-wrap:wrap;">
             <span style="display:inline-flex;align-items:baseline;gap:6px;">
               <span id="techRouteLeft" style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:var(--jobs-amber);"></span>
-              <span id="techRouteLeftLabel" style="font-size:13px;font-weight:600;color:var(--muted);">stops left</span>
+              <span id="techRouteLeftLabel" style="font-size:13px;font-weight:600;color:var(--muted);">stops</span>
             </span>
             <span style="display:inline-flex;align-items:baseline;gap:6px;">
               <span id="techRouteJobs" style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:var(--jobs-amber);"></span>
-              <span id="techRouteJobsLabel" style="font-size:13px;font-weight:600;color:var(--muted);">jobs left</span>
+              <span id="techRouteJobsLabel" style="font-size:13px;font-weight:600;color:var(--muted);">jobs</span>
             </span>
           </span>
         </div>
@@ -895,7 +910,7 @@ select#customerSelect{font-weight:600;}
       <p id="techRouteName" style="display:none;">Technician</p>
       <p id="techRouteMeta" style="display:none;"></p>
 
-      <div style="display:flex;align-items:center;gap:8px;margin:10px 0 0;">
+      <div id="techDateRow" style="display:flex;align-items:center;gap:8px;margin:10px 0 0;">
         <span id="techDayLabel" style="flex:1 1 auto;min-width:0;font-size:16px;color:var(--muted);font-weight:600;text-align:center;"></span>
         <button id="techPickDay" title="Jump to a date" style="width:auto;flex-shrink:0;padding:9px 12px;line-height:0;background:var(--teal-pale);border:1.5px solid var(--teal-mid);border-radius:9px;cursor:pointer;">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--teal-deep)" stroke-width="2" stroke-linecap="round">
@@ -1054,7 +1069,7 @@ select#customerSelect{font-weight:600;}
 
     <div id="reportModeServiced" style="display:none;">
         <div class="card" style="padding:10px 12px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <div id="servicedDayRow" style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
             <div id="servicedDayLabel" style="font-size:13.5px;font-weight:600;color:var(--ink);text-align:center;flex:1;min-width:0;">Today</div>
             <button class="btn btn-ghost" id="servicedPrevDay" type="button" style="width:auto;padding:6px 12px;">&lsaquo;</button>
             <button class="btn btn-ghost" id="servicedNextDay" type="button" style="width:auto;padding:6px 12px;">&rsaquo;</button>
@@ -1101,6 +1116,20 @@ select#customerSelect{font-weight:600;}
       </div>
       <input type="file" accept="application/json" id="importBackupInput" style="display:none;">
     </div>
+      <!-- Left-handed mode: this phone only -->
+      <div class="card" id="leftHandedCard">
+        <div class="field">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
+            <h2 style="margin:0;">Left-handed mode</h2>
+            <label class="toggle-switch">
+              <input type="checkbox" id="settingLeftHanded">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">Moves the main buttons to the left: Reverse route order, the date arrows and calendar on Today and on a technician's route, the Serviced day arrows, and Return to route / Back on every step of a visit. The voice entry microphone starts on the left too (Voice entry can still put it on the right). This phone only.</p>
+        </div>
+      </div>
+
       <!-- The "Last 4 weeks" readings table on visits: on or off for the company -->
       <div class="card" id="recentReadingsCard">
         <div class="field">
@@ -1111,7 +1140,15 @@ select#customerSelect{font-weight:600;}
               <span class="toggle-slider"></span>
             </label>
           </div>
-          <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">On by default. When on, each visit's readings page shows a "Last 4 weeks" table of that body of water's past readings above today's fields. Applies to everyone in the company, on the phones and the website alike.</p>
+          <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">On by default. When on, each visit's readings page shows a "Last 3 months" table of that body of water's past readings above today's fields. Applies to everyone in the company, on the phones and the website alike.</p>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;">
+            <span style="font-size:13.5px;font-weight:600;">Show chemicals added too</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="settingRecentDosages">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <p style="font-size:12.5px;color:var(--muted);margin:8px 0 0;">Adds what was put in at each past visit under the readings. Off to start.</p>
         </div>
       </div>
 
@@ -1169,7 +1206,7 @@ select#customerSelect{font-weight:600;}
             <span class="toggle-slider"></span>
           </label>
         </div>
-        <p style="font-size:12.5px;color:var(--muted);margin:16px 0 12px;">Shows a microphone next to the step button. Tap it and speak readings or dosages — "chlorine three, pH seven point four" — and they fill in wherever they belong. It only listens while you're speaking, so there's no constant chiming.</p>
+        <p style="font-size:12.5px;color:var(--muted);margin:16px 0 12px;">Shows a microphone next to the step button. Hold it and speak readings and dosages — "chlorine three, pH seven point four" — and they fill in wherever they belong. It only listens while you hold it, so there's no constant chiming.</p>
         <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px;">Microphone position</label>
         <div class="btn-row" id="micSideRow">
           <button type="button" class="btn btn-ghost" data-micside="left" style="flex:1;">Left of button</button>
@@ -2013,6 +2050,7 @@ function customPhotoLabelFor(id){
 }
 
 function customPhotosFor(type){
+  type = photoBodyType(type);
   const cid = currentVisitCustomerId;
   const lists = cid
     ? listsForBody(cid, type === 'fountain' ? currentVisitFountainId : type, type)
@@ -2094,7 +2132,7 @@ function renderCustomPhotoBlocks(type, when){
     img.alt = p.label + ' photo';
     img.addEventListener('click', ()=>{
       const data = customPhotosTakenFor(type)[p.id];
-      if(data && typeof openPhotoFullSize === 'function') openPhotoFullSize(data);
+      if(data && typeof openPhotoFullSize === 'function') openPhotoFullSize(data, ()=> remove.click());
     });
     imgWrap.appendChild(img);
     block.appendChild(imgWrap);
@@ -2111,7 +2149,7 @@ function renderCustomPhotoBlocks(type, when){
     remove.className = 'btn btn-ghost';
     remove.style.cssText = 'width:auto;margin-top:8px;color:var(--rust);border-color:#EFC9BC;display:none;';
     remove.textContent = 'Remove photo';
-    block.appendChild(remove);
+    // Removed from the full-size photo (Delete photo), not a button here
 
     function show(data){
       customPhotosTakenFor(type)[p.id] = data || null;
@@ -2185,7 +2223,10 @@ function renderConfigFields(containerId, list, type, kind, onInput){
     input.addEventListener('focus', ()=>{ if(input.value) input.select(); });
     input.addEventListener('click', ()=>{ if(input.value) input.select(); });
     input.placeholder = 'Tap a button or type any amount';
-    const configuredButtons = Array.isArray(item.buttons) ? item.buttons : null;
+    const configuredButtons = Array.isArray(item.buttons)
+      ? (item.buttonsOrdered === true ? item.buttons
+         : item.buttons.slice().sort((a, b)=> (parseFloat(btnValue(a)) || 0) - (parseFloat(btnValue(b)) || 0)))
+      : null;
     const showSuggestions = appSettings.showDosageSuggestions !== false
       && configuredButtons && configuredButtons.length > 0;
     if(onInput) input.addEventListener('input', onInput);
@@ -2255,10 +2296,16 @@ function renderConfigFields(containerId, list, type, kind, onInput){
 
     if(showSuggestions){
       const suggestRow = document.createElement('div');
-      suggestRow.className = 'btn-row';
+      suggestRow.className = 'btn-row quick-row';
       suggestRow.style.gap = '10px';
       suggestRow.style.marginTop = '8px';
-      suggestRow.style.flexWrap = 'wrap';
+      // One line; more than fit are a swipe away
+      suggestRow.style.flexWrap = 'nowrap';
+      suggestRow.style.overflowX = 'auto';
+      suggestRow.style.overflowY = 'hidden';
+      suggestRow.style.webkitOverflowScrolling = 'touch';
+      suggestRow.style.scrollbarWidth = 'none';
+      suggestRow.style.paddingBottom = '2px';
       const suggestedAmounts = configuredButtons;
       suggestedAmounts.forEach(btnDef=>{
         const amt = btnValue(btnDef);
@@ -2326,8 +2373,8 @@ function listsForBody(customerId, bodyKey, fallbackType){
 // newest on the left, one row per reading this setup records (the same order
 // as the fields below). Swipes sideways; the reading names stay put. Nothing
 // shows when there were no visits in that time.
-const RECENT_READINGS_DAYS = 28;
-async function renderRecentReadings(type, chemList){
+const RECENT_READINGS_DAYS = 91;      // 3 months (Sept 30; was 4 weeks)
+async function renderRecentReadings(type, chemList, doseList){
   const box = document.getElementById(type + 'RecentReadings');
   const cid = currentVisitCustomerId;
   if(!box) return;
@@ -2346,16 +2393,22 @@ async function renderRecentReadings(type, chemList){
   if(currentVisitCustomerId !== cid) return;
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - RECENT_READINGS_DAYS);
   const cutISO = cutoff.toISOString();
+  try{
+    const whole = (await loadSkippedVisits(cid)) || [];
+    const have = new Set((list || []).map(r => String(r && r.date || '').slice(0, 10)));
+    whole.forEach(s=>{ if(s && s.date && !have.has(String(s.date).slice(0, 10))) list = (list || []).concat([{date: s.timestamp || s.date, skipped: true}]); });
+  }catch(e){}
+  if(currentVisitCustomerId !== cid) return;
   const visits = (list || []).filter(r => r && r.date && String(r.date) >= cutISO.slice(0, 10))
     .slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
   if(!visits.length) return;
   const shown = v => v !== '' && v !== undefined && v !== null;
   const day = d => { try{ return new Date(d).toLocaleDateString(undefined, {month:'short', day:'numeric'}); }catch(e){ return String(d).slice(0, 10); } };
   let html = '<div style="display:flex;align-items:baseline;justify-content:space-between;margin:0 0 6px;">'
-    + '<span style="font-size:13px;font-weight:700;color:var(--teal-deep);">Last 4 weeks</span>'
-    + (visits.length > 3 ? '<span style="font-size:11px;color:var(--muted);">swipe for more \u2192</span>' : '')
-    + '</div><div class="recent-wrap"><table class="recent-table"><thead><tr><th class="rt-name">Reading</th>';
-  visits.forEach(v => { html += '<th>' + esc(day(v.date)) + '</th>'; });
+    + '<span style="font-size:13px;font-weight:700;color:var(--teal-deep);">Last 3 months</span>'
+    + '<span style="font-size:11px;color:var(--muted);">scroll for more</span>'
+    + '</div><div class="recent-wrap fixed"><table class="recent-table"><thead><tr><th class="rt-name">Reading</th>';
+  visits.forEach(v => { html += '<th>' + esc(day(v.date)) + (v.skipped ? '<div style="font-size:10.5px;color:var(--rust);font-weight:600;">Skipped</div>' : '') + '</th>'; });
   html += '</tr></thead><tbody>';
   chemList.forEach(ch=>{
     html += '<tr><td class="rt-name">' + esc(ch.label || ch.key) + '</td>';
@@ -2365,6 +2418,20 @@ async function renderRecentReadings(type, chemList){
     });
     html += '</tr>';
   });
+  // What was put in at each of those visits, when the company has it on
+  const doses = (appSettings && appSettings.showRecentDosages === true && Array.isArray(doseList)) ? doseList : [];
+  if(doses.length){
+    html += '<tr class="rt-group"><td class="rt-name">Chemicals added</td>' + visits.map(()=> '<td></td>').join('') + '</tr>';
+    doses.forEach(d=>{
+      html += '<tr><td class="rt-name">' + esc(d.label || d.key) + '</td>';
+      visits.forEach(v=>{
+        const val = v[d.key];
+        const has = shown(val) && parseFloat(val) !== 0;
+        html += has ? '<td class="rt-val">' + esc(String(val) + (d.unit ? ' ' + d.unit : '')) + '</td>' : '<td class="rt-none">\u2014</td>';
+      });
+      html += '</tr>';
+    });
+  }
   html += '</tbody></table></div>';
   box.style.marginBottom = '14px';
   box.innerHTML = html;
@@ -2390,9 +2457,9 @@ function renderAllConfigFields(){
   renderConfigFields('fountainDoseFields', fountL.dosages, 'fountain', 'dose');
   // The last 4 weeks' readings above each body's fields
   try{
-    renderRecentReadings('pool', poolL.chemicals);
-    renderRecentReadings('spa', spaL.chemicals);
-    renderRecentReadings('fountain', fountL.chemicals);
+    renderRecentReadings('pool', poolL.chemicals, poolL.dosages);
+    renderRecentReadings('spa', spaL.chemicals, spaL.dosages);
+    renderRecentReadings('fountain', fountL.chemicals, fountL.dosages);
   }catch(e){}
   // Draw the strips straight away so every chemical pad is visible before any reading is entered
   renderStripPreview();
@@ -3500,8 +3567,8 @@ const SYNC_LIST_FIELDS = ['equipment', 'dogs', 'fountains'];
 const SYNC_SEP = '\u0001';
 const SYNC_ORDER = '__order';
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
-  // The "Last 4 weeks" readings table on visits
-  'showRecentReadings',
+  // The "Last 3 months" readings table on visits, and its chemicals added rows
+  'showRecentReadings', 'showRecentDosages',
   'requireSkipPhoto', 'requireSkipReason', 'allowRouteReorder', 'showDosageSuggestions',
   'showWaterBalance', 'autoNotifyAll', 'autoNotifyAllLead', 'showPoolSizeInProfile',
   'applyPoolDosagesToAll', 'applyPoolChemicalsToAll'];
@@ -4063,7 +4130,8 @@ let syncTimer = null;
 // again after a dropped signal changes nothing. Photos stay on this phone for
 // now, so what goes up is the readings, the notes and what was done, with a
 // note that photos exist here.
-const SYNC_VISIT_PHOTO_FIELDS = ['photo', 'beforePhoto', 'gatePhoto', 'afterPhoto', 'customPhotos'];
+const SYNC_VISIT_PHOTO_FIELDS = ['photo', 'beforePhoto', 'gatePhoto', 'afterPhoto', 'customPhotos', 'video',
+  'photoMore', 'beforePhotoMore', 'gatePhotoMore', 'videoMore'];
 const SYNC_VISITS_PER_RUN = 40;
 
 function syncVisitWithoutPhotos(reading){
@@ -4300,7 +4368,7 @@ async function syncPushWork(state){
 // go — but never before what the phone was holding has reached the office.
 // Until it has, the phone stays signed out and keeps trying whenever it has
 // signal. Nothing can be done about a phone that never connects again.
-const FIELD_DEVICE_SETTINGS = ['voiceModeEnabled', 'pushToTalkEnabled', 'micSide',
+const FIELD_DEVICE_SETTINGS = ['voiceModeEnabled', 'pushToTalkEnabled', 'micSide', 'leftHanded',
   'showTechniciansTab', 'storePhotos'];
 
 // How much this phone is still holding that the office has not got
@@ -4512,6 +4580,12 @@ function syncPhotosHere(){
       add(r.photo, {customerId, kind: 'after', body, visitId: String(r.id), takenAt: when});
       add(r.afterPhoto, {customerId, kind: 'after', body, visitId: String(r.id), takenAt: when});
       add(r.gatePhoto, {customerId, kind: 'gate', body, visitId: String(r.id), takenAt: when});
+      add(r.video, {customerId, kind: 'video', body, visitId: String(r.id), takenAt: when});
+      // Photos 2 and 3 of a step: the same kind, a second and two after the first
+      const later = (n)=>{ const t = new Date(when).getTime(); return isNaN(t) ? when : new Date(t + n * 1000).toISOString(); };
+      [['photoMore', 'after'], ['beforePhotoMore', 'before'], ['gatePhotoMore', 'gate'], ['videoMore', 'video']].forEach(([f, kind])=>{
+        (Array.isArray(r[f]) ? r[f] : []).forEach((ref, i)=> add(ref, {customerId, kind, body, visitId: String(r.id), takenAt: later(i + 1)}));
+      });
       Object.keys(r.customPhotos || {}).forEach(k=>{
         add(r.customPhotos[k], {customerId, kind: 'custom', body, visitId: String(r.id), takenAt: when});
       });
@@ -4611,6 +4685,7 @@ async function syncPushPhotos(state){
               why: 'the office would not record it (' + (noted.status || '?') + (msg ? ': ' + msg : '') + ')'};
     }
     ph.sent[item.id] = {path: path, at: new Date().toISOString()};
+    if(item.kind === 'video') ph.sent[item.id].video = true;     // let go after 7 days, not 30
     pushed++;
     saveFieldSyncState(state);      // one at a time, so a dropped signal resumes
   }
@@ -4626,7 +4701,8 @@ async function syncCleanUploadedPhotos(state){
   for(const id of Object.keys(ph.sent)){
     const rec = ph.sent[id];
     if(!rec || !rec.path || rec.local === false) continue;
-    if(new Date(rec.at).getTime() > cutoff) continue;
+    const keepUntil = rec.video ? Date.now() - VISIT_VIDEO_KEEP_DAYS * 86400000 : cutoff;
+    if(new Date(rec.at).getTime() > keepUntil) continue;
     await deletePhotoData(id);
     rec.local = false;
     freed++;
@@ -4991,6 +5067,12 @@ async function storeReadingPhotos(reading, hint){
   if(!reading) return reading;
   for(const field of ['photo','beforePhoto','gatePhoto']){
     if(reading[field]) reading[field] = await storePhoto(reading[field], hint + '_' + field);
+  }
+  for(const field of ['photoMore','beforePhotoMore','gatePhotoMore']){
+    if(!Array.isArray(reading[field])) continue;
+    for(let i = 0; i < reading[field].length; i++){
+      if(reading[field][i]) reading[field][i] = await storePhoto(reading[field][i], hint + '_' + field + (i + 2));
+    }
   }
   if(reading.customPhotos){
     for(const id of Object.keys(reading.customPhotos)){
@@ -5379,7 +5461,20 @@ function photoEveryoneOn(step, key){
 }
 
 // Does this technician have to take it?
+// One body of water at this visit's customer?
+function singleBodyVisit(){
+  const c = currentVisitCustomerId ? customers.find(x => x && x.id === currentVisitCustomerId) : null;
+  if(!c) return false;
+  const n = (c.hasPool !== false ? 1 : 0) + (c.hasSpa ? 1 : 0) + getValidFountains(c).length;
+  return n === 1;
+}
+// The body of water whose photo requirements apply: the pool's, when it's the only one
+function photoBodyType(type){
+  return singleBodyVisit() ? 'pool' : type;
+}
+
 function techWantsPhoto(step, type){
+  type = photoBodyType(type);
   const key = type === 'spa' ? 'spa' : (type === 'pool' ? 'pool' : 'fountain');
   const rules = currentUser && currentUser.photoRules;
   // Asked of them by name, or of everyone
@@ -5476,7 +5571,115 @@ function isLastSectionOfVisit(){
   return needed.every(s => s === here || pendingVisit.doneSections[s] !== undefined);
 }
 
+// Up to three short videos per visit, on the last body of water's after-photos
+// page, when the office allows it for this technician (Photo requirements →
+// Video). Kept on the phone and the server for 7 days; the office only, never
+// emailed. Numbered in the order recorded.
+const VISIT_VIDEO_KEEP_DAYS = 7;
+const VISIT_VIDEO_MAX_BYTES = 9.5 * 1024 * 1024;     // the bucket takes up to 10 MB
+const VISIT_VIDEOS_MAX = 3;
+let visitVideoRefs = [];                              // "idb:<id>", in the order recorded
+let visitVideoUrls = [];                              // what the previews are playing
+function visitVideoAllowed(){
+  if(typeof isFilterCleanVisit !== 'undefined' && isFilterCleanVisit) return false;
+  return techRequires('allowVideo') || photoEveryoneOn('video', 'video');
+}
+async function drawVisitVideos(){
+  const wrap = document.getElementById('visitVideoWrap');
+  const rec = document.getElementById('btnRecordVisitVideo');
+  visitVideoUrls.forEach(u => { if(u && u.indexOf('blob:') === 0){ try{ URL.revokeObjectURL(u); }catch(e){} } });
+  visitVideoUrls = [];
+  if(wrap) wrap.innerHTML = '';
+  for(let i = 0; i < visitVideoRefs.length; i++){
+    const ref = visitVideoRefs[i];
+    const data = await loadPhotoData(ref.slice(PHOTO_REF.length));
+    if(!wrap) continue;
+    const cell = document.createElement('div');
+    cell.style.cssText = 'margin-bottom:10px;text-align:left;';
+    if(visitVideoRefs.length > 1){
+      const n = document.createElement('div');
+      n.style.cssText = 'font-size:12px;font-weight:700;color:#0B6FA4;margin-bottom:4px;';
+      n.textContent = 'Video ' + (i + 1);
+      cell.appendChild(n);
+    }
+    if(data){
+      const v = document.createElement('video');
+      v.controls = true; v.playsInline = true; v.src = data;
+      v.style.cssText = 'width:100%;max-height:260px;border-radius:10px;border:1px solid var(--line);background:#000;display:block;';
+      cell.appendChild(v);
+    }
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'btn btn-ghost';
+    rm.style.cssText = 'width:auto;margin-top:6px;color:var(--rust);border-color:#EFC9BC;';
+    rm.textContent = visitVideoRefs.length > 1 ? 'Remove video ' + (i + 1) : 'Remove video';
+    rm.addEventListener('click', async ()=>{
+      const gone = visitVideoRefs.splice(i, 1)[0];
+      if(gone){ try{ await deletePhotoData(gone.slice(PHOTO_REF.length)); }catch(e){} }
+      drawVisitVideos();
+    });
+    cell.appendChild(rm);
+    wrap.appendChild(cell);
+  }
+  if(wrap) wrap.style.display = visitVideoRefs.length ? 'block' : 'none';
+  if(rec){
+    rec.style.display = visitVideoRefs.length >= VISIT_VIDEOS_MAX ? 'none' : '';
+    rec.textContent = visitVideoRefs.length
+      ? 'Record another (' + (visitVideoRefs.length + 1) + ' of ' + VISIT_VIDEOS_MAX + ')'
+      : 'Record video';
+  }
+}
+function clearVisitVideo(){
+  visitVideoRefs = [];
+  drawVisitVideos();
+}
+function syncVideoBlock(){
+  const block = document.getElementById('visitVideoBlock');
+  if(!block) return;
+  const show = visitVideoAllowed() && isLastSectionOfVisit() && canRecordClips();
+  block.style.display = show ? 'block' : 'none';
+  if(!show) return;
+  const cardId = currentVisibleSection === 'pool' ? 'visitPoolPhotoSection'
+    : (currentVisibleSection === 'spa' ? 'visitSpaPhotoSection' : 'visitFountainPhotoSection');
+  const card = document.getElementById(cardId);
+  // At the foot of the card: under the after photos
+  if(card && block.parentNode !== card) card.appendChild(block);
+}
+async function recordVisitVideo(){
+  if(visitVideoRefs.length >= VISIT_VIDEOS_MAX) return;
+  const file = await recordClip({small: true});
+  if(!file) return;
+  if(file.size > VISIT_VIDEO_MAX_BYTES){
+    showToast('That video is too big to keep \u2014 try a shorter one');
+    return;
+  }
+  const dataUrl = await new Promise(resolve=>{
+    const reader = new FileReader();
+    reader.onload = ()=> resolve(reader.result);
+    reader.onerror = ()=> resolve(null);
+    reader.readAsDataURL(file);
+  });
+  if(!dataUrl){ showToast('Could not keep that video'); return; }
+  const id = 'vid_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  try{ await savePhotoData(id, dataUrl); }catch(e){ showToast('Not enough room on this phone for the video'); return; }
+  visitVideoRefs.push(PHOTO_REF + id);
+  drawVisitVideos();
+  showToast('Video ' + visitVideoRefs.length + ' added');
+}
+document.getElementById('btnRecordVisitVideo').addEventListener('click', ()=>{ recordVisitVideo(); });
+// Back to a saved visit (to change it): its videos come back too, those still kept
+async function restoreVisitVideos(refs){
+  const kept = [];
+  for(const ref of (refs || [])){
+    if(!ref || !isPhotoRef(ref)) continue;
+    if(await loadPhotoData(ref.slice(PHOTO_REF.length))) kept.push(ref);
+  }
+  visitVideoRefs = kept.slice(0, VISIT_VIDEOS_MAX);
+  drawVisitVideos();
+}
+
 function syncGatePhotoBlock(){
+  try{ syncVideoBlock(); }catch(e){}
   const block = document.getElementById('gatePhotoBlock');
   if(!block) return;
 
@@ -5516,10 +5719,12 @@ function afterPhotoRequiredFor(type){
   // This body of water's own setting has the final say. Ticking or unticking
   // it on Readings and Dosages beats the app-wide setting, so a spa or
   // fountain can be exempt while the pool still requires one.
+  // (The only body of water at a customer reads the pool's.)
   const cid = currentVisitCustomerId;
+  const rt = photoBodyType(type);
   const lists = cid
-    ? listsForBody(cid, type === 'fountain' ? currentVisitFountainId : type, type)
-    : chemConfig[type];
+    ? listsForBody(cid, rt === 'fountain' ? currentVisitFountainId : rt, rt)
+    : chemConfig[rt];
   // Asked of this technician on the website: that stands whatever the body of
   // water says, because it was set for them by name
   if(techWantsPhoto('after', type)) return true;
@@ -6764,7 +6969,8 @@ function canRecordClips(){
             && typeof MediaRecorder !== 'undefined');
 }
 
-async function recordClip(){
+async function recordClip(opts){
+  opts = opts || {};
   if(!canRecordClips()){
     await alertDialog('This browser cannot record video. You can still record on your '
       + 'phone and send it the usual way.', 'Not supported');
@@ -6833,8 +7039,9 @@ async function recordClip(){
 
       const type = clipMimeType();
       try{
-        recorder = type ? new MediaRecorder(stream, {mimeType: type})
-                        : new MediaRecorder(stream);
+        const rates = opts.small ? {videoBitsPerSecond: 1200000, audioBitsPerSecond: 64000} : {};
+        recorder = type ? new MediaRecorder(stream, Object.assign({mimeType: type}, rates))
+                        : new MediaRecorder(stream, rates);
       }catch(e){
         finish(null);
         return;
@@ -7153,7 +7360,7 @@ function resizeImageFile(file, maxDim, quality){
 
 
 // Shows one photo at full size over everything else. Tap anywhere to close.
-function openPhotoFullSize(dataUrl){
+function openPhotoFullSize(dataUrl, onDelete){
   if(!dataUrl) return;
 
   const overlay = document.createElement('div');
@@ -7177,7 +7384,22 @@ function openPhotoFullSize(dataUrl){
   // No band of its own: the bubble sits on the dimmed screen (Sept 29; it had
   // a thick black band round it)
   bar.style.cssText = 'flex:0 0 auto;padding:18px 20px calc(18px + env(safe-area-inset-bottom));'
-    + 'display:flex;align-items:center;justify-content:center;background:transparent;';
+    + 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:transparent;';
+  // Removing a photo happens here: the photo is open, so it's clear which one
+  if(typeof onDelete === 'function'){
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.textContent = 'Delete photo';
+    del.style.cssText = 'flex:0 0 auto;padding:12px 22px;font-size:15px;font-weight:600;border:none;'
+      + "border-radius:10px;background:#B8492E;color:#fff;cursor:pointer;font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;";
+    del.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      if(typeof close === 'function') close();
+      try{ onDelete(); }catch(err){}
+      showToast('Photo deleted');
+    });
+    bar.appendChild(del);
+  }
 
   const hint = document.createElement('div');
   hint.textContent = 'Tap the photo to close';
@@ -7211,55 +7433,79 @@ function openPhotoFullSize(dataUrl){
 let photoViewerOpen = false;
 let closePhotoViewer = null;
 
+// Every photo step (before, after, the closed gate) takes up to three photos,
+// numbered in the order taken. The first stays the step's main photo, which is
+// what everything older reads; the others travel alongside it.
+const PHOTOS_PER_STEP = 3;
 function makePhotoController(ids){
-  let currentDataUrl = null;
+  let shots = [];                                 // data URLs, in the order taken
   const takeBtn = document.getElementById(ids.takeBtn);
   const fileInput = document.getElementById(ids.fileInput);
   const previewWrap = document.getElementById(ids.previewWrap);
   const previewImg = document.getElementById(ids.previewImg);
   const removeBtn = document.getElementById(ids.removeBtn);
+  const takeWords = takeBtn ? takeBtn.textContent : 'Take photo';
+  // One remove per photo now, on the photo itself
+  if(removeBtn) removeBtn.style.display = 'none';
+  if(previewImg) previewImg.style.display = 'none';
 
-  function showPreview(dataUrl){
-    currentDataUrl = dataUrl;
-    previewImg.src = dataUrl;
-    // A thumbnail, not the full photo — a full-size preview pushed the rest of
-    // the visit off the screen. Tapping it opens the whole thing.
-    previewImg.style.maxWidth = '25%';
-    previewImg.style.minWidth = '96px';
-    previewImg.style.cursor = 'zoom-in';
-    previewImg.title = 'Tap to see it full size';
-    // Centred, and evenly spaced if more than one ends up side by side. A
-    // thumbnail hard against the left edge looked like a mistake.
-    previewWrap.style.display = 'flex';
+  function draw(){
+    previewWrap.querySelectorAll('[data-shot]').forEach(n => n.remove());
+    previewWrap.style.display = shots.length ? 'flex' : 'none';
     previewWrap.style.justifyContent = 'center';
     previewWrap.style.alignItems = 'flex-start';
     previewWrap.style.flexWrap = 'wrap';
     previewWrap.style.gap = '10px';
-    removeBtn.style.display = 'inline-flex';
+    shots.forEach((data, i)=>{
+      const cell = document.createElement('div');
+      cell.dataset.shot = String(i);
+      cell.style.cssText = 'position:relative;width:27%;min-width:96px;';
+      const img = document.createElement('img');
+      img.src = data;
+      img.alt = 'Photo ' + (i + 1);
+      img.title = 'Tap to see it full size';
+      img.style.cssText = 'width:100%;border-radius:10px;border:1px solid var(--line);display:block;cursor:zoom-in;';
+      img.addEventListener('click', ()=> openPhotoFullSize(data, ()=>{
+        const at = shots.indexOf(data);
+        if(at !== -1) shots.splice(at, 1);
+        draw();
+        if(ids.onChange) ids.onChange();
+      }));
+      cell.appendChild(img);
+      if(shots.length > 1){
+        const num = document.createElement('span');
+        num.textContent = String(i + 1);
+        num.style.cssText = 'position:absolute;left:6px;top:6px;min-width:22px;height:22px;border-radius:11px;'
+          + 'background:rgba(9,32,34,0.75);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 6px;';
+        cell.appendChild(num);
+      }
+      previewWrap.appendChild(cell);
+    });
+    if(takeBtn){
+      takeBtn.style.display = shots.length >= PHOTOS_PER_STEP ? 'none' : '';
+      takeBtn.textContent = shots.length ? 'Take another (' + (shots.length + 1) + ' of ' + PHOTOS_PER_STEP + ')' : takeWords;
+    }
+  }
+  function add(data){
+    if(!data || shots.length >= PHOTOS_PER_STEP) return;
+    shots.push(data);
+    draw();
     if(ids.onChange) ids.onChange();
   }
-
   function clear(){
-    currentDataUrl = null;
-    previewImg.src = '';
-    previewWrap.style.display = 'none';
-    removeBtn.style.display = 'none';
+    shots = [];
     fileInput.value = '';
+    draw();
     if(ids.onChange) ids.onChange();
   }
-
-  // Every photo in the app goes through this controller, so one handler covers
-  // visit photos, before photos, gate photos and equipment photos alike.
-  previewImg.addEventListener('click', ()=>{
-    if(currentDataUrl) openPhotoFullSize(currentDataUrl);
-  });
 
   takeBtn.addEventListener('click', async ()=>{
+    if(shots.length >= PHOTOS_PER_STEP) return;
     try{
       const data = await captureFromCamera(900, 0.5);
-      if(data) showPreview(data);      // null means they cancelled
+      if(data) add(data);              // null means they cancelled
     }catch(err){
-      // No camera, permission refused, or an older browser — use the file input
+      // No camera, permission refused, or an older browser: use the file input
       fileInput.click();
     }
   });
@@ -7268,18 +7514,18 @@ function makePhotoController(ids){
     const file = e.target.files[0];
     if(!file) return;
     try{
-      const dataUrl = await resizeImageFile(file, 1200, 0.7);
-      showPreview(dataUrl);
+      add(await resizeImageFile(file, 1200, 0.7));
     }catch(err){
-      showToast('Could not load that photo — try again');
+      showToast('Could not load that photo \u2014 try again');
     }
+    fileInput.value = '';
   });
 
-  removeBtn.addEventListener('click', clear);
-
   return {
-    getData: ()=> currentDataUrl,
-    setData: (dataUrl)=>{ if(dataUrl) showPreview(dataUrl); else clear(); },
+    getData: ()=> shots[0] || null,
+    getAll: ()=> shots.slice(),
+    setData: (dataUrl)=>{ shots = dataUrl ? [dataUrl] : []; draw(); if(ids.onChange) ids.onChange(); },
+    setAll: (list)=>{ shots = (list || []).filter(Boolean).slice(0, PHOTOS_PER_STEP); draw(); if(ids.onChange) ids.onChange(); },
     clear
   };
 }
@@ -7432,11 +7678,16 @@ document.getElementById('btnSaveReading').addEventListener('click', async ()=>{
     date: visitTimestamp(),
     notes: document.getElementById('inNotes').value.trim(),
     photo: appSettings.storePhotos === false ? null : (poolPhotoController.getData() || null),
+    photoMore: appSettings.storePhotos === false ? [] : poolPhotoController.getAll().slice(1),
     beforePhoto: appSettings.storePhotos === false ? null : (beforeControllerFor('pool').getData() || null),
+    beforePhotoMore: appSettings.storePhotos === false ? [] : beforeControllerFor('pool').getAll().slice(1),
     isFilterClean: isFilterCleanVisit,
     isRedo: !!(customers.find(x => x.id === customerId) || {}).pendingRedo,
     customPhotos: appSettings.storePhotos === false ? {} : Object.assign({}, customPhotoData['pool'] || {}),
     gatePhoto: appSettings.storePhotos === false ? null : (gatePhotoController.getData() || null),
+    gatePhotoMore: appSettings.storePhotos === false ? [] : gatePhotoController.getAll().slice(1),
+    video: (isLastSectionOfVisit() && visitVideoRefs[0]) || null,
+    videoMore: isLastSectionOfVisit() ? visitVideoRefs.slice(1) : [],
     filterBackwashed: (document.getElementById('chkBackwashed') || {}).dataset ? document.getElementById('chkBackwashed').dataset.on === 'true' : false,
     saltCellCleaned: (document.getElementById('chkSaltCell') || {}).dataset ? document.getElementById('chkSaltCell').dataset.on === 'true' : false
   };
@@ -7497,9 +7748,14 @@ document.getElementById('btnSaveSpaReading').addEventListener('click', async ()=
     date: visitTimestamp(),
     notes: document.getElementById('inSpaNotes').value.trim(),
     photo: appSettings.storePhotos === false ? null : (spaPhotoController.getData() || null),
+    photoMore: appSettings.storePhotos === false ? [] : spaPhotoController.getAll().slice(1),
     beforePhoto: appSettings.storePhotos === false ? null : (beforeControllerFor('spa').getData() || null),
+    beforePhotoMore: appSettings.storePhotos === false ? [] : beforeControllerFor('spa').getAll().slice(1),
     // The gate photo belongs to whichever body of water was serviced last
-    gatePhoto: appSettings.storePhotos === false ? null : (gatePhotoController.getData() || null)
+    gatePhoto: appSettings.storePhotos === false ? null : (gatePhotoController.getData() || null),
+    gatePhotoMore: appSettings.storePhotos === false ? [] : gatePhotoController.getAll().slice(1),
+    video: (isLastSectionOfVisit() && visitVideoRefs[0]) || null,
+    videoMore: isLastSectionOfVisit() ? visitVideoRefs.slice(1) : []
   };
   // The fields on screen come from THIS customer's list. Reading the global
   // one meant a customer with a custom setup saved nothing at all.
@@ -7546,9 +7802,14 @@ document.getElementById('btnSaveFountainReading').addEventListener('click', asyn
     date: visitTimestamp(),
     notes: document.getElementById('inFountainNotes').value.trim(),
     photo: appSettings.storePhotos === false ? null : (fountainPhotoController.getData() || null),
+    photoMore: appSettings.storePhotos === false ? [] : fountainPhotoController.getAll().slice(1),
     beforePhoto: appSettings.storePhotos === false ? null : (beforeControllerFor('fountain').getData() || null),
+    beforePhotoMore: appSettings.storePhotos === false ? [] : beforeControllerFor('fountain').getAll().slice(1),
     // The gate photo belongs to whichever body of water was serviced last
-    gatePhoto: appSettings.storePhotos === false ? null : (gatePhotoController.getData() || null)
+    gatePhoto: appSettings.storePhotos === false ? null : (gatePhotoController.getData() || null),
+    gatePhotoMore: appSettings.storePhotos === false ? [] : gatePhotoController.getAll().slice(1),
+    video: (isLastSectionOfVisit() && visitVideoRefs[0]) || null,
+    videoMore: isLastSectionOfVisit() ? visitVideoRefs.slice(1) : []
   };
   // The fields on screen come from THIS customer's list. Reading the global
   // one meant a customer with a custom setup saved nothing at all.
@@ -7672,6 +7933,16 @@ async function renderVisitHistory(){
   }
 
   if(titleEl) titleEl.textContent = label + ' reading history';
+  // Whole visits skipped belong in every body of water's history too
+  try{
+    const whole = (await loadSkippedVisits(customer.id)) || [];
+    const have = new Set(list.map(r => String(r.date || '').slice(0, 10)));
+    whole.forEach(s=>{
+      if(!s || !s.date || have.has(String(s.date).slice(0, 10))) return;
+      list = list.concat([{id: s.id, date: s.timestamp || s.date, skipped: true, wholeVisit: true, notes: s.reason || ''}]);
+    });
+    list = list.slice().sort((a, b)=> String(b.date || '').localeCompare(String(a.date || '')));
+  }catch(e){}
 
   if(visitHistoryDateFilter){
     list = list.filter(r => (r.date || '').slice(0,10) === visitHistoryDateFilter);
@@ -7703,6 +7974,12 @@ async function renderVisitHistory(){
     row.className = 'hist-row';
     row.style.gridTemplateColumns = cols;
     let cells = `<div>${fmtDate(r.date)}</div>`;
+    if(r.skipped){
+      cells += `<div class="hist-val" style="grid-column:span ${chemList.length};color:var(--rust);font-weight:600;">${r.wholeVisit ? 'Service skipped' : 'Skipped'}</div>`;
+      row.innerHTML = cells + '<div></div>';
+      listEl.appendChild(row);
+      return;
+    }
     chemList.forEach(chem=>{
       const val = r[chem.key];
       cells += `<div class="hist-val">${val !== '' && val !== undefined ? val : '—'}</div>`;
@@ -8053,12 +8330,12 @@ function renderTechRoute(){
   // Both counts always show, even at zero
   const leftEl = document.getElementById('techRouteLeft');
   if(leftEl){
-    leftEl.textContent = leftCount + ' of ' + list.length;
+    leftEl.textContent = leftCount + '/' + list.length;
     leftEl.title = leftCount + ' of ' + list.length + ' stops left';
   }
   const jobsEl = document.getElementById('techRouteJobs');
   if(jobsEl){
-    jobsEl.textContent = jobsLeft + ' of ' + jobList.length;
+    jobsEl.textContent = jobsLeft + '/' + jobList.length;
     jobsEl.title = jobsLeft + ' of ' + jobList.length
       + ' work orders and filter cleans left';
   }
@@ -9746,7 +10023,7 @@ function openJobPage(customer, job){
   const img = document.createElement('img');
   img.style.cssText = 'max-width:25%;min-width:96px;border-radius:10px;border:1px solid var(--line);display:block;cursor:zoom-in;';
   img.title = 'Tap to see it full size';
-  img.addEventListener('click', ()=>{ if(photo) openPhotoFullSize(photo); });
+  img.addEventListener('click', ()=>{ if(photo) openPhotoFullSize(photo, ()=> remove.click()); });
   imgWrap.appendChild(img);
   card.appendChild(imgWrap);
   const photoRow = document.createElement('div');
@@ -9762,7 +10039,7 @@ function openJobPage(customer, job){
   remove.className = 'btn btn-ghost';
   remove.style.cssText = 'width:auto;color:var(--rust);border-color:#EFC9BC;display:none;';
   remove.textContent = 'Remove photo';
-  photoRow.appendChild(take); photoRow.appendChild(remove);
+  photoRow.appendChild(take);     // removing is from the full-size photo
   card.appendChild(photoRow);
   const showPhoto = data=>{
     photo = data || null;
@@ -10044,11 +10321,11 @@ function adminVersion_renderHomeList(){
   const stopLabelEl = document.getElementById('homeStopLabel');
   if(stopEl){
     // Always shown, even with no stops at all (0 of 0)
-    stopEl.textContent = remaining + ' of ' + totalStops;
+    stopEl.textContent = remaining + '/' + totalStops;
     stopEl.title = remaining + ' of ' + totalStops + ' stops left today';
   }
   if(stopLabelEl){
-    stopLabelEl.textContent = 'stops left';
+    stopLabelEl.textContent = 'stops';
   }
 
   // Jobs: every work order and task on this day counts as one, however many a
@@ -10069,7 +10346,7 @@ function adminVersion_renderHomeList(){
   const jobEl = document.getElementById('homeJobCount');
   const jobLabelEl = document.getElementById('homeJobLabel');
   if(jobEl){
-    jobEl.textContent = jobCount + ' of ' + jobsTotal;
+    jobEl.textContent = jobCount + '/' + jobsTotal;
     jobEl.title = jobsTotal
       ? jobCount + ' of ' + jobsTotal + ' work orders, tasks and filter cleans left'
       : 'No work orders, tasks or filter cleans on this day';
@@ -10379,11 +10656,11 @@ function techVersion_renderHomeList(){
   const stopLabelEl = document.getElementById('homeStopLabel');
   if(stopEl){
     // Always shown, even with no stops at all (0 of 0)
-    stopEl.textContent = remaining + ' of ' + totalStops;
+    stopEl.textContent = remaining + '/' + totalStops;
     stopEl.title = remaining + ' of ' + totalStops + ' stops left today';
   }
   if(stopLabelEl){
-    stopLabelEl.textContent = 'stops left';
+    stopLabelEl.textContent = 'stops';
   }
 
   // Jobs: every work order and task on this day counts as one, however many a
@@ -10401,7 +10678,7 @@ function techVersion_renderHomeList(){
   const jobEl = document.getElementById('homeJobCount');
   const jobLabelEl = document.getElementById('homeJobLabel');
   if(jobEl){
-    jobEl.textContent = jobCount + ' of ' + jobsTotal;
+    jobEl.textContent = jobCount + '/' + jobsTotal;
     jobEl.title = jobsTotal
       ? jobCount + ' of ' + jobsTotal + ' work orders, tasks and filter cleans left'
       : 'No work orders, tasks or filter cleans on this day';
@@ -11111,21 +11388,21 @@ async function checkHeadsUpAfter(finishedCustomerId){
   try{ route = routeOrderToday(); }catch(e){ return; }
   if(!route || !route.length) return;
 
-  const at = route.findIndex(c => c.id === finishedCustomerId);
-  if(at === -1) return;
-
-  // Anyone further along who asked to be warned this many stops out
-  for(let i = at + 1; i < route.length; i++){
-    const cand = route[i];
+  // The stops still to do, in route order. A customer is "N stops away" by
+  // where they sit in that list, so stops done out of order don't throw the
+  // count off, and anyone now within their number of stops is told (once a day)
+  const today = todayDateStr();
+  const left = route.filter(c => c && c.id !== finishedCustomerId && c.lastServicedDate !== today);
+  const sent = lsGet('headsUpSent') || {};
+  const sentToday = Array.isArray(sent[today]) ? sent[today] : [];
+  for(let i = 0; i < left.length; i++){
+    const cand = left[i];
     if(!autoNotifyOn(cand)) continue;
-
+    if(sentToday.indexOf(cand.id) !== -1) continue;
     const lead = autoNotifyLeadFor(cand);
-    if((i - at) !== lead) continue;
-    if(cand.lastServicedDate === todayDateStr()) continue;
-
-    // No prompt — the office already decided this customer gets one
-    showToast('Automatic message for ' + cand.name);
-    dispatchHeadsUp(cand);
+    if(i + 1 > lead) continue;           // still further away than they asked
+    lsSet('headsUpSent', {[today]: sentToday.concat(cand.id)});
+    dispatchHeadsUp(cand, {automatic: true, away: i + 1});
     return;                     // one at a time, never a queue of messages
   }
 }
@@ -11150,7 +11427,8 @@ function headsUpRouteFor(customer){
   return 'text';
 }
 
-async function dispatchHeadsUp(customer){
+async function dispatchHeadsUp(customer, opts){
+  opts = opts || {};
   const email = ((customer.notifyEmail || '').trim() || customer.email || '').trim();
   const phone = ((customer.notifyPhone || '').trim() || customer.phone || '').trim();
   const hasEmail = email.indexOf('@') !== -1;
@@ -11165,10 +11443,29 @@ async function dispatchHeadsUp(customer){
 
   if(how === 'email'){
     const sent = await sendHeadsUpEmail(customer);
-    if(sent) return;
+    if(sent){ if(opts.automatic) showToast('Automatic On my way emailed to ' + customer.name); return; }
     // The office could not send it: the technician still has a way to tell them
   }
+  // Automatic: the phone only opens Messages straight after a tap, and the
+  // tap on Submit is long gone by now, so one button opens it
+  if(opts.automatic){ promptHeadsUpText(customer, opts.away); return; }
   sendOnMyWay(customer);
+}
+function promptHeadsUpText(customer, away){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:340px;">'
+    + '<h2 style="font-size:18px;margin:0 0 6px;">Automatic On my way</h2>'
+    + '<p style="font-size:13.5px;margin:0 0 4px;"><strong>' + escapeHtmlForEmail(customer.name) + '</strong> is '
+    + (away === 1 ? 'your next stop' : away + ' stops away') + '.</p>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">Their heads-up text is ready to send.</p>'
+    + '<button class="btn btn-primary" data-go style="width:100%;">Open text message</button>'
+    + '<button class="btn btn-ghost" data-later style="width:100%;margin-top:8px;">Not now</button>'
+    + '</div>';
+  document.body.appendChild(overlay);
+  const close = ()=>{ try{ document.body.removeChild(overlay); }catch(e){} };
+  overlay.querySelector('[data-go]').addEventListener('click', ()=>{ close(); sendOnMyWay(customer); });
+  overlay.querySelector('[data-later]').addEventListener('click', close);
 }
 
 // Text or email, asked once at the moment of sending
@@ -11857,6 +12154,23 @@ document.getElementById('settingTechniciansTab').addEventListener('change', (e)=
 });
 
 
+document.getElementById('settingLeftHanded').addEventListener('change', (e)=>{
+  appSettings.leftHanded = e.target.checked;
+  appSettings.micSide = e.target.checked ? 'left' : 'right';
+  saveSettings();
+  if(typeof renderMicSideButtons === 'function') renderMicSideButtons();
+  if(typeof syncStepChrome === 'function') syncStepChrome();
+  applyLeftHanded();
+  showToast(appSettings.leftHanded ? 'Left-handed mode on' : 'Left-handed mode off');
+});
+
+document.getElementById('settingRecentDosages').addEventListener('change', (e)=>{
+  appSettings.showRecentDosages = e.target.checked;
+  saveSettings();
+  try{ renderAllConfigFields(); }catch(err){}
+  showToast(appSettings.showRecentDosages ? 'Chemicals added shown in the readings history' : 'Chemicals added hidden');
+});
+
 document.getElementById('settingRecentReadings').addEventListener('change', (e)=>{
   appSettings.showRecentReadings = e.target.checked;
   saveSettings();
@@ -11983,8 +12297,13 @@ async function renderPoolServiceChecks(customer){
 
   function lastDoneText(field){
     const hit = history.find(r => r[field]);
-    if(!hit) return 'Not logged yet';
-    const d = new Date(hit.date);
+    // Set at the office on the equipment: a backwash or a cell clean on a day
+    const item = field === 'filterBackwashed' ? filterItem : (field === 'saltCellCleaned' ? chlorItem : null);
+    const officeIso = item && (field === 'filterBackwashed' ? item.lastBackwashed : item.saltCellCleanedOn);
+    const office = officeIso ? new Date(String(officeIso).slice(0, 10) + 'T12:00:00') : null;
+    const fromVisit = hit ? new Date(hit.date) : null;
+    if(!fromVisit && !office) return 'Not logged yet';
+    const d = (office && (!fromVisit || office > fromVisit)) ? office : fromVisit;
     const days = Math.floor((Date.now() - d.getTime()) / 86400000);
     const when = d.toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'});
     if(days <= 0) return 'Last done today';
@@ -12468,6 +12787,7 @@ function showsAfterPhotoStep(type){
 // The setup that applies to a body of water during this visit: the customer's
 // own if they have one, otherwise the company's.
 function photoListsFor(type){
+  type = photoBodyType(type);
   const key = (type === 'fountain' && currentVisitFountainId) ? currentVisitFountainId : type;
   try{
     return currentVisitCustomerId
@@ -12694,10 +13014,28 @@ function syncStepChrome(){
   const back = document.createElement('button');
   back.type = 'button';
   back.className = 'step-back';
-  back.textContent = currentVisitStep === 1 ? '\u2190 Return to route' : '\u2190 Back';
+  // The body of water before this one, in the visit's order (none on the first)
+  const hereKey = currentVisibleSection === 'fountain' ? currentVisitFountainId : currentVisibleSection;
+  const visitOrder = (pendingVisit && pendingVisit.customerId === currentVisitCustomerId
+    && Array.isArray(pendingVisit.neededSections)) ? pendingVisit.neededSections : [];
+  const hereAt = visitOrder.indexOf(hereKey);
+  const prevKey = hereAt > 0 ? visitOrder[hereAt - 1] : null;
+  let prevName = '';
+  if(prevKey){
+    const cust = customers.find(c => c.id === currentVisitCustomerId);
+    const lbl = cust ? sectionLabel(cust, prevKey) : '';
+    prevName = (lbl === 'Pool' || lbl === 'Spa') ? lbl.toLowerCase() : (lbl || 'the last one');
+  }
+  back.textContent = currentVisitStep !== 1 ? '\u2190 Back'
+    : (prevKey ? '\u2190 Return to ' + prevName : '\u2190 Return to route');
   back.addEventListener('click', async ()=>{
     if(currentVisitStep !== 1){
       goToVisitStep(currentVisitStep - 1);
+      return;
+    }
+    // Not the first body of water: back to the one before it, where it was left
+    if(prevKey){
+      showVisitSection(prevKey);
       return;
     }
     // Leaving by this button is a deliberate exit, so the whole report goes,
@@ -12762,14 +13100,14 @@ function syncStepChrome(){
       head.insertBefore(skipBtn, back);
       skipRow.style.display = 'none';
     }
-    // Three parts on one line: the heading on the left, Skip in the middle,
-    // Back on the right. The two outer columns share the space equally, so
-    // Skip sits in the true centre whatever the heading says.
+    // The heading takes the room; Skip sits right beside Return to route / Back
+    // (mirrored with them in left-handed mode)
     head.style.display = 'grid';
-    head.style.gridTemplateColumns = '1fr auto 1fr';
+    head.style.columnGap = '8px';
+    head.style.gridTemplateColumns = 'minmax(0,1fr)' + ' auto'.repeat(Math.max(1, head.children.length - 1));
     h.style.minWidth = '0';
     h.style.justifySelf = 'start';
-    if(skipBtn) skipBtn.style.justifySelf = 'center';
+    if(skipBtn) skipBtn.style.justifySelf = 'end';
     back.style.justifySelf = 'end';
   }
 
@@ -13077,6 +13415,199 @@ function setPttState(on){
   if(svg) svg.setAttribute('stroke', on ? '#fff' : '#0B6FA4');
 }
 
+// ---- Voice-to-text for notes ----
+var NOTE_MIC_QUIET_MS = 6000;          // this long with no speech heard: it stops
+var noteMic = null;                    // the one listening now: {ta, btn, rec, lastHeard, timer}
+var NOTE_MIC_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="17" x2="12" y2="22"/></svg>';
+(function noteMicStyle(){
+  const st = document.createElement('style');
+  st.textContent = '.note-mic-wrap{position:relative;display:block;}'
+    + '.note-mic-wrap > textarea{padding-right:46px;}'
+    + '.note-mic{position:absolute;right:8px;bottom:10px;width:34px;height:34px;border-radius:50%;'
+    + 'border:1.5px solid #A8CBE0;background:#fff;color:#0B6FA4;display:flex;align-items:center;justify-content:center;'
+    + 'padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent;}'
+    + '.note-mic.on{background:#0B6FA4;border-color:#0B6FA4;color:#fff;animation:noteMicPulse 1.4s ease-in-out infinite;}'
+    + '@keyframes noteMicPulse{0%,100%{box-shadow:0 0 0 0 rgba(11,111,164,0.45);}50%{box-shadow:0 0 0 7px rgba(11,111,164,0);}}';
+  document.head.appendChild(st);
+})();
+function stopNoteMic(){
+  const m = noteMic;
+  if(!m) return;
+  noteMic = null;
+  clearInterval(m.timer);
+  m.btn.classList.remove('on');
+  m.btn.setAttribute('aria-pressed', 'false');
+  try{ m.rec.onend = null; m.rec.stop(); }catch(e){}
+}
+function noteMicAdd(ta, words){
+  words = String(words || '').trim();
+  if(!words) return;
+  const before = ta.value;
+  ta.value = before + (before && !/\s$/.test(before) ? ' ' : '') + words;
+  // So every note box saves it exactly as if it had been typed
+  ta.dispatchEvent(new Event('input', {bubbles: true}));
+  ta.dispatchEvent(new Event('change', {bubbles: true}));
+}
+function startNoteMic(ta, btn){
+  if(!pttSupported()){ showToast('Voice entry needs Chrome on Android, or Safari on iPhone'); return; }
+  if(typeof pttListening !== 'undefined' && pttListening){ showToast('Let go of the readings microphone first'); return; }
+  stopNoteMic();
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const rec = new Rec();
+  rec.continuous = true;
+  rec.interimResults = true;     // any sound of speech counts as still talking
+  rec.lang = 'en-US';
+  const m = {ta, btn, rec, lastHeard: Date.now(), timer: null};
+  rec.onresult = (e)=>{
+    m.lastHeard = Date.now();
+    for(let i = e.resultIndex; i < e.results.length; i++){
+      if(e.results[i].isFinal) noteMicAdd(ta, e.results[i][0].transcript);
+    }
+  };
+  rec.onspeechstart = ()=>{ m.lastHeard = Date.now(); };
+  rec.onerror = (e)=>{
+    const err = e && e.error;
+    if(err === 'not-allowed' || err === 'service-not-allowed'){
+      stopNoteMic();
+      showToast('Allow the microphone for Weir to use voice notes');
+    }
+    // "no-speech" / "aborted": just quiet; onend decides whether to carry on
+  };
+  // The phone's own listening ends after a pause; carry on while speech was
+  // heard recently, otherwise that's the end
+  rec.onend = ()=>{
+    if(noteMic !== m) return;
+    if(Date.now() - m.lastHeard < NOTE_MIC_QUIET_MS){
+      try{ rec.start(); return; }catch(err){
+        setTimeout(()=>{ if(noteMic === m){ try{ rec.start(); }catch(e2){ stopNoteMic(); } } }, 150);
+        return;
+      }
+    }
+    stopNoteMic();
+  };
+  m.timer = setInterval(()=>{
+    if(noteMic !== m) return;
+    // Quiet for too long, or the note box has gone (page changed): stop
+    if(Date.now() - m.lastHeard >= NOTE_MIC_QUIET_MS || !ta.isConnected) stopNoteMic();
+  }, 1000);
+  noteMic = m;
+  btn.classList.add('on');
+  btn.setAttribute('aria-pressed', 'true');
+  try{ rec.start(); showToast('Listening \u2014 just talk'); }
+  catch(e){ stopNoteMic(); }
+}
+function attachNoteMic(ta){
+  if(!ta || ta.dataset.noteMic || !ta.isConnected) return;
+  if(ta.readOnly || ta.disabled) return;
+  const cs = getComputedStyle(ta);
+  if(cs.position === 'fixed' || cs.opacity === '0') return;      // a hidden helper box, not a note
+  ta.dataset.noteMic = '1';
+  const wrap = document.createElement('div');
+  wrap.className = 'note-mic-wrap';
+  // Keep the note's own spacing outside the wrapper
+  wrap.style.marginBottom = cs.marginBottom;
+  ta.style.marginBottom = '0';
+  ta.parentNode.insertBefore(wrap, ta);
+  wrap.appendChild(ta);
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'note-mic';
+  btn.title = 'Speak your note';
+  btn.setAttribute('aria-label', 'Speak your note');
+  btn.setAttribute('aria-pressed', 'false');
+  btn.innerHTML = NOTE_MIC_SVG;
+  // Don't take focus away from the note (keeps the phone's keyboard as it was)
+  btn.addEventListener('mousedown', (e)=> e.preventDefault());
+  btn.addEventListener('click', (e)=>{
+    e.preventDefault(); e.stopPropagation();
+    if(noteMic && noteMic.ta === ta){ stopNoteMic(); return; }
+    startNoteMic(ta, btn);
+  });
+  wrap.appendChild(btn);
+}
+function attachNoteMics(root){
+  (root || document).querySelectorAll('textarea').forEach(attachNoteMic);
+}
+document.addEventListener('DOMContentLoaded', ()=> attachNoteMics(document));
+setTimeout(()=> attachNoteMics(document), 0);
+// Note boxes the app makes later (jobs, skips, customers) get one too
+new MutationObserver(list => {
+  for(const rec of list){
+    rec.addedNodes.forEach(n => {
+      if(n.nodeType !== 1) return;
+      if(n.tagName === 'TEXTAREA') attachNoteMic(n);
+      else if(n.querySelectorAll) attachNoteMics(n);
+    });
+  }
+}).observe(document.documentElement, {childList: true, subtree: true});
+// Leaving the app (or the screen locking) stops listening
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden) stopNoteMic(); });
+
+(function leftHandedStyle(){
+  const st = document.createElement('style');
+  st.textContent =
+    'body.left-handed #btnReverseRoute{order:0;margin-left:0 !important;}'
+  + 'body.left-handed #homeDayHeading{order:1;margin-left:auto;}'
+  + 'body.left-handed #voiceModeIndicator{order:2;}'
+  + 'body.left-handed #homeDateRow #prevWeekBtn,body.left-handed #techDateRow #techPrevDay{order:0;}'
+  + 'body.left-handed #homeDateRow #nextWeekBtn,body.left-handed #techDateRow #techNextDay{order:1;}'
+  + 'body.left-handed #homeDateRow #pickDayBtn,body.left-handed #techDateRow #techPickDay{order:2;}'
+  + 'body.left-handed #homeDateRow #weekLabel,body.left-handed #techDateRow #techDayLabel{order:3;}'
+  + 'body.left-handed #btnBackToTechList{order:0;}'
+  + 'body.left-handed #techRouteCounts{order:1;justify-content:flex-end;}'
+  + 'body.left-handed #servicedDayRow #servicedPrevDay{order:0;}'
+  + 'body.left-handed #servicedDayRow #servicedNextDay{order:1;}'
+  + 'body.left-handed #servicedDayRow #servicedDayLabel{order:2;}'
+  + 'body.left-handed [data-step-head],body.left-handed [data-step-head-solo]{direction:rtl;}'
+  + 'body.left-handed [data-step-head] > *,body.left-handed [data-step-head-solo] > *{direction:ltr;}';
+  document.head.appendChild(st);
+})();
+function applyLeftHanded(){
+  document.body.classList.toggle('left-handed', !!(appSettings && appSettings.leftHanded === true));
+}
+applyLeftHanded();
+
+(function joinedCardStyle(){
+  const st = document.createElement('style');
+  st.textContent =
+    // The thin line between parts is the upper card's own bottom edge, so the
+    // tabs (which stay put while the page scrolls) keep a clean edge
+    '#view-visit > .card.join-top{border-bottom-left-radius:0;border-bottom-right-radius:0;margin-bottom:0;}'
+  + '#view-visit > .card.join-mid{border-radius:0;border-top:none;margin-top:0;margin-bottom:0;box-shadow:none;}'
+  + '#view-visit > .card.join-bottom{border-top-left-radius:0;border-top-right-radius:0;border-top:none;margin-top:0;}';
+  document.head.appendChild(st);
+})();
+function joinVisitCards(){
+  const view = document.getElementById('view-visit');
+  if(!view) return;
+  const cards = Array.from(view.children).filter(el => el.classList && el.classList.contains('card'));
+  cards.forEach(c => c.classList.remove('join-top', 'join-mid', 'join-bottom'));
+  const tabs = document.getElementById('visitSectionCard');
+  if(!tabs || getComputedStyle(tabs).display === 'none') return;
+  // The tabs, then every card showing below them, in order
+  const at = cards.indexOf(tabs);
+  const chain = [tabs].concat(cards.slice(at + 1).filter(c => getComputedStyle(c).display !== 'none'));
+  if(chain.length < 2) return;
+  chain.forEach((c, i)=>{
+    c.classList.add(i === 0 ? 'join-top' : (i === chain.length - 1 ? 'join-bottom' : 'join-mid'));
+  });
+}
+// Whenever a card on the visit appears or goes, the joins follow
+(function watchVisitCards(){
+  const view = document.getElementById('view-visit');
+  if(!view) return;
+  let pending = false;
+  const again = ()=>{
+    if(pending) return;
+    pending = true;
+    requestAnimationFrame(()=>{ pending = false; joinVisitCards(); });
+  };
+  new MutationObserver(again).observe(view, {attributes: true, attributeFilter: ['style'], subtree: false, childList: true});
+  Array.from(view.children).forEach(ch =>
+    new MutationObserver(again).observe(ch, {attributes: true, attributeFilter: ['style']}));
+  again();
+})();
+
 function startPushToTalk(){
   if(!pttSupported()){
     showToast('Voice entry needs Chrome on Android, or Safari on iPhone');
@@ -13254,6 +13785,8 @@ function stashFountainDraft(){
   });
   draft.__photo = fountainPhotoController.getData() || null;
   draft.__beforePhoto = fountainBeforePhotoController.getData() || null;
+  draft.__photos = fountainPhotoController.getAll();
+  draft.__beforePhotos = fountainBeforePhotoController.getAll();
   fountainDraftValues[currentVisitFountainId] = draft;
 }
 
@@ -13265,8 +13798,8 @@ function restoreFountainDraft(fountainId){
   });
   fountainPhotoController.clear();
   fountainBeforePhotoController.clear();
-  if(draft && draft.__photo) fountainPhotoController.setData(draft.__photo);
-  if(draft && draft.__beforePhoto) fountainBeforePhotoController.setData(draft.__beforePhoto);
+  if(draft && (draft.__photos || draft.__photo)) fountainPhotoController.setAll(draft.__photos || [draft.__photo]);
+  if(draft && (draft.__beforePhotos || draft.__beforePhoto)) fountainBeforePhotoController.setAll(draft.__beforePhotos || [draft.__beforePhoto]);
 }
 
 
@@ -13302,15 +13835,16 @@ function restoreFinishedSection(type){
   // Photos come back too — they are part of what was recorded
   const after = type === 'pool' ? poolPhotoController
     : (type === 'spa' ? spaPhotoController : fountainPhotoController);
-  if(after && reading.photo) after.setData(reading.photo);
+  if(after && reading.photo) after.setAll([reading.photo].concat(reading.photoMore || []));
   const before = beforeControllerFor(type);
-  if(before && reading.beforePhoto) before.setData(reading.beforePhoto);
+  if(before && reading.beforePhoto) before.setAll([reading.beforePhoto].concat(reading.beforePhotoMore || []));
   // The gate photo belongs to whichever body of water was serviced last, not
   // to the pool. Restoring it only on the pool meant one taken on a spa or a
   // fountain vanished as soon as the technician looked at another section.
   if(reading.gatePhoto && typeof gatePhotoController !== 'undefined'){
-    gatePhotoController.setData(reading.gatePhoto);
+    gatePhotoController.setAll([reading.gatePhoto].concat(reading.gatePhotoMore || []));
   }
+  if(reading.video) restoreVisitVideos([reading.video].concat(reading.videoMore || []));
 
   return true;
 }
@@ -13679,6 +14213,13 @@ window.addEventListener('popstate', async ()=>{
       goToVisitStep(currentVisitStep - 1);
       return;
     }
+    {
+      const hereKey = currentVisibleSection === 'fountain' ? currentVisitFountainId : currentVisibleSection;
+      const order = (pendingVisit && pendingVisit.customerId === currentVisitCustomerId
+        && Array.isArray(pendingVisit.neededSections)) ? pendingVisit.neededSections : [];
+      const at = order.indexOf(hereKey);
+      if(at > 0){ showVisitSection(order[at - 1]); return; }
+    }
 
     // Nothing entered means nothing to lose, so just leave — same as the
     // on-screen Return to route button.
@@ -13917,6 +14458,7 @@ async function adminVersion_openVisit(customerId){
 
   isFilterCleanVisit = detectFilterCleanVisit(customerId);
   gatePhotoController.clear();
+  clearVisitVideo();
   resetDoseRuleTracking();
   clearCustomPhotoData();
   syncGatePhotoBlock();
@@ -13929,14 +14471,14 @@ async function adminVersion_openVisit(customerId){
     const p = beforeCard.querySelector('.voice-hint');
     if(h) h.textContent = isFilterCleanVisit ? 'Before photos' : 'Before photos';
     if(p) p.textContent = isFilterCleanVisit
-      ? 'Take a photo of the filter before you start.'
-      : 'Take a photo of the pool before you start work.';
+      ? 'Tap a photo to access the delete button.'
+      : 'Tap a photo to access the delete button.';
   }
   if(afterCard){
     const p2 = afterCard.querySelector('.voice-hint');
     if(p2) p2.textContent = isFilterCleanVisit
-      ? 'Take a photo of the filter now that the clean is done, and add any notes below.'
-      : 'Take a photo of the pool now that the work is done.';
+      ? 'Tap a photo to access the delete button.'
+      : 'Tap a photo to access the delete button.';
   }
 
   if(isFilterCleanVisit){
@@ -14061,6 +14603,7 @@ async function techVersion_openVisit(customerId){
 
   isFilterCleanVisit = detectFilterCleanVisit(customerId);
   gatePhotoController.clear();
+  clearVisitVideo();
   resetDoseRuleTracking();
   clearCustomPhotoData();
   syncGatePhotoBlock();
@@ -14073,14 +14616,14 @@ async function techVersion_openVisit(customerId){
     const p = beforeCard.querySelector('.voice-hint');
     if(h) h.textContent = isFilterCleanVisit ? 'Before photos' : 'Before photos';
     if(p) p.textContent = isFilterCleanVisit
-      ? 'Take a photo of the filter before you start.'
-      : 'Take a photo of the pool before you start work.';
+      ? 'Tap a photo to access the delete button.'
+      : 'Tap a photo to access the delete button.';
   }
   if(afterCard){
     const p2 = afterCard.querySelector('.voice-hint');
     if(p2) p2.textContent = isFilterCleanVisit
-      ? 'Take a photo of the filter now that the clean is done, and add any notes below.'
-      : 'Take a photo of the pool now that the work is done.';
+      ? 'Tap a photo to access the delete button.'
+      : 'Tap a photo to access the delete button.';
   }
 
   if(isFilterCleanVisit){
@@ -14153,7 +14696,7 @@ function askSkipProof(label){
             <img id="skipProofImg" style="width:25%;min-width:96px;border-radius:8px;display:inline-block;cursor:zoom-in;" alt="Reason photo" title="Tap to see it full size">
             <div>
               <button class="btn btn-ghost" type="button" id="skipProofRemove"
-                style="width:auto;margin-top:8px;padding:6px 12px;font-size:12.5px;">Remove photo</button>
+                style="display:none;">Remove photo</button>
             </div>
           </div>
         </div>
@@ -14197,7 +14740,7 @@ function askSkipProof(label){
 
     // Same as every other photo in the app: tap to see it full size
     overlay.querySelector('#skipProofImg').addEventListener('click', ()=>{
-      if(photoData) openPhotoFullSize(photoData);
+      if(photoData) openPhotoFullSize(photoData, ()=> overlay.querySelector('#skipProofRemove').click());
     });
 
     overlay.querySelector('#skipProofRemove').addEventListener('click', ()=>{
@@ -14365,7 +14908,7 @@ function renderSkippedPhoto(e){
     img.alt = 'Why it was skipped';
     img.title = 'Tap to see it full size';
     img.style.cssText = 'max-width:25%;min-width:96px;border-radius:10px;border:1px solid var(--line);display:block;cursor:zoom-in;';
-    img.addEventListener('click', ()=> openPhotoFullSize(e.photo));
+    img.addEventListener('click', ()=> openPhotoFullSize(e.photo, ()=> document.getElementById('btnSkippedRemovePhoto').click()));
     box.appendChild(img);
   } else {
     const none = document.createElement('p');
@@ -14374,7 +14917,7 @@ function renderSkippedPhoto(e){
     box.appendChild(none);
   }
   document.getElementById('btnSkippedRetake').textContent = e.photo ? 'Retake photo' : 'Take photo';
-  document.getElementById('btnSkippedRemovePhoto').style.display = e.photo ? '' : 'none';
+  document.getElementById('btnSkippedRemovePhoto').style.display = 'none';   // removed from the full-size photo
 }
 document.getElementById('btnSkippedRetake').addEventListener('click', async ()=>{
   if(!skippedScreenFor) return;
@@ -14577,6 +15120,25 @@ async function finalizeVisitSend(){
   const saveOnly = visitSaveOnly;
   visitSaveOnly = false;
   const { customerId, doneSections } = pendingVisit;
+  {
+    const proofs = lsGet('skipProof:' + customerId) || [];
+    let pkg = loadVisitPackage(customerId);
+    let added = false;
+    Object.keys(doneSections).forEach(id=>{
+      if(doneSections[id] !== 'skipped') return;
+      const proof = proofs.find(p => p && p.section === id);
+      const rid = 'skip_' + id + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+      if(!pkg) pkg = {day: todayDateStr(), sections: {}};
+      pkg.sections[id] = {
+        id: rid, date: visitTimestamp(), skipped: true,
+        notes: proof && proof.note ? proof.note : '',
+        customPhotos: proof && proof.photo ? {skip: proof.photo} : {}
+      };
+      doneSections[id] = rid;
+      added = true;
+    });
+    if(added){ saveVisitPackage(customerId, pkg); lsRemove('skipProof:' + customerId); }
+  }
   const poolReadingId = doneSections['pool'] || null;
   const spaReadingId = doneSections['spa'] || null;
   const fountainReadings = Object.keys(doneSections)
@@ -14906,7 +15468,7 @@ function webpToJpegDataUrl(dataUrl){
 // Ten photos to a report. Past that a report becomes a slideshow nobody
 // scrolls through, and the email grows for no benefit. The office says so when
 // more were taken than were sent.
-const MAX_REPORT_PHOTOS = 10;
+const MAX_REPORT_PHOTOS = 15;     // up to three per step now
 
 // What the visit had, against what could be read back off this phone. A photo
 // whose stored copy will not come back is skipped in silence otherwise, which
@@ -14933,10 +15495,16 @@ function collectReportPhotos(sections){
     const body = String(s.label || '').trim();
     const label = (body || 'photo').toLowerCase().replace(/[^a-z0-9]+/g, '-');
     const says = what => (body ? body + ' ' + what : what.charAt(0).toUpperCase() + what.slice(1));
-    if(r.beforePhoto) add(r.beforePhoto, label + '-before.jpg', says('before'));
-    if(r.photo) add(r.photo, label + '-after.jpg', says('after'));
+    const numbered = (list, file, what)=>{
+      const all = list.filter(Boolean);
+      all.forEach((src, i)=> add(src, label + '-' + file + (all.length > 1 ? '-' + (i + 1) : '') + '.jpg',
+        says(what) + (all.length > 1 ? ' ' + (i + 1) : '')));
+    };
+    numbered([r.beforePhoto].concat(r.beforePhotoMore || []), 'before', 'before');
+    numbered([r.photo].concat(r.photoMore || []), 'after', 'after');
     // Anything the company added themselves
     Object.keys(r.customPhotos || {}).forEach(k=>{
+      if(k === 'skip') return;          // why it was skipped: the office's, not emailed
       // Labelled with the name the office gave it, e.g. "Pool Filter gauge"
       const what = customPhotoLabelFor(k) || 'extra photo';
       add(r.customPhotos[k], label + '-' + String(k).replace(/[^a-z0-9]+/gi, '-') + '.jpg',
@@ -14945,8 +15513,11 @@ function collectReportPhotos(sections){
   });
 
   // The gate goes last — it is proof the property was left secure
-  const gate = (sections || []).map(s => (s.reading || {}).gatePhoto).find(Boolean);
-  if(gate) add(gate, 'gate.jpg', 'Gate');
+  const gateAt = (sections || []).map(s => s.reading || {}).find(r => r.gatePhoto);
+  if(gateAt){
+    const gates = [gateAt.gatePhoto].concat(gateAt.gatePhotoMore || []).filter(Boolean);
+    gates.forEach((src, i)=> add(src, 'gate' + (gates.length > 1 ? '-' + (i + 1) : '') + '.jpg', 'Gate' + (gates.length > 1 ? ' ' + (i + 1) : '')));
+  }
 
   lastPhotoTally = tally;
   return out;
@@ -15060,6 +15631,89 @@ function grabVisitLocation(kind){
 function renderFullCombinedReport(...args){
   return isAdminUser() ? adminVersion_renderFullCombinedReport.apply(this, args) : techVersion_renderFullCombinedReport.apply(this, args);
 }
+// The visit's video, for owners and admins: from this phone if it was taken
+// here, otherwise from the office (videos are kept 7 days)
+async function visitVideoSources(sections){
+  const at = (sections || []).map(s => s.reading || {}).find(r => r.video);
+  const refs = at ? [at.video].concat(at.videoMore || []).filter(Boolean) : [];
+  const out = [];
+  for(const ref of refs){
+    if(!isPhotoRef(ref)) continue;
+    const here = await loadPhotoData(ref.slice(PHOTO_REF.length));
+    if(here) out.push({data: here});
+  }
+  if(out.length && out.length === refs.length) return out;
+  const ref = refs[0];
+  const ids = (sections || []).map(s => s.reading && s.reading.id).filter(Boolean);
+  if(!ids.length || !deviceGet('session')) return out.length ? out : (ref ? [{gone: true}] : []);
+  try{
+    const s = deviceGet('session');
+    const list = ids.map(i => '"' + String(i).replace(/"/g, '') + '"').join(',');
+    const r = await fetch(FIELD_SUPABASE_URL + '/rest/v1/photos?select=id,path&kind=eq.video&deleted=eq.false'
+      + '&visit_id=in.(' + encodeURIComponent(list) + ')&order=taken_at.asc,id.asc&limit=3', {
+      headers: {'apikey': FIELD_SUPABASE_KEY, 'Authorization': 'Bearer ' + (s && s.access_token)}
+    });
+    if(!r.ok) return out.length ? out : (ref ? [{gone: true}] : []);
+    const rows = await r.json();
+    if(Array.isArray(rows) && rows.length) return rows.filter(x => x && x.path).map(x => ({path: x.path}));
+  }catch(e){}
+  return out.length ? out : (ref ? [{gone: true}] : []);
+}
+async function openVisitVideo(src){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:560px;width:100%;">'
+    + '<h3 style="font-size:16px;margin:0 0 4px;">Visit video</h3>'
+    + '<p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Office only, not emailed \u00b7 kept 7 days</p>'
+    + '<div data-v style="min-height:120px;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--muted);">Loading\u2026</div>'
+    + '<button class="btn btn-primary" type="button" data-close style="width:100%;margin-top:12px;">Close</button></div>';
+  document.body.appendChild(overlay);
+  let url = null;
+  overlay.querySelector('[data-close]').addEventListener('click', ()=>{
+    if(url && url.indexOf('blob:') === 0){ try{ URL.revokeObjectURL(url); }catch(e){} }
+    overlay.remove();
+  });
+  const box = overlay.querySelector('[data-v]');
+  if(src.data) url = src.data;
+  else if(src.path){
+    try{
+      const s = deviceGet('session');
+      const r = await fetch(FIELD_SUPABASE_URL + '/storage/v1/object/' + SYNC_PHOTO_BUCKET + '/' + src.path, {
+        headers: {'apikey': FIELD_SUPABASE_KEY, 'Authorization': 'Bearer ' + (s && s.access_token)}
+      });
+      if(r.ok) url = URL.createObjectURL(await r.blob());
+    }catch(e){}
+  }
+  if(!url){ box.textContent = 'This video couldn\u2019t be loaded (no signal, or past its 7 days).'; return; }
+  box.innerHTML = '';
+  const v = document.createElement('video');
+  v.controls = true; v.playsInline = true; v.src = url;
+  v.style.cssText = 'width:100%;max-height:60vh;border-radius:10px;background:#000;';
+  box.appendChild(v);
+}
+async function addVisitVideoButton(out, sections){
+  const list = await visitVideoSources(sections);
+  const headText = out.querySelector('.report-head > div');
+  if(!headText) return;
+  list.forEach((src, i)=> headText.appendChild(visitVideoButtonFor(src, list.length > 1 ? i + 1 : 0)));
+}
+function visitVideoButtonFor(src, n){
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-ghost';
+  btn.style.cssText = 'width:auto;padding:6px 12px;font-size:12.5px;margin:8px 0 0 8px;';
+  if(src.gone){
+    btn.textContent = 'Video deleted after 7 days';
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+  } else {
+    btn.textContent = '\u25b6 Watch video' + (n ? ' ' + n : '');
+    btn.title = 'The technician\u2019s video \u2014 office only, not in the customer\u2019s email';
+    btn.addEventListener('click', e=>{ e.stopPropagation(); openVisitVideo(src); });
+  }
+  return btn;
+}
+
 async function adminVersion_renderFullCombinedReport(customerId, poolReadingId, spaReadingId, fountainReadingRefs){
   fountainReadingRefs = fountainReadingRefs || [];
   const customer = customers.find(c=>c.id===customerId);
@@ -15099,6 +15753,16 @@ async function adminVersion_renderFullCombinedReport(customerId, poolReadingId, 
   // the real loss, and it is counted here where both are visible at once.
   photosNotOnThisPhone = [];
   for(const s of sections){
+    for(const field of ['photoMore','beforePhotoMore','gatePhotoMore']){
+      if(!Array.isArray(s.reading[field])) continue;
+      const backs = [];
+      for(const ref of s.reading[field]){
+        const back = ref ? await resolvePhoto(ref) : null;
+        if(back) backs.push(back);
+        else if(ref) photosNotOnThisPhone.push(s.label + ' ' + (field === 'photoMore' ? 'after' : field === 'beforePhotoMore' ? 'before' : 'gate'));
+      }
+      s.reading[field] = backs;
+    }
     for(const field of ['photo','beforePhoto','gatePhoto']){
       if(s.reading[field]){
         const back = await resolvePhoto(s.reading[field]);
@@ -15126,8 +15790,17 @@ async function adminVersion_renderFullCombinedReport(customerId, poolReadingId, 
   let sectionsHtml = '';
   let sectionsText = '';
   sections.forEach((s, i)=>{
+    if(s.reading && s.reading.skipped){
+      sectionsHtml += `
+      <h3 style="font-size:13px;color:var(--teal-deep);margin:${i === 0 ? '6px' : '20px'} 0 6px;">${s.label}</h3>
+      <div class="report-notes" style="border-color:#EFC9BC;"><strong style="color:var(--rust);">Skipped this visit</strong>${s.reading.notes ? '<div style="margin-top:4px;">' + s.reading.notes + '</div><div style="font-size:11px;color:var(--muted);margin-top:6px;">The reason is internal only \u2014 not emailed to the customer.</div>' : ''}</div>
+    `;
+      sectionsText += `\n${s.label.toUpperCase()}\nSkipped this visit\n`;
+      return;
+    }
     const photoHtml = s.reading.photo
-      ? `<div style="margin-top:14px;"><img src="${s.reading.photo}" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="${s.label} visit photo"></div>`
+      ? [s.reading.photo].concat(s.reading.photoMore || []).map((src, i, all) =>
+          `<div style="margin-top:14px;">${all.length > 1 ? `<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">After ${i + 1}</div>` : ''}<img src="${src}" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="${s.label} visit photo ${i + 1}"></div>`).join('')
       : '';
     sectionsHtml += `
       <h3 style="font-size:13px;color:var(--teal-deep);margin:${i === 0 ? '6px' : '20px'} 0 6px;">${s.label}</h3>
@@ -15168,6 +15841,8 @@ async function adminVersion_renderFullCombinedReport(customerId, poolReadingId, 
     const headText = out.querySelector('.report-head > div');
     if(headText) headText.appendChild(visitLocationButton(customer, whereAt.visitLocation));
   }
+  // The visit's video (office only, kept 7 days)
+  addVisitVideoButton(out, sections);
 
   const wasRedone = sections.some(s => s.reading && s.reading.isRedo);
   currentReportText = `${reportLabel.toUpperCase()} SERVICE REPORT${wasRedone ? ' (REDONE)' : ''}\n${customer.name}${customer.address ? ' — '+customer.address : ''}\nServiced: ${fmtDateTime(sections[0].reading.date)}\n${sectionsText}`;
@@ -15179,6 +15854,7 @@ async function adminVersion_renderFullCombinedReport(customerId, poolReadingId, 
       fmtDateTime(sections[0].reading.date),
       sections.map(s => ({
         label: s.label,
+        skipped: !!(s.reading && s.reading.skipped),
         readingPairs: s.readingPairs || [],
         productPairs: s.productPairs || [],
         servicePairs: s.servicePairs || []
@@ -15266,6 +15942,16 @@ async function techVersion_renderFullCombinedReport(customerId, poolReadingId, s
   // the real loss, and it is counted here where both are visible at once.
   photosNotOnThisPhone = [];
   for(const s of sections){
+    for(const field of ['photoMore','beforePhotoMore','gatePhotoMore']){
+      if(!Array.isArray(s.reading[field])) continue;
+      const backs = [];
+      for(const ref of s.reading[field]){
+        const back = ref ? await resolvePhoto(ref) : null;
+        if(back) backs.push(back);
+        else if(ref) photosNotOnThisPhone.push(s.label + ' ' + (field === 'photoMore' ? 'after' : field === 'beforePhotoMore' ? 'before' : 'gate'));
+      }
+      s.reading[field] = backs;
+    }
     for(const field of ['photo','beforePhoto','gatePhoto']){
       if(s.reading[field]){
         const back = await resolvePhoto(s.reading[field]);
@@ -15293,8 +15979,17 @@ async function techVersion_renderFullCombinedReport(customerId, poolReadingId, s
   let sectionsHtml = '';
   let sectionsText = '';
   sections.forEach((s, i)=>{
+    if(s.reading && s.reading.skipped){
+      sectionsHtml += `
+      <h3 style="font-size:13px;color:var(--teal-deep);margin:${i === 0 ? '6px' : '20px'} 0 6px;">${s.label}</h3>
+      <div class="report-notes" style="border-color:#EFC9BC;"><strong style="color:var(--rust);">Skipped this visit</strong>${s.reading.notes ? '<div style="margin-top:4px;">' + s.reading.notes + '</div><div style="font-size:11px;color:var(--muted);margin-top:6px;">The reason is internal only \u2014 not emailed to the customer.</div>' : ''}</div>
+    `;
+      sectionsText += `\n${s.label.toUpperCase()}\nSkipped this visit\n`;
+      return;
+    }
     const photoHtml = s.reading.photo
-      ? `<div style="margin-top:14px;"><img src="${s.reading.photo}" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="${s.label} visit photo"></div>`
+      ? [s.reading.photo].concat(s.reading.photoMore || []).map((src, i, all) =>
+          `<div style="margin-top:14px;">${all.length > 1 ? `<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">After ${i + 1}</div>` : ''}<img src="${src}" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="${s.label} visit photo ${i + 1}"></div>`).join('')
       : '';
     sectionsHtml += `
       <h3 style="font-size:13px;color:var(--teal-deep);margin:${i === 0 ? '6px' : '20px'} 0 6px;">${s.label}</h3>
@@ -15346,6 +16041,7 @@ async function techVersion_renderFullCombinedReport(customerId, poolReadingId, s
       fmtDateTime(sections[0].reading.date),
       sections.map(s => ({
         label: s.label,
+        skipped: !!(s.reading && s.reading.skipped),
         readingPairs: s.readingPairs || [],
         productPairs: s.productPairs || [],
         servicePairs: s.servicePairs || []
@@ -15510,6 +16206,10 @@ function buildReportEmailHtml(customer, whenText, sections, opts){
     body += '<tr><td style="padding:22px 0 0;">'
       + '<div style="font-size:16px;font-weight:700;color:#16302E;">' + esc(s.label) + '</div>'
       + '</td></tr>';
+    if(s.skipped){
+      body += '<tr><td style="padding:6px 0 0;font-size:14px;color:#B8492E;font-weight:600;">Skipped this visit</td></tr>';
+      return;
+    }
     if(b.showReadings) body += emailSectionBlock('Readings', s.readingPairs || []);
     body += emailSectionBlock('Chemicals added', s.productPairs || []);
     body += emailSectionBlock('Service performed', s.servicePairs || []);
@@ -16151,6 +16851,9 @@ async function init(){
   document.getElementById('settingVoiceMode').checked = appSettings.voiceModeEnabled;
   document.getElementById('settingWaterBalance').checked = appSettings.showWaterBalance === true;
   document.getElementById('settingRecentReadings').checked = appSettings.showRecentReadings !== false;
+  document.getElementById('settingRecentDosages').checked = appSettings.showRecentDosages === true;
+  document.getElementById('settingLeftHanded').checked = appSettings.leftHanded === true;
+  applyLeftHanded();
   updateVoiceModeIndicator();
   document.getElementById('settingTechniciansTab').checked = appSettings.showTechniciansTab !== false;
   document.getElementById('settingPushToTalk').checked = appSettings.pushToTalkEnabled !== false;

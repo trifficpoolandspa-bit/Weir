@@ -1194,7 +1194,11 @@ input::placeholder{color:#A9BCB9;}
         </label>
       </div>
       <div id="chemConfigChemicalsList"></div>
-      <button class="btn btn-ghost" id="btnAddChemical" style="width:auto;margin-top:10px;">+ Add chemical</button>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
+        <button class="btn btn-ghost" id="btnAddChemical" style="width:auto;">+ Add chemical</button>
+        <!-- Every quick button on this body of water (or all of them) in one colour -->
+        <button class="btn btn-ghost" id="btnAllQuickColors" type="button" style="width:auto;">All quick button colors</button>
+      </div>
     </div>
     <div class="card">
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px;">
@@ -1736,7 +1740,15 @@ input::placeholder{color:#A9BCB9;}
               <span class="toggle-slider"></span>
             </label>
           </div>
-          <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">On by default. When on, each visit's readings page in the app shows a "Last 4 weeks" table of that body of water's past readings above today's fields. Applies to everyone in the company.</p>
+          <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">On by default. When on, each visit's readings page in the app shows a "Last 3 months" table of that body of water's past readings above today's fields. Applies to everyone in the company.</p>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;">
+            <span style="font-size:13.5px;font-weight:600;">Show chemicals added too</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="settingRecentDosages">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <p style="font-size:12.5px;color:var(--muted);margin:8px 0 0;">Adds what was put in at each past visit under the readings. Off to start.</p>
         </div>
       </div>
 
@@ -1867,7 +1879,7 @@ input::placeholder{color:#A9BCB9;}
           <span class="toggle-slider"></span>
         </label>
       </div>
-      <p style="font-size:12.5px;color:var(--muted);margin:16px 0 12px;">Shows a microphone next to the step button in the field apps. Technicians tap it and speak readings or dosages — "chlorine three, pH seven point four" — and the values fill in wherever they belong. It only listens while they speak.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:16px 0 12px;">Shows a microphone next to the step button in the field apps. Technicians hold it and speak readings and dosages — "chlorine three, pH seven point four" — and the values fill in wherever they belong. It only listens while they hold it.</p>
       <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px;">Microphone position</label>
       <div class="btn-row" id="micSideRow">
         <button type="button" class="btn btn-ghost" data-micside="left" style="flex:1;">Left of button</button>
@@ -4540,7 +4552,7 @@ function renderGlobalHistory(){
       : '';
     info.innerHTML = '<div style="font-weight:600;font-size:15px;">' + displayName(entry.customer.name) + tag +
       '</div><div style="font-size:11.5px;color:var(--muted);">' + entry.bodyLabel +
-      (r.isFilterClean ? ' · filter clean' : '') + '</div>';
+      (r.isFilterClean ? ' · filter clean' : '') + (r.skipped ? ' · skipped' : '') + '</div>';
     left.appendChild(chev);
     left.appendChild(info);
     head.appendChild(left);
@@ -4654,7 +4666,7 @@ function renderGlobalHistory(){
         body.appendChild(lbl);
         const wrap = document.createElement('div');
         wrap.className = 'report-photos';
-        [['Before', r.beforePhoto], ['After', r.photo]].forEach(([t, data])=>{
+        reportPhotoPairs(r).forEach(([t, data])=>{
           if(!data) return;
           const holder = document.createElement('div');
           const cap = document.createElement('div');
@@ -8136,8 +8148,8 @@ const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'r
                          // The order of the Technicians list, which the phones follow
                          'technicianOrder'];
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
-  // The "Last 4 weeks" readings table on the phones' visits
-  'showRecentReadings',
+  // The "Last 3 months" readings table on the phones' visits, and its chemicals added rows
+  'showRecentReadings', 'showRecentDosages',
   'requireSkipPhoto', 'requireSkipReason', 'allowRouteReorder', 'showDosageSuggestions',
   'showWaterBalance', 'autoNotifyAll', 'autoNotifyAllLead', 'showPoolSizeInProfile',
   'applyPoolDosagesToAll', 'applyPoolChemicalsToAll'];
@@ -8628,7 +8640,8 @@ function syncApplyVisit(row){
   } else {
     // Photos held here are not on the server, so they are kept
     const kept = {};
-    ['photo', 'beforePhoto', 'gatePhoto', 'afterPhoto', 'customPhotos'].forEach(f=>{
+    ['photo', 'beforePhoto', 'gatePhoto', 'afterPhoto', 'customPhotos', 'video',
+     'photoMore', 'beforePhotoMore', 'gatePhotoMore', 'videoMore'].forEach(f=>{
       if(list[i][f] !== undefined) kept[f] = list[i][f];
     });
     list[i] = Object.assign(incoming, kept);
@@ -8680,12 +8693,38 @@ function syncAttachPhoto(row){
     : (row.body === 'spa' ? 'spaReadings:' + row.customer_id
        : 'fountainReadings:' + row.customer_id + ':' + String(row.body).slice('fountain:'.length));
   const lists = [key, 'skippedVisits:' + row.customer_id];
+  // Before, after and the gate: up to three of each, kept in the order taken.
+  // The first in its usual field, the rest in "<field>More".
+  if(row.kind === 'before' || row.kind === 'after' || row.kind === 'gate' || row.kind === 'video'){
+    const field = row.kind === 'before' ? 'beforePhoto' : row.kind === 'gate' ? 'gatePhoto'
+      : row.kind === 'video' ? 'video' : 'photo';
+    const st = siteUser && siteUser.companyId ? loadSyncState(siteUser.companyId) : null;
+    const known = st ? syncPhotoIndex(st).known : {};
+    const refs = Object.keys(known)
+      .filter(id => { const k = known[id]; return k && !k.deleted && k.kind === row.kind
+        && String(k.visitId) === String(row.visit_id) && String(k.customerId) === String(row.customer_id); })
+      .sort((a, b)=> String(known[a].takenAt || '').localeCompare(String(known[b].takenAt || '')) || a.localeCompare(b))
+      .map(id => PHOTO_REF + id);
+    for(const k of lists){
+      const list = lsGet(k) || [];
+      const i = list.findIndex(x => x && String(x.id) === String(row.visit_id));
+      if(i === -1) continue;
+      // Anything taken here (not from a phone) stays first
+      const own = list[i][field] && !refs.includes(list[i][field]) ? [list[i][field]] : [];
+      const all = own.concat(refs).slice(0, 3);
+      if(all.length) list[i][field] = all[0]; else delete list[i][field];
+      if(all.length > 1) list[i][field + 'More'] = all.slice(1); else delete list[i][field + 'More'];
+      return lsSet(k, list);
+    }
+    return true;
+  }
   for(const k of lists){
     const list = lsGet(k) || [];
     const i = list.findIndex(x => x && String(x.id) === String(row.visit_id));
     if(i === -1) continue;
     const field = row.kind === 'before' ? 'beforePhoto'
       : row.kind === 'gate' ? 'gatePhoto'
+      : row.kind === 'video' ? 'video'
       : row.kind === 'custom' ? null : 'photo';
     const ref = PHOTO_REF + row.id;
     if(row.deleted){
@@ -8721,7 +8760,8 @@ async function syncPullPhotos(state, companyId){
   }
   rows.forEach(row=>{
     idx.known[row.id] = {path: row.path, customerId: row.customer_id, kind: row.kind,
-                         visitId: row.visit_id, equipmentId: row.equipment_id, deleted: !!row.deleted};
+                         visitId: row.visit_id, equipmentId: row.equipment_id, deleted: !!row.deleted,
+                         takenAt: row.taken_at || ''};
     try{ syncAttachPhoto(row); }catch(e){}
     if(!idx.cursor || row.updated_at > idx.cursor) idx.cursor = row.updated_at;
   });
@@ -12619,6 +12659,48 @@ function openDoseRulesModal(item){
   render();
 }
 
+// Choose one colour for many quick buttons at once. Resolves {key, allBodies}
+// or null when cancelled.
+function pickQuickColor(title, offerAllBodies){
+  return new Promise(resolve=>{
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.style.zIndex = '300';
+    overlay.innerHTML = '<div class="confirm-box" style="max-width:340px;">'
+      + '<h3 style="font-size:15px;margin:0 0 12px;"></h3>'
+      + '<div data-grid style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;"></div>'
+      + (offerAllBodies ? '<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-top:12px;cursor:pointer;">'
+          + '<input type="checkbox" data-all style="margin:0;"> Apply to all bodies of water</label>' : '')
+      + '<div class="btn-row" style="margin-top:14px;"><button class="btn btn-ghost" data-cancel style="flex:1;">Cancel</button></div>'
+      + '</div>';
+    overlay.querySelector('h3').textContent = title;
+    document.body.appendChild(overlay);
+    const grid = overlay.querySelector('[data-grid]');
+    const done = val => { try{ document.body.removeChild(overlay); }catch(e){} resolve(val); };
+    Object.keys(QUICK_BUTTON_COLORS).forEach(key=>{
+      const p = QUICK_BUTTON_COLORS[key];
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:5px;'
+        + 'padding:9px 4px;border-radius:10px;cursor:pointer;background:' + p.fill + ';border:1.5px solid ' + p.border + ';';
+      b.innerHTML = '<span style="width:22px;height:22px;border-radius:50%;background:' + p.solid + ';"></span>'
+        + '<span style="font-size:11px;font-weight:700;color:' + p.text + ';">' + p.label + '</span>';
+      b.addEventListener('click', ()=>{
+        const all = overlay.querySelector('[data-all]');
+        done({key: key, allBodies: !!(all && all.checked)});
+      });
+      grid.appendChild(b);
+    });
+    overlay.querySelector('[data-cancel]').addEventListener('click', ()=> done(null));
+  });
+}
+// Every button in one list, one colour (blue stays a plain number)
+function colorAllButtons(item, key){
+  if(!item || !Array.isArray(item.buttons)) return 0;
+  item.buttons = item.buttons.map(b => { const v = btnValue(b); return key === 'blue' ? v : {v: v, c: key}; });
+  return item.buttons.length;
+}
+
 function openColorPicker(item, idx, onDone){
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
@@ -12665,7 +12747,17 @@ function openColorPicker(item, idx, onDone){
   overlay.querySelector('#colorCancel').addEventListener('click', close);
 }
 
+// Quick buttons run lowest to highest, unless this list has been dragged into
+// an order of its own, which is then kept as it is
+function sortQuickButtons(item){
+  if(!item || item.buttonsOrdered === true || !Array.isArray(item.buttons)) return false;
+  const before = JSON.stringify(item.buttons);
+  item.buttons.sort((a, b)=> (parseFloat(btnValue(a)) || 0) - (parseFloat(btnValue(b)) || 0));
+  return JSON.stringify(item.buttons) !== before;
+}
+
 function openQuickButtonsModal(item){
+  if(sortQuickButtons(item)) saveActiveConfig();
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
   overlay.innerHTML = `
@@ -12750,7 +12842,10 @@ function openQuickButtonsModal(item){
         }
         const key = btnColorKey(item.buttons[idx]);
         item.buttons[idx] = key === 'blue' ? parsed : {v: parsed, c: key};
+        // Back into its place by number (unless the order is their own)
+        const moved = sortQuickButtons(item);
         saveActiveConfig();
+        if(moved) renderBody();
       });
       chip.appendChild(numInput);
 
@@ -12785,6 +12880,8 @@ function openQuickButtonsModal(item){
       attachTouchReorder(grip, chip, list, '[data-reorder-key]', (keys)=>{
         const reordered = keys.map(k => item.buttons[parseInt(k, 10)]);
         item.buttons = reordered;
+        // Their own order from now on: kept, not re-sorted by number
+        item.buttonsOrdered = true;
         saveActiveConfig();
         renderBody();
       });
@@ -12800,6 +12897,9 @@ function openQuickButtonsModal(item){
     addBtn.style.padding = '5px 10px';
     addBtn.style.fontSize = '12px';
     addBtn.textContent = '+ Add button';
+    // One row: + Add button (and Sort) on the left, All colors on the far right
+    const addRow = document.createElement('div');
+    addRow.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
     addBtn.addEventListener('click', ()=>{
       if(!Array.isArray(item.buttons)) item.buttons = [];
       item.buttons.push(0);
@@ -12811,7 +12911,43 @@ function openQuickButtonsModal(item){
       const last = fields[fields.length - 1];
       if(last){ last.focus(); last.select(); }
     });
-    body.appendChild(addBtn);
+    addRow.appendChild(addBtn);
+    body.appendChild(addRow);
+
+    // Back to lowest-to-highest, once they've set an order of their own
+    if(item.buttonsOrdered === true && (item.buttons || []).length > 1){
+      const resort = document.createElement('button');
+      resort.type = 'button';
+      resort.className = 'btn btn-ghost';
+      resort.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;margin-left:8px;';
+      resort.textContent = 'Sort low to high';
+      resort.title = 'Put these back in number order (and keep them that way)';
+      resort.addEventListener('click', ()=>{
+        delete item.buttonsOrdered;
+        sortQuickButtons(item);
+        saveActiveConfig();
+        renderBody();
+      });
+      addRow.appendChild(resort);
+    }
+
+    if((item.buttons || []).length){
+      const allColors = document.createElement('button');
+      allColors.type = 'button';
+      allColors.className = 'btn btn-ghost';
+      allColors.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;margin-left:auto;';
+      allColors.textContent = 'All colors';
+      allColors.title = 'Make every button in this list one colour';
+      allColors.addEventListener('click', async ()=>{
+        const pick = await pickQuickColor('Colour for every button here', false);
+        if(!pick) return;
+        colorAllButtons(item, pick.key);
+        saveActiveConfig();
+        renderBody();
+        showToast('All ' + (item.label || 'these') + ' buttons ' + QUICK_BUTTON_COLORS[pick.key].label.toLowerCase());
+      });
+      addRow.appendChild(allColors);
+    }
   }
 
   renderBody();
@@ -14145,11 +14281,13 @@ function photoTechnicianList(step, bodies){
     return box;
   }
   // The gate and the skip rule are one each per person; the rest are per body
-  const columns = (step === 'gate' || step === 'skip')
+  const single = step === 'gate' || step === 'skip' || step === 'video';
+  const columns = single
     ? [[step, '']]
     : PHOTO_BODIES.filter(([key]) => bodies[key]);
-  // Skipping has its own rules on the phone, so it has no Optional
-  const offersOptional = step !== 'skip';
+  // Skipping has its own rules on the phone, so it has no Optional; a video
+  // is only ever optional, so its tick is all there is
+  const offersOptional = step !== 'skip' && step !== 'video';
 
   // Always the technician as they are in the list right now. A sync replaces
   // the whole list with fresh objects, so the one captured when this was drawn
@@ -14161,15 +14299,17 @@ function photoTechnicianList(step, bodies){
     const cur = live(t);
     return step === 'gate' ? cur.requireGatePhoto === true
       : step === 'skip' ? cur.requireSkipProof === true
+      : step === 'video' ? cur.allowVideo === true
       : photoRuleFor(cur, step, key) === true;
   };
   const setOwnTick = (t, key, on)=>{
     const cur = live(t);
     if(step === 'gate') cur.requireGatePhoto = on;
     else if(step === 'skip') cur.requireSkipProof = on;
+    else if(step === 'video') cur.allowVideo = on;
     else setPhotoRule(cur, step, key, on);
   };
-  const everyoneKey = key => (step === 'gate' || step === 'skip') ? step : key;
+  const everyoneKey = key => single ? step : key;
   const tickFor = (t, key)=> ownTick(t, key) || photoEveryoneOn(step, everyoneKey(key));
   const optionalFor = t => photoOptionalFor(live(t), step) || photoEveryoneOn(step, 'optional');
 
@@ -14323,6 +14463,10 @@ function photoTechnicianList(step, bodies){
 // "2 must · 1 optional", read as a sentence. Anyone ticked counts as must,
 // even if their Optional is also on.
 function photoRowCountText(step, bodies){
+  if(step === 'video'){
+    const can = technicians.filter(t => t.allowVideo === true || photoEveryoneOn('video', 'video')).length;
+    return can ? can + (can === 1 ? ' technician can' : ' technicians can') : 'Nobody yet';
+  }
   const must = technicians.filter(t=>
     step === 'gate' ? (t.requireGatePhoto === true || photoEveryoneOn('gate', 'gate'))
     : step === 'skip' ? (t.requireSkipProof === true || photoEveryoneOn('skip', 'skip'))
@@ -14361,6 +14505,10 @@ function renderPhotoRequirements(){
      bodies: {pool: true, spa: true, fountain: true}},
     {step: 'after', label: 'After photo', off: false, why: '',
      bodies: {pool: true, spa: true, fountain: true}},
+    // One short video per visit, never required: a tick lets that technician take one
+    {step: 'video', label: 'Video', off: false,
+     note: 'Optional, up to 3 videos of 15 seconds each per visit. Seen by the office only, never sent to the customer. Videos delete themselves after 7 days to save storage.',
+     bodies: {}, oneTick: true},
     // One photo for the whole visit, so its list is a single tick per person
     {step: 'gate', label: 'Closed gate photo', off: false, why: '',
      bodies: {}, oneTick: true},
@@ -14398,6 +14546,14 @@ function renderPhotoRequirements(){
       name.addEventListener('click', ()=> openPhotoTask(entry.task));
     }
     left.appendChild(name);
+    if(entry.note){
+      // A line of its own under the name
+      left.style.flexWrap = 'wrap';
+      const note = document.createElement('div');
+      note.style.cssText = 'flex-basis:100%;font-size:12px;color:var(--muted);font-weight:400;line-height:1.45;margin-top:2px;';
+      note.textContent = entry.note;
+      left.appendChild(note);
+    }
 
     // Photos the company added can be changed from a button as well as the name
     if(entry.task){
@@ -14677,9 +14833,9 @@ function renderCustomerNotify(){
   if(!card) return;
 
   const cust = customers.find(c => c.id === customCustomerId);
-  if(!cust){ card.style.display = 'none'; return; }
-
-  card.style.display = 'block';
+  // Moved to the customer's profile (On my way message), Sept 30
+  card.style.display = 'none';
+  if(!cust) return;
   document.getElementById('customerNotifyHeading').textContent =
     'Automatic on my way message for ' + displayName(cust.name);
 
@@ -14799,6 +14955,34 @@ document.getElementById('btnAddChemical').addEventListener('click', ()=>{
   renderChemConfigLists();
   const inputs = document.querySelectorAll('#chemConfigChemicalsList input');
   if(inputs.length) inputs[inputs.length - 2].focus();
+});
+
+// All quick button colors: every chemical's and dosage's buttons on this body
+// of water, or on all of them, in one colour
+document.getElementById('btnAllQuickColors').addEventListener('click', async ()=>{
+  const pick = await pickQuickColor('Colour for every quick button', true);
+  if(!pick) return;
+  let lists = [];
+  if(pick.allBodies){
+    if(selectedChemConfigType === 'custom'){
+      // This customer's own setups (bodies still on the company's follow it)
+      const mine = (customCustomerId && customConfig[customCustomerId]) || {};
+      lists = Object.keys(mine).map(k => mine[k]);
+      const here = activeConfigLists();
+      if(here && lists.indexOf(here) === -1) lists.push(here);
+    } else {
+      lists = ['pool', 'spa', 'fountain'].map(k => chemConfig[k]).filter(Boolean);
+    }
+  } else {
+    const here = activeConfigLists();
+    if(here) lists = [here];
+  }
+  let n = 0;
+  lists.forEach(l => ['chemicals', 'dosages'].forEach(part => (l[part] || []).forEach(it => { n += colorAllButtons(it, pick.key); })));
+  saveActiveConfig();
+  renderChemConfigLists();
+  showToast(n + ' quick button' + (n === 1 ? '' : 's') + ' now ' + QUICK_BUTTON_COLORS[pick.key].label.toLowerCase()
+    + (pick.allBodies ? ', on every body of water' : ''));
 });
 
 document.getElementById('btnAddDosage').addEventListener('click', ()=>{
@@ -17638,6 +17822,12 @@ function reportVisitsFor(customer){
       if(r && r.id) all.push({type: sec.type, label: sec.label, r: r});
     });
   });
+  // A whole visit skipped: a report of its own, "Service skipped"
+  (lsGet('skippedVisits:' + customer.id) || []).forEach(sk=>{
+    if(!sk || !sk.id) return;
+    all.push({type: 'skip', label: 'Service skipped',
+      r: {id: sk.id, date: sk.timestamp || sk.date, skipped: true, wholeVisit: true, notes: sk.reason || ''}});
+  });
   all.sort((a, b) => String(a.r.date || '').localeCompare(String(b.r.date || '')));
   const visits = [];
   let cur = null;
@@ -17702,6 +17892,53 @@ function ensureMapLibrary(){
     document.head.appendChild(js);
   });
 }
+// The visit's video: fetched from the office's storage when pressed, never
+// kept on this computer (videos go after 7 days)
+function visitVideoButton(ref, n){
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-ghost';
+  btn.style.cssText = 'width:auto;padding:6px 12px;font-size:12.5px;margin:8px 0 0 8px;';
+  btn.textContent = '\u25b6 Watch video' + (n ? ' ' + n : '');
+  btn.title = 'The technician\u2019s video \u2014 office only, not in the customer\u2019s email';
+  btn.addEventListener('click', e=>{ e.stopPropagation(); openVisitVideo(ref); });
+  return btn;
+}
+async function openVisitVideo(ref){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:640px;width:100%;">'
+    + '<h3 style="font-size:16px;margin:0 0 4px;">Visit video</h3>'
+    + '<p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Office only, not emailed \u00b7 kept 7 days</p>'
+    + '<div data-v style="min-height:120px;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--muted);">Loading\u2026</div>'
+    + '<button class="btn btn-primary" type="button" data-close style="width:100%;margin-top:12px;">Close</button></div>';
+  document.body.appendChild(overlay);
+  let url = null;
+  overlay.querySelector('[data-close]').addEventListener('click', ()=>{
+    if(url){ try{ URL.revokeObjectURL(url); }catch(e){} }
+    overlay.remove();
+  });
+  const box = overlay.querySelector('[data-v]');
+  const id = isPhotoRef(ref) ? ref.slice(PHOTO_REF.length) : null;
+  const rec = id && siteUser && siteUser.companyId
+    ? syncPhotoIndex(loadSyncState(siteUser.companyId)).known[id] : null;
+  if(rec && rec.path && !rec.deleted){
+    try{
+      const session = sbSession();
+      const r = await fetch(SUPABASE_URL + '/storage/v1/object/' + SYNC_PHOTO_BUCKET + '/' + rec.path, {
+        headers: {'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + (session && session.access_token)}
+      });
+      if(r.ok) url = URL.createObjectURL(await r.blob());
+    }catch(e){}
+  }
+  if(!url){ box.textContent = 'This video isn\u2019t available (past its 7 days, or no connection).'; return; }
+  box.innerHTML = '';
+  const v = document.createElement('video');
+  v.controls = true; v.playsInline = true; v.src = url;
+  v.style.cssText = 'width:100%;max-height:65vh;border-radius:10px;background:#000;';
+  box.appendChild(v);
+}
+
 function visitLocationButton(customer, loc){
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -17763,7 +18000,7 @@ async function openVisitLocationMap(customer, loc){
 
 // The report for one body of water, as it has always looked
 function buildReportDoc(customerId, name, customer, type, r, onDelete){
-  const label = historyTypeLabel(customer, type);
+  const label = type === 'skip' ? 'Service' : historyTypeLabel(customer, type);
   const cfgType = type === 'spa' ? 'spa' : (type === 'pool' ? 'pool' : 'fountain');
   const chemList = chemListFor(cfgType);
   const doseList = dosageListFor(cfgType);
@@ -17777,9 +18014,15 @@ function buildReportDoc(customerId, name, customer, type, r, onDelete){
           <h3>${label} service report</h3>
           <div class="rdate">${fmtDate(r.date)}</div>
         </div>
-        <div class="report-badge">Serviced</div>
+        <div class="report-badge"${r.skipped ? ' style="background:#FBEAE6;color:#B8492E;"' : ''}>${r.skipped ? 'Skipped' : 'Serviced'}</div>
       </div>`;
 
+    // Skipped on this visit: said plainly, with the reason the technician gave
+    if(r.skipped){
+      html += '<div class="report-notes" style="border-color:#EFC9BC;"><strong style="color:var(--rust);">'
+        + (r.wholeVisit ? 'Service skipped on this visit' : escapeSyncText(label) + ' skipped on this visit') + '</strong>'
+        + (r.notes ? '<div style="margin-top:4px;">' + escapeSyncText(r.notes) + '</div>' : '') + '</div>';
+    } else {
     html += '<div class="report-sec">Chemical readings</div><table class="report-table">';
     chemList.forEach(chem=>{
       const val = r[chem.key];
@@ -17806,6 +18049,7 @@ function buildReportDoc(customerId, name, customer, type, r, onDelete){
       html += '<div class="report-sec">Service notes</div>';
       html += `<div class="report-notes">${r.notes}</div>`;
     }
+    }
 
     doc.innerHTML = html;
 
@@ -17817,7 +18061,7 @@ function buildReportDoc(customerId, name, customer, type, r, onDelete){
 
       const wrap = document.createElement('div');
       wrap.className = 'report-photos';
-      [['Before', r.beforePhoto], ['After', r.photo]].forEach(([lbl, data])=>{
+      reportPhotoPairs(r).forEach(([lbl, data])=>{
         if(!data) return;
         const holder = document.createElement('div');
         const cap = document.createElement('div');
@@ -17852,12 +18096,18 @@ function buildReportDoc(customerId, name, customer, type, r, onDelete){
     delOpen.style.cssText = 'width:auto;color:var(--rust);border-color:#EFC0B4;';
     delOpen.addEventListener('click', ()=> onDelete());
     footer.appendChild(delOpen);
-    doc.appendChild(footer);
+    if(type !== 'skip') doc.appendChild(footer);
 
   // Start and finish on a map, for the office only (never emailed)
   if(r && r.visitLocation && (r.visitLocation.start || r.visitLocation.end)){
     const headText = doc.querySelector('.report-head > div') || doc;
     headText.appendChild(visitLocationButton(customer, r.visitLocation));
+  }
+  // The technician's video, for the office only (never emailed; kept 7 days)
+  if(r && r.video){
+    const headText = doc.querySelector('.report-head > div') || doc;
+    const vids = [r.video].concat(r.videoMore || []).filter(Boolean);
+    vids.forEach((ref, i)=> headText.appendChild(visitVideoButton(ref, vids.length > 1 ? i + 1 : 0)));
   }
   return doc;
 }
@@ -17920,7 +18170,7 @@ function showHistory(customerId, name){
     when.textContent = fmtDate(v.date);
     const which = document.createElement('span');
     which.style.cssText = 'font-weight:500;color:var(--muted);margin-left:10px;font-size:12.5px;';
-    which.textContent = v.parts.map(p => p.label).join(' \u00b7 ');
+    which.textContent = v.parts.map(p => p.label + (p.r && p.r.skipped ? ' (skipped)' : '')).join(' \u00b7 ');
     when.appendChild(which);
     const right = document.createElement('div');
     right.style.cssText = 'display:flex;align-items:center;gap:10px;flex-shrink:0;';
@@ -17938,7 +18188,8 @@ function showHistory(customerId, name){
       e.stopPropagation();                 // not a press on the bar
       deleteHistoryVisit(customerId, v);
     });
-    right.appendChild(del);
+    // A skipped visit is undone with Reservice on the phone, not deleted here
+    if(!v.parts.every(p => p.type === 'skip')) right.appendChild(del);
     if(repTick){
       const lead = document.createElement('div');
       lead.style.cssText = 'display:flex;align-items:center;min-width:0;';
@@ -18029,14 +18280,35 @@ function showHistory(customerId, name){
   }
 }
 
+// A visit's before and after photos, up to three each, labelled and numbered
+// in the order taken ("After 1", "After 2"), just "Before" / "After" when one
+function reportPhotoPairs(r){
+  const out = [];
+  const add = (word, list)=>{
+    const all = list.filter(Boolean);
+    all.forEach((d, i)=> out.push([word + (all.length > 1 ? ' ' + (i + 1) : ''), d]));
+  };
+  add('Before', [r.beforePhoto].concat(r.beforePhotoMore || []));
+  add('After', [r.photo].concat(r.photoMore || []));
+  return out;
+}
+
 async function openHistoryPhotoModal(source, dateLabel){
-  // Accepts either a reading (with beforePhoto / photo) or a single data URL.
-  // Either may be a database reference rather than the image itself.
-  const before = await resolvePhoto((source && source.beforePhoto) || null);
-  const after = await resolvePhoto(
-    (source && typeof source === 'object' && 'photo' in source)
-      ? source.photo
-      : (typeof source === 'string' ? source : null));
+  // Accepts either a reading (with beforePhoto / photo, and up to two more of
+  // each) or a single data URL. Any may be a database reference.
+  if(source && typeof source === 'object'){
+    const pairs = reportPhotoPairs(source);
+    const shown = [];
+    for(const [label, ref] of pairs){
+      const data = await resolvePhoto(ref);
+      if(data) shown.push([label, data]);
+    }
+    return openPhotoWindow(shown, dateLabel);
+  }
+  const single = await resolvePhoto(typeof source === 'string' ? source : null);
+  return openPhotoWindow(single ? [['After', single]] : [], dateLabel);
+}
+async function openPhotoWindow(shownList, dateLabel){
 
   const shot = (label, data)=> data ? `
     <div style="margin-bottom:14px;">
@@ -18044,8 +18316,8 @@ async function openHistoryPhotoModal(source, dateLabel){
       <img src="${data}" style="width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="${label} photo">
     </div>` : '';
 
-  const body = (before || after)
-    ? shot('Before', before) + shot('After', after)
+  const body = shownList.length
+    ? shownList.map(([label, data]) => shot(label, data)).join('')
     : '<p style="font-size:13px;color:var(--muted);margin:0 0 14px;">No photo was taken on this visit.</p>';
 
   const overlay = document.createElement('div');
@@ -18060,8 +18332,21 @@ async function openHistoryPhotoModal(source, dateLabel){
     </div>
   `;
   document.body.appendChild(overlay);
-  const cleanup = ()=> document.body.removeChild(overlay);
+  // A picture closes from Close, a click anywhere outside it, or Escape
+  // (an exception to windows closing only from their buttons, Sept 30)
+  const onKey = (e)=>{
+    if(e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    cleanup();
+  };
+  const cleanup = ()=>{
+    document.removeEventListener('keydown', onKey, true);
+    if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
+  };
   overlay.querySelector('#historyPhotoClose').addEventListener('click', cleanup);
+  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) cleanup(); });
+  document.addEventListener('keydown', onKey, true);
 }
 
 let isEditingCustomerForm = false;
@@ -18115,8 +18400,15 @@ document.addEventListener('keydown', (e)=>{
   const view = document.getElementById('view-customers');
   if(!view || !view.classList.contains('active')) return;
   if(!profileCustomerId) return;
-  const card = document.getElementById('customerProfileCard');
-  if(!card || card.style.display === 'none') return;
+  // Any of the customer's tabs (Profile, Equipment, Service Reports, Quotes
+  // and Orders): the Back / Previous / Next bar shows on all of them, where
+  // the profile card itself only shows on Profile
+  const bar = document.getElementById('backToListCard');
+  if(!bar || bar.style.display === 'none') return;
+  // Nor while another window (an equipment or report window) is open
+  const open = Array.from(document.querySelectorAll('[id$="Overlay"]'))
+    .some(o => o.style.display && o.style.display !== 'none');
+  if(open) return;
 
   // Not while a dialog or picker is up
   if(document.querySelector('.confirm-overlay')) return;
@@ -18239,6 +18531,81 @@ function resizeImageFile(file, maxDim, quality){
 const DEFAULT_EQUIPMENT_TYPES = ['Filter', 'Pump', 'Cleaning System', 'Chlorination', 'Heater'];
 
 let currentEquipmentTypeOptions = [...DEFAULT_EQUIPMENT_TYPES];
+
+// ---------- Backwashed / Salt cell cleaned, by date ----------
+// {field on the equipment item, field on a visit, words}, or null when this
+// piece of equipment has nothing to date
+function equipmentServiceFor(type, item){
+  const base = baseEquipmentType(type);
+  if(base === 'Filter' && item && (item.filterTypeChoice === 'Sand' || item.filterTypeChoice === 'DE')){
+    return {field: 'lastBackwashed', visitField: 'filterBackwashed', verb: 'Backwashed', title: 'When was the filter last backwashed?'};
+  }
+  if(base === 'Chlorination' && item && item.chlorinationChoice === 'Salt Cell'){
+    return {field: 'saltCellCleanedOn', visitField: 'saltCellCleaned', verb: 'Cleaned', title: 'When was the salt cell last cleaned?'};
+  }
+  return null;
+}
+// The later of the date set here and the last visit a technician ticked it on
+function equipmentServiceLast(item, service){
+  let best = item && item[service.field] ? String(item[service.field]).slice(0, 10) : '';
+  const list = editingId ? (lsGet('readings:' + editingId) || []) : [];
+  list.forEach(r=>{
+    if(!r || !r[service.visitField]) return;
+    const d = new Date(r.date || r.timestamp || 0);
+    if(isNaN(d)) return;
+    const iso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    if(iso > best) best = iso;
+  });
+  return best;
+}
+function equipmentServiceButton(type, service){
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-ghost';
+  btn.style.cssText = 'width:auto;flex:0 0 auto;padding:6px 10px;font-size:12px;white-space:nowrap;';
+  const it = currentEquipmentItems.find(i => i.type === type);
+  const last = equipmentServiceLast(it, service);
+  btn.textContent = last
+    ? service.verb + ' ' + new Date(last + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'})
+    : service.verb + ': set date';
+  btn.title = service.title;
+  btn.addEventListener('click', (e)=>{ e.stopPropagation(); openEquipmentServiceDate(type, service); });
+  return btn;
+}
+function openEquipmentServiceDate(type, service){
+  const it = ensureEquipmentItem(type);
+  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:360px;width:100%;">'
+    + '<h3 style="font-size:16px;margin:0 0 4px;"></h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">The technicians\u2019 \u201clast done\u201d counts from this date, or from a later visit where they ticked it.</p>'
+    + '<input type="date" data-date style="width:100%;margin-bottom:14px;">'
+    + '<button class="btn btn-primary" type="button" data-save style="width:100%;">Save</button>'
+    + '<button class="btn btn-ghost" type="button" data-clear style="width:100%;margin-top:8px;">Clear date</button>'
+    + '<button class="btn btn-ghost" type="button" data-cancel style="width:100%;margin-top:8px;">Cancel</button></div>';
+  overlay.querySelector('h3').textContent = service.title;
+  const input = overlay.querySelector('[data-date]');
+  input.value = it[service.field] ? String(it[service.field]).slice(0, 10) : today;
+  input.max = today;
+  const close = ()=> overlay.remove();
+  overlay.querySelector('[data-cancel]').addEventListener('click', close);
+  overlay.querySelector('[data-clear]').addEventListener('click', ()=>{
+    delete it[service.field];
+    persistCurrentEquipmentItems();
+    close();
+    renderEquipmentTypeList();
+  });
+  overlay.querySelector('[data-save]').addEventListener('click', ()=>{
+    if(!input.value){ showToast('Pick a date'); return; }
+    it[service.field] = input.value;
+    persistCurrentEquipmentItems();
+    close();
+    renderEquipmentTypeList();
+    showToast(service.verb + ' ' + new Date(input.value + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'}));
+  });
+  document.body.appendChild(overlay);
+}
 
 function ensureEquipmentItem(type){
   let it = currentEquipmentItems.find(i => i.type === type);
@@ -18929,6 +19296,12 @@ function renderEquipmentTypeList(){
     middleArea.appendChild(setupBtn);
 
     const existingItem = currentEquipmentItems.find(i => i.type === type);
+
+    // A sand or DE filter can be marked backwashed, and a salt cell cleaned,
+    // on a chosen day: left of the Type box. The phones' "last done" counts
+    // from whichever is later, this date or a technician's tick on a visit.
+    const service = equipmentServiceFor(type, existingItem);
+    if(service) row.appendChild(equipmentServiceButton(type, service));
 
     const quickTextInput = document.createElement('input');
     quickTextInput.type = 'text';
@@ -19931,6 +20304,40 @@ function inlineNotifyContact(cust){
     });
     howPick.value = cust.notifyBy || '';
     howLine.appendChild(howPick);
+
+    // Automatic on my way message (moved here from Customer Customization):
+    // a switch on the same line, and how many stops before once it's on
+    const autoWrap = document.createElement('span');
+    autoWrap.style.cssText = 'display:inline-flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap;';
+    const autoLabel = document.createElement('span');
+    autoLabel.style.cssText = 'font-size:12.5px;color:var(--muted);';
+    autoLabel.textContent = 'Automatic on my way message';
+    const autoSwitch = document.createElement('label');
+    autoSwitch.className = 'toggle-switch';
+    const autoBox = document.createElement('input');
+    autoBox.type = 'checkbox';
+    autoBox.checked = cust.autoNotify === true;
+    const slider = document.createElement('span');
+    slider.className = 'toggle-slider';
+    autoSwitch.appendChild(autoBox);
+    autoSwitch.appendChild(slider);
+    const leadPick = document.createElement('select');
+    leadPick.style.cssText = 'width:auto;';
+    leadPick.title = 'How many stops before them?';
+    [1, 2, 3, 4, 5].forEach(n=>{
+      const o = document.createElement('option');
+      o.value = String(n);
+      o.textContent = n + (n === 1 ? ' stop before' : ' stops before');
+      leadPick.appendChild(o);
+    });
+    leadPick.value = String(cust.autoNotifyLead || 2);
+    const showLead = ()=>{ leadPick.style.display = autoBox.checked ? '' : 'none'; };
+    autoBox.addEventListener('change', showLead);
+    showLead();
+    autoWrap.appendChild(autoLabel);
+    autoWrap.appendChild(autoSwitch);
+    autoWrap.appendChild(leadPick);
+    howLine.appendChild(autoWrap);
     wrap.appendChild(howLine);
 
     const hint = document.createElement('p');
@@ -19955,6 +20362,8 @@ function inlineNotifyContact(cust){
       cust.notifyPhone = formatPhoneNumber(phoneEl.value.trim());
       cust.notifyEmail = emailEl.value.trim();
       cust.notifyBy = howPick.value;
+      cust.autoNotify = autoBox.checked;
+      if(cust.autoNotify) cust.autoNotifyLead = parseInt(leadPick.value, 10) || 2;
       saveCustomerField();
       done();
     }
@@ -20562,11 +20971,14 @@ function viewCustomer(c){
   const notifyContact = notifyOwn ? 'The customer'
     : [c.notifyName, notifyHow === 'email' ? c.notifyEmail : notifyHow === 'text' ? notifyPhoneShown
         : [notifyPhoneShown, c.notifyEmail].filter(Boolean).join(' \u00b7 ')].filter(Boolean).join(' \u00b7 ');
-  const notifyLabel = notifyHowShown
+  const notifyAuto = c.autoNotify === true
+    ? 'Automatic, ' + (c.autoNotifyLead || 2) + ((c.autoNotifyLead || 2) === 1 ? ' stop' : ' stops') + ' before'
+    : '';
+  const notifyLabel = [notifyHowShown
     ? notifyHowShown + ' \u2014 ' + notifyContact
-    : (notifyOwn ? '' : notifyContact);
+    : (notifyOwn ? '' : notifyContact), notifyAuto].filter(Boolean).join(' \u00b7 ');
   profileRow(meta, {
-    label: 'On my way goes to',
+    label: 'On my way message',
     value: notifyLabel,
     placeholder: 'The customer (tap to send it to someone else)',
     editor: inlineNotifyContact(c)
@@ -21425,6 +21837,12 @@ renderMicSideButtons();
 document.getElementById('settingShowDosageSuggestions').checked = appSettings.showDosageSuggestions;
 document.getElementById('settingWaterBalance').checked = appSettings.showWaterBalance === true;
 document.getElementById('settingRecentReadings').checked = appSettings.showRecentReadings !== false;
+document.getElementById('settingRecentDosages').checked = appSettings.showRecentDosages === true;
+document.getElementById('settingRecentDosages').addEventListener('change', (e)=>{
+  appSettings.showRecentDosages = e.target.checked;
+  saveSettings();
+  showToast(appSettings.showRecentDosages ? 'Chemicals added shown in the readings history' : 'Chemicals added hidden');
+});
 document.getElementById('settingRecentReadings').addEventListener('change', (e)=>{
   appSettings.showRecentReadings = e.target.checked;
   saveSettings();
