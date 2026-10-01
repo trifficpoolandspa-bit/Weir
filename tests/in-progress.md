@@ -269,13 +269,402 @@ Last updated: Sept 27, 2026
 
 **1cq. One phone app for technicians and admins** — *suite-tested Sept 27; not yet tried on a phone*
 *(Files: `app.html` (new), `technician-app.html` and `admin-readings-app.html` (now forwarding pages), `index.html`, `sw.js`; tests: `phone-app.js` (new helper), every suite's first line, `audit.py`, `behaviour-test-1.js`, `visit-flow-test.js`, `error-test.js`)*
-1cq.1. `app.html` is the one phone app. Everyone signs in the same way; someone with admin access also gets the Technicians, Customer and Report tabs, the admin settings (voice button, Technicians tab) and Save report. A technician gets Today, Serviced and Settings with the Voice entry mode switch, as before. The header reads just "Weir"; the sign-in card "Weir — Sign in to see your route."
+1cq.1. `app.html` is the one phone app. Everyone signs in the same way; someone with admin access also gets the Technicians, Customer and Report tabs, the admin settings (voice button, Technicians tab) and Save report. A technician gets Today, Serviced and Settings with the Voice entry mode switch, as before. The header reads just "Weir"; the sign-in card "Weir — Sign in to see your route." **Tyrus tested Sept 29 ✓**
 1cq.2. Where the two apps behaved differently, each keeps its own: report heading / email subject and HIGH/LOW tags, servicing or starting a job on another day, voice entry, the Equipment tab, filter cleans on other days and their FILTER CLEAN tag, "Carry on with this report", Serviced as its own tab vs inside Report, and the route order bar (a technician's order stays on the phone; an admin's Every week is the company order).
-1cq.3. Fixes that existed in one app only now apply to both: signing out with changes not yet at the office asks first (was technician only); coming back to Today refreshes it and closes an open briefing (a typo stopped this in the admin app); a finished report can't be undone by a later cancel (was technician only); an extra body of water with a custom setup reads its own fields (was admin only).
-1cq.4. Admin access switched on or off at the office: the phone picks it up at the next sync or when the app comes back to the front, and the tabs change without signing out (an admin on an admin-only tab lands on Today). Before, a demoted admin was signed out.
+1cq.3. Fixes that existed in one app only now apply to both: signing out with changes not yet at the office asks first (was technician only); coming back to Today refreshes it and closes an open briefing (a typo stopped this in the admin app); a finished report can't be undone by a later cancel (was technician only); an extra body of water with a custom setup reads its own fields (was admin only). **Tyrus tested Sept 30 ✓**
+1cq.4. Admin access switched on or off at the office: the phone picks it up at the next sync or when the app comes back to the front, and the tabs change without signing out (an admin on an admin-only tab lands on Today). Before, a demoted admin was signed out. **Tyrus tested Sept 29 ✓**
+1cq.9. *(Sept 29)* Admin access is now checked with every sync, as well as when the app comes back to the front and when signal returns, and the tabs switch the moment the answer comes back (it used to look 1.5 seconds later, often before the check had finished, and a sync didn't check at all). Turning admin access on or off at the office shows on the phone at its next sync, with no reload. *Not yet tested.* **Tyrus tested Sept 29 ✓**
 1cq.5. Phones move over by themselves: the sign-in page sends everyone to `app.html`; the old two addresses forward there, keeping anything after the ? (setup links); the offline copy is renamed (`weir-cache-v9`) so every phone takes the new files. Both old apps already kept everything in the same place on the phone, so nothing waiting to send is lost.
 1cq.6. Suites: the old file names now load `app.html` as a technician or an admin (`phone-app.js`), so every existing check runs against the merged app. New checks in part 1 (what each person sees, Serviced for a technician, losing and regaining admin access, sign-out asking, the forwarding pages, sign-in and offline copy). Updated: the build stamp (`app-…`), three visit-flow source checks, visit-flow's "yesterday" check (wrong on a Sunday, on any version), and part 4's sign-in checks (a technician or a demoted admin now gets in with the technician's tabs instead of being refused; the landing page sends both to `app.html`; admin access switched off and on changes the tabs without signing out).
+1cq.8. *(Reported Sept 27)* Every week on Today put the moved customers straight back, while Just today kept them. Cause: the day's saved route order still listed those customers under another route too (e.g. Unassigned, from before they were given to a technician); that older copy was read first. Every week now removes the moved customers from every other route that day. Reproduced (fails on the live app, passes now) in visit-flow and, through a real sync against the practice server, in part 4.
 1cq.7. Full run on the final files, every suite passing: part 1 333, part 2 226, part 3 345, part 4 902, visit-flow 588, offline 328, customer customization 222, deep 402, reportemail 126, email 116, visitphoto 89, lsi 84, error 78, package 68, draft 54, back 32, clip 24, dosescale 23, retention 20, photo 11; audit clean. Part 4 and offline share the practice database, so run them one after the other, not side by side.
+
+**1cr. Extra service days in the app's Customer tab** — *suite-checked Sept 29 (part 1); not yet tried on a phone or in a browser*
+*(File: `app.html`)*
+1cr.1. Under Service day, a new "Extra days" row shows the other six days as buttons; tap one to add it, tap again to take it off. Picking a main day that was an extra takes it off the extras. Saved as the customer's extraDays, the same as the website's "+ Add a day", so it reaches the office and the website shows it. **Tyrus tested Sept 29 ✓**
+
+**1cs. Backup & restore moved to Settings in the app** — *suite-checked Sept 29 (part 1); not yet tried on a phone or in a browser*
+*(File: `app.html`)*
+1cs.1. The Backup & restore card (Download backup, Restore from backup) moved from the Customer tab to Settings, at the end of the admin settings. Admins only, as before (technicians never had it). Buttons and what they do are unchanged. **Tyrus tested Sept 29 ✓**
+1cs.2. Settings now opens with Signed in (Sign out) at the top, then Office sync, then Backup & restore (admins only), then the rest as before.
+
+**1ct. The × on the same line as its field (app, Customer tab)** — *suite-checked Sept 29 (part 1); not yet tried on a phone or in a browser*
+*(File: `app.html`)*
+1ct.1. In the customer form, each dog and each extra body of water had its × drop below the field. The app never had the website's layout for these rows; it now does (field and × on one line, × in the website's red). The app's other × buttons were already on their own line. **Tyrus tested Sept 29 ✓**
+
+**1cu. "On my way goes to" shows text or email (website, customer profile)** — *suite-checked Sept 29 (part 1); not yet tried on a phone or in a browser*
+*(File: `customer-intake.html`)*
+1cu.1. The closed row now starts with how the message goes: "Text message", "Email", or "Text or email, asked each time" (both on file, nothing chosen), then who: "The customer" or the other contact. Worked out the same way the app decides when it sends. For someone else, it shows their email when it goes by email and their phone when by text (before, always the phone). Nothing on file at all still shows the grey placeholder.
+1cu.2. *(Sept 29)* The "On my way goes to" phone number is shown, typed and saved as (623) 555-0142, the same as the customer's own phone. Numbers saved before show that way too. *Suite-checked Sept 29.* **Tyrus tested Sept 29 ✓**
+
+**1cv. Unskip a skipped body of water (app, during a visit)** — *suite-checked Sept 29 (part 1); not yet tried on a phone or in a browser*
+*(File: `app.html`)*
+1cv.1. With more than one body of water, going back to the tab of one already skipped and pressing its Skip button now asks "Unskip it?". Yes puts it back on the service report, opens it at its first step (before photo, when that step is on), and drops the skip's photo and note if one was asked for. Cancel leaves it skipped. Once every body is done or skipped the report goes, so the last one can't be unskipped this way. **Tyrus tested Sept 29 ✓** (skip photo and note part too)
+
+**1cw. Seasons for dosage rules and quick buttons** — *suite-checked Sept 29 (part 1); not yet tried on a phone or in a browser*
+*(Files: `customer-intake.html`, `app.html`, `sw.js` (cache v10))*
+1cw.1. Website, Readings and dosages: on the Restore default labels line, far right, an Add season button (the calendar button beside it was removed Sept 29). Both open an "Add a season" window (name, From and To dates; the year doesn't matter, it repeats every year); the calendar opens straight onto picking the first day, then the last. Closes from its own buttons only. Up to four seasons; dates can't overlap another season; a season can run over New Year. **Tyrus tested Sept 29 ✓**
+1cw.2. A new season starts as a copy of the year-round dosage rules and quick buttons. Once there is a season, a Seasons strip appears (Year-round and each season, the one in use today marked "now"). Choosing a season shows and edits its dosage rules and quick buttons; labels, units and which chemicals and dosages are recorded stay shared. "Remove this season" deletes it. Leaving the page comes back on Year-round. **Tyrus tested Sept 29 ✓**
+1cw.4. *(Sept 29)* "Edit this season" (dark teal) sits left of Add season while a season is chosen in the Seasons strip (hidden on Year-round). It opens the same window filled in with that season's name and dates, titled Edit <name>, with Save changes; it changes only the name and dates (its rules and buttons are kept), checks the name and overlaps against the other seasons, and doesn't count toward the four. *Suite-checked Sept 29.* **Tyrus tested Sept 29 ✓**
+1cw.5. *(Sept 29)* Each season now has its own whole setup, not only its own rules and buttons: its own chemicals and dosages, labels and units. Taking a chemical off Summer, adding one, renaming one or changing a unit changes Summer only; year-round and the other seasons keep theirs. A new season starts as a full copy of year-round. The app uses the season's own lists on its days. Seasons saved before still work (year-round with their rules and buttons laid over) and become their own full copy the first time they're changed. "Apply to all bodies of water" while a season is showing applies within that season. *Not yet tested.* **Tyrus tested Sept 29 ✓**
+1cw.6. *(Sept 29)* Changes on Year-round are carried into every season too (never the other way): a chemical or dosage added, taken off or moved, and anything changed on one (name, unit, required tick, dosage rules, quick buttons), and anything on the body of water itself. Only what changed is carried, so whatever a season set differently on everything else stays. A chemical a season took off itself isn't put back by a change to it on Year-round (only by adding it anew). The Year-round note on the page says so. *Not yet tested.* **Tyrus tested Sept 29 ✓**
+1cw.3. The app uses the season covering today whenever it loads the setup (start, every visit, and when a change arrives from the office); any other day the year-round ones. Seasons sync like the rest of the setup (`chemSeasons`). Customers with their own custom setup keep their own rules and buttons; where they fall back to the standard lists, they get the season's. **Tyrus tested Sept 29 ✓**
+
+**1cx. Technicians tab: opening a technician crashed** — *suite-checked Sept 29 (part 1); not yet tried on a phone or in a browser*
+*(File: `app.html`)*
+1cx.1. *(Reported)* Tapping a technician gave "Something went wrong … orders[techRouteDay].filter is not a function". The office's weekly route order for a day is kept per technician (Monday → each technician's list), and this screen read it as one list, so any day with a saved order crashed it (Every week on a phone saves one). It now reads that technician's own list, still accepts the older single-list form, and treats anything else as no order.
+
+**1cy. Technicians tab: a dragged route order now saves and reaches everyone** — *suite-checked Sept 29 (part 1); not yet tried on a phone or in a browser*
+*(Files: `app.html`, `sw.js` (cache v11))*
+1cy.1. *(Reported)* Reordering a technician's customers on the Technicians tab didn't save. It was written to a key on that phone only, which nothing else reads and the next sync from the office wiped. It now saves as the office's weekly order for that technician's day (the same one the website's Routes page and Every week use), and goes to the office straight away, or with the next sync without signal. The Technicians tab now shows that office order first.
+1cy.2. On the technician's phone: when the office's weekly order for one of their days changes, it replaces any every-week order they had saved on the phone for that day, so the newer order wins. A Just today order stays for that day. Nothing is dropped the first time the office's orders arrive on a phone.
+
+**1cz. Move on a technician's route: another technician too** — *suite-checked Sept 29 (part 1); not yet tried on a phone or in a browser*
+*(File: `app.html`)*
+1cz.1. Technicians tab, a technician's route, Move: the window now has a Technician list under New date (their own technician first, marked "(assigned)"; Sept 29, was "(as now)"). Pick a date, another technician, or both.
+1cz.2. Just this once: the visit goes to that date (the same day if no date is picked) on the chosen technician's route, for that one visit only (the move carries technicianId). It shows on that technician's Today and their route on the Technicians tab, marked Moved here, and leaves the regular technician's.
+1cz.3. Change their regular day: a date changes their regular day; a technician makes them that technician's customer from now on (both if both are picked). Asks first. **Tyrus tested Sept 29 ✓**
+1cz.5. *(Sept 29)* Move's New date starts on today's date, like Reschedule on Today already did. Picking only another technician (leaving the date alone) still keeps the day they're on; changing the date, or not picking a technician, uses the date shown. *Suite-checked Sept 29.* **Tyrus tested Sept 29 ✓**
+1cz.7. *(Sept 29)* Move (Technicians tab) and Reschedule (Today) now start with the date box empty, waiting for a date, instead of today's date. Picking only another technician keeps the day they're on. An admin's Reschedule no longer pops the calendar open over the window (it can be a technician-only move); a technician's date-only Reschedule still opens the calendar first, empty. *Not yet tested.* **Tyrus tested Sept 29 ✓**
+1cz.6. *(Sept 29)* Move on a technician's route answers a press anywhere within 10px of it, not only on the button itself. *Not yet tested.*
+1cz.8. *(Sept 29)* Move's press area now runs the full height of the row, top to bottom, out to the row's right edge and 10px left of the button (replacing the 10px margin). The button looks the same. *Not yet tested.* **Tyrus tested Sept 29 ✓**
+1cz.9. *(Sept 29)* The Technicians tab's Move button now says Reschedule, and its window is titled Reschedule <name> (the same as Today and the website). *Not yet tested.* **Tyrus tested Sept 29 ✓**
+1cz.4. *(Sept 29)* Move stays pressable on a customer who has already been serviced (it used to grey out), so they can still be moved to any date or technician. *Suite-checked Sept 29.* **Tyrus tested Sept 29 ✓**
+
+**1da. Today opens on today when coming back from another tab** — *suite-checked Sept 29 (part 1); not yet tried on a phone or in a browser*
+*(File: `app.html`)*
+1da.1. Picking another day on Today (day buttons, arrows or the calendar), going to another tab, then back to Today now shows today's list, this week. Coming back from a visit keeps the day that visit was on, so finishing a stop on another day doesn't jump away from it.
+
+**1db. Today's date arrows side by side** — *suite-checked Sept 29 (part 1); not yet tried on a phone or in a browser*
+*(File: `app.html`)*
+1db.2. *(Sept 29)* The date is now centred in the space between the left edge of the bar and the ‹ arrow (not the middle of the whole bar). **Tyrus tested Sept 29 ✓**
+1db.3. *(Sept 29)* The calendar button moved to just left of the ‹ arrow: the date (centred in the space left of the calendar), then the calendar, then ‹ ›. *Suite-checked Sept 29.* **Tyrus tested Sept 29 ✓**
+1db.1. On Today, the ‹ arrow moved from the left end to just left of the › arrow, so both sit together on the right before the calendar button. The date now starts at the left instead of sitting in the middle. The arrows work as before.
+
+**1dc. Technician page like a customer's profile; stronger row headers; keys** — *suite-checked Sept 29 (part 1); not yet tried on a phone or in a browser*
+*(File: `customer-intake.html`)*
+1dc.1. Technicians list: the Edit button is gone; clicking anywhere on a row (not the grip or Delete) opens the technician. The Add technician form is unchanged.
+1dc.2. The technician page is laid out like a customer's profile: a card with Back to Technicians and Previous / Next technician (list order; greyed at the ends), a card with the name large and the Profile / Customers tabs, then the Profile card (name, customer count, "Tap any field to edit it", then Name, Email, Phone, Username, Password as tap-to-edit rows that save as you leave them). The three tick boxes (Admin access, Can rearrange their route, Equipment photo access) show what they do underneath instead of on hover, save when ticked, and Admin access still ticks and locks the other two. Admin access's description now says the admin tabs in the app (there is no separate admin app). The empty "What this technician must do" heading is gone. The Customers tab is unchanged.
+1dc.3. Row headers on customer and technician profiles are larger and bolder, in the lighter teal (Sept 29: first the darker teal, which looked too close to the near-black value under it). **Tyrus tested Sept 29 ✓**
+1dc.4. Keys: on a technician's page, Left / Right go to the previous / next technician (staying on the same tab) and Escape goes back to Technicians. On a customer's profile, Escape goes back to the customer list (Left / Right already stepped between customers). None of these act while typing in a field or while a window is open.
+1dc.5. Technicians page order: Signing in on a phone first, then the Technicians / Photo requirements tabs, then + Add technician. Signing in on a phone now shows on both tabs (before, only on Technicians).
+
+**1dd. Website side menu order** — *suite-checked Sept 29 (part 1); not yet tried on a phone or in a browser*
+*(File: `customer-intake.html`)*
+1dd.1. The left-hand tabs now run Customers, Technicians, Customer Customization, Route Scheduling, then Readings and Dosages, Products and Services, WorkCenter, History / Billing, Settings as before.
+1dd.2. The down and up arrow keys go to the next and previous tab in the left menu (stopping at Settings and at Customers). Not while typing in a field, with Ctrl/Alt/Shift held, or while a window is open. The up and down arrows no longer scroll the page.
+1dc.6. Previous / Next (buttons or ← →) on a customer's profile or a technician's page now keeps the page where it's scrolled to, instead of jumping back to the top. Opening a customer or technician from the list still starts at the top.
+1dc.7. A customer's profile: the top line now has a small note between Back to Customer List and Previous / Next: "Use the ← → arrow keys to scroll between customers".
+1dc.8. The same note on a technician's page, between Back to Technicians and Previous / Next: "Use the ← → arrow keys to scroll between technicians". *Suite-checked Sept 29.*
+1dc.9. *(Reported Sept 29)* On a technician's profile, clicking one field and then another stuttered and needed a second click. Closing a field redrew the whole profile, which could throw away the field just opened (always a risk with Username and Password, which finish only after the office answers). Now, if another field is already open, only the closed row is put back; and a row no longer reopens itself on the next redraw. *Suite-checked Sept 29; not reproduced by hand.* **Tyrus tested Sept 29 ✓**
+1dc.10. *(Reported Sept 29)* A customer's profile could have several rows open at once: the rows with a Done button (address, On my way goes to, bodies of water, sizes, dogs) stayed open when another row was clicked. Now clicking any row first saves and closes whatever is open (pressing its Done, or leaving its box), then opens the clicked row with that one click, ready to type in. *Suite-checked Sept 29.* **Tyrus tested Sept 29 ✓**
+1dc.11. *(Reported Sept 29)* Clicking another row always closed the open one but didn't always open the one clicked. Cause: the page-wide "one click leaves a field" helper closes the open field at the first instant of the press (pointerdown), which saves and redraws the profile before the pressed row had noted itself (it waited for mousedown), so the redrawn row didn't open. The pressed row is now noted at pointerdown, before that helper runs. Applies to customer and technician profiles (likely the technician stutter too). *Suite-checked Sept 29.* **Tyrus tested Sept 29 ✓**
+1dc.12. *(Reported Sept 29)* Clicking between fields on a customer's profile jumped the page: every save redrew the profile and scrolled it back into view. Redraws from inside the profile (a row saving or another opening, the name, service day, extra days and technician pickers) now keep the page exactly where it is. The technician profile's redraw keeps it still too. Opening a customer from the list still brings their profile into view. *Suite-checked Sept 29.* **Tyrus tested Sept 29 ✓**
+
+**Sept 29 check run.** Every suite passes on the files as handed over: part 1 431 (99 new checks for 1cr–1dd), part 2 226, part 3 345, part 4 908, visit-flow 590, offline 328, customer customization 222, deep 402, reportemail 126, email 116, visitphoto 89, lsi 84, error 78, package 68, draft 54, back 32, clip 24, dosescale 23, retention 20, photo 11; audit clean. Checks changed because the behaviour was meant to change: part 3's menu position of Customer Customization, part 4's technician tick-box rows, visit-flow's Technicians-tab order (it tested for the old phone-only save), part 1's offline cache name. Still needs eyes: how the × rows, the date arrows and the stronger headers look; the date pickers opening; a real backup download; orders and one-off moves reaching another phone through a real sync.
+
+**1de. Today's top section fixed to the top; the Weir bar gone on phones** — *suite-checked Sept 29 (part 1); not yet tried on a phone or in a browser*
+*(File: `app.html`)*
+1de.1. The day of the week, Reverse route order, the stops and jobs counts, the date, the arrows and the calendar are now their own card, which stays fixed at the top while the customers scroll under it. The route (and Jobs for today) is a separate card below. Before, the one card held the route too, so it was as tall as the list and never stayed put. **Tyrus tested Sept 29 ✓**
+1de.2. On a phone, the teal bar at the very top with the Weir logo is gone, giving the route more room; the bottom bar does the navigating. On a computer the bar stays (it holds the tabs), and the fixed card, the visit's body-of-water tabs and the Serviced / Reports switch now sit just under it instead of sliding behind it.
+1de.3. The same on the Technicians tab, a technician's route: the stops and jobs counts, their name, Back, the date, arrows and calendar are their own card fixed at the top; their customers scroll under it in a card below. **Tyrus tested Sept 29 ✓**
+1de.4. *(Reported Sept 29)* The fixed top section shifted a little as scrolling began, and the customers showed through the gap above it. It is now held exactly where it starts (it slid up the 12px of page padding before sticking), and a page-coloured backing fills the gap above and beside it down to its bottom edge, so the customers disappear as they pass under the bottom of it. Same on a technician's route. *Suite-checked Sept 29.* **Tyrus tested Sept 29 ✓**
+1de.5. *(Sept 29)* Bigger now there's room, on Today and on a technician's route (Technicians tab): the stops / jobs numbers 14 → 20 and their words 11.5 → 13, the date 14 → 16, the ‹ › arrows larger (21, more padding), the calendar button larger (20 icon). Today's two counters get a little more space between and above them. *Suite-checked Sept 29.* **Tyrus tested Sept 29 ✓**
+1de.6. *(Sept 29)* Today's stops left numbers are ocean blue (#1565C0; forest green before, changed Sept 29) and jobs left numbers amber (#D97706); the words stay grey. Twice the space (16px) between the day / Reverse route order row and the counters. Technicians tab route unchanged. *Suite-checked Sept 29.* **Tyrus tested Sept 29 ✓**
+1de.7. *(Sept 29)* The fixed top section's page-coloured backing now stops where its bottom corners begin to curve, so the list is cut off on that line and the corner cut-outs show no extra page-coloured space. Today and a technician's route alike. *Not yet tested.* **Tyrus tested Sept 29 ✓**
+
+**1df. Reschedule opens the calendar straight away** — *suite-checked Sept 29 (part 1); not yet tried on a phone or in a browser*
+*(File: `app.html`)*
+1df.1. Pressing Reschedule on a customer on Today now opens the phone's calendar picker at once, on today's date, over the Reschedule window. Where a browser can't open it by itself, the date box is ready to tap.
+1df.2. For an admin, Reschedule on Today opens the same window as Move on the Technicians tab (New date plus the Technician list, Just this once / Change their regular day), titled Reschedule, for the day on screen, with the calendar opening first. Technicians keep the date-only Reschedule window.
+
+**1dg. A technician's Serviced tab shows only their own pools** — *suite-checked Sept 29 (part 1); not yet tried on a phone or in a browser*
+*(File: `app.html`)*
+1dg.1. *(Reported)* The Serviced tab on a technician's phone listed every pool the company serviced that day, other technicians' included. It now lists only pools assigned to that technician, plus any moved to them just for that day. An admin's Serviced (inside Report) still shows everyone's. **Tyrus tested Sept 29 ✓**
+1dg.2. *(Reported Sept 29)* Today's "x of y stops left" counted every technician's customers serviced that day as finished stops, so a technician with no customers saw e.g. "0 of 20". Now only their own customers count; with none, the count is blank. The same fix on an admin's Today: finished stops count only the route being looked at (everyone's under All customers). **Tyrus tested Sept 29 ✓**
+1dg.3. *(Sept 29)* The stop count on Today always shows, "0 of 0 stops left" included (before, it hid when there were no stops). Admin and technician alike. The jobs count already always showed. *Not yet tested.* **Tyrus tested Sept 29 ✓**
+
+**1dh. New dosage rules start with "by pool size" ticked** — *suite-checked Sept 29 (part 1); not yet tried on a phone or in a browser*
+*(File: `customer-intake.html`)*
+1dh.1. On Readings and dosages (and Customer Customization, which uses the same rule editor), + Add rule now starts the rule with "by pool size" ticked: its amount is per 10,000 gallons and scaled to each pool's own size. Rules already written are left exactly as they are (ticked or not), so no dose changes by itself. **Tyrus tested Sept 29 ✓**
+
+**Sept 29 afternoon check run.** Every suite passes on the files as handed over: part 1 478 (47 new checks for 1cz.4–1dh), part 2 226, part 3 345, part 4 908, visit-flow 590, offline 328, customer customization 222, deep 402, reportemail 126, email 116, visitphoto 89, lsi 84, error 78, package 68, draft 54, back 32, clip 24, dosescale 23, retention 20, photo 11; audit clean. Checks changed because the behaviour was meant to change: visit-flow's Reschedule checks now accept the Move window an admin gets; part 1's Move date check picks the date the way a person does. Offline's "could not reach the server" check failed once with every suite running at once and passed alone. Still needs eyes: the fixed top section not moving while scrolling on a real phone, the colours and sizes, the calendar opening by itself.
+
+**1di. The app always opens on Today's list** — *not yet tested (Sept 29)*
+*(File: `app.html`)*
+1di.1. *(Reported)* Signing out (from Settings) and back in left you on Settings. Signing in now always lands on Today, on today's list. **Tyrus tested Sept 29 ✓**
+1di.2. Coming back to the app (reopening it, switching back to it, turning the screen back on) also goes to Today, on today's list, unless something is being worked on: a report open, a customer or technician being edited, a window up, or nobody signed in. That keeps a trip to the camera from throwing away a visit or an edit. A fresh start already opened on Today. **Tyrus tested Sept 29 ✓**
+1di.3. *(Sept 29)* An open report always comes back. If a report was open when another tab was pressed (even with nothing typed yet), pressing Today goes back into that report, and so does coming back to the app, both at the page it was on. Only finishing it, cancelling it or leaving it for the route (Return to route) lets Today show the list again. *Not yet tested.* **Tyrus tested Sept 29 ✓**
+
+**1dj. Phones follow the website's technician order** — *not yet tested (Sept 29)*
+*(Files: `customer-intake.html`, `app.html`)*
+1dj.1. Reordering the Technicians list on the website now also saves the order as `technicianOrder`, which syncs with the rest of the setup (each technician travels on their own, so the order never used to reach the phones). The app lists technicians in that order on the Technicians tab, in Move / Reschedule's technician list, the customer form's technician list and the admin's technician picker; anyone not in the order yet goes at the end. A new order redraws the phone's Technicians list if it's showing. Another computer with the website open follows a reorder too. The order is first sent the next time the list is saved (a reorder, or adding / editing a technician).
+1dj.2. *(Sept 29)* The drag grip on the website's Technicians list is gone: technicians can no longer be reordered by dragging. The order they're in stays, and still reaches the phones whenever the list is saved (adding or editing a technician). **Tyrus tested Sept 29 ✓**
+1dj.3. *(Sept 29)* Technicians are now always in alphabetical order, on the website and in the app: every list and dropdown, the website's Previous / Next technician, the Reschedule windows, the customer form, the admin's pickers. A new or renamed technician takes their place in the order. The website-order setting (technicianOrder) no longer changes anything. *Not yet tested.* **Tyrus tested Sept 29 ✓**
+
+**1dk. Technicians tab tidy-up (app)** — *not yet tested (Sept 29)*
+*(File: `app.html`)*
+1dk.1. ~~The technician list shows each technician's email on the name's line~~ Taken back off Sept 29: the technician list shows name, then customer count and phone, as before. **Tyrus tested Sept 29 ✓**
+1dk.2. A technician's route: the name, phone and email are gone from the fixed top section. Its date row now matches Today's: the date centred in its space, then the calendar button, then ‹ ›. **Tyrus tested Sept 29 ✓**
+1dk.3. A technician's route: stops left numbers ocean blue and jobs left amber, the same as Today. **Tyrus tested Sept 29 ✓**
+1dk.5. *(Sept 29)* The stops left and jobs left numbers are now both amber (#D97706), on Today and on a technician's route (the stops numbers were ocean blue). *Not yet tested.* **Tyrus tested Sept 29 ✓**
+1dk.6. *(Sept 29)* Opening a technician's route on the app's Technicians tab always starts on today (it used to keep the last day looked at). Coming back to the tab within 30 seconds still shows the route as it was left. *Not yet tested.* **Tyrus tested Sept 30 ✓**
+1dk.4. *(Sept 29)* The app's technician list no longer shows each technician's phone. When a technician has customers moved to them just once (today or later, someone else's customers), their row starts with that count, e.g. "2 temporary customers · 14 customers"; otherwise just "14 customers". *Not yet tested.* **Tyrus tested Sept 29 ✓**
+
+**1dl. Technicians tab: dragging a route asks Just today / Every week / Remove changes** — *not yet tested (Sept 29)*
+*(Files: `app.html`; `tests/behaviour-test-1.js` updated, not run)*
+1dl.1. Dragging a customer on a technician's route no longer saves straight away as every week. The new order shows, and the same bar as on Today asks: Just today, Every week, or Remove changes (each asks to confirm, as on Today). **Tyrus tested Sept 29 ✓**
+1dl.2. Every week: the office's weekly order for that technician's day, as before (the website shows it, their phone follows it); it also clears any Just today for that date. **Tyrus tested Sept 29 ✓**
+1dl.3. Just today: the office's one-off order for that technician and date only, kept in a new synced setting `routeOrdersOnce` and sent up the same way as the weekly order (owners and admins). Their phone uses it for that date, ahead of their own weekly order; a newer one from the office replaces a Just today they set themselves for that date. An admin looking at that technician's route on Today sees it too. Old dates are dropped as new ones are saved. The website doesn't show it (it has no per-date route order). **Tyrus tested Sept 29 ✓**
+1dl.4. Remove changes puts the route back as it was before the drag. Going to another day, another technician, Back or another tab lets an unanswered drag go. **Tyrus tested Sept 29 ✓**
+
+**1dm. Full-size photo: no black band behind "Tap the photo to close"** — *not yet tested (Sept 29)*
+*(File: `app.html`)*
+1dm.1. Opening a photo full size in the app: the "Tap the photo to close" grey bubble now sits on the dimmed screen, with no thick black band around it. **Tyrus tested Sept 29 ✓**
+1dm.2. *(Sept 29)* The "Tap the photo to close" bubble is now solid grey (#3E4746, the shade it looked before) with white text; nothing shows through it. *Not yet tested.* **Tyrus tested Sept 29 ✓**
+
+**1dn. A skipped body of water shows a Skipped screen** — *not yet tested (Sept 29)*
+*(File: `app.html`)*
+1dn.1. Going back to the tab of a skipped body of water shows a Skipped screen instead of its readings: "Skipped", a line saying there are no readings or photos for it on this visit, and one Unskip button (one tap, no extra question) that puts it back on the report at its first step. The tab reads "Pool · skipped" (etc.) instead of "✓ Pool". **Tyrus tested Sept 29 ✓**
+1dn.2. When it was skipped with a photo and note (required), the screen also shows the photo small (like other report photos, tap for full size) with Retake photo / Remove photo, and the note, editable, saving as it's typed. **Tyrus tested Sept 29 ✓**
+1dn.3. With the photo removed or the note emptied: the other tabs won't open, and the report won't send, until both are there again or it's unskipped; a message says so. **Tyrus tested Sept 29 ✓**
+1dn.4. *(Reported Sept 29)* Taking the skip photo (when skipping, and Take / Retake photo on the Skipped screen) used the phone's camera app, which asks for a tick before handing the photo back. It now uses the app's own camera like every other photo: one tap of the shutter and it's straight back with Remove photo. The phone's camera app is only used if the app's can't open. *Not yet tested.* **Tyrus tested Sept 29 ✓**
+
+**1do. Serviced's day row like Today's** — *not yet tested (Sept 29)*
+*(File: `app.html`)*
+1do.1. On Serviced, the ‹ arrow moved next to the › arrow on the right, and the day (Today, Yesterday, a date) is centred in the space to their left. It's the same Serviced list an admin sees inside Report, so it changes there too. **Tyrus tested Sept 29 ✓**
+
+**1dp. A pool moved "just once" to another technician: server snippet 18** — *proven on the practice server Sept 29; needs running on the real server*
+*(Files: `tests/sql/18 - moved customers.sql` (new — run it in Supabase's SQL Editor), `tests/sync-test-setup.sh`, `tests/behaviour-test-4.js`. No app or website change.)*
+1dp.1. *(Reported)* A technician (not an admin) servicing a pool moved to them just once from another technician: it came back on Today and never showed on Serviced. The office server only let a technician see and save customers assigned to them, so the "serviced" mark was refused and lost at the next sync; on a phone only ever used by that technician, the moved customer never arrived at all. **Tyrus tested Sept 29 ✓**
+1dp.2. Snippet 18: while a move to them is current (its date no more than two days ago), that technician can see the move and the customer, and save only the service details (lastServicedDate, lastServicedAt, lastServiceDurationMs, servicedFor, pendingRedo). Nothing else on that customer, and no other customer. Everything else is as in 06 and 09. **Tyrus tested Sept 29 ✓**
+1dp.3. Proven in part 4 against the practice server: without 18 the moved customer never reaches the technician's phone (reproduced); with 18 it arrives, shows on Today, the service is accepted by the office, it leaves Today and shows on Serviced after syncing, and changing its name or servicing a customer not moved to them is refused. Part 4: 916 pass with 18; the one other failure was a text-distance check pushed out by 1dj (the technician order), now widened. **Tyrus tested Sept 29 ✓**
+
+**1dq. Website: a Today's Route sub-tab on a technician's page** — *not yet tested (Sept 29)*
+*(File: `customer-intake.html`)*
+1dq.1. Technicians → a technician: new sub-tab "Today's Route" between Profile and Customers. It shows that technician's route for a day the way their phone has it (their customers on that day, minus any moved off it, plus any moved to them), in their order, with DONE on stops serviced that day and MOVED HERE on ones moved in, and "x of y stops left". The date, then a date picker, then ‹ › step the day; it opens on today for each technician. **Tyrus tested Sept 29 ✓**
+1dq.2. Drag to reorder (grip on the left): a bar asks Just today / Every week / Remove changes. Every week saves that technician's weekly order for the day (what the app and Route Scheduling use); Just today saves the office's one-off order for that date (routeOrdersOnce, now also sent from the website), which their phone uses that day only. **Tyrus tested Sept 29 ✓**
+1dq.3. Move on each row: the same window as the app (New date empty, Technician list with their own marked "(assigned)"; Just this once / Change their regular day / Cancel; closes only from its buttons). A move to another technician just once needs snippet 18 on the server for their phone to get it. **Tyrus tested Sept 29 ✓**
+1dq.4. *(Sept 29)* Today's Route restyled for the desk: the date as a heading on the left with "x of y done · z left" under it, the date picker and ‹ › on the right, then a plain table (grip, stop number, customer, address, status, Move) with column headings, one line per stop. Status is a small "To do" or green-outlined "Done" with the time, plus "Moved" for stops moved in. Clicking a stop (not the grip or Move) opens that customer's Service reports on the Customers page, on that day's report when there is one. *Not yet tested.* **Tyrus tested Sept 29 ✓**
+1dq.5. *(Sept 29)* Today's Route: customer names in normal-weight black (were bold); the "x of y done · z left" count sits to the left of the date on the same line; each row's Move button now says Reschedule (and its window is titled Reschedule <name>). *Not yet tested.* **Tyrus tested Sept 29 ✓**
+1dq.6. *(Sept 29)* Clicking a stop on Today's Route opens the customer's Service reports with every report listed (no date filter) and the report for that day opened, on whichever page of the list it's on. With no report that day, all their reports show, none opened, and a note says so. *Not yet tested.* **Tyrus tested Sept 30 ✓**
+1dq.7. *(Sept 29)* Today's Route top row: the date and day in the exact middle, the done / left count on the left, the date picker and ‹ › on the right; about twice the space between that row and the table's headings. *Not yet tested.* **Tyrus tested Sept 29 ✓**
+1dq.8. *(Reported Sept 29)* Reschedule → Change their regular day on Today's Route just darkened the screen: the Reschedule window sat on a higher layer (320) than the "are you sure?" question it asks (300), so the question opened behind it. The window is now below the question (260). *Not yet tested.* **Tyrus tested Sept 30 ✓**
+1dq.9. *(Sept 29)* On Today's Route, Previous / Next technician (and the ← → keys) keep the date that's showing instead of going back to today. Opening a technician from the list still starts on today. *Not yet tested.* **Tyrus tested Sept 30 ✓**
+1dq.10. *(Sept 30)* Today's Route: the date truly centred (the side columns can no longer push it off-centre; the date box is narrower), in the site's heading font (Space Grotesk) at 18px. A stop that's Done now has Reservice instead of Reschedule: it asks whose Today list it should go on (the route's technician chosen to start), keeps the report as it is, takes that day's service off, and puts the stop on that technician's Today just for today (marked as a reservice, so it says Just today). *Not yet tested.* **Tyrus tested Sept 30 ✓**
+1dq.11. *(Reported Sept 30)* On Today's Route a stop that was Done and moved in showed "Done 9:14 AM…" with the Just today badge cut off. The Status column is now wide enough (220px, the address column a little narrower) for Done with its time and Just today side by side. *Not yet tested.* **Tyrus tested Sept 30 ✓**
+1dq.12. *(Sept 30)* Today's Route: a dark teal Today button between the date box and the ‹ › arrows jumps straight back to today. *Not yet tested.* **Tyrus tested Sept 30 ✓**
+
+**1dr. Serviced by technician; an admin's Reservice goes on their own Today** — *not yet tested (Sept 29)*
+*(File: `app.html`)*
+1dr.1. Each service now notes who did it (the signed-in technician). Serviced shows each technician the pools they serviced themselves; services noted before this (no name on them) go by the customer's technician, or whoever the pool was moved to that day. **Tyrus tested Sept 29 ✓**
+1dr.2. An admin's Serviced (in Report) has a technician list under the day row: Everyone, or one technician (in the website's order). It starts on the admin themselves. **Tyrus tested Sept 29 ✓**
+1dr.3. Reservice pressed by an admin puts the pool on the admin's own Today list, just for today (a one-off move to them), not back with the technician who sent the report. A technician's Reservice, or an admin's on their own customer, works as before.
+1dr.4. *(Reported Sept 29)* Reservice sometimes needed pressing several times. A sync replaces every customer with a fresh copy, and the Serviced row still held the copy it was drawn with, so the press changed a copy that isn't saved. Reservice now always acts on the customer as they are in the list at that moment. *Not yet tested.* **Tyrus tested Sept 29 ✓**
+1dr.5. *(Reported Sept 29)* A pool serviced by one technician also showed on Serviced under the technician it's assigned to. A fallback meant only for records from before each service noted who did it ("serviced today") also caught pools serviced today by someone else. It now applies only when there's no record of today's service at all, so each pool shows only under whoever serviced it. *Not yet tested.* **Tyrus tested Sept 30 ✓**
+1dr.6. *(Reported Sept 29)* An admin's Reservice didn't put the pool on their own Today when the pool was the admin's own customer but had been moved "just today" to another technician: no move was made, so the old move sent it back to that technician. Now an admin's Reservice always ends on their own Today: unless it's already naturally theirs today (their customer, their day, nothing moving it), it replaces any move touching today with a "just today" move to the admin. *Not yet tested.* **Tyrus tested Sept 30 ✓**
+1dr.7. *(Sept 29, clarified)* An admin's Reservice now always makes a "just today" move to that admin for today, whoever's customer it is (their own included), replacing any move touching today. The move is marked as a reservice, so the pool shows JUST TODAY on their Today even when it's their own customer on their own day. *Not yet tested.* **Tyrus tested Sept 30 ✓**
+
+**1ds. "JUST TODAY" on a customer moved to another technician for the day** — *not yet tested (Sept 29)*
+*(Files: `app.html`, `customer-intake.html`)*
+1ds.1. A customer moved to another technician just for that date shows a gold JUST TODAY tag: on that technician's Today (technician and admin), on their route in the app's Technicians tab (instead of MOVED HERE), and on the website's Today's Route ("Just today" instead of "Moved"). A move to another day with the same technician keeps its MOVED HERE / Moved tag.
+1ds.2. *(Sept 29)* Every one-off move now says JUST TODAY (website: "Just today"), a move to another day with the same technician as well as a move to another technician: on Today (technician and admin), on a technician's route in the app's Technicians tab, and on the website's Today's Route. "MOVED HERE" / "Moved" are gone. *Not yet tested.* **Tyrus tested Sept 30 ✓**
+1ds.3. *(Sept 29)* Website, Today's Route: clicking a "Just today" badge asks "Put <name> back on their usual day (<day>) with <technician>?" — Put back removes the one-off move onto that date, so they're back where they normally are. *Not yet tested.* **Tyrus tested Sept 30 ✓**
+
+**1dt. "This route is for another day" asked once per report** — *not yet tested (Sept 29)*
+*(File: `app.html`)*
+1dt.1. *(Reported)* An admin starting a report on another day's route is asked once whether to service it anyway. Going back into that same report later (another tab, then Today, or coming back to the app) no longer asks again. It asks again only after the report is cancelled or finished and a new one is started. **Tyrus tested Sept 29 ✓**
+
+**1du. Admin bottom bar: Report before Customer** — *not yet tested (Sept 29)*
+*(File: `app.html`)*
+1du.1. On the app's bottom bar (admins), Report and Customer swapped places: Today, Techs, Report, Customer, Settings. The tabs across the top on a computer are unchanged. **Tyrus tested Sept 29 ✓**
+
+**1dv. The website's Back and Forward buttons** — *not yet tested (Sept 29)*
+*(File: `customer-intake.html`)*
+1dv.1. The browser's Back button used to do nothing on the website. Every place visited now goes into the browser's history, and Back goes to exactly where you were before (Forward returns): the menu page; on Customers, which customer was open and which of their tabs (Profile, Equipment, Service Reports, Quotes & Orders); a technician's page and its tab (Profile, Today's Route, Customers); the Technicians page's tab (Technicians / Photo requirements); Readings and Dosages' body of water and season; the WorkCenter's section. Back only goes back; it doesn't undo anything done there. With a window open, Back does nothing (windows close only from their own buttons). **Tyrus tested Sept 30 ✓**
+
+**1dw. App: add or remove a technician's customers from Edit** — *not yet tested (Sept 29)*
+*(File: `app.html`)*
+1dw.1. Technicians tab → Edit on a technician: a Customers section shows how many customers are on their route, with an "Add or remove customers" button. It opens a window listing every customer (theirs first, then alphabetical) with a search box. Ticking one puts them on this technician's route (from whoever had them; the row says whose they are now); unticking takes them off, leaving them unassigned. Each tick saves straight away; Done closes it (it doesn't close from a tap outside). **Tyrus tested Sept 29 ✓**
+
+**1dx. App tabs come back as they were left, for 30 seconds** — *not yet tested (Sept 29)*
+*(File: `app.html`)*
+1dx.1. Every tab except Today (and the report itself, which already always comes back) keeps what it was showing for 30 seconds after you leave it: Serviced (its day), Technicians (a technician's route or the list), Customer (a customer open, a search typed), Report (the customer and report on screen, and Serviced / Reports), Settings, and the scroll position. Back within 30 seconds: exactly as left (a technician's route is drawn again from what's saved). After 30 seconds, each opens as it normally does. Opening a particular report from elsewhere still shows that report. **Tyrus tested Sept 30 ✓**
+1dx.3. *(Sept 30)* When a tab opens fresh (after the 30 seconds), Customer's search box is emptied and Report's customer search is emptied with no customer chosen (they used to keep what was typed). Within 30 seconds both still come back as left. *Not yet tested.* **Tyrus tested Sept 30 ✓**
+1dx.4. *(Reported Sept 30)* Report after the 30 seconds cleared the customer's name but left their report showing. Now it goes back to how the page starts: no customer, no dates, no report, no report buttons. *Not yet tested.* **Tyrus tested Sept 30 ✓**
+1dx.2. Some older checks switch tabs quickly and may expect the fresh page; they'd need a 30-second wait or a note. Not run.
+
+**1dy. Moving an already-moved customer again, just once** — *not yet tested (Sept 29)*
+*(Files: `customer-intake.html`, `app.html`)*
+1dy.1. *(Reported)* A customer moved just once (Monday → Wednesday) and then moved again from Wednesday (→ Friday) came back as a copy on Monday: the second move replaced the first and only said "off Wednesday". Now, when a customer is only on a day because of an earlier move, the new move starts from their usual day and replaces the earlier one (Monday → Friday). Moving them back to their usual day with their own technician just removes the move ("back on their usual day"). Same on the website's Today's Route and in the app (Reschedule on Today, and on the Technicians tab). **Tyrus tested Sept 29 ✓**
+
+**1dz. Website pages come back as they were left: 30 seconds (WorkCenter 20)** — *not yet tested (Sept 29)*
+*(File: `customer-intake.html`)*
+1dz.1. Every page in the website's menu, opened again within 30 seconds of leaving it, is exactly as it was left: Customers (a customer open, their tab, the search, the page of the list), Technicians (a technician's page and its tab, Today's Route's date; or the Photo requirements tab), Readings and Dosages (the body of water and the season), Customer Customization (the customer loaded), Route Scheduling (the day and route), History / Billing (filters, page), Products and Services, Account, Settings, and the scroll position. After 30 seconds each opens as it normally does. **Tyrus tested Sept 30 ✓**
+1dz.2. The WorkCenter: 20 seconds, for coming back to the page as it was and for its own holds (the Quote / Work Order / Task form's typing, and the filter clean groups), which were a minute. **Tyrus tested Sept 30 ✓**
+1dz.3. Readings and Dosages still goes back to Year-round while you're on other pages (so nothing else reads a season's setup), and puts the season back if you return within the time. Opening Readings and Dosages right after Customer Customization (the same screen) starts fresh. **Tyrus tested Sept 30 ✓**
+
+**1ea. The last 4 weeks' readings on the readings page** — *not yet tested (Sept 29)*
+*(File: `app.html`)*
+1ea.1. On a visit's chemical readings page (pool, spa and each extra body), a "Last 4 weeks" table sits above today's fields: one column per visit in the last 28 days, newest on the left, one row per reading the setup records (the same order as the fields). It scrolls sideways with the reading names pinned on the left; a reading not taken shows a dash; "swipe for more →" shows with more than three visits. Nothing shows when there were no visits in that time. **Tyrus tested Sept 30 ✓**
+1ea.2. *(Sept 30)* Settings has a "Previous readings on visits" switch, on the website and in the app (admins only there), on by default. Off hides the Last 4 weeks table on every visit's readings page. It's a company setting, so it syncs to everyone (`showRecentReadings`). *Not yet tested.* **Tyrus tested Sept 30 ✓**
+
+**1eb. A customer's drop-down on Today stays open through a redraw** — *not yet tested (Sept 29)*
+*(File: `app.html`)*
+1eb.1. *(Reported)* Right after signing in, a customer's drop-down on Today kept closing itself, then settled. Just after signing in the list is drawn several times over (the first syncs landing, Today opening on today, the access check), and each redraw threw the open drop-down away. Now an open drop-down is opened again straight after a redraw, with no slide-in, as long as that customer is still on the list. Not reproduced here (the tester couldn't make it happen again either). **Tyrus tested Sept 30 ✓**
+
+**1ec. Beta set up (Sept 30)**
+1ec.1. Beta server (weir-beta, `mjjgvpejbibybhsmrdno`): resumed from pause; snippets 16, 17, 18, 19 run and checked; `quote-response` deployed (Verify JWT off); Site URL `…/Weir-Beta/customer-intake.html`, redirect `…/Weir-Beta/*` (the `<beta-repo>` placeholder removed); companies A Squared Pool Service, Affinity Pools, Jackrabbit Pools LLC, Ryan the Pool Guy (owners made with snippet 12), and Triffic Pool and Spa (renamed from "Your Company"). Live server: snippet 19 run and checked. Both on Supabase's free plan (beta pauses after about a week unused).
+1ec.2. Beta website files: the live files as of Sept 30 (sw v30 build), with the beta's own `sw.js` (`weir-beta-cache-v2`, and it now clears only the beta's own old copies, so it no longer wipes the live app's offline copy on the same device). Beta smoke test still to do (checklist). **Tyrus tested Sept 30 ✓**
+1ec.3. Not done (optional, offered): removing the extra table permissions Supabase's defaults added (row rules already block them).
+
+**1ed. Website: Export customers** — *not yet tested (Sept 30)*
+*(File: `customer-intake.html`)*
+1ed.1. Customers page: an **Export customers** button to the left of Restore customers downloads `weir-customers-<date>.csv` (opens in Excel / Google Sheets), one row per customer, A–Z: name, address, city, state, ZIP, phone, email, service day, extra days, technician, active, pool and size, spa and size, other bodies of water with sizes, dogs, yard and neighborhood gate codes, access notes, On my way (who, how, automatic). Deleted customers are left out. The columns match Import customers, so the file can be imported again. **Tyrus tested Sept 30 ✓**
+
+**1ee. Website: + Add technician on the All technicians row** — *not yet tested (Sept 30)*
+*(File: `customer-intake.html`)*
+1ee.1. The separate card holding + Add technician is gone; the button sits at the top right of the All technicians card, on the heading's row, with the technician count just left of it. **Tyrus tested Sept 30 ✓**
+1ee.2. *(Sept 30)* The counts sit right beside their headings: "All technicians  2 technicians" with + Add technician at the far right, and "All customers  60 customers" (was at the far right). *Not yet tested.*
+
+**1ef. Save report beside Back** — *not yet tested (Sept 30)*
+*(File: `app.html`)*
+1ef.1. On the last page of a visit (the after photos page, admins), Save report now sits right beside Back on the heading's row, instead of in the middle. With Skip on the same row too, all three buttons sit together on the right. **Tyrus tested Sept 30 ✓**
+
+**1eg. Quotes: how many days until they expire** — *not yet tested (Sept 30); snippet 20 run and the function redeployed on live and beta (Verify JWT still off), checked*
+*(Files: `customer-intake.html`, `tests/sql/20 - quote expiry days.sql`, `functions/quote-response/index.ts`)*
+1eg.1. Quote form (only): "Expires in [30] days" right of the date box, 1 to 365. Cleared back to 30 with the form, held with the rest for the WorkCenter's 20 seconds, loaded on Edit & resend, saved on the quote. **Tyrus tested Sept 30 ✓**
+1eg.2. The email says "This quote expires in N days, on <weekday, month day, year>." above Approve / Decline (and the plain-text copy says it too). **Tyrus tested Sept 30 ✓**
+1eg.3. The website moves an unanswered quote to History as EXPIRED after its own days (30 for older quotes). The days are saved with the quote's answer code (`expires_days`, snippet 20), and the quote-response function refuses answers after them ("sent more than N days ago"). A quote sent before snippet 20 is on the server would go without its Approve / Decline buttons, so the server goes first. **Tyrus tested Sept 30 ✓**
+
+**1eh. Website: one company's data per browser** — *not yet tested (Sept 30) — MUST go to live and beta before testers sign in*
+*(File: `customer-intake.html`)*
+1eh.1. *(Reported)* Signing in to the beta website as Michael (Affinity Pools) on the browser where Triffic's beta had 60 test customers put those 60 customers, 2 technicians and 6 settings into Affinity on the server (checked: Affinity 60 / 2 / 6 at 23:10 UTC, ten minutes after Triffic's import; the other companies empty). The server kept companies apart; the website's local copy isn't tied to a company, and its sync sent the old copy up into the new company (the phone app already guards against this; the website didn't).
+1eh.2. Now the website marks its local copy with its company. Signing in as a different company (or opening the site while signed in as one) clears the copy (keeping only how the browser is signed in) and reloads, so the new company starts fresh from the server. If the previous company still has changes that haven't gone up, the sign-in is refused with a message to sign in as that company first. A browser with only its own company's data just gets the mark. **Tyrus tested Sept 30 ✓**
+1eh.3. Done Sept 30 (Tyrus's OK): removed from Affinity Pools on the beta server the 60 copied customers, 8 records (2 technicians, company details, 5 setup) and 2 saved versions; its 2 quote answers left. Proved first that the server keeps companies apart (signed in as A Squared: 0 customers; as Michael: only Affinity's rows, which were copies with Triffic's ids). Checked again afterwards: Affinity 0 / 0.
+1eh.4. *(Reported Sept 30)* After deleting John Tyrus Tyler, adding a technician with his username said it was taken. His sign-in (`john.tyler`, Triffic, Sept 22) was still active on the beta server with no technician profile: the John deleted on the website was the stray copy in Affinity Pools, and Delete only stops a sign-in in the signed-in company. Removed his sign-in on the server as Delete does (removed_at set, 23:38 UTC), which frees the username. Open question for Tyrus: should the Technicians page list a sign-in that has no technician profile, so it can be deleted from the website?
+
+**1ei. Deleting a technician removes them completely** — *not yet tested (Sept 30); snippet 21 run and checked on live and beta*
+*(Files: `customer-intake.html`, `tests/sql/21 - delete technicians completely.sql`)*
+1ei.1. Tyrus: no archiving. Delete on the Technicians page now always asks the server (whether or not the website knew of a sign-in), and the server removes the sign-in account itself (username free at once), the membership, the profile's contents (left as an empty deleted marker only so other devices drop it) and its earlier versions. The 7-day upload grace for a removed technician's phone is gone. Service reports they submitted stay with the customers. The confirm reads: "Their sign-in and profile are removed completely, straight away. Service reports they submitted stay with the customers." **Tyrus tested Sept 30 ✓**
+1ei.2. John Tyrus Tyler's switched-off sign-in removed completely on beta; live had none left.
+1ei.3. *(Reported Sept 30)* The beta app still listed John Tyrus Tyler (not on the website): an old copy of his profile (`tech_1790110530531`) held on the phone since Sept 22 that the server never had, so no deletion could reach it. Added an empty deleted marker for that id on the beta server (Triffic) so phones drop it at their next sync. Neither server has a John Tyrus Tyler otherwise.
+
+**1ej. Website: the 30-second page memory taken out** — *not yet tested (Sept 30)*
+*(File: `customer-intake.html`)*
+1ej.1. Tyrus: too odd. Every website page opens as it normally does again (1dz undone). The WorkCenter's Quote / Work Order / Task form holds what was typed for a minute again (was cut to 20 seconds by 1dz), and filter clean groups close after a minute away again (also cut to 20 seconds). Browser Back / Forward (1dv) is unchanged. **Tyrus tested Sept 30 ✓**
+1ej.2. *(Sept 30)* The WorkCenter form's hold (Quote / Work Order / Task, what was typed) is now 30 seconds. Filter clean groups still close after a minute away. *Not yet tested.*
+
+**1ek. Quote Current: Resend** — *not yet tested (Sept 30)*
+*(File: `customer-intake.html`)*
+1ek.1. Each quote in WorkCenter → Quote → Current has **Resend** (left of Mark approved). One press emails the customer the quote again, exactly as first sent: same number, same Approve / Decline buttons (still answering the same quote), same expiry date. Shows "Sending…" while it goes, then "Quote resent to <email>"; the quote stays in Current. A quote sent before copies were kept is rebuilt from today's template without the buttons. No email on file says so. **Tyrus tested Sept 30 ✓**
+
+**1el. App: tap-to-talk microphone on every note box** — *not yet tested (Sept 30)*
+*(File: `app.html`)*
+1el.1. Every note box in the app (visit notes for pool / spa / others, skip reason and skip note, access and equipment notes, job notes, and any made later) gets a small round microphone at its bottom right. One tap starts voice-to-text (no holding); the words are added to the end of the note and saved as if typed. It keeps listening while it hears speech, restarting itself through the phone's own pauses, and stops after 6 seconds with nothing heard, on a second tap, when the note box goes away, or when the app is left. Separate from the hold-to-talk readings button (it won't start while that one is listening). Needs the browser's speech recognition (Chrome on Android; Safari on iPhone — may not be available inside an iPhone home-screen app).
+
+**1em. Visit video (office only, kept 7 days)** — *not yet tested (Sept 30); snippet 22 run and checked on live and beta (push_photo takes 'video', videos office only, clean-up includes videos over 7 days, bucket 10 MB)*
+*(Files: `app.html`, `customer-intake.html`, `tests/sql/22 - visit videos.sql`)*
+1em.1. Website → Technicians → Photo requirements: a **Video** row between After photo and Closed gate photo, with the note "Optional, up to 15 seconds, one per visit. Seen by the office only, never sent to the customer. Videos delete themselves after 7 days to save storage." One tick per technician (and Everyone), no Optional or Required: a tick lets them take one (`allowVideo` on the technician; Everyone = photoEveryone.video.video). Its count reads "N technicians can".
+1em.2. App: on the last body of water's after-photos page, under the after photo, a blue "Video (optional)" box with the same note and **Record video** (the app's own recorder, 15 s hard stop, recorded at ~1.2 Mbit/s so 15 s is about 2–3 MB; over 9.5 MB is refused). One video: once recorded it shows with **Remove video**. Not on filter cleans. Saved with the last report as `video`, uploaded like a photo (kind 'video'), never inside the visit; the phone lets its copy go 7 days after uploading.
+1em.3. Owners and admins see **▶ Watch video** on the report (app Report tab, admin version only; website service report), played from the phone's copy or fetched from the office; after 7 days it reads "Video deleted after 7 days". Never in the customer's email (the email's photo list doesn't include it). Technicians can't see videos on the server (snippet 22's read rule).
+1em.4. Server (snippet 22): push_photo accepts kind 'video'; videos readable by owners/admins only; photos_past_keeping lists videos over 7 days old, so the office website's daily clean-up deletes them from storage; the bucket limit is 10 MB (was 5 MB). The clean-up runs when the office website is open (once a day).
+1em.5. *(Sept 30)* Up to **3 videos** per visit, numbered in the order recorded: each shows with its own Remove; the button reads "Record another (2 of 3)" and goes at 3. Saved as `video` + `videoMore`, uploaded as their own videos a second apart (order kept). Reports show "Watch video 1 / 2 / 3" (just "Watch video" for one). The Photo requirements note and the app's box say "up to 3 videos of 15 seconds each". *Not yet tested.*
+
+**1en. Equipment: backwashed / salt cell cleaned on a date** — *not yet tested (Sept 30)*
+*(Files: `customer-intake.html`, `app.html`)*
+1en.1. Website → customer → Equipment: a Sand or DE filter gets a **Backwashed** button, and a Chlorination set to Salt Cell a **Cleaned** button, between its choice buttons and the Type box. It reads "Backwashed Sep 28" (the later of the date set here and the last visit a technician ticked it on) or "Backwashed: set date". Pressing it asks for the day (today to start, no future dates): Save, Clear date, Cancel. Kept on the equipment item (`lastBackwashed`, `saltCellCleanedOn`).
+1en.2. App: the visit's "Filter backwashed" / "Salt cell cleaned" buttons say "Last done …" from the later of that office date and the last visit it was ticked on.
+
+**1eo. Website: ← → between customers on every customer tab** — *not yet tested (Sept 30)*
+*(File: `customer-intake.html`)*
+1eo.1. *(Reported)* The left and right arrow keys only stepped between customers on the Profile tab: they waited for the profile card, which only shows there. Now they work on Profile, Equipment, Service Reports and Quotes and Orders (anywhere the Back / Previous / Next bar shows), staying on the same tab. Still not while typing or with a window open.
+
+**1ep. Website: a picture closes on an outside click or Escape** — *not yet tested (Sept 30)*
+*(File: `customer-intake.html`)*
+1ep.1. Tyrus asked: the photo window (a report's photos, or an equipment photo full size) closes from Close, a click anywhere outside it, or Escape. An exception to "windows close only from their buttons"; every other window is unchanged.
+
+**1eq. Up to three photos per before / after / closed gate step** — *not yet tested (Sept 30)*
+*(Files: `app.html`, `customer-intake.html`)*
+1eq.1. App: every before, after and closed gate step takes up to 3 photos. They show as thumbnails numbered 1–3 in the order taken (no number with just one), each with its own × to remove it; the button reads "Take another (2 of 3)" and disappears at 3. Required photos still need just one.
+1eq.2. The first stays in the step's usual field (`photo`, `beforePhoto`, `gatePhoto`); 2 and 3 go in `photoMore` / `beforePhotoMore` / `gatePhotoMore`, kept in the photo database, restored when a report is reopened (and when moving between extra bodies of water), and uploaded as their own photos of the same kind, a second and two apart so the office keeps their order.
+1eq.3. The customer's email: the same labels, numbered in the order taken ("Pool after 1", "Pool after 2", "Gate 1"…); one photo keeps its plain label. The email now carries up to 15 photos (was 10); any past that go as links, as before.
+1eq.4. The app's report shows all after photos (numbered when more than one). The website's service reports and photo window show every before and after photo, numbered ("Before 1", "After 2"), rebuilt in order from what the phones uploaded.
+
+**1er. One body of water reads the pool's photo requirements** — *not yet tested (Sept 30)*
+*(File: `app.html`)*
+1er.1. *(Reported)* A spa-only customer wasn't asked for an after photo when only pools had it ticked. Now a customer with exactly one body of water (just a spa, or just one extra) is asked for photos as a pool would be: the Photo requirements ticks (each technician's and Everyone's), the company's own photos, and Readings and Dosages' require-photo settings all read the pool's. The visit is still labelled Spa / the extra's own name. Customers with two or more bodies of water are unchanged.
+
+**1es. App: photos are removed from the full-size view** — *not yet tested (Sept 30)*
+*(File: `app.html`)*
+1es.1. No more Remove photo buttons (or the × on thumbnails). To remove a photo: tap it to open it full size, then **Delete photo**, a rust button just above the "Tap the photo to close" bubble. It closes the view, removes that one photo and says "Photo deleted". Covers the before / after / closed gate photos (each of up to three), the company's own photos, a job's photo, the skip window's photo and the skipped screen's photo. Tapping the photo still just closes it. Equipment photo galleries keep their own Remove.
+1es.2. *(Sept 30)* Every photo step's subtext now reads "Tap a photo to access the delete button.": before and after photos (pool, spa, extras, and the filter-clean wording) and the closed gate photo. *Not yet tested.*
+
+**1et. App: left-handed mode** — *not yet tested (Sept 30)*
+*(File: `app.html`)*
+1et.1. Settings → **Left-handed mode** (everyone, this phone only; `appSettings.leftHanded`, not a company setting). When on:
+- Today: Reverse route order on the left, the day heading on the right; the counts stay centred; the date row is ‹ › then the calendar on the left, with the date centred in the space to their right.
+- A technician's route (Techs tab): ← Back on the left, the stops left / jobs left on the right; the same date row as Today.
+- Serviced (an admin's Report tab, a technician's Serviced Pools): ‹ › on the left, the day centred to their right.
+- Every visit step on every body of water: Return to route / Back on the left and the heading on the right (with Skip still in the middle, and an admin's Save report still beside Back).
+- Customer rows are unchanged (On my way stays on the right). Done with CSS on a class on the page, so nothing else changes.
+1et.2. *(Sept 30)* Turning left-handed mode on puts the voice entry microphone on the left of the step button (Voice entry → Left of button); it can be switched back to Right of button with left-handed mode still on. Turning left-handed mode off puts it back on the right. Left-handed mode is kept with this phone's own settings (like the microphone's side). *Not yet tested.*
+
+**1eu. App: Skip button** — *not yet tested (Sept 30)*
+*(File: `app.html`)*
+1eu.1. "Skip this pool / spa / fountain" now just says **Skip**, and sits right beside Return to route / Back on the readings step's heading row (it was centred). In left-handed mode it stays beside them, on the left.
+
+**1ev. App: a visit reads as one card** — *not yet tested (Sept 30)*
+*(File: `app.html`)*
+1ev.1. The Pool / Spa / Fountain / Equipment tabs card joins onto whatever is showing below it (the step, the equipment page, the skipped screen), and on the last step the service notes and Submit join onto the after photos: square where they meet, a thin line between parts, rounded only at the very top and bottom. Follows every change of step or tab by itself (it watches which cards are showing). The tabs still stay at the top while scrolling.
+
+**1ew. Voice entry setting's wording** — *not yet tested (Sept 30)*
+*(Files: `app.html`, `customer-intake.html`)*
+1ew.1. The Voice entry description in Settings (app and website) now says to **hold** the microphone and speak readings **and** dosages, and that it only listens while it's held (it said tap / or / while speaking).
+
+**1ex. App: "Return to pool / spa" on later bodies of water** — *not yet tested (Sept 30)*
+*(File: `app.html`)*
+1ex.1. *(Reported)* After submitting the pool, the spa's first step said "Return to route". Now only the first body of water's first step says Return to route; every later one says "← Return to pool", "← Return to spa", or the extra's own name (the body of water before it in the visit's order) and goes back to that body of water where it was left. The phone's own Back on that step does the same.
+
+**1ey. App: counts read "5/8 stops", "1/2 jobs"** — *not yet tested (Sept 30)*
+*(File: `app.html`)*
+1ey.1. On Today and a technician's route (Techs tab) the counts read left / the day's total with a slash ("0/0", "5/8 stops", "1/2 jobs") instead of "5 of 8 stops left". The total is the day's whole count (left + done), so it holds while the first number counts down. The website's Today's Route keeps its own wording.
+1ey.2. *(Sept 30)* Those counts are dark teal now (#114B4F, the app's dark teal), not amber. *Not yet tested.*
+
+**1ez. Website: On my way message on the profile** — *not yet tested (Sept 30)*
+*(File: `customer-intake.html`)*
+1ez.1. The customer profile's "On my way goes to" is now **On my way message**, and its row also says "Automatic, 2 stops before" when that's on. Its editor has, on the same line as "Tell them by", **Automatic on my way message** with a switch; turned on, a "N stops before" picker (1–5, 2 to start) appears beside it. Saved with Done, with the rest. The Automatic on my way card is gone from Customer Customization (same setting, `autoNotify` / `autoNotifyLead`, so nothing set before is lost).
+
+**1fa. App: quick buttons on one line** — *not yet tested (Sept 30)*
+*(File: `app.html`)*
+1fa.1. The quick buttons under each reading and dosage on a visit sit on a single line; when there are more than fit, the line swipes sideways to the rest (no scrollbar shown). Each button keeps its own width.
+
+**1fb. App: automatic On my way texts** — *not yet tested (Sept 30)*
+*(File: `app.html`)*
+1fb.1. *(Reported)* Finishing the stop two before a customer set for automatic On my way didn't open the text. Two causes: (a) a phone only lets a web app open Messages straight after a tap, and by the time the report finished saving the Submit tap was too old, so the opening was quietly refused; (b) "2 stops away" was counted along the whole route order, so stops done out of order could make it miss.
+1fb.2. Now: after each finished stop, the stops still to do are listed in route order, and the first customer set for automatic who is now within their number of stops (e.g. the next 2) and hasn't had one today gets it. A text comes up as a window — "Automatic On my way · <name> is 2 stops away / your next stop" — with **Open text message** (opens Messages with the text ready) and **Not now**. An email (customer set to email) still goes from the office by itself. Each customer is told once a day.
+
+**1fc. Skipped bodies of water and skipped visits on the reports and in the history** — *not yet tested (Sept 30)*
+*(Files: `app.html`, `customer-intake.html`)*
+1fc.1. *(Reported)* A body of water skipped on a visit left no trace: no reading was saved and the report left it out, and its note and photo were never kept. Now, when the visit finishes, each skipped body is saved as a "skipped" reading (with the technician's note, and the photo kept with it as its own photo, not emailed), so:
+- the app's report shows that body with "Skipped this visit" and the reason (marked internal); the customer's email shows the body with "Skipped this visit" and no reason;
+- the visit's Reading history shows a "Skipped" row, and the Last 4 weeks table a column marked Skipped;
+- the website's service report for it has a red Skipped badge and "Spa skipped on this visit" with the reason; the visit's row says "Spa (skipped)", and History / Billing "· skipped".
+1fc.2. A whole visit skipped (Skip Service) now also shows: a "Service skipped" row in the app's Reading history and a Skipped column in the Last 4 weeks table, and on the website a "Service skipped" report in the customer's Service reports (with the reason), without a Delete button (undone with Reservice on the phone).
+
+**1fd. App: readings history table — 3 months, fixed window, chemicals added option** — *not yet tested (Sept 30)*
+*(Files: `app.html`, `customer-intake.html`)*
+1fd.1. The table above a visit's readings is now **Last 3 months** (was 4 weeks). It's a fixed window showing the dates and three rows; it scrolls down for the rest of the rows and sideways for older dates, with the dates and the row names held in place while scrolling.
+1fd.2. New company setting **Show chemicals added too** (website Settings, and admins in the app, under Previous readings on visits; off to start; `showRecentDosages`). When on, a "Chemicals added" section under the readings lists what was put in at each of those visits, with units; — where nothing was added.
+
+**1fe. Quick buttons in number order** — *not yet tested (Sept 30)*
+*(Files: `customer-intake.html`, `app.html`)*
+1fe.1. On Readings and Dosages and Customer Customization (and seasons), a field's quick buttons run lowest to highest: top to bottom in the website's Quick buttons window, left to right in the app. A changed number moves to its place when you leave the box; a new button (0) goes into place once its number is typed. Dragging a list into an order of its own marks it (`buttonsOrdered`) and that order is kept as it is, everywhere; **Sort low to high** in the window puts it back in number order. Lists set before this show sorted until someone drags them.
+
+**1ff. Website: quick button colours in one go** — *not yet tested (Sept 30)*
+*(File: `customer-intake.html`)*
+1ff.1. Each Quick buttons window (Readings and Dosages, Customer Customization, seasons) has **All colors** at the far right of the + Add button row: pick a colour and every button in that list takes it.
+1ff.2. Beside **+ Add chemical**: **All quick button colors**. Pick a colour and every quick button on this body of water (its chemicals and its dosages) takes it; tick **Apply to all bodies of water** in the chooser to do pool, spa and extras together. On Customer Customization, "all" covers that customer's own setups (bodies still following the company's setup aren't changed).
 
 **2. Only a real phone or browser can prove these** *(built, approved and suite-tested)*
 2.1. Open in Outlook: does its Bcc line fill in by itself, or does it need pasting? (The addresses are copied either way.)
