@@ -7045,20 +7045,18 @@ async function recordClip(opts){
       + 'phone and send it the usual way.', 'Not supported');
     return null;
   }
-  // Sideways allowed while recording. Android only lets the screen turn while
-  // the page is full screen, which brings Chrome's own 'to exit full screen'
-  // bubble for a moment; Tyrus chose landscape over losing the bubble (Oct 1).
+  // Filming sideways, like photos (Oct 1): no full screen (so no Chrome
+  // bubble). The phone's tilt when Record is pressed decides; held on its
+  // side, each frame is turned as it's recorded, so the video is landscape.
   let turned = false;
-  try{
-    if(document.documentElement.requestFullscreen && !document.fullscreenElement){
-      await document.documentElement.requestFullscreen({navigationUI: 'hide'});
-    }
-    if(screen.orientation && screen.orientation.lock){ await screen.orientation.lock('any'); turned = true; }
-  }catch(e){}
+  let tilt = {x: 0, y: 9.8};
+  const onMotion = (e)=>{
+    const g = e && e.accelerationIncludingGravity;
+    if(g && typeof g.x === 'number' && typeof g.y === 'number') tilt = {x: g.x, y: g.y};
+  };
+  try{ window.addEventListener('devicemotion', onMotion); }catch(e){}
   const uprightAgain = async ()=>{
-    try{ if(turned && screen.orientation && screen.orientation.lock) await screen.orientation.lock('portrait'); }catch(e){}
-    try{ if(screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); }catch(e){}
-    try{ if(document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen(); }catch(e){}
+    try{ window.removeEventListener('devicemotion', onMotion); }catch(e){}
   };
 
   let stream;
@@ -7100,9 +7098,11 @@ async function recordClip(opts){
     video.srcObject = stream;
 
     let recorder = null, chunks = [], countdown = null, done = false;
+    let turnTimer = null;
 
     const cleanup = ()=>{
       if(countdown) clearInterval(countdown);
+      if(turnTimer) cancelAnimationFrame(turnTimer);
       try{ stream.getTracks().forEach(t => t.stop()); }catch(e){}
       if(overlay.parentNode) document.body.removeChild(overlay);
       uprightAgain();
@@ -7124,10 +7124,35 @@ async function recordClip(opts){
       }
 
       const type = clipMimeType();
+      // Which way up, from the tilt when Record is pressed (iPhone turns by itself)
+      const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent || '');
+      const screenUpright = window.innerHeight >= window.innerWidth;
+      let turn = 0;
+      if(!isIOS && screenUpright && Math.abs(tilt.x) > 6.5 && Math.abs(tilt.x) > Math.abs(tilt.y)){
+        turn = tilt.x > 0 ? -90 : 90;
+      }
+      let recordFrom = stream;
+      if(turn && video.videoWidth && HTMLCanvasElement.prototype.captureStream){
+        const vw = video.videoWidth, vh = video.videoHeight;
+        const cv = document.createElement('canvas');
+        cv.width = vh; cv.height = vw;
+        const cx = cv.getContext('2d');
+        const draw = ()=>{
+          if(done) return;
+          cx.setTransform(1, 0, 0, 1, 0, 0);
+          cx.translate(cv.width / 2, cv.height / 2);
+          cx.rotate(turn * Math.PI / 180);
+          cx.drawImage(video, -vw / 2, -vh / 2, vw, vh);
+          turnTimer = requestAnimationFrame(draw);
+        };
+        draw();
+        const cs = cv.captureStream(30);
+        recordFrom = new MediaStream(cs.getVideoTracks().concat(stream.getAudioTracks()));
+      }
       try{
         const rates = opts.small ? {videoBitsPerSecond: 1200000, audioBitsPerSecond: 64000} : {};
-        recorder = type ? new MediaRecorder(stream, Object.assign({mimeType: type}, rates))
-                        : new MediaRecorder(stream, rates);
+        recorder = type ? new MediaRecorder(recordFrom, Object.assign({mimeType: type}, rates))
+                        : new MediaRecorder(recordFrom, rates);
       }catch(e){
         finish(null);
         return;
