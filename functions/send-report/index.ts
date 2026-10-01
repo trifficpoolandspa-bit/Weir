@@ -174,8 +174,9 @@ Deno.serve(async (req: Request)=>{
     const clickable = p.link
       ? '<a href="' + p.link + '" target="_blank" style="text-decoration:none;">' + img + '</a>'
       : img;
-    return clickable
-      + (label ? '<div style="font-size:12px;color:#6B7B79;margin-top:5px;">' + label + '</div>' : '');
+    // The label sits above its photo, in the app's teal (Oct 1)
+    return (label ? '<div style="font-size:12px;font-weight:600;color:#1F8A8C;margin:0 0 5px;text-align:center;width:' + PHOTO_WIDTH + 'px;max-width:100%;">' + label + '</div>' : '')
+      + clickable;
   }
 
   // How the photos are laid out: a body of water's before and after belong
