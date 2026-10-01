@@ -5953,7 +5953,7 @@ function setFilterCleanOrder(g){
 // window): coming back finds every group closed
 // (var, so they exist from the moment the page starts, whichever runs first)
 var filtersLeftAt = null;
-var FILTERS_CLOSE_MS = 20 * 1000;          // 20 seconds (Sept 29; was a minute)
+var FILTERS_CLOSE_MS = 60 * 1000;          // a minute (back from 20 seconds, Sept 30)
 function onFilterGroupsPage(){
   const page = document.getElementById('view-workcenter');
   return !!(page && page.classList.contains('active') && workCenterMode === 'filters');
@@ -10748,6 +10748,26 @@ function renderCurrentList(kind){
     const acts = document.createElement('div');
     acts.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
     if(kind === 'Quote'){
+      // Resend: one press emails the customer the same quote again, exactly as
+      // first sent (its number, buttons and expiry date unchanged)
+      const resend = document.createElement('button');
+      resend.type = 'button';
+      resend.className = 'btn btn-ghost';
+      resend.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;';
+      resend.textContent = 'Resend';
+      resend.title = 'Email this quote to the customer again';
+      resend.addEventListener('click', async (e)=>{
+        e.stopPropagation();
+        if(resend.disabled) return;
+        const w = workOrders.find(x => x.id === r.id);
+        const customer = w ? customers.find(c => c.id === w.customerId) : null;
+        if(!w || !customer){ showToast('This customer is no longer on file'); return; }
+        resend.disabled = true;
+        resend.textContent = 'Sending\u2026';
+        try{ await resendQuoteEmail(w, customer); }
+        finally{ resend.disabled = false; resend.textContent = 'Resend'; }
+      });
+      acts.appendChild(resend);
       const close = document.createElement('button');
       close.type = 'button';
       close.className = 'btn btn-ghost';
@@ -11089,7 +11109,7 @@ document.getElementById('wcType').addEventListener('change', applyWorkOrderType)
 // within it and it's all still there, after that the form starts blank. Held
 // only in this page, so a reload clears it too. Quote and Work Order share one
 // set of boxes, which is why each needs its own held copy.
-const WC_DRAFT_MS = 20 * 1000;             // 20 seconds (Sept 29; was a minute)
+const WC_DRAFT_MS = 60 * 1000;             // a minute (back from 20 seconds, Sept 30)
 const wcDrafts = {};
 
 function captureWcDraft(type){
@@ -11712,6 +11732,34 @@ function convertQuoteToWorkOrder(q){
     document.getElementById('wcPhotoRequired').checked = true;
     showToast('Quote copied to a new work order');
   }, 0);
+}
+
+// Resend a quote exactly as it was first sent. Quotes sent before copies were
+// kept are rebuilt from today's template (without Approve / Decline).
+async function resendQuoteEmail(w, customer){
+  if(!customer.email){ showToast('This customer has no email on file'); return false; }
+  let html = w.emailHtml;
+  if(!html){
+    const dateText = w.date
+      ? new Date(w.date + 'T12:00:00').toLocaleDateString(undefined, {month: 'long', day: 'numeric', year: 'numeric'})
+      : new Date(w.createdAt || Date.now()).toLocaleDateString(undefined, {month: 'long', day: 'numeric', year: 'numeric'});
+    html = quoteEmailHtml(customer, w.type || 'Quote', dateText, w.lineItems || [], Number(w.total) || 0, w.notes || '', null, null, w.number);
+  }
+  const subject = w.emailSubject || ((w.type || 'Quote') + ' from ' + companyName() + ' \u2014 ' + customer.name);
+  // Plain words, only if the email service can't send the designed one
+  let plain = (w.type || 'Quote').toUpperCase() + '\n' + customer.name + '\n\n';
+  (w.lineItems || []).forEach(li => {
+    const qty = parseFloat(li.qty) || 0, price = parseFloat(li.price) || 0;
+    plain += (li.description || '') + '  x' + qty + '  $' + price.toFixed(2) + ' each  =  $' + (qty * price).toFixed(2) + '\n';
+  });
+  plain += '\nTOTAL: $' + (Number(w.total) || 0).toFixed(2);
+  if(w.notes) plain += '\n\nNotes: ' + w.notes;
+  const sent = await sendQuoteEmail(customer, subject, html, plain);
+  if(!sent){ showToast('Could not resend \u2014 check the connection and try again'); return false; }
+  w.lastResentAt = new Date().toISOString();
+  saveWorkOrders();
+  showToast('Quote resent to ' + (customer.email || customer.name));
+  return true;
 }
 
 // ---------- A quote's email, as the customer sees it ----------
@@ -19332,28 +19380,14 @@ document.getElementById('btnAddCustomer').addEventListener('click', ()=>{
   showCustomerForm();
 });
 
-// Every page comes back exactly as it was left if it's opened again soon:
-// 30 seconds (the WorkCenter 20). After that it opens as it normally does.
-var WEB_KEEP_MS = 30 * 1000;
-var WEB_KEEP_MS_WORKCENTER = 20 * 1000;
-var webLeftAt = {}, webLeftScroll = {}, webLeftEl = {}, webLeftSeason = {};
+// Every page opens as it normally does. (The Sept 29 change that brought a
+// page back as it was left for 30 seconds was taken out on Sept 30. The
+// WorkCenter's form still holds what was typed for a minute, as it did before.)
+var webLeftEl = {}, webLeftScroll = {}, webLeftSeason = {};
 function switchView(view){
-  const fromTab = document.querySelector('nav .tab.active');
-  const fromPage = fromTab ? fromTab.dataset.view : null;
-  if(fromPage && fromPage !== view){
-    const activeEl = document.querySelector('.view.active');
-    webLeftAt[fromPage] = Date.now();
-    webLeftScroll[fromPage] = window.scrollY;
-    webLeftEl[fromPage] = activeEl ? activeEl.id : null;
-    webLeftSeason[fromPage] = selectedSeasonId || null;
-  }
-  const keepFor = view === 'workcenter' ? WEB_KEEP_MS_WORKCENTER : WEB_KEEP_MS;
-  let keep = !!(fromPage && fromPage !== view && webLeftAt[view] && (Date.now() - webLeftAt[view]) < keepFor);
-  // Readings and Dosages after Customer Customization (the same screen) starts fresh
-  if(keep && view === 'chemconfig' && selectedChemConfigType === 'custom') keep = false;
-  if(keep && view === 'customerconfig' && selectedChemConfigType !== 'custom') keep = false;
+  const keep = false;
   // Readings and dosages always opens on year-round; a season stays chosen
-  // only while the page is open (and comes back if the page is, within the time)
+  // only while the page is open
   if(selectedSeasonId){
     selectedSeasonId = null;
     chemConfig = loadChemConfig();
