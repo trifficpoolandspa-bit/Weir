@@ -745,7 +745,7 @@ select#customerSelect{font-weight:600;}
            technician. Seen by the office only, never sent to the customer. -->
       <div id="visitVideoBlock" style="display:none;margin-top:6px;padding:14px;border:1.5px solid #A8CBE0;border-radius:11px;background:#EEF6FB;text-align:center;">
         <div style="font-size:14px;font-weight:700;color:#0B6FA4;margin-bottom:4px;">Videos (optional)</div>
-        <p style="font-size:12px;color:#3E5B6E;margin:0 0 12px;">Up to 3 videos of 15 seconds each, for the office only &mdash; they aren&rsquo;t sent to the customer. Videos delete themselves after 7 days to save storage.</p>
+        <p style="font-size:12px;color:#3E5B6E;margin:0 0 12px;">Up to 3 videos of 15 seconds each, for the office only &mdash; they aren&rsquo;t sent to the customer. Videos delete themselves after 7 days to save storage. Tap a video to watch it full screen.</p>
         <button type="button" class="btn" id="btnRecordVisitVideo" style="width:auto;padding:12px 24px;font-size:15px;background:#0B6FA4;color:#fff;border:1.5px solid #0B6FA4;margin:0 auto;">Record video</button>
         <div id="visitVideoWrap" style="display:none;margin-top:12px;"></div>
       </div>
@@ -2439,11 +2439,11 @@ async function renderRecentReadings(type, chemList, doseList){
     const builtIn = key => { for(const b of ['pool', 'spa', 'fountain']){ const f = ((DEFAULT_CHEM_CONFIG[b] || {}).dosages || []).find(x => x.key === key); if(f && f.unit) return f.unit; } return ''; };
     doses.forEach(d=>{
       const unit = d.unit || builtIn(d.key);
-      html += '<tr><td class="rt-name">' + esc(d.label || d.key) + (unit ? ' <span style="color:var(--muted);font-weight:500;">(' + esc(unit) + ')</span>' : '') + '</td>';
+      html += '<tr><td class="rt-name">' + esc(d.label || d.key) + '</td>';
       visits.forEach(v=>{
         const val = v[d.key];
         const has = shown(val) && parseFloat(val) !== 0;
-        html += has ? '<td class="rt-val">' + esc(String(val) + (unit ? ' ' + unit : '')) + '</td>' : '<td class="rt-none">\u2014</td>';
+        html += has ? '<td class="rt-val">' + esc(String(val)) + '</td>' : '<td class="rt-none">\u2014</td>';
       });
       html += '</tr>';
     });
@@ -5600,50 +5600,103 @@ function visitVideoAllowed(){
   if(typeof isFilterCleanVisit !== 'undefined' && isFilterCleanVisit) return false;
   return techRequires('allowVideo') || photoEveryoneOn('video', 'video');
 }
+// The visit's videos as small numbered thumbnails side by side, the same size
+// as the photo thumbnails. A tap opens one full screen, where it can be
+// watched or deleted.
 async function drawVisitVideos(){
   const wrap = document.getElementById('visitVideoWrap');
   const rec = document.getElementById('btnRecordVisitVideo');
-  visitVideoUrls.forEach(u => { if(u && u.indexOf('blob:') === 0){ try{ URL.revokeObjectURL(u); }catch(e){} } });
   visitVideoUrls = [];
-  if(wrap) wrap.innerHTML = '';
+  if(wrap){
+    wrap.innerHTML = '';
+    wrap.style.cssText = 'display:none;margin-top:12px;margin-bottom:10px;justify-content:center;align-items:flex-start;flex-wrap:wrap;gap:10px;';
+  }
   for(let i = 0; i < visitVideoRefs.length; i++){
     const ref = visitVideoRefs[i];
     const data = await loadPhotoData(ref.slice(PHOTO_REF.length));
-    if(!wrap) continue;
+    if(!wrap || !data) continue;
     const cell = document.createElement('div');
-    cell.style.cssText = 'margin-bottom:10px;text-align:left;';
+    cell.style.cssText = 'position:relative;width:27%;min-width:96px;cursor:pointer;';
+    const v = document.createElement('video');
+    v.muted = true; v.playsInline = true; v.preload = 'metadata'; v.src = data;
+    v.style.cssText = 'display:block;width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;'
+      + 'border:1px solid var(--line);background:#0E1A19;pointer-events:none;';
+    cell.appendChild(v);
+    const play = document.createElement('span');
+    play.textContent = '\u25b6';
+    play.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:34px;height:34px;'
+      + 'border-radius:50%;background:rgba(9,32,34,0.6);color:#fff;font-size:14px;display:flex;align-items:center;justify-content:center;pointer-events:none;';
+    cell.appendChild(play);
     if(visitVideoRefs.length > 1){
-      const n = document.createElement('div');
-      n.style.cssText = 'font-size:12px;font-weight:700;color:#0B6FA4;margin-bottom:4px;';
-      n.textContent = 'Video ' + (i + 1);
-      cell.appendChild(n);
+      const num = document.createElement('span');
+      num.textContent = String(i + 1);
+      num.style.cssText = 'position:absolute;left:6px;top:6px;min-width:22px;height:22px;border-radius:11px;'
+        + 'background:rgba(9,32,34,0.75);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 6px;pointer-events:none;';
+      cell.appendChild(num);
     }
-    if(data){
-      const v = document.createElement('video');
-      v.controls = true; v.playsInline = true; v.src = data;
-      v.style.cssText = 'display:block;max-width:100%;max-height:260px;width:auto;height:auto;margin:0 auto;border-radius:10px;border:1px solid var(--line);background:transparent;';
-      cell.appendChild(v);
-    }
-    const rm = document.createElement('button');
-    rm.type = 'button';
-    rm.className = 'btn btn-ghost';
-    rm.style.cssText = 'width:auto;margin-top:6px;color:var(--rust);border-color:#EFC9BC;';
-    rm.textContent = visitVideoRefs.length > 1 ? 'Remove video ' + (i + 1) : 'Remove video';
-    rm.addEventListener('click', async ()=>{
-      const gone = visitVideoRefs.splice(i, 1)[0];
-      if(gone){ try{ await deletePhotoData(gone.slice(PHOTO_REF.length)); }catch(e){} }
+    cell.addEventListener('click', ()=> openVideoFullScreen(data, async ()=>{
+      const at = visitVideoRefs.indexOf(ref);
+      if(at !== -1) visitVideoRefs.splice(at, 1);
+      try{ await deletePhotoData(ref.slice(PHOTO_REF.length)); }catch(e){}
       drawVisitVideos();
-    });
-    cell.appendChild(rm);
+    }));
     wrap.appendChild(cell);
   }
-  if(wrap) wrap.style.display = visitVideoRefs.length ? 'block' : 'none';
+  if(wrap) wrap.style.display = visitVideoRefs.length ? 'flex' : 'none';
   if(rec){
     rec.style.display = visitVideoRefs.length >= VISIT_VIDEOS_MAX ? 'none' : '';
     rec.textContent = visitVideoRefs.length
       ? 'Record another (' + (visitVideoRefs.length + 1) + ' of ' + VISIT_VIDEOS_MAX + ')'
       : 'Record video';
   }
+}
+// A video full screen, playing, with Delete video above a "tap outside" note.
+// Tapping the video plays and pauses it; tapping around it closes.
+function openVideoFullScreen(src, onDelete){
+  if(!src) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:600;background:rgba(8,20,19,0.94);'
+    + 'display:flex;flex-direction:column;align-items:center;';
+  const holder = document.createElement('div');
+  holder.style.cssText = 'flex:1;min-height:0;width:100%;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+  const v = document.createElement('video');
+  v.controls = true; v.playsInline = true; v.autoplay = true; v.src = src;
+  v.style.cssText = 'max-width:100%;max-height:100%;width:auto;height:auto;border-radius:10px;background:#000;';
+  v.addEventListener('click', e => e.stopPropagation());
+  holder.appendChild(v);
+  overlay.appendChild(holder);
+  const bar = document.createElement('div');
+  bar.style.cssText = 'flex:0 0 auto;padding:14px 20px calc(18px + env(safe-area-inset-bottom));'
+    + 'display:flex;flex-direction:column;align-items:center;gap:12px;';
+  const font = "font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;";
+  let closed = false;
+  const close = ()=>{
+    if(closed) return;
+    closed = true;
+    try{ v.pause(); }catch(e){}
+    photoViewerOpen = false;
+    if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
+  };
+  if(typeof onDelete === 'function'){
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.textContent = 'Delete video';
+    del.style.cssText = 'padding:12px 22px;font-size:15px;font-weight:600;border:none;border-radius:10px;'
+      + 'background:#B8492E;color:#fff;cursor:pointer;' + font;
+    del.addEventListener('click', e=>{ e.stopPropagation(); close(); try{ onDelete(); }catch(err){} showToast('Video deleted'); });
+    bar.appendChild(del);
+  }
+  const hint = document.createElement('div');
+  hint.textContent = 'Tap outside the video to close';
+  hint.style.cssText = 'padding:12px 18px;font-size:15px;border-radius:10px;background:#3E4746;color:#fff;pointer-events:none;' + font;
+  bar.appendChild(hint);
+  overlay.appendChild(bar);
+  overlay.addEventListener('click', close);
+  // The phone's own Back closes it, like a photo
+  photoViewerOpen = true;
+  closePhotoViewer = close;
+  document.body.appendChild(overlay);
 }
 function clearVisitVideo(){
   visitVideoRefs = [];
@@ -6992,12 +7045,10 @@ async function recordClip(opts){
       + 'phone and send it the usual way.', 'Not supported');
     return null;
   }
-  // Sideways allowed while recording (straight away, while the tap still counts)
+  // Sideways allowed while recording, if the phone permits it without going
+  // full screen (full screen brings Chrome's 'to exit full screen' bubble)
   let turned = false;
   try{
-    if(document.documentElement.requestFullscreen && !document.fullscreenElement){
-      await document.documentElement.requestFullscreen({navigationUI: 'hide'});
-    }
     if(screen.orientation && screen.orientation.lock){ await screen.orientation.lock('any'); turned = true; }
   }catch(e){}
   const uprightAgain = async ()=>{
@@ -13601,7 +13652,10 @@ document.addEventListener('visibilitychange', ()=>{ if(document.hidden) stopNote
   + 'body.left-handed [data-step-head] > *,body.left-handed [data-step-head-solo] > *{direction:ltr;}'
   // The headings themselves right up against the right edge (Oct 1)
   + 'body.left-handed [data-step-head] > h2{text-align:right;justify-self:stretch !important;flex:1 1 auto;min-width:0;}'
-  + 'body.left-handed #weekLabel,body.left-handed #techDayLabel,body.left-handed #servicedDayLabel{text-align:right !important;}';
+  // The dates stay centred in the space right of their buttons; the day name
+  // on Today's top row goes right against the right edge
+  + 'body.left-handed #homeDayHeading{order:2 !important;margin-left:auto !important;text-align:right;}'
+  + 'body.left-handed #voiceModeIndicator{order:1 !important;}';
   document.head.appendChild(st);
 })();
 function applyLeftHanded(){
@@ -15801,6 +15855,47 @@ async function addVisitVideoButton(out, sections){
     btn.addEventListener('click', e=>{ e.stopPropagation(); openVisitVideos(live); });
   }
   headText.appendChild(btn);
+  if(live.length){
+    const dlAll = document.createElement('button');
+    dlAll.type = 'button';
+    dlAll.className = 'btn btn-ghost visit-video-btn';
+    dlAll.style.cssText = 'width:auto;padding:6px 12px;font-size:12.5px;margin:8px 0 0 8px;';
+    dlAll.textContent = live.length > 1 ? 'Download all videos' : 'Download video';
+    dlAll.addEventListener('click', async e=>{
+      e.stopPropagation();
+      if(dlAll.disabled) return;
+      dlAll.disabled = true;
+      const was = dlAll.textContent;
+      dlAll.textContent = 'Downloading\u2026';
+      let saved = 0;
+      for(let i = 0; i < live.length; i++){
+        const src = live[i];
+        let url = null, type = '';
+        if(src.data){ url = src.data; type = (String(src.data).match(/^data:([^;,]+)/) || [])[1] || ''; }
+        else if(src.path){
+          try{
+            const s = deviceGet('session');
+            const r = await fetch(FIELD_SUPABASE_URL + '/storage/v1/object/' + SYNC_PHOTO_BUCKET + '/' + src.path, {
+              headers: {'apikey': FIELD_SUPABASE_KEY, 'Authorization': 'Bearer ' + (s && s.access_token)}
+            });
+            if(r.ok){ const bl = await r.blob(); type = bl.type || ''; url = URL.createObjectURL(bl); }
+          }catch(err){}
+        }
+        if(!url) continue;
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'weir-video-' + new Date().toISOString().slice(0, 10) + (live.length > 1 ? '-' + (i + 1) : '') + (/webm/i.test(type) ? '.webm' : '.mp4');
+        document.body.appendChild(a); a.click(); a.remove();
+        saved++;
+        if(url.indexOf('blob:') === 0) setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(err){} }, 20000);
+        await new Promise(r => setTimeout(r, 700));    // one at a time, so none is dropped
+      }
+      dlAll.disabled = false;
+      dlAll.textContent = was;
+      showToast(saved ? saved + (saved === 1 ? ' video' : ' videos') + ' downloaded' : 'Couldn\u2019t download (no signal, or past their 7 days)');
+    });
+    headText.appendChild(dlAll);
+  }
 }
 
 async function adminVersion_renderFullCombinedReport(customerId, poolReadingId, spaReadingId, fountainReadingRefs){

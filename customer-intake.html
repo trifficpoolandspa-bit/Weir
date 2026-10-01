@@ -17923,6 +17923,50 @@ function visitVideoButton(refs){
   btn.addEventListener('click', e=>{ e.stopPropagation(); openVisitVideos(refs); });
   return btn;
 }
+// Every video on the visit saved to this computer, one after another
+function downloadAllVideosButton(refs){
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-ghost';
+  btn.style.cssText = 'width:auto;padding:6px 12px;font-size:12.5px;margin:8px 0 0 8px;';
+  btn.textContent = refs.length > 1 ? 'Download all videos' : 'Download video';
+  btn.addEventListener('click', async e=>{
+    e.stopPropagation();
+    if(btn.disabled) return;
+    btn.disabled = true;
+    const was = btn.textContent;
+    btn.textContent = 'Downloading\u2026';
+    let saved = 0;
+    const st = siteUser && siteUser.companyId ? loadSyncState(siteUser.companyId) : null;
+    const known = st ? syncPhotoIndex(st).known : {};
+    for(let i = 0; i < refs.length; i++){
+      const id = isPhotoRef(refs[i]) ? refs[i].slice(PHOTO_REF.length) : null;
+      const rec = id ? known[id] : null;
+      if(!rec || !rec.path || rec.deleted) continue;
+      try{
+        const session = sbSession();
+        const r = await fetch(SUPABASE_URL + '/storage/v1/object/' + SYNC_PHOTO_BUCKET + '/' + rec.path, {
+          headers: {'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + (session && session.access_token)}
+        });
+        if(!r.ok) continue;
+        const bl = await r.blob();
+        const url = URL.createObjectURL(bl);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'weir-video-' + new Date().toISOString().slice(0, 10) + (refs.length > 1 ? '-' + (i + 1) : '') + (/webm/i.test(bl.type) ? '.webm' : '.mp4');
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(err){} }, 20000);
+        saved++;
+        await new Promise(res => setTimeout(res, 700));
+      }catch(err){}
+    }
+    btn.disabled = false;
+    btn.textContent = was;
+    showToast(saved ? saved + (saved === 1 ? ' video' : ' videos') + ' downloaded' : 'Couldn\u2019t download (past their 7 days, or no connection)');
+  });
+  return btn;
+}
+
 // The visit's videos in one window: ‹ › (or a swipe) between them, each sized
 // to the video itself so a phone video isn't framed in black on both sides.
 // Fetched from the office's storage when shown, never kept on this computer.
@@ -18163,8 +18207,9 @@ function buildReportDoc(customerId, name, customer, type, r, onDelete){
   if(r && r.video){
     const headText = doc.querySelector('.report-head > div') || doc;
     const vids = [r.video].concat(r.videoMore || []).filter(Boolean);
-    // One button for all of them; the window steps between
+    // One button for all of them; the window steps between. Download all beside it.
     headText.appendChild(visitVideoButton(vids));
+    headText.appendChild(downloadAllVideosButton(vids));
   }
   return doc;
 }
