@@ -5621,7 +5621,7 @@ async function drawVisitVideos(){
     if(data){
       const v = document.createElement('video');
       v.controls = true; v.playsInline = true; v.src = data;
-      v.style.cssText = 'width:100%;max-height:260px;border-radius:10px;border:1px solid var(--line);background:#000;display:block;';
+      v.style.cssText = 'display:block;max-width:100%;max-height:260px;width:auto;height:auto;margin:0 auto;border-radius:10px;border:1px solid var(--line);background:transparent;';
       cell.appendChild(v);
     }
     const rm = document.createElement('button');
@@ -6992,6 +6992,19 @@ async function recordClip(opts){
       + 'phone and send it the usual way.', 'Not supported');
     return null;
   }
+  // Sideways allowed while recording (straight away, while the tap still counts)
+  let turned = false;
+  try{
+    if(document.documentElement.requestFullscreen && !document.fullscreenElement){
+      await document.documentElement.requestFullscreen({navigationUI: 'hide'});
+    }
+    if(screen.orientation && screen.orientation.lock){ await screen.orientation.lock('any'); turned = true; }
+  }catch(e){}
+  const uprightAgain = async ()=>{
+    try{ if(turned && screen.orientation && screen.orientation.lock) await screen.orientation.lock('portrait'); }catch(e){}
+    try{ if(screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); }catch(e){}
+    try{ if(document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen(); }catch(e){}
+  };
 
   let stream;
   try{
@@ -7000,6 +7013,7 @@ async function recordClip(opts){
       audio: true            // a noise is often the whole point
     });
   }catch(e){
+    await uprightAgain();
     await alertDialog('The camera could not be opened. Check Weir is allowed to use '
       + 'the camera and microphone.', 'No camera');
     return null;
@@ -7036,6 +7050,7 @@ async function recordClip(opts){
       if(countdown) clearInterval(countdown);
       try{ stream.getTracks().forEach(t => t.stop()); }catch(e){}
       if(overlay.parentNode) document.body.removeChild(overlay);
+      uprightAgain();
     };
 
     const finish = (file)=>{
@@ -13583,7 +13598,10 @@ document.addEventListener('visibilitychange', ()=>{ if(document.hidden) stopNote
   + 'body.left-handed #servicedDayRow #servicedNextDay{order:1;}'
   + 'body.left-handed #servicedDayRow #servicedDayLabel{order:2;}'
   + 'body.left-handed [data-step-head],body.left-handed [data-step-head-solo]{direction:rtl;}'
-  + 'body.left-handed [data-step-head] > *,body.left-handed [data-step-head-solo] > *{direction:ltr;}';
+  + 'body.left-handed [data-step-head] > *,body.left-handed [data-step-head-solo] > *{direction:ltr;}'
+  // The headings themselves right up against the right edge (Oct 1)
+  + 'body.left-handed [data-step-head] > h2{text-align:right;justify-self:stretch !important;flex:1 1 auto;min-width:0;}'
+  + 'body.left-handed #weekLabel,body.left-handed #techDayLabel,body.left-handed #servicedDayLabel{text-align:right !important;}';
   document.head.appendChild(st);
 })();
 function applyLeftHanded(){

@@ -14516,7 +14516,7 @@ function renderPhotoRequirements(){
     // Short videos, never required: a tick lets that technician take them.
     // At the top (Oct 1).
     {step: 'video', label: 'Video', off: false,
-     note: 'Optional, up to 3 videos of 15 seconds each per visit. Seen by the office only, never sent to the customer. Videos delete themselves after 7 days to save storage.',
+     note: 'Optional, up to 3 videos of 15 seconds each per visit. Seen by the office only, never sent to the customer. Videos delete themselves after 7 days to save storage. Videos can be downloaded in the Reports tab.',
      bodies: {}, oneTick: true},
     {step: 'before', label: 'Before photo', off: false, why: '',
      bodies: {pool: true, spa: true, fountain: true}},
@@ -14559,14 +14559,6 @@ function renderPhotoRequirements(){
       name.addEventListener('click', ()=> openPhotoTask(entry.task));
     }
     left.appendChild(name);
-    if(entry.note && photoStepOpen === entry.step){
-      // A line of its own under the name
-      left.style.flexWrap = 'wrap';
-      const note = document.createElement('div');
-      note.style.cssText = 'flex-basis:100%;font-size:12px;color:var(--muted);font-weight:400;line-height:1.45;margin-top:2px;';
-      note.textContent = entry.note;
-      left.appendChild(note);
-    }
 
     // Photos the company added can be changed from a button as well as the name
     if(entry.task){
@@ -14649,6 +14641,14 @@ function renderPhotoRequirements(){
     }
 
     if(photoStepOpen === entry.step && !entry.off){
+      // The row's note, inside it once it's open, above who it applies to
+      if(entry.note){
+        const note = document.createElement('div');
+        note.style.cssText = 'margin:10px auto 0;max-width:460px;font-size:12px;color:var(--muted);line-height:1.5;'
+          + 'padding:9px 12px;border-radius:10px;background:var(--teal-pale, #E4F1EF);';
+        note.textContent = entry.note;
+        block.appendChild(note);
+      }
       block.appendChild(photoTechnicianList(entry.step, entry.bodies));
     }
 
@@ -17932,7 +17932,7 @@ async function openVisitVideos(refs){
   let at = 0, url = null, vtype = '';
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
-  overlay.innerHTML = '<div class="confirm-box" style="max-width:460px;width:100%;">'
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:640px;width:100%;">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 4px;">'
     + '<h3 style="font-size:16px;margin:0;" data-title>Visit video</h3>'
     + '<span data-nav style="display:none;align-items:center;gap:6px;">'
@@ -17970,7 +17970,7 @@ async function openVisitVideos(refs){
     box.innerHTML = '';
     const v = document.createElement('video');
     v.controls = true; v.playsInline = true; v.src = url;
-    v.style.cssText = 'display:block;max-width:100%;max-height:65vh;width:auto;height:auto;margin:0 auto;border-radius:10px;background:transparent;';
+    v.style.cssText = 'width:100%;max-height:65vh;border-radius:10px;background:#000;';
     box.appendChild(v);
     dl.style.display = '';
   }
@@ -17986,7 +17986,12 @@ async function openVisitVideos(refs){
     overlay.querySelector('[data-prev]').addEventListener('click', ()=>{ at = (at - 1 + vids.length) % vids.length; show(); });
     overlay.querySelector('[data-next]').addEventListener('click', ()=>{ at = (at + 1) % vids.length; show(); });
   }
-  overlay.querySelector('[data-close]').addEventListener('click', ()=>{ free(); overlay.remove(); });
+  // Closes from Close, a click anywhere outside the window, or Escape (like a picture)
+  const shut = ()=>{ free(); document.removeEventListener('keydown', onKey, true); overlay.remove(); };
+  const onKey = (e)=>{ if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); shut(); } };
+  overlay.querySelector('[data-close]').addEventListener('click', shut);
+  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) shut(); });
+  document.addEventListener('keydown', onKey, true);
   show();
 }
 
@@ -20360,7 +20365,8 @@ function inlineNotifyContact(cust){
     // Automatic on my way message (moved here from Customer Customization):
     // a switch on the same line, and how many stops before once it's on
     const autoWrap = document.createElement('span');
-    autoWrap.style.cssText = 'display:inline-flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap;';
+    // Just after Tell them by, with a small gap (Oct 1; was at the far right)
+    autoWrap.style.cssText = 'display:inline-flex;align-items:center;gap:8px;margin-left:22px;flex-wrap:wrap;';
     const autoLabel = document.createElement('span');
     autoLabel.style.cssText = 'font-size:12.5px;color:var(--muted);';
     autoLabel.textContent = 'Automatic on my way message';
