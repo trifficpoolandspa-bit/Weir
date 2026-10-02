@@ -22,12 +22,12 @@ button[data-x-drawn] > svg{display:block;width:0.62em;height:0.62em;margin:auto;
 /* The bin (Tyrus, Oct 2, option B): a pale red square with a darker red
    bin, always square and the bin centred, wherever it is. Small ones sit
    inside tags and tight rows. */
-button[data-x-drawn="bin"]{width:33px !important;height:33px !important;min-width:33px !important;max-width:33px !important;
+button[data-x-drawn="bin"],button:has(> svg.weir-bin){width:33px !important;height:33px !important;min-width:33px !important;max-width:33px !important;
   padding:0 !important;margin-top:0;border-radius:9px !important;background:#FBE3DC !important;color:#9E3D26 !important;
   border:1px solid #E9B3A3 !important;flex:0 0 33px !important;line-height:0 !important;opacity:1;
   align-items:center !important;justify-content:center !important;box-sizing:border-box !important;}
-button[data-x-drawn="bin"]:hover{background:#F6D0C4 !important;}
-button[data-x-drawn="bin"] > svg{width:18px !important;height:18px !important;margin:0 auto !important;display:block !important;}
+button[data-x-drawn="bin"]:hover,button:has(> svg.weir-bin):hover{background:#F6D0C4 !important;}
+button[data-x-drawn="bin"] > svg,button > svg.weir-bin{width:18px !important;height:18px !important;margin:0 auto !important;display:block !important;}
 button[data-x-drawn="bin"][data-bin-size="s"]{width:24px !important;height:24px !important;min-width:24px !important;max-width:24px !important;
   flex-basis:24px !important;border-radius:7px !important;}
 button[data-x-drawn="bin"][data-bin-size="s"] > svg{width:14px !important;height:14px !important;}
@@ -1814,7 +1814,7 @@ input::placeholder{color:#A9BCB9;}
               <span class="toggle-slider"></span>
             </label>
           </div>
-          <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">On to start. A table at the top of each visit's readings page in the app showing that pool, spa or extra body of water's readings from the last 3 months, one column per visit with the newest first. Skipped visits show as Skipped. With Show chemicals added too on, what was put in at each visit is listed underneath. Choose which readings and dosages appear with In history on Readings and Dosages. Applies to everyone in the company.</p>
+          <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">Shows the last 3 months of readings at the top of each visit.</p>
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;">
             <span style="font-size:13.5px;font-weight:600;">Show chemicals added too</span>
             <label class="toggle-switch">
@@ -9673,6 +9673,8 @@ function renderTaskForm(){
 
 function clearTaskForm(){
   editingTaskId = null;
+  if(typeof wcEditSeries !== 'undefined' && wcEditSeries && wcEditSeries.kind === 'task') wcEditSeries = null;
+  try{ if(typeof renderEditDates === 'function') renderEditDates(); }catch(e){}
   setPickedTechIds(document.getElementById('taskTechnician'), []);
   document.getElementById('taskTitle').value = '';
   document.getElementById('taskDetails').value = '';
@@ -9851,6 +9853,15 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
     return;
   }
 
+  // Editing one from Current: the dates still to come are replaced (Oct 2)
+  const editedSeries = wcEditSeries && wcEditSeries.kind === 'task' ? wcEditSeries : null;
+  const skipDates = new Set(editedSeries && editedSeries.skip ? editedSeries.skip : []);
+  if(editedSeries){
+    const gone = new Set(editedSeries.ids);
+    tasks = tasks.filter(t => !gone.has(t.id));
+    wcEditSeries = null;
+  }
+
   // A repeating task is stored as the dates it actually falls on, so a
   // technician's route never has to work out a schedule in the field.
   const dates = [date];
@@ -9866,6 +9877,12 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
       dates.push(new Date(d.getTime() - d.getTimezoneOffset() * 60000)
         .toISOString().slice(0, 10));
     }
+  }
+
+  // Dates taken off while it was open stay off
+  if(skipDates.size){
+    for(let i = dates.length - 1; i >= 0; i--) if(skipDates.has(dates[i])) dates.splice(i, 1);
+    if(!dates.length){ saveTasks(); clearTaskForm(); renderTaskList(); showToast('No dates left'); return; }
   }
 
   // Each technician has their own copy, and their own series if it repeats
@@ -9894,6 +9911,7 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
   clearTaskForm();
   renderTaskList();
   const who = techIds.length === 1 ? 'the route' : techNamesFor(techIds) + '\u2019s routes';
+  if(editedSeries){ showToast('Task saved \u2014 ' + dates.length + (dates.length === 1 ? ' date' : ' dates') + ' on ' + who); return; }
   showToast(dates.length === 1
     ? 'Task added to ' + who
     : 'Added ' + dates.length + ' times to ' + who + ', every ' + repeatWords(everyDays));
@@ -10426,6 +10444,8 @@ document.getElementById('btnAddLineItem').addEventListener('click', ()=>{
 // work order used to put it back to Quote, which threw you onto the quote tab
 // when you were most likely to be writing another work order.
 function resetWorkOrderForm(backToQuote){
+  if(typeof wcEditSeries !== 'undefined' && wcEditSeries && wcEditSeries.kind === 'wo') wcEditSeries = null;
+  try{ if(typeof renderEditDates === 'function') renderEditDates(); }catch(e){}
   const qn = document.getElementById('wcQuoteName');
   if(qn) qn.value = '';
   const qx = document.getElementById('wcExpiresDays');
@@ -10745,6 +10765,180 @@ let wcCurrentPage = 1;
 function wcShortDate(iso){
   return iso ? new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'}) : 'No date';
 }
+// ---------- Opening a task or work order from Current (Oct 2) ----------
+// Click a row: it opens in its form with every date still to come, and saving
+// replaces those dates. Done ones are left as they are.
+var wcEditSeries = null;   // {kind: 'task'|'wo', ids, workOrderId, number}
+
+// While a repeat is open: its dates still to come, each with a bin. A date
+// taken off here stays off when Save changes lays the dates out again.
+function renderEditDates(){
+  ['task', 'wo'].forEach(kind=>{
+    const anchor = kind === 'task'
+      ? (document.getElementById('taskRepeat') || {}).closest && document.getElementById('taskRepeat').closest('.field')
+      : document.getElementById('wcRepeatField');
+    if(!anchor) return;
+    let box = document.getElementById(kind === 'task' ? 'taskEditDates' : 'wcEditDates');
+    if(!box){
+      box = document.createElement('div');
+      box.id = kind === 'task' ? 'taskEditDates' : 'wcEditDates';
+      box.className = 'field';
+      box.style.display = 'none';
+      anchor.parentNode.insertBefore(box, anchor.nextSibling);
+    }
+    const ed = wcEditSeries && wcEditSeries.kind === kind ? wcEditSeries : null;
+    if(!ed || ed.ids.length < 1){ box.style.display = 'none'; box.innerHTML = ''; return; }
+    const list = kind === 'task'
+      ? tasks.filter(t => ed.ids.indexOf(t.id) !== -1)
+      : (lsGet('scheduledWorkOrders') || []).filter(j => ed.ids.indexOf(j.id) !== -1);
+    list.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+    box.innerHTML = '<label>Dates still to come (' + list.length + ')</label>'
+      + '<div data-dates style="border:1px solid var(--line);border-radius:10px;padding:2px 10px;max-height:220px;overflow-y:auto;"></div>';
+    const holder = box.querySelector('[data-dates]');
+    list.forEach((item, i)=>{
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:7px 0;'
+        + (i === list.length - 1 ? '' : 'border-bottom:1px solid var(--line);');
+      const when = document.createElement('span');
+      when.style.cssText = 'flex:1;font-size:13.5px;';
+      when.textContent = wcShortDate(item.date);
+      // Done without going through the field: to History
+      const done = document.createElement('button');
+      done.type = 'button';
+      done.className = 'btn btn-ghost';
+      done.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;flex:0 0 auto;';
+      done.textContent = 'Mark completed';
+      done.addEventListener('click', ()=>{
+        const stamp = new Date().toISOString();
+        if(kind === 'task'){
+          const t = tasks.find(x => x.id === item.id);
+          if(t){ Object.assign(t, {done: true, doneAt: stamp, doneBy: 'office'}); saveTasks(); }
+        } else {
+          const jobs = lsGet('scheduledWorkOrders') || [];
+          const j = jobs.find(x => x.id === item.id);
+          if(j){ Object.assign(j, {status: 'done', doneAt: stamp, doneBy: 'office'}); lsSet('scheduledWorkOrders', jobs); }
+        }
+        if(!wcEditSeries) return;
+        wcEditSeries.ids = wcEditSeries.ids.filter(id => id !== item.id);
+        wcEditSeries.skip = (wcEditSeries.skip || []).concat(item.date);
+        showToast(wcShortDate(item.date) + ' completed \u2014 moved to History');
+        if(!wcEditSeries.ids.length){ if(kind === 'task') clearTaskForm(); else resetWorkOrderForm(); return; }
+        renderEditDates();
+      });
+      row.appendChild(when); row.appendChild(done);
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'btn btn-ghost fountain-remove';
+      x.title = 'Take ' + wcShortDate(item.date) + ' off the route';
+      x.textContent = '\u00d7';
+      x.addEventListener('click', async ()=>{
+        const ok = await confirmDialog('Take ' + wcShortDate(item.date) + ' off the route?', 'Remove');
+        if(!ok) return;
+        if(kind === 'task'){ tasks = tasks.filter(t => t.id !== item.id); saveTasks(); }
+        else lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => j.id !== item.id));
+        if(!wcEditSeries) return;
+        wcEditSeries.ids = wcEditSeries.ids.filter(id => id !== item.id);
+        wcEditSeries.skip = (wcEditSeries.skip || []).concat(item.date);
+        showToast(wcShortDate(item.date) + ' removed');
+        if(!wcEditSeries.ids.length){ if(kind === 'task') clearTaskForm(); else resetWorkOrderForm(); return; }
+        renderEditDates();
+      });
+      row.appendChild(x);
+      holder.appendChild(row);
+    });
+    box.style.display = '';
+  });
+}
+
+function repeatFromGap(days){
+  const near = (a, b) => Math.abs(days - a) <= b;
+  if(days === 7) return {repeat: 'weekly'};
+  if(days === 14) return {repeat: 'biweekly'};
+  if(near(30, 2)) return {repeat: 'monthly'};
+  if(near(61, 2)) return {repeat: 'bimonthly'};
+  if(near(91, 2)) return {repeat: 'quarterly'};
+  if(near(182, 3)) return {repeat: 'biannual'};
+  if(near(365, 1)) return {repeat: 'yearly'};
+  return {repeat: 'custom', every: days, unit: days % 7 === 0 ? 'weeks' : 'days'};
+}
+
+function openCurrentForEditing(kind, r){
+  if(kind === 'Task'){
+    const open = tasks.filter(t => t && !t.done);
+    const left = (r.group ? open.filter(t => t.seriesId === r.group) : open.filter(t => t.id === r.id))
+      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+    if(!left.length) return;
+    const first = left[0];
+    openTaskForEditing(first);
+    editingTaskId = null;
+    wcEditSeries = {kind: 'task', ids: left.map(t => t.id)};
+    const every = first.everyDays || (first.everyWeeks ? first.everyWeeks * 7 : 0);
+    const rep = document.getElementById('taskRepeat');
+    if(left.length > 1 && every){
+      if(every % 7 === 0 && every / 7 >= 1 && every / 7 <= 4) rep.value = String(every / 7);
+      else {
+        rep.value = 'custom';
+        const days = every % 7 !== 0;
+        document.getElementById('taskRepeatUnit').value = days ? 'days' : 'weeks';
+        document.getElementById('taskRepeatWeeks').max = days ? '365' : '52';
+        document.getElementById('taskRepeatWeeks').value = String(days ? every : every / 7);
+      }
+      // Ends where it ended before
+      document.getElementById('taskRepeatUntil').value = left[left.length - 1].date || '';
+    } else {
+      rep.value = 'none';
+      document.getElementById('taskRepeatUntil').value = '';
+    }
+    applyTaskRepeat();
+    document.getElementById('btnSaveTask').textContent = 'Save changes';
+    renderEditDates();
+    showToast(left.length > 1 ? 'Editing ' + left.length + ' dates still to come' : 'Editing this task');
+    return;
+  }
+  // A work order: this technician's visits still to come
+  const jobs = (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'scheduled');
+  const left = (r.group
+      ? jobs.filter(j => j.workOrderId === r.group && String(j.technicianId || '') === String(r.techId || ''))
+      : jobs.filter(j => j.id === r.id))
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  if(!left.length) return;
+  const first = left[0];
+  const header = first.workOrderId ? (workOrders || []).find(w => w && w.id === first.workOrderId) : null;
+  let rep = {repeat: 'none'};
+  if(left.length > 1){
+    rep = header && header.repeat && header.repeat !== 'none' ? {repeat: header.repeat}
+      : repeatFromGap(Math.round((new Date(left[1].date + 'T12:00:00') - new Date(first.date + 'T12:00:00')) / 86400000));
+  }
+  loadWorkOrderIntoForm({type: 'Work Order', customerId: first.customerId, date: first.date,
+    photoRequired: !!first.photoRequired, lineItems: first.lineItems || [], notes: first.notes || '',
+    technicianIds: [String(first.technicianId || '')], repeat: rep.repeat});
+  setTimeout(()=>{
+    if(rep.repeat === 'custom'){
+      document.getElementById('wcCustomEvery').value = String(rep.unit === 'weeks' ? rep.every / 7 : rep.every);
+      document.getElementById('wcCustomUnit').value = rep.unit;
+      document.getElementById('wcCustomRepeat').style.display = 'flex';
+    }
+    wcEditSeries = {kind: 'wo', ids: left.map(j => j.id), workOrderId: first.workOrderId || '',
+      lastDate: left[left.length - 1].date || '',
+      number: first.workOrderNumber || (header && header.number) || 0};
+    const num = document.getElementById('wcQuoteNumber');
+    if(num && wcEditSeries.number) num.textContent = '#' + quoteNumberText(wcEditSeries.number);
+    document.getElementById('btnSendWorkOrder').textContent = 'Save changes';
+    renderEditDates();
+    showToast(left.length > 1 ? 'Editing ' + left.length + ' visits still to come' : 'Editing this work order');
+  }, 120);
+}
+
+// Changing Quote / Work Order / Task, or its tabs, or leaving the page, ends
+// an edit, so a later Finalize or Add to route can't replace that series
+document.addEventListener('click', e=>{
+  if(!wcEditSeries) return;
+  if(e.target.closest && e.target.closest('#wcTypeToggle [data-wctype], #wcViewControl [data-wcview], nav .tab')){
+    wcEditSeries = null;
+    try{ renderEditDates(); }catch(err){}
+  }
+}, true);
+
 function renderCurrentList(kind){
   const box = document.getElementById('wcCurrentList');
   const count = document.getElementById('wcCurrentCount');
@@ -10854,6 +11048,15 @@ function renderCurrentList(kind){
       + (i === shown.length - 1 ? '' : 'border-bottom:1px solid var(--line);');
     const tick = selectionTick(selKey, r.id, redrawCur);
     if(tick){ row.appendChild(tick); row.style.cursor = 'pointer'; row.addEventListener('click', e=>{ if(e.target.closest('button')) return; toggleSelected(selKey, r.id, redrawCur); }); }
+    else if(kind !== 'Quote'){
+      // The whole row opens it to edit (Oct 2)
+      row.style.cursor = 'pointer';
+      row.title = r.groupLeft > 1 ? 'Open to edit every date still to come' : 'Open to edit';
+      row.addEventListener('click', e=>{
+        if(e.target.closest('button, input, a, select')) return;
+        openCurrentForEditing(kind, r);
+      });
+    }
     else if(kind === 'Quote'){
       // A quote's row shows the email the customer got
       row.style.cursor = 'pointer';
@@ -10994,7 +11197,7 @@ function renderCurrentList(kind){
         renderCurrentList(kind);
         showToast('Completed \u2014 moved to History');
       });
-      acts.appendChild(complete);
+      // Mark completed lives inside now, beside each date (Oct 2)
       if(r.groupLeft > 1){
         const all = document.createElement('button');
         all.type = 'button';
@@ -11013,6 +11216,9 @@ function renderCurrentList(kind){
         });
         acts.appendChild(all);
       }
+      // One bin per row (Oct 2): a repeat's takes every date still to come
+      // (single dates come off from inside it); otherwise this one
+      if(!(r.groupLeft > 1)){
       const x = document.createElement('button');
       x.type = 'button';
       x.className = 'btn btn-ghost fountain-remove';
@@ -11028,6 +11234,7 @@ function renderCurrentList(kind){
         showToast('Removed');
       });
       acts.appendChild(x);
+      }
     }
     row.appendChild(acts);
     box.appendChild(row);
@@ -11553,16 +11760,31 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
     if(!date){ showToast('Pick a scheduled date'); return; }
     if(!techIds.length){ showToast('Assign a technician'); return; }
 
-    const dates = workOrderDates(date, repeat,
+    let dates = workOrderDates(date, repeat,
       document.getElementById('wcCustomEvery').value,
       document.getElementById('wcCustomUnit').value);
 
-    const jobs = lsGet('scheduledWorkOrders') || [];
-    picked.forEach(customer=>{
-      const woId = 'wo_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
-      // This work order's number: the next one up
-      const woNumber = nextWorkOrderNumber();
-      lsSet('workOrderCounter', woNumber);
+    // Editing one from Current: its visits still to come are replaced, and
+    // the first customer keeps its work order and number (Oct 2)
+    const editing = wcEditSeries && wcEditSeries.kind === 'wo' ? wcEditSeries : null;
+    const gone = new Set(editing ? editing.ids : []);
+    // ...and it ends where it ended before (work orders have no Until date)
+    if(editing && editing.lastDate && dates.length > 1){
+      dates = dates.filter((d, i) => i === 0 || d <= editing.lastDate);
+    }
+    // Dates taken off while it was open stay off
+    if(editing && editing.skip && editing.skip.length){
+      dates = dates.filter(d => editing.skip.indexOf(d) === -1);
+      if(!dates.length){ lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !gone.has(j.id)));
+        wcEditSeries = null; resetWorkOrderForm(); showToast('No visits left'); return; }
+    }
+    const jobs = (lsGet('scheduledWorkOrders') || []).filter(j => !gone.has(j.id));
+    picked.forEach((customer, ci)=>{
+      const keep = editing && ci === 0 && editing.workOrderId;
+      const woId = keep ? editing.workOrderId : 'wo_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+      // This work order's number: the next one up, unless it keeps its own
+      const woNumber = keep && editing.number ? editing.number : nextWorkOrderNumber();
+      if(!(keep && editing.number)) lsSet('workOrderCounter', woNumber);
       // A separate job for each technician, each ticked off by its own person
       techIds.forEach(techId => dates.forEach(d=>{
         jobs.push({
@@ -11579,15 +11801,19 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
           status: 'scheduled'
         });
       }));
-      workOrders.push({
+      const header = {
         number: woNumber,
         photoRequired: type === 'Work Order' && document.getElementById('wcPhotoRequired').checked,
         id: woId, customerId: customer.id, type, lineItems: validItems, notes, total,
         technicianId: techIds[0], technicianIds: techIds, date, repeat,
         createdAt: new Date().toISOString(),
         status: 'finalized'
-      });
+      };
+      const was = keep ? workOrders.findIndex(w => w && w.id === woId) : -1;
+      if(was !== -1) workOrders[was] = Object.assign({}, workOrders[was], header, {createdAt: workOrders[was].createdAt || header.createdAt});
+      else workOrders.push(header);
     });
+    wcEditSeries = null;
     lsSet('scheduledWorkOrders', jobs);
     saveWorkOrders();
     renderWorkOrderHistory();
@@ -19719,13 +19945,16 @@ function openAddToCustomersModal(typeName){
     overlay.className = 'confirm-overlay';
     overlay.innerHTML = `
       <div class="confirm-box" style="max-width:460px;max-height:82vh;display:flex;flex-direction:column;">
-        <h3 style="font-size:15px;margin:0 0 6px;">Add ${escapeSyncText(typeName)}?</h3>
+        <h3 style="font-size:15px;margin:0 0 10px;">Add equipment</h3>
+        <!-- Its name, in the same window (Oct 2; was a separate box first) -->
+        <input id="addEqName" placeholder="Equipment name, e.g. Salt System" autocomplete="off" style="margin-bottom:8px;">
+        <p id="addEqNameErr" style="display:none;font-size:12px;color:var(--rust);margin:-4px 0 8px;">Name the equipment first</p>
         <p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">Add it to this customer, or to them and others who have the same.</p>
 
         <!-- Quick buttons for this kind of equipment, set up while adding it (Oct 2) -->
         <div style="border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:12px 0;margin:0 0 14px;">
           <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;margin:0 0 6px;">Quick buttons (optional)</div>
-          <p style="font-size:11.5px;color:var(--muted);margin:0 0 8px;">Choices to tap on this equipment. They show for every customer who has ${escapeSyncText(baseEquipmentType(typeName))}.</p>
+          <p style="font-size:11.5px;color:var(--muted);margin:0 0 8px;">Choices to tap on this equipment. They show for every customer who has it.</p>
           <div id="addEqBtnRows"></div>
           <button type="button" class="btn btn-ghost" id="addEqBtnAdd" style="width:100%;padding:8px 12px;font-size:13px;margin-top:8px;">+ Add a button</button>
           <div id="addEqBtnLine" style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;"></div>
@@ -19753,8 +19982,19 @@ function openAddToCustomersModal(typeName){
       </div>`;
     document.body.appendChild(overlay);
 
-    // The quick buttons: whatever this kind of equipment already has, to edit
-    let quick = customEquipmentOptions(typeName);
+    const nameEl = overlay.querySelector('#addEqName');
+    nameEl.value = typeName || '';
+    const nameNow = ()=> nameEl.value.trim();
+    // The quick buttons: once a name is typed, whatever that kind of equipment
+    // already has is brought in to edit (only while nothing has been typed here)
+    let quick = typeName ? customEquipmentOptions(typeName) : [];
+    nameEl.addEventListener('input', ()=>{ overlay.querySelector('#addEqNameErr').style.display = 'none'; });
+    setTimeout(()=> nameEl.focus(), 50);
+    nameEl.addEventListener('change', ()=>{
+      if(quick.some(o => String(o || '').trim())) return;
+      quick = nameNow() ? customEquipmentOptions(nameNow()) : [];
+      drawQuick();
+    });
     const qRows = overlay.querySelector('#addEqBtnRows');
     const qLine = overlay.querySelector('#addEqBtnLine');
     function drawQuickLine(){
@@ -19835,8 +20075,8 @@ function openAddToCustomersModal(typeName){
         nameWithAddress(name, cust);
         row.appendChild(name);
         // Say so if they already have it, rather than adding a duplicate
-        const has = (cust.equipmentTypeOptions || []).some(t =>
-          baseEquipmentType(t) === baseEquipmentType(typeName));
+        const has = nameNow() && (cust.equipmentTypeOptions || []).some(t =>
+          baseEquipmentType(t) === baseEquipmentType(nameNow()));
         if(has){
           const tag = document.createElement('span');
           tag.textContent = 'has one';
@@ -19856,15 +20096,17 @@ function openAddToCustomersModal(typeName){
     }
 
     const finish = (choice)=>{
-      // Added (not cancelled): the quick buttons are kept for this kind of
-      // equipment, for every customer who has it
       if(choice !== null){
+        // A name first
+        if(!nameNow()){ overlay.querySelector('#addEqNameErr').style.display = 'block'; nameEl.focus(); return; }
+        // The quick buttons are kept for this kind of equipment, for every
+        // customer who has it
         const list = quick.map(o => String(o || '').trim()).filter(Boolean);
-        const before = customEquipmentOptions(typeName);
-        if(JSON.stringify(list) !== JSON.stringify(before)) saveCustomEquipmentOptions(typeName, list);
+        const before = customEquipmentOptions(nameNow());
+        if(JSON.stringify(list) !== JSON.stringify(before)) saveCustomEquipmentOptions(nameNow(), list);
       }
       document.body.removeChild(overlay);
-      resolve(choice);
+      resolve(choice === null ? null : {name: nameNow(), ids: choice});
     };
 
     overlay.querySelector('#addEqOne').addEventListener('click', ()=> finish([]));
@@ -19922,10 +20164,11 @@ function addEquipmentTypeToCustomers(typeName, ids){
 }
 
 document.getElementById('btnNewEquipmentType').addEventListener('click', async ()=>{
-  const name = await promptDialog('Name this new equipment', 'e.g. Salt System');
-  if(!name) return;
-  const trimmed = name.trim();
-  if(!trimmed) return;
+  // Name, quick buttons and who gets it, all in one window (Oct 2)
+  const picked = await openAddToCustomersModal('');
+  if(!picked) return;
+  const trimmed = picked.name;
+  const ids = picked.ids;
 
   // A customer can have more than one of the same thing, so a repeat name
   // becomes "Filter 2", "Filter 3" and so on rather than being refused.
@@ -19935,9 +20178,6 @@ document.getElementById('btnNewEquipmentType').addEventListener('click', async (
     while(currentEquipmentTypeOptions.includes(trimmed + ' ' + n)) n++;
     finalName = trimmed + ' ' + n;
   }
-  // Just this customer, or others too; Cancel adds nothing (Oct 2)
-  const ids = await openAddToCustomersModal(finalName);
-  if(ids === null) return;
 
   currentEquipmentTypeOptions.push(finalName);
   renderEquipmentTypeList();
@@ -22748,7 +22988,7 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
     + 'stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>';
   // A red × (one that removes or deletes something) is drawn as a bin instead
   // (Tyrus, Oct 2). Grey ×s that only clear a search box stay ×s.
-  const BIN = '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:1.1em;height:1.1em;display:block;">'
+  const BIN = '<svg class="weir-bin" viewBox="0 0 24 24" aria-hidden="true" style="width:1.1em;height:1.1em;display:block;">'
     + '<path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" '
     + 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
   const isRed = btn=>{
