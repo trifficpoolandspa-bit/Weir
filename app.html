@@ -4432,8 +4432,16 @@ function fieldStartWipe(reason, companyId){
   const m = deviceGet('membership');
   // Who this was is written down now: signing out clears it, and the phone may
   // not finish clearing until days later
-  deviceSet('wipe', {reason: reason, companyId: companyId || (deviceGet('company') || {}).id,
-                     username: m ? m.username : null, since: new Date().toISOString()});
+  let techId = m && m.technician_id ? m.technician_id : null;
+  try{ if(!techId && typeof currentUser !== 'undefined' && currentUser && currentUser.id) techId = currentUser.id; }catch(e){}
+  // Started again later (after signing out, say): keep who it was for
+  const cid = companyId || (deviceGet('company') || {}).id;
+  const prev = deviceGet('wipe');
+  const same = prev && prev.companyId === cid ? prev : null;
+  deviceSet('wipe', {reason: reason, companyId: cid,
+                     username: (m && m.username) || (same && same.username) || null,
+                     technicianId: techId || (same && same.technicianId) || null,
+                     since: (same && same.since) || new Date().toISOString()});
 }
 
 // While a phone is waiting to finish sending, the message belongs on the
@@ -4550,6 +4558,10 @@ async function fieldFinishWipe(){
   await fieldWipeCompanyData();
   await fieldSignOut();
   if(wipe.companyId && username) fieldForgetLogin(wipe.companyId, username);
+  if(wipe.companyId && wipe.technicianId){
+    deviceSet('logins', fieldSavedLogins().filter(l => !(l.companyId === wipe.companyId
+      && l.membership && l.membership.technician_id === wipe.technicianId)));
+  }
   deviceSet('wipe', null);
   if(typeof fieldOnSignedOut === 'function') fieldOnSignedOut();
   fieldShowError(fieldWipeMessage(0, wipe.reason));
@@ -11526,18 +11538,27 @@ async function checkHeadsUpAfter(finishedCustomerId){
   // where they sit in that list, so stops done out of order don't throw the
   // count off, and anyone now within their number of stops is told (once a day)
   const today = todayDateStr();
-  const left = route.filter(c => c && c.id !== finishedCustomerId && c.lastServicedDate !== today);
+  // Only stops further along than the one just finished (any passed earlier
+  // aren't 'ahead'), less any already done today
+  const at = route.findIndex(c => c && c.id === finishedCustomerId);
+  const left = route.slice(at + 1).filter(c => c && c.lastServicedDate !== today);
   const sent = lsGet('headsUpSent') || {};
   const sentToday = Array.isArray(sent[today]) ? sent[today] : [];
-  for(let i = 0; i < left.length; i++){
-    const cand = left[i];
-    if(!autoNotifyOn(cand)) continue;
-    if(sentToday.indexOf(cand.id) !== -1) continue;
-    const lead = autoNotifyLeadFor(cand);
-    if(i + 1 > lead) continue;           // still further away than they asked
-    lsSet('headsUpSent', {[today]: sentToday.concat(cand.id)});
-    dispatchHeadsUp(cand, {automatic: true, away: i + 1});
-    return;                     // one at a time, never a queue of messages
+  // First whoever is exactly their number of stops away; failing that, catch
+  // up anyone now closer than that who was missed
+  const due = (exact)=>{
+    for(let i = 0; i < left.length; i++){
+      const cand = left[i];
+      if(!autoNotifyOn(cand) || sentToday.indexOf(cand.id) !== -1) continue;
+      const lead = autoNotifyLeadFor(cand);
+      if(exact ? i + 1 === lead : i + 1 < lead) return {cand: cand, away: i + 1};
+    }
+    return null;
+  };
+  const hit = due(true) || due(false);
+  if(hit){
+    lsSet('headsUpSent', {[today]: sentToday.concat(hit.cand.id)});
+    dispatchHeadsUp(hit.cand, {automatic: true, away: hit.away});   // one at a time
   }
 }
 

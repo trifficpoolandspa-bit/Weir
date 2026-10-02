@@ -7887,7 +7887,8 @@ function siteOtherCompaniesHere(companyId){
 function siteHasUnsent(companyId){
   const st = loadSyncState(companyId);
   const recs = (st.records && st.records.edits) || {};
-  return Object.keys(st.edits || {}).length + Object.keys(recs).length > 0;
+  // Changes waiting from the older version of sync count too
+  return Object.keys(st.edits || {}).length + Object.keys(recs).length + Object.keys(st.carried || {}).length > 0;
 }
 // Returns 'ok' to carry on, 'reload' when the page is being reloaded fresh,
 // or 'blocked' when another company's changes are still waiting to go up
@@ -8687,7 +8688,7 @@ function syncPhotoIndex(state){
 
 // Hang a photo on the reading or skip it was taken during, so the history and
 // reports show it exactly as they would for one taken here.
-function syncAttachPhoto(row){
+function syncAttachPhoto(row, knownNow){
   const key = row.kind === 'gate' || row.body === 'pool' || !row.body
     ? 'readings:' + row.customer_id
     : (row.body === 'spa' ? 'spaReadings:' + row.customer_id
@@ -8698,19 +8699,29 @@ function syncAttachPhoto(row){
   if(row.kind === 'before' || row.kind === 'after' || row.kind === 'gate' || row.kind === 'video'){
     const field = row.kind === 'before' ? 'beforePhoto' : row.kind === 'gate' ? 'gatePhoto'
       : row.kind === 'video' ? 'video' : 'photo';
-    const st = siteUser && siteUser.companyId ? loadSyncState(siteUser.companyId) : null;
-    const known = st ? syncPhotoIndex(st).known : {};
-    const refs = Object.keys(known)
-      .filter(id => { const k = known[id]; return k && !k.deleted && k.kind === row.kind
-        && String(k.visitId) === String(row.visit_id) && String(k.customerId) === String(row.customer_id); })
-      .sort((a, b)=> String(known[a].takenAt || '').localeCompare(String(known[b].takenAt || '')) || a.localeCompare(b))
+    // The index as it stands mid-download (it is only saved once the pull ends)
+    const st = !knownNow && siteUser && siteUser.companyId ? loadSyncState(siteUser.companyId) : null;
+    const known = knownNow || (st ? syncPhotoIndex(st).known : {});
+    // Every photo of this kind on this visit: those already known, plus this
+    // one (it may not be in the index yet), less it if it was removed
+    const taken = {};
+    Object.keys(known).forEach(id=>{ const k = known[id];
+      if(k && !k.deleted && k.kind === row.kind && String(k.visitId) === String(row.visit_id)
+         && String(k.customerId) === String(row.customer_id)) taken[id] = String(k.takenAt || ''); });
+    if(row.deleted) delete taken[row.id];
+    else taken[row.id] = String(row.taken_at || taken[row.id] || '');
+    const refs = Object.keys(taken)
+      .sort((a, b)=> taken[a].localeCompare(taken[b]) || a.localeCompare(b))
       .map(id => PHOTO_REF + id);
     for(const k of lists){
       const list = lsGet(k) || [];
       const i = list.findIndex(x => x && String(x.id) === String(row.visit_id));
       if(i === -1) continue;
-      // Anything taken here (not from a phone) stays first
-      const own = list[i][field] && !refs.includes(list[i][field]) ? [list[i][field]] : [];
+      // Anything taken here (not from a phone) stays first; a phone's photo,
+      // including one just removed, is never mistaken for one
+      const cur = list[i][field];
+      const fromPhone = cur && isPhotoRef(cur) && (known[cur.slice(PHOTO_REF.length)] || cur === PHOTO_REF + row.id);
+      const own = cur && !refs.includes(cur) && !fromPhone ? [cur] : [];
       const all = own.concat(refs).slice(0, 3);
       if(all.length) list[i][field] = all[0]; else delete list[i][field];
       if(all.length > 1) list[i][field + 'More'] = all.slice(1); else delete list[i][field + 'More'];
@@ -8762,7 +8773,7 @@ async function syncPullPhotos(state, companyId){
     idx.known[row.id] = {path: row.path, customerId: row.customer_id, kind: row.kind,
                          visitId: row.visit_id, equipmentId: row.equipment_id, deleted: !!row.deleted,
                          takenAt: row.taken_at || ''};
-    try{ syncAttachPhoto(row); }catch(e){}
+    try{ syncAttachPhoto(row, idx.known); }catch(e){}
     if(!idx.cursor || row.updated_at > idx.cursor) idx.cursor = row.updated_at;
   });
   saveSyncState(companyId, state);
@@ -15585,10 +15596,11 @@ async function deleteTechnician(t){
   const warning = assignedCount
     ? ` ${assignedCount} customer${assignedCount === 1 ? ' is' : 's are'} currently assigned to them — they'll become unassigned.`
     : '';
-  // Deleting removes them completely and at once: their sign-in (the username
-  // is free straight away), their profile and its history on the server.
-  // Service reports they submitted stay, as the customers' history.
-  const signIn = ' Their sign-in and profile are removed completely, straight away. Service reports they submitted stay with the customers.';
+  // Deleting shuts them out at once (snippet 23): the password stops working,
+  // the username is free, and they can see nothing. A phone already signed in
+  // may still send up visits it was holding, for one day, then forgets the
+  // company. Service reports they submitted stay, as the customers' history.
+  const signIn = ' Their sign-in stops working straight away and their username is free to reuse. If their phone was holding visits it hadn\u2019t sent, it can still upload visits it was holding for 1 day, then it removes the company\u2019s information. Service reports they submitted stay with the customers.';
   const confirmed = await confirmDialog(`Delete ${escapeSyncText(t.name)}?${warning}${signIn}`);
   if(!confirmed) return;
   // Always asked of the server, whether or not this computer knows of a sign-in
@@ -18031,6 +18043,7 @@ async function openVisitVideos(refs){
     overlay.querySelector('[data-next]').addEventListener('click', ()=>{ at = (at + 1) % vids.length; show(); });
   }
   // Closes from Close, a click anywhere outside the window, or Escape (like a picture)
+  overlay.dataset.closesOutside = '1';
   const shut = ()=>{ free(); document.removeEventListener('keydown', onKey, true); overlay.remove(); };
   const onKey = (e)=>{ if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); shut(); } };
   overlay.querySelector('[data-close]').addEventListener('click', shut);
@@ -18436,6 +18449,7 @@ async function openPhotoWindow(shownList, dateLabel){
   document.body.appendChild(overlay);
   // A picture closes from Close, a click anywhere outside it, or Escape
   // (an exception to windows closing only from their buttons, Sept 30)
+  overlay.dataset.closesOutside = '1';
   const onKey = (e)=>{
     if(e.key !== 'Escape') return;
     e.preventDefault();
@@ -22241,6 +22255,8 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
     const r = el.getBoundingClientRect();
     const coversScreen = r.left <= 1 && r.top <= 1
       && r.right >= window.innerWidth - 1 && r.bottom >= window.innerHeight - 1;
+    // A picture or a video may close from outside (Tyrus, 1ep / 1em.10)
+    if(el.dataset && el.dataset.closesOutside === '1') return false;
     // A backdrop holds a window; an empty full-screen layer is something else
     return coversScreen && el.children.length > 0;
   };
