@@ -231,6 +231,15 @@ input::placeholder{color:#A9BCB9;}
 }
 .section-head h2{margin-bottom:0;}
 .section-count{font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;white-space:nowrap;}
+/* Alerts (Oct 2): the count beside the tab, and the rows */
+.nav-badge{min-width:22px;height:20px;padding:0 7px;margin-left:8px;border-radius:10px;background:var(--gold);color:#fff;
+  font-size:11.5px;font-weight:700;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;vertical-align:middle;}
+.alert-row{display:flex;align-items:flex-start;gap:12px;padding:12px 8px;border-bottom:1px solid var(--line);}
+.alert-row:last-child{border-bottom:none;}
+.alert-row:hover{background:var(--teal-pale);}
+.alert-tag{flex:0 0 64px;text-align:center;font-size:11.5px;font-weight:700;padding:4px 0;border-radius:999px;margin-top:2px;}
+.alert-tag.video{background:var(--teal-pale);color:var(--teal-deep);}
+.alert-tag.note{background:var(--surface-alt);color:var(--ink);border:1px solid var(--line);}
 
 
 .reorder-placeholder{pointer-events:none;}
@@ -515,6 +524,7 @@ input::placeholder{color:#A9BCB9;}
       <button class="tab" data-view="productsservices">Products and Services</button>
       <button class="tab" data-view="workcenter">WorkCenter</button>
       <button class="tab" data-view="history">History / Billing</button>
+      <button class="tab" data-view="alerts">Alerts <span class="nav-badge" id="alertsBadge" style="display:none;"></span></button>
       <button class="tab" data-view="settings">Settings</button>
     </nav>
     <a class="back-link" href="technician-app.html">← Back to the main app</a>
@@ -1729,6 +1739,26 @@ input::placeholder{color:#A9BCB9;}
     </div>
   </div>
 
+  <div class="view" id="view-alerts">
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;">
+        <h2 style="margin:0;">Alerts</h2>
+        <button type="button" class="btn btn-ghost" id="btnAlertsAllSeen" style="width:auto;padding:5px 10px;font-size:12px;display:none;">Mark all seen</button>
+      </div>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">Videos technicians sent and notes they left on service reports, newest first. Marking one seen clears it on this computer only.</p>
+      <div class="seg-control" id="alertsSeenControl">
+        <button type="button" class="history-type-btn active" data-alerts="new">New</button>
+        <button type="button" class="history-type-btn" data-alerts="seen">Seen</button>
+      </div>
+      <div class="seg-control" id="alertsKindControl" style="margin-bottom:6px;">
+        <button type="button" class="history-type-btn active" data-kind="all">All</button>
+        <button type="button" class="history-type-btn" data-kind="video">Videos</button>
+        <button type="button" class="history-type-btn" data-kind="note">Notes</button>
+      </div>
+      <div id="alertsList"></div>
+    </div>
+  </div>
+
   <div class="view" id="view-settings">
       <!-- The "Last 4 weeks" readings table on the phones' visits: on or off for the company -->
       <div class="card">
@@ -2326,6 +2356,7 @@ function lsSet(key, value){
     localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value));
     // Never let telling sync about a change get in the way of the save itself
     try{ syncNoteSave(key); }catch(e){}
+    try{ if(typeof alertsNoteSave === 'function') alertsNoteSave(key); }catch(e){}
     return true;
   }catch(e){
     const full = e && (e.name === 'QuotaExceededError'
@@ -8147,7 +8178,9 @@ const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'r
                          // Just today route orders set on Today's Route (the phones use them)
                          'routeOrdersOnce',
                          // The order of the Technicians list, which the phones follow
-                         'technicianOrder'];
+                         'technicianOrder',
+                         // Saved tasks, shared with the app's WorkCenter (Oct 2)
+                         'taskTemplates'];
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
   // The "Last 3 months" readings table on the phones' visits, and its chemicals added rows
   'showRecentReadings', 'showRecentDosages',
@@ -8636,6 +8669,8 @@ function syncApplyVisit(row){
     return lsSet(key, list);
   }
   const incoming = Object.assign({}, row.data, {id: row.id});
+  // Which technician sent it, for Alerts (Oct 2)
+  if(row.technician_id && !incoming.technicianId) incoming.technicianId = String(row.technician_id);
   if(i === -1){
     list.unshift(incoming);
   } else {
@@ -8656,7 +8691,7 @@ async function syncPullVisits(state, companyId){
   const since = v.cursor ? new Date(new Date(v.cursor).getTime() - SYNC_OVERLAP_MS).toISOString() : null;
   const rows = [];
   for(let offset = 0; ; offset += SYNC_PAGE){
-    let path = '/rest/v1/visits?select=customer_id,kind,body,id,data,deleted,updated_at'
+    let path = '/rest/v1/visits?select=customer_id,kind,body,id,data,deleted,updated_at,technician_id'
       + '&order=updated_at.asc,id.asc&limit=' + SYNC_PAGE + '&offset=' + offset;
     if(since) path += '&updated_at=gte.' + encodeURIComponent(since);
     const res = await syncCall(path);
@@ -10701,7 +10736,9 @@ function renderCurrentList(kind){
     rows = jobs.filter(j => !tech || String(j.technicianId) === tech).map(j => ({
       id: j.id, date: j.date, who: custName(j.customerId), look: custLook([j.customerId]), what: j.title || 'Work order',
       techName: technicianNameById(j.technicianId) || 'No technician',
-      orphan: !!j.workOrderId && !woIds.has(j.workOrderId),
+      // A work order made in the app has no copy here yet (that comes with
+      // quotes), so it isn't one that was deleted
+      orphan: !!j.workOrderId && !j.madeOnPhone && !woIds.has(j.workOrderId),
       workOrderId: j.workOrderId,
       group: j.workOrderId, groupLeft: jobs.filter(x => x.workOrderId && x.workOrderId === j.workOrderId).length
     }));
@@ -13114,6 +13151,25 @@ function makeConfigRow(item, listKey){
     reqWrap.appendChild(document.createTextNode('Required'));
     row.appendChild(reqWrap);
   }
+
+  // In history: shown in the "Last 3 months" table on the app's visits.
+  // Ticked to start; unticking hides the row there and deletes nothing (Oct 2)
+  const histWrap = document.createElement('label');
+  histWrap.title = 'Show this in the Last 3 months table on visits';
+  histWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;'
+    + 'font-size:11.5px;color:var(--muted);cursor:pointer;white-space:nowrap;';
+  const histCb = document.createElement('input');
+  histCb.type = 'checkbox';
+  histCb.checked = item.noHistory !== true;
+  histCb.style.margin = '0';
+  histCb.addEventListener('change', ()=>{
+    if(histCb.checked) delete item.noHistory;
+    else item.noHistory = true;
+    saveActiveConfig();
+  });
+  histWrap.appendChild(histCb);
+  histWrap.appendChild(document.createTextNode('In history'));
+  row.appendChild(histWrap);
 
   // Chemicals can automatically fill a dosage based on the reading entered
   if(listKey === 'chemicals'){
@@ -19874,6 +19930,220 @@ document.getElementById('btnAddCustomer').addEventListener('click', ()=>{
 // page back as it was left for 30 seconds was taken out on Sept 30. The
 // WorkCenter's form still holds what was typed for a minute, as it did before.)
 var webLeftEl = {}, webLeftScroll = {}, webLeftSeason = {};
+
+// ---------- Alerts (Oct 2) ----------
+// Videos technicians sent and notes left on service reports, newest first.
+// Worked out from the visits already on this computer, so nothing new is kept
+// on the server. Seen is per computer: marking one seen here clears it only
+// here. A video shows while it still exists (7 days); a note for 30 days.
+const ALERT_VIDEO_DAYS = 7;
+const ALERT_NOTE_DAYS = 30;
+let alertsView = 'new';      // new | seen
+let alertsKind = 'all';      // all | video | note
+
+function alertsSeen(){
+  const seen = lsGet('alertsSeen');
+  return seen && typeof seen === 'object' ? seen : {};
+}
+function saveAlertsSeen(seen){
+  // Anything marked seen more than 40 days ago can no longer show: let it go
+  const cut = Date.now() - 40 * 86400000;
+  Object.keys(seen).forEach(id=>{ if(!(seen[id] > cut)) delete seen[id]; });
+  lsSet('alertsSeen', seen);
+}
+
+function collectAlerts(){
+  const out = [];
+  const now = Date.now();
+  const techs = lsGet('technicians') || [];
+  const techName = id => { const t = techs.find(x => x && String(x.id) === String(id)); return t ? (t.name || '') : ''; };
+  (customers || []).forEach(c=>{
+    if(!c || !c.id || c.deleted) return;
+    historySections(c).forEach(sec=>{
+      (lsGet(historyStorageKey(c.id, sec.type)) || []).forEach(r=>{
+        if(!r || !r.id || r.skipped) return;
+        const t = new Date(r.date || 0).getTime();
+        if(!t || isNaN(t)) return;
+        const base = {customerId: c.id, name: displayName(c.name), body: sec.label, t: t,
+          readingId: r.id, tech: techName(r.technicianId)};
+        if(r.video && now - t <= ALERT_VIDEO_DAYS * 86400000){
+          const refs = [r.video].concat(r.videoMore || []).filter(Boolean);
+          out.push(Object.assign({id: 'video:' + r.id, kind: 'video', refs: refs}, base));
+        }
+        const notes = String(r.notes || '').trim();
+        if(notes && now - t <= ALERT_NOTE_DAYS * 86400000){
+          out.push(Object.assign({id: 'note:' + r.id, kind: 'note', notes: notes}, base));
+        }
+      });
+    });
+  });
+  out.sort((a, b) => b.t - a.t);
+  return out;
+}
+
+function alertWhen(t){
+  const d = new Date(t);
+  const time = d.toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'});
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const day = new Date(d); day.setHours(0, 0, 0, 0);
+  const diff = Math.round((today - day) / 86400000);
+  if(diff === 0) return 'Today, ' + time;
+  if(diff === 1) return 'Yesterday, ' + time;
+  return d.toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) + ', ' + time;
+}
+
+function updateAlertsBadge(list){
+  const badge = document.getElementById('alertsBadge');
+  if(!badge) return 0;
+  const seen = alertsSeen();
+  const n = (list || collectAlerts()).filter(a => !seen[a.id]).length;
+  badge.textContent = String(n);
+  badge.style.display = n ? 'inline-flex' : 'none';
+  return n;
+}
+
+function renderAlerts(){
+  const box = document.getElementById('alertsList');
+  if(!box) return;
+  const all = collectAlerts();
+  const seen = alertsSeen();
+  const n = updateAlertsBadge(all);
+  const newBtn = document.querySelector('#alertsSeenControl [data-alerts="new"]');
+  if(newBtn) newBtn.textContent = 'New' + (n ? ' (' + n + ')' : '');
+  document.querySelectorAll('#alertsSeenControl [data-alerts]').forEach(b => b.classList.toggle('active', b.dataset.alerts === alertsView));
+  document.querySelectorAll('#alertsKindControl [data-kind]').forEach(b => b.classList.toggle('active', b.dataset.kind === alertsKind));
+  const allSeen = document.getElementById('btnAlertsAllSeen');
+  if(allSeen) allSeen.style.display = (alertsView === 'new' && n) ? '' : 'none';
+
+  const rows = all.filter(a => (alertsView === 'new') === !seen[a.id])
+    .filter(a => alertsKind === 'all' || a.kind === alertsKind);
+  box.innerHTML = '';
+  if(!rows.length){
+    box.innerHTML = emptyState(alertsView === 'new' ? 'Nothing new.' : 'Nothing seen yet.');
+    return;
+  }
+  rows.forEach(a=>{
+    const row = document.createElement('div');
+    row.className = 'alert-row';
+    const tag = document.createElement('span');
+    tag.className = 'alert-tag ' + a.kind;
+    tag.textContent = a.kind === 'video' ? 'Video' : 'Note';
+    const body = document.createElement('div');
+    body.style.cssText = 'flex:1;min-width:0;';
+    const t1 = document.createElement('div');
+    t1.style.cssText = 'font-size:14px;font-weight:600;';
+    t1.textContent = a.name + ' \u2013 ' + a.body;
+    const t2 = document.createElement('div');
+    t2.style.cssText = 'font-size:12.5px;color:var(--muted);margin-top:2px;';
+    const bits = [alertWhen(a.t)];
+    if(a.tech) bits.push('by ' + a.tech);
+    if(a.kind === 'video'){
+      bits.push('Deleted after ' + new Date(a.t + ALERT_VIDEO_DAYS * 86400000)
+        .toLocaleDateString(undefined, {month: 'short', day: 'numeric'}));
+    }
+    t2.textContent = bits.join(' \u00b7 ');
+    const t3 = document.createElement('div');
+    t3.style.cssText = 'font-size:13.5px;margin-top:6px;white-space:pre-line;';
+    t3.textContent = a.kind === 'video' ? a.refs.length + (a.refs.length === 1 ? ' video' : ' videos') : a.notes;
+    body.appendChild(t1); body.appendChild(t2); body.appendChild(t3);
+
+    const acts = document.createElement('div');
+    acts.style.cssText = 'display:flex;gap:8px;flex-shrink:0;align-items:center;';
+    const small = text => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn btn-ghost';
+      b.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;';
+      b.textContent = text;
+      return b;
+    };
+    if(a.kind === 'video'){
+      const watch = small('\u25b6 Watch video' + (a.refs.length > 1 ? 's' : ''));
+      watch.addEventListener('click', ()=> openVisitVideos(a.refs));
+      acts.appendChild(watch);
+    }
+    const open = small('Open report');
+    open.addEventListener('click', ()=> openAlertReport(a));
+    acts.appendChild(open);
+    if(!seen[a.id]){
+      const mark = small('Mark seen');
+      mark.addEventListener('click', ()=>{
+        const s = alertsSeen();
+        s[a.id] = Date.now();
+        saveAlertsSeen(s);
+        renderAlerts();
+      });
+      acts.appendChild(mark);
+    }
+    row.appendChild(tag); row.appendChild(body); row.appendChild(acts);
+    box.appendChild(row);
+  });
+}
+
+// The customer's Service reports, with that visit's report opened
+function openAlertReport(a){
+  const c = (customers || []).find(x => x && String(x.id) === String(a.customerId));
+  if(!c){ showToast('This customer is no longer on file'); return; }
+  switchView('customers');
+  viewCustomer(c);
+  const tab = document.querySelector('#profileTabControl .history-type-btn[data-tab="history"]');
+  if(tab) tab.click();
+  historyDateFilter = '';
+  const box = document.getElementById('historyDateFilter');
+  if(box) box.value = '';
+  let match = null, at = 0;
+  try{
+    const visits = reportVisitsFor(c);
+    at = visits.findIndex(v => v.parts.some(p => p.r && String(p.r.id) === String(a.readingId)));
+    match = at >= 0 ? visits[at] : null;
+  }catch(e){}
+  historyOpenId = match ? match.id : null;
+  historyOpenBody = null;
+  historyPageKey = c.id + '|visits|';
+  historyPage = match ? Math.floor(at / HISTORY_PER_PAGE) + 1 : 1;
+  try{ showHistory(c.id, c.name); }catch(e){}
+  if(!match) showToast('That report is no longer here \u2014 showing all their reports');
+}
+
+(function wireAlerts(){
+  document.querySelectorAll('#alertsSeenControl [data-alerts]').forEach(b => b.addEventListener('click', ()=>{
+    alertsView = b.dataset.alerts; renderAlerts();
+  }));
+  document.querySelectorAll('#alertsKindControl [data-kind]').forEach(b => b.addEventListener('click', ()=>{
+    alertsKind = b.dataset.kind; renderAlerts();
+  }));
+  const all = document.getElementById('btnAlertsAllSeen');
+  if(all) all.addEventListener('click', ()=>{
+    const s = alertsSeen();
+    const stamp = Date.now();
+    collectAlerts().forEach(a=>{ if(!s[a.id]) s[a.id] = stamp; });
+    saveAlertsSeen(s);
+    renderAlerts();
+  });
+  setTimeout(()=>{ try{ updateAlertsBadge(); }catch(e){} }, 1500);
+  // Old ones drop off as they pass their days, even with nothing arriving
+  setInterval(()=>{ try{
+    const page = document.getElementById('view-alerts');
+    if(page && page.classList.contains('active') && !document.querySelector('.confirm-overlay')) renderAlerts();
+    else updateAlertsBadge();
+  }catch(e){} }, 60000);
+})();
+
+// A visit, a video or a customer arriving or changing: the count follows
+let alertsTimer = null;
+function alertsNoteSave(key){
+  if(!(key === 'customers' || key.indexOf('readings:') === 0 || key.indexOf('spaReadings:') === 0
+       || key.indexOf('fountainReadings:') === 0)) return;
+  clearTimeout(alertsTimer);
+  alertsTimer = setTimeout(()=>{
+    try{
+      const page = document.getElementById('view-alerts');
+      if(page && page.classList.contains('active')) renderAlerts();
+      else updateAlertsBadge();
+    }catch(e){}
+  }, 1500);
+}
+
 function switchView(view){
   const keep = false;
   // Readings and dosages always opens on year-round; a season stays chosen
@@ -19916,6 +20186,7 @@ function switchView(view){
   document.querySelectorAll('.tab').forEach(t=>{
     t.classList.toggle('active', t.dataset.view === view);
   });
+  if(view === 'alerts') renderAlerts();
   if(view === 'settings') renderStorageMeter();
   if(view === 'settings') renderOfflineStatus();
   if(view === 'account') renderAccount();

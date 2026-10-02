@@ -947,6 +947,14 @@ select#customerSelect{font-weight:600;}
   </div>
 
   <div class="view" id="view-customers">
+    <!-- Customers / WorkCenter (Oct 2), the same two-button style as the Report tab -->
+    <div class="card" id="custPaneCard" style="padding:10px;">
+      <div class="btn-row" style="gap:6px;">
+        <button type="button" class="btn btn-primary" id="btnCustPaneList" style="flex:1;">Customers</button>
+        <button type="button" class="btn btn-ghost" id="btnCustPaneWork" style="flex:1;">WorkCenter</button>
+      </div>
+    </div>
+    <div id="custPaneList">
     <div class="card" id="newCustomerCard" style="display:none;">
       <h2 id="newCustomerHeading">New customer</h2>
       <div class="field"><label>Name</label><input id="ncName" placeholder="Jordan Ellis"></div>
@@ -1015,7 +1023,7 @@ select#customerSelect{font-weight:600;}
       </div>
       <div class="field">
         <label>Access notes</label>
-        <textarea id="ncAccessNotes" rows="3" placeholder="Side gate sticks, latch is on the left. Park on the street." style="width:100%;border:1px solid var(--line);border-radius:9px;padding:10px 12px;font-family:'Inter',sans-serif;font-size:15px;resize:vertical;"></textarea>
+        <textarea id="ncAccessNotes" data-no-mic rows="3" placeholder="Side gate sticks, latch is on the left. Park on the street." style="width:100%;border:1px solid var(--line);border-radius:9px;padding:10px 12px;font-family:'Inter',sans-serif;font-size:15px;resize:vertical;"></textarea>
       </div>
       <div class="btn-row">
         <button class="btn btn-primary" id="btnSaveCustomer" style="width:auto;">Save customer</button>
@@ -1033,6 +1041,8 @@ select#customerSelect{font-weight:600;}
       </div>
       <div id="customerList"></div>
     </div>
+    </div>
+    <div id="custPaneWork" style="display:none;"></div>
   </div>
 
   <!-- REPORT VIEW -->
@@ -2397,6 +2407,11 @@ async function renderRecentReadings(type, chemList, doseList){
   // Switched off in Settings (on unless turned off)
   if(appSettings && appSettings.showRecentReadings === false) return;
   if(!cid || !Array.isArray(chemList) || !chemList.length) return;
+  // Rows the office unticked "In history" for on the website stay out (Oct 2)
+  chemList = chemList.filter(ch => ch && ch.noHistory !== true);
+  if(Array.isArray(doseList)) doseList = doseList.filter(d => d && d.noHistory !== true);
+  const dosesWanted = appSettings && appSettings.showRecentDosages === true && Array.isArray(doseList) && doseList.length;
+  if(!chemList.length && !dosesWanted) return;
   let list = [];
   try{
     list = type === 'fountain'
@@ -3916,7 +3931,7 @@ async function syncPullRecords(state){
     const hashes = syncFieldHashes(row.data);
     // A move cleared here and still on its way to being removed: not put back
     const clearing = state.work && state.work.edits && state.work.edits[key] && state.work.edits[key]._deleted;
-    if(clearing && !row.deleted){
+    if((clearing || (typeof officeWorkDeleting === 'function' && officeWorkDeleting(key))) && !row.deleted){
       if(!r.cursor || row.updated_at > r.cursor) r.cursor = row.updated_at;
       return;
     }
@@ -4274,6 +4289,8 @@ function syncScanWork(state, now){
   const stamp = now || new Date().toISOString();
   const local = syncWorkLocal();
   Object.keys(local).forEach(key=>{
+    // Made or removed by the office on this phone: sent whole by pushOfficeWork
+    if(typeof officeWorkQueued === 'function' && officeWorkQueued(key)) return;
     const f = syncFieldHashes(local[key]);
     // Set aside after the office refused it, until it changes here again
     if(wk.refused && wk.refused[key]){
@@ -4378,6 +4395,103 @@ async function syncPushWork(state){
   return {ok: true, pushed: pushed, refused: refused};
 }
 
+
+// ---- Work the office makes on this phone (owners and admins, Oct 2) ----
+// Tasks and work orders made in the Customer tab's WorkCenter, and ones taken
+// off a route there, are sent whole — every field, as the website sends them.
+// Held here while there's no signal, in the order they were made. The server
+// accepts these from full access only (snippet 16); a technician's phone never
+// has anything in this queue.
+function officeWorkQueue(){ return lsGet('officeWorkToSend') || []; }
+function queueOfficeWork(kind, id, del){
+  const q = officeWorkQueue().filter(x => !(x.kind === kind && x.id === String(id)));
+  q.push({kind: kind, id: String(id), del: !!del, at: new Date().toISOString()});
+  lsSet('officeWorkToSend', q);
+}
+function officeWorkQueued(key){
+  return officeWorkQueue().some(x => x.kind + '\u0002' + x.id === key);
+}
+function officeWorkDeleting(key){
+  return officeWorkQueue().some(x => x.del && x.kind + '\u0002' + x.id === key);
+}
+function officeWorkDone(item){
+  // Off the queue, unless it changed again while this was on its way
+  lsSet('officeWorkToSend', officeWorkQueue().filter(x => !(x.kind === item.kind && x.id === item.id && x.at === item.at)));
+}
+
+async function pushOfficeWork(state){
+  const q = officeWorkQueue();
+  let pushed = 0;
+  for(const item of q){
+    const key = item.kind + '\u0002' + item.id;
+    const listFor = SYNC_WORK_LISTS.find(([, k]) => k === item.kind);
+    const rec = listFor ? (lsGet(listFor[0]) || []).find(x => x && String(x.id) === item.id) : null;
+    let changes;
+    if(item.del){
+      changes = {_deleted: {t: item.at, v: true}};
+    } else {
+      if(!rec){ officeWorkDone(item); continue; }       // gone again before it was sent
+      const flat = syncExplode(rec);
+      changes = {};
+      Object.keys(flat).forEach(f=>{ changes[f] = {t: item.at, v: flat[f]}; });
+    }
+    const pulled = (state.records && state.records.known) || {};
+    const base = ((state.work.known && state.work.known[key]) || pulled[key] || {}).u || null;
+    const res = await fieldAuthed('/rest/v1/rpc/push_record_fields', {
+      method: 'POST',
+      body: JSON.stringify({p_kind: item.kind, p_id: item.id, p_changes: changes, p_base: base})
+    });
+    if(res.offline || res.revoked || res.status === 0) return {ok: false, offline: !!res.offline, pushed: pushed};
+    if(res.status === 400 || res.status === 403){
+      // Refused (no longer an admin?): kept off the queue so the rest still go
+      officeWorkDone(item);
+      state.lastTrouble = 'a task or work order made here was refused by the office';
+      saveFieldSyncState(state);
+      continue;
+    }
+    if(!res.ok || !res.body || !res.body.result) return {ok: false, pushed: pushed};
+    if(item.del){
+      state.work.known[key] = {u: res.body.updated_at, d: true, f: {}};
+      if(state.records && state.records.known) state.records.known[key] = {u: res.body.updated_at, d: true, f: {}};
+    } else {
+      state.work.known[key] = {u: res.body.updated_at, f: syncFieldHashes(res.body.data)};
+      state.work.seen[key] = syncFieldHashes(rec);
+    }
+    delete state.work.edits[key];
+    officeWorkDone(item);
+    pushed++;
+    saveFieldSyncState(state);
+  }
+  return {ok: true, pushed: pushed};
+}
+
+// Company setup changed here by an owner or admin (saved tasks, the work order
+// number): sent with the next sync, newest wins, as on the website
+function queueSetupSend(key){
+  const q = lsGet('setupToSend') || {};
+  q[key] = Date.now();
+  lsSet('setupToSend', q);
+}
+async function pushSetupQueue(){
+  const q = lsGet('setupToSend') || {};
+  for(const key of Object.keys(q)){
+    const at = q[key];
+    try{
+      const res = await fieldAuthed('/rest/v1/rpc/push_record_fields', {
+        method: 'POST',
+        body: JSON.stringify({p_kind: 'setup', p_id: key,
+          p_changes: {value: {t: new Date(at).toISOString(), v: lsGet(key)}}, p_base: null})
+      });
+      if(res.offline || res.revoked || res.status === 0) return false;
+      if((res.ok && res.body && res.body.result) || res.status === 400 || res.status === 403){
+        const now = lsGet('setupToSend') || {};
+        if(now[key] === at){ delete now[key]; lsSet('setupToSend', now); }
+      }
+    }catch(e){ return false; }
+  }
+  return true;
+}
+
 // ---- Clearing a phone: after a removal, or when it changes company ----
 // A phone holds customers' addresses, gate codes and notes. When the office
 // removes someone, or the phone is set up for a different company, that has to
@@ -4391,6 +4505,7 @@ const FIELD_DEVICE_SETTINGS = ['voiceModeEnabled', 'pushToTalkEnabled', 'micSide
 function fieldPendingCount(state){
   const s = state || loadFieldSyncState();
   let n = Object.keys(s.customers.edits || {}).length + Object.keys(s.work.edits || {}).length;
+  try{ n += officeWorkQueue().length + Object.keys(lsGet('setupToSend') || {}).length; }catch(e){}
   const sent = (s.visits && s.visits.sent) || {};
   try{ n += syncVisitsHere().filter(v => !sent[syncVisitKey(v)]).length; }catch(e){}
   return n;
@@ -4830,6 +4945,13 @@ async function fieldSync(){
     await pushOnceRouteOrders();
     // Admin access turned on or off at the office shows with every sync
     await checkAccessNow();
+
+    // Tasks and work orders made or removed here by the office, and the setup
+    // that goes with them (saved tasks, the work order number)
+    await pushSetupQueue();
+    const office = await pushOfficeWork(state);
+    saveFieldSyncState(state);
+    if(!office.ok){ result.reason = office.offline ? 'offline' : 'push-failed'; state.lastTrouble = 'a task or work order made here could not be sent'; saveFieldSyncState(state); setTimeout(fieldRenderSyncCard, 0); return result; }
 
     // Tasks ticked off and visits moved here
     const work = await syncPushWork(state);
@@ -5657,9 +5779,7 @@ async function drawVisitVideos(){
   if(wrap) wrap.style.display = visitVideoRefs.length ? 'flex' : 'none';
   if(rec){
     rec.style.display = visitVideoRefs.length >= VISIT_VIDEOS_MAX ? 'none' : '';
-    rec.textContent = visitVideoRefs.length
-      ? 'Record another (' + (visitVideoRefs.length + 1) + ' of ' + VISIT_VIDEOS_MAX + ')'
-      : 'Record video';
+    rec.textContent = (visitVideoRefs.length ? 'Record another' : 'Record video') + ' (Max ' + VISIT_VIDEOS_MAX + ')';
   }
 }
 // A video full screen, playing, with Delete video above a "tap outside" note.
@@ -7629,7 +7749,8 @@ function makePhotoController(ids){
     });
     if(takeBtn){
       takeBtn.style.display = shots.length >= PHOTOS_PER_STEP ? 'none' : '';
-      takeBtn.textContent = shots.length ? 'Take another (' + (shots.length + 1) + ' of ' + PHOTOS_PER_STEP + ')' : takeWords;
+      // The most it takes, rather than a count (Oct 2)
+      takeBtn.textContent = (shots.length ? 'Take another' : takeWords) + ' (Max ' + PHOTOS_PER_STEP + ')';
     }
   }
   function add(data){
@@ -7666,6 +7787,9 @@ function makePhotoController(ids){
     }
     fileInput.value = '';
   });
+
+  // The button says (Max 3) before the first photo too
+  try{ draw(); }catch(e){}
 
   return {
     getData: ()=> shots[0] || null,
@@ -13662,6 +13786,7 @@ function startNoteMic(ta, btn){
 function attachNoteMic(ta){
   if(!ta || ta.dataset.noteMic || !ta.isConnected) return;
   if(ta.readOnly || ta.disabled) return;
+  if(ta.hasAttribute('data-no-mic')) return;      // no microphone on this box (customer profile notes, Oct 2)
   const cs = getComputedStyle(ta);
   if(cs.position === 'fixed' || cs.opacity === '0') return;      // a hidden helper box, not a note
   ta.dataset.noteMic = '1';
@@ -13705,6 +13830,984 @@ new MutationObserver(list => {
 }).observe(document.documentElement, {childList: true, subtree: true});
 // Leaving the app (or the screen locking) stops listening
 document.addEventListener('visibilitychange', ()=>{ if(document.hidden) stopNoteMic(); });
+
+// The website's work order dates, so a repeat lands on the same days from either
+function appWorkOrderDates(startISO, repeat, customEvery, customUnit){
+  if(!startISO) return [];
+  const out = [startISO];
+  if(repeat === 'none' || !repeat) return out;
+
+  // Custom: every N days / weeks / months
+  if(repeat === 'custom'){
+    const n = Math.max(1, parseInt(customEvery, 10) || 1);
+    const start = new Date(startISO + 'T12:00:00');
+    const limit = new Date(start.getTime());
+    limit.setFullYear(limit.getFullYear() + 1);
+    if(customUnit === 'months'){
+      let i = 1;
+      while(true){
+        const d = new Date(start.getTime());
+        d.setMonth(d.getMonth() + n * i);
+        if(d > limit) break;
+        out.push(new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0,10));
+        i++;
+      }
+    } else {
+      const days = customUnit === 'weeks' ? n * 7 : n;
+      let d = new Date(start.getTime());
+      while(true){
+        d = new Date(d.getTime() + days * 86400000);
+        if(d > limit) break;
+        out.push(new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0,10));
+      }
+    }
+    return out;
+  }
+
+  const stepDays = {weekly:7, biweekly:14};
+  const stepMonths = {monthly:1, bimonthly:2, quarterly:3, biannual:6, yearly:12};
+  const start = new Date(startISO + 'T12:00:00');
+  const limit = new Date(start.getTime());
+  limit.setFullYear(limit.getFullYear() + 1);
+
+  if(stepDays[repeat]){
+    let d = new Date(start.getTime());
+    while(true){
+      d = new Date(d.getTime() + stepDays[repeat] * 86400000);
+      if(d > limit) break;
+      out.push(d.toISOString().slice(0,10));
+    }
+  } else if(stepMonths[repeat]){
+    let i = 1;
+    while(true){
+      const d = new Date(start.getTime());
+      d.setMonth(d.getMonth() + stepMonths[repeat] * i);
+      if(d > limit) break;
+      out.push(new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0,10));
+      i++;
+    }
+  }
+  return out;
+}
+
+
+// ---- Customer tab: WorkCenter (owners and admins) — Oct 2 ----
+// Work orders and tasks made here are the same records the website's WorkCenter
+// makes, sent to the office through pushOfficeWork. Quotes come later: they
+// aren't kept on the server yet.
+(function appWcStyle(){
+  const st = document.createElement('style');
+  st.textContent =
+    '.seg-control{display:flex;background:var(--surface-alt, #EAF3F1);border-radius:9px;padding:3px;gap:2px;margin-bottom:14px;}'
+  + '.history-type-btn{flex:1;border:1px solid transparent;background:transparent;color:var(--muted);padding:8px 10px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'Inter\',sans-serif;}'
+  + '.history-type-btn.active{background:#fff;color:var(--teal-deep);box-shadow:0 2px 5px rgba(11,36,34,0.18), 0 1px 1px rgba(11,36,34,0.10);border:1px solid rgba(11,36,34,0.07);}'
+  + '#awc .inline-check{display:inline-flex;align-items:center;gap:7px;font-size:14px;font-weight:500;color:var(--ink);cursor:pointer;margin:0;white-space:nowrap;}'
+  + '#awc .awc-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 6px 5px 11px;border-radius:999px;background:var(--teal-pale);color:var(--teal-deep);font-size:13.5px;font-weight:600;}'
+  + '#awc .awc-chip button{border:none;background:none;color:var(--rust);font-size:16px;line-height:1;width:24px;height:24px;padding:0;cursor:pointer;}'
+  + '#awc .awc-suggest{display:none;position:absolute;left:0;right:0;z-index:40;background:#fff;border:1px solid var(--line);border-radius:10px;margin-top:4px;box-shadow:0 4px 14px rgba(15,46,46,0.14);max-height:240px;overflow-y:auto;}'
+  + '#awc .awc-suggest div{padding:10px 12px;font-size:13.5px;cursor:pointer;border-bottom:1px solid var(--line);}'
+  + '#awc .awc-line{display:flex;gap:6px;margin-bottom:6px;align-items:center;}'
+  + '#awc .awc-line input{min-width:0;}'
+  + '#awc .awc-x{border:none;background:none;color:var(--rust);font-size:18px;width:28px;height:28px;flex-shrink:0;padding:0;cursor:pointer;}'
+  + '#awc .awc-row{padding:11px 2px;border-bottom:1px solid var(--line);}'
+  + '#awc .awc-row:last-child{border-bottom:none;}'
+  + '#awc .awc-small{width:auto;padding:5px 10px;font-size:12px;}'
+  + '#awc .awc-num{display:inline-block;padding:4px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:14px;font-weight:700;letter-spacing:.05em;color:var(--teal-deep);white-space:nowrap;margin-left:auto;}'
+  + '.awc-pick-row{display:flex;align-items:center;gap:10px;padding:11px 8px;border-bottom:1px solid var(--line);font-size:14.5px;cursor:pointer;}'
+  + '.awc-pick-row:last-child{border-bottom:none;}';
+  document.head.appendChild(st);
+})();
+
+var awcKind = 'Work Order';      // or 'Task'
+var awcView = 'main';            // main | current | history
+var awcWoCustomers = [];         // customer ids on the work order
+var awcTaskCustomers = [];       // customer ids on the task (optional)
+var awcLineItems = [{description: '', qty: '', price: ''}];
+var awcWoTechs = [];             // technician ids ticked
+var awcTaskTechs = [];
+var awcShown = 20;               // rows shown on Current / History before "Show more"
+
+function awcEsc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+function awcCustomers(){
+  return (customers || []).filter(c => c && !c.deleted && c.active !== false);
+}
+function awcCustName(id){
+  const c = (customers || []).find(x => x && String(x.id) === String(id));
+  return c ? (c.name || 'Customer') : '';
+}
+function awcTechName(id){
+  const t = (lsGet('technicians') || []).find(x => x && String(x.id) === String(id));
+  return t ? (t.name || 'Technician') : '';
+}
+function awcTechNames(ids){
+  const names = ids.map(id => awcTechName(id) || 'technician');
+  if(names.length <= 1) return names.join('');
+  return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+}
+function awcShortDate(iso){
+  return iso ? new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'}) : 'No date';
+}
+function awcNewId(prefix){ return prefix + Date.now() + '_' + Math.random().toString(36).slice(2, 9); }
+
+// The next work order number: carries on from the website's, from any device
+function awcNextWorkOrderNumber(){
+  const used = (lsGet('scheduledWorkOrders') || []).reduce((m, j) => Math.max(m, Number(j && j.workOrderNumber) || 0), 0);
+  return Math.max(used, Number(lsGet('workOrderCounter')) || 0) + 1;
+}
+
+function renderAppWorkCenter(){
+  const pane = document.getElementById('custPaneWork');
+  if(!pane) return;
+  if(!pane.dataset.built){ awcBuild(pane); pane.dataset.built = '1'; }
+  awcApply();
+}
+
+function awcBuild(pane){
+  pane.innerHTML = `
+  <div class="card" id="awc">
+    <div class="btn-row" id="awcKindRow" style="gap:6px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line);flex-wrap:nowrap;">
+      <button type="button" class="btn" data-kind="Work Order" style="flex:1;padding:10px 6px;">Work Order</button>
+      <button type="button" class="btn" data-kind="Task" style="flex:1;padding:10px 6px;">Task</button>
+    </div>
+    <div class="seg-control" id="awcViewRow">
+      <button type="button" class="history-type-btn active" data-view="main" id="awcMainTab">Work Order</button>
+      <button type="button" class="history-type-btn" data-view="current">Current</button>
+      <button type="button" class="history-type-btn" data-view="history">History</button>
+    </div>
+
+    <div id="awcWoForm">
+      <div class="field">
+        <label>Scheduled date</label>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <input type="date" id="awcWoDate" style="width:auto;">
+          <label class="inline-check"><input type="checkbox" id="awcWoPhoto" checked> Photo required</label>
+          <span class="awc-num" id="awcWoNumber"></span>
+        </div>
+      </div>
+      <div class="field" style="position:relative;">
+        <label>Customer</label>
+        <div id="awcWoChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
+        <input id="awcWoSearch" placeholder="Start typing a name&hellip;" autocomplete="off">
+        <div class="awc-suggest" id="awcWoSuggest"></div>
+      </div>
+      <div class="field">
+        <label>Line items</label>
+        <div id="awcLines"></div>
+        <datalist id="awcProducts"></datalist>
+        <button type="button" class="btn btn-ghost" id="awcAddLine" style="width:auto;margin-top:4px;">+ Add line item</button>
+      </div>
+      <div class="field">
+        <label>Notes (optional)</label>
+        <textarea id="awcWoNotes" placeholder="Any additional details for the technician..."></textarea>
+      </div>
+      <div class="field">
+        <label>Saved technician</label>
+        <button type="button" class="btn btn-ghost" id="awcWoTech" style="width:100%;justify-content:space-between;gap:10px;"></button>
+      </div>
+      <div class="field">
+        <label>Repeat</label>
+        <select id="awcWoRepeat">
+          <option value="none">One time only</option>
+          <option value="weekly">Every week</option>
+          <option value="biweekly">Every 2 weeks</option>
+          <option value="monthly">Every month</option>
+          <option value="bimonthly">Every 2 months</option>
+          <option value="quarterly">Every 3 months</option>
+          <option value="biannual">Every 6 months</option>
+          <option value="yearly">Every year</option>
+          <option value="custom">Custom&hellip;</option>
+        </select>
+        <div id="awcWoCustom" style="display:none;align-items:center;gap:8px;margin-top:8px;">
+          <span style="font-size:13px;color:var(--muted);flex-shrink:0;">Every</span>
+          <input type="number" id="awcWoEvery" min="1" step="1" value="3" style="width:80px;flex-shrink:0;">
+          <select id="awcWoUnit" style="flex:1;">
+            <option value="days">days</option>
+            <option value="weeks" selected>weeks</option>
+            <option value="months">months</option>
+          </select>
+        </div>
+        <p style="font-size:11.5px;color:var(--muted);margin:6px 0 0;">Repeats are scheduled a year ahead from the date above.</p>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0 14px;">
+        <span style="font-size:13px;font-weight:600;color:var(--muted);">Total</span>
+        <span id="awcTotal" style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--teal-deep);">$0.00</span>
+      </div>
+      <button type="button" class="btn btn-primary" id="awcFinalize" style="margin-bottom:8px;">Finalize</button>
+      <div class="btn-row"><button type="button" class="btn btn-ghost" id="awcWoClear" style="flex:1;">Clear</button></div>
+    </div>
+
+    <div id="awcTaskForm" style="display:none;">
+      <div class="field">
+        <label>Scheduled date</label>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <input type="date" id="awcTaskDate" style="width:auto;">
+          <label class="inline-check"><input type="checkbox" id="awcTaskPhoto"> Photo required</label>
+        </div>
+      </div>
+      <button type="button" class="btn btn-ghost" id="awcSavedTasks" style="width:100%;margin-bottom:12px;">Saved tasks</button>
+      <div class="field" style="position:relative;">
+        <label>Customer (optional)</label>
+        <div id="awcTaskChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
+        <input id="awcTaskSearch" placeholder="Start typing a name&hellip;" autocomplete="off">
+        <div class="awc-suggest" id="awcTaskSuggest"></div>
+      </div>
+      <div class="field">
+        <label>Task</label>
+        <input id="awcTaskTitle" placeholder="e.g. Take a photo of the heater model plate">
+      </div>
+      <div class="field">
+        <label>Details (optional)</label>
+        <textarea id="awcTaskDetails" rows="3" placeholder="Anything the technician needs to know"></textarea>
+      </div>
+      <div class="field">
+        <label>Saved technician</label>
+        <button type="button" class="btn btn-ghost" id="awcTaskTech" style="width:100%;justify-content:space-between;gap:10px;"></button>
+      </div>
+      <div class="field">
+        <label>Repeat</label>
+        <select id="awcTaskRepeat">
+          <option value="none">Just once</option>
+          <option value="1">Every week</option>
+          <option value="2">Every 2 weeks</option>
+          <option value="3">Every 3 weeks</option>
+          <option value="4">Every 4 weeks</option>
+          <option value="custom">Every&hellip; (choose)</option>
+        </select>
+        <div id="awcTaskCustom" style="display:none;margin-top:10px;align-items:center;gap:10px;">
+          <span style="font-size:13px;color:var(--muted);">Every</span>
+          <input type="number" id="awcTaskWeeks" min="1" max="52" value="6" style="width:80px;">
+          <span style="font-size:13px;color:var(--muted);">weeks</span>
+        </div>
+        <div id="awcTaskUntilWrap" style="display:none;margin-top:12px;">
+          <div style="font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px;">Until <span style="font-weight:400;">(optional &mdash; leave blank to keep going)</span></div>
+          <input type="date" id="awcTaskUntil">
+        </div>
+      </div>
+      <button type="button" class="btn btn-primary" id="awcAddTask" style="margin-bottom:8px;">Add to route</button>
+      <div class="btn-row" style="flex-wrap:nowrap;">
+        <button type="button" class="btn btn-ghost" id="awcSaveTemplate" style="flex:1 1 0;min-width:0;">Save for reuse</button>
+        <button type="button" class="btn btn-ghost" id="awcTaskClear" style="flex:1 1 0;min-width:0;">Clear</button>
+      </div>
+    </div>
+
+    <div id="awcCurrent" style="display:none;">
+      <select id="awcCurTech" style="margin-bottom:8px;"></select>
+      <div id="awcCurList"></div>
+    </div>
+    <div id="awcHistory" style="display:none;">
+      <select id="awcHistTech" style="margin-bottom:8px;"></select>
+      <div id="awcHistList"></div>
+    </div>
+  </div>`;
+
+  pane.querySelectorAll('#awcKindRow [data-kind]').forEach(b => b.addEventListener('click', ()=>{
+    awcKind = b.dataset.kind; awcView = 'main'; awcShown = 20; awcApply();
+  }));
+  pane.querySelectorAll('#awcViewRow [data-view]').forEach(b => b.addEventListener('click', ()=>{
+    awcView = b.dataset.view; awcShown = 20; awcApply();
+  }));
+
+  // Work order
+  document.getElementById('awcWoDate').value = todayDateStr();
+  document.getElementById('awcTaskDate').value = todayDateStr();
+  awcWireSearch('awcWoSearch', 'awcWoSuggest', ()=> awcWoCustomers, id=>{ awcWoCustomers.push(id); awcRenderChips(); });
+  awcWireSearch('awcTaskSearch', 'awcTaskSuggest', ()=> awcTaskCustomers, id=>{ awcTaskCustomers.push(id); awcRenderChips(); });
+  document.getElementById('awcAddLine').addEventListener('click', ()=>{
+    awcLineItems.push({description: '', qty: '', price: ''});
+    awcRenderLines();
+  });
+  document.getElementById('awcWoTech').addEventListener('click', ()=> awcPickTechs(awcWoTechs, ids=>{ awcWoTechs = ids; awcLabelTechs(); }));
+  document.getElementById('awcTaskTech').addEventListener('click', ()=> awcPickTechs(awcTaskTechs, ids=>{ awcTaskTechs = ids; awcLabelTechs(); }));
+  document.getElementById('awcWoRepeat').addEventListener('change', awcApplyRepeats);
+  document.getElementById('awcTaskRepeat').addEventListener('change', awcApplyRepeats);
+  document.getElementById('awcFinalize').addEventListener('click', awcFinalize);
+  document.getElementById('awcWoClear').addEventListener('click', awcClearWo);
+  document.getElementById('awcAddTask').addEventListener('click', awcAddTask);
+  document.getElementById('awcTaskClear').addEventListener('click', awcClearTask);
+  document.getElementById('awcSaveTemplate').addEventListener('click', awcSaveTemplate);
+  document.getElementById('awcSavedTasks').addEventListener('click', awcOpenTemplates);
+  document.getElementById('awcCurTech').addEventListener('change', ()=>{ awcShown = 20; awcRenderCurrent(); });
+  document.getElementById('awcHistTech').addEventListener('change', ()=>{ awcShown = 20; awcRenderHistory(); });
+  awcRenderLines();
+  awcRenderChips();
+  awcLabelTechs();
+  awcApplyRepeats();
+}
+
+function awcApply(){
+  const isTask = awcKind === 'Task';
+  document.querySelectorAll('#awcKindRow [data-kind]').forEach(b=>{
+    b.className = 'btn ' + (b.dataset.kind === awcKind ? 'btn-primary' : 'btn-ghost');
+  });
+  document.getElementById('awcMainTab').textContent = awcKind;
+  document.querySelectorAll('#awcViewRow [data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === awcView));
+  document.getElementById('awcWoForm').style.display = (awcView === 'main' && !isTask) ? '' : 'none';
+  document.getElementById('awcTaskForm').style.display = (awcView === 'main' && isTask) ? '' : 'none';
+  document.getElementById('awcCurrent').style.display = awcView === 'current' ? '' : 'none';
+  document.getElementById('awcHistory').style.display = awcView === 'history' ? '' : 'none';
+  if(awcView === 'main'){
+    document.getElementById('awcWoNumber').textContent = '#' + String(awcNextWorkOrderNumber()).padStart(4, '0');
+    const dl = document.getElementById('awcProducts');
+    dl.innerHTML = (lsGet('productsServices') || []).filter(p => p && p.name)
+      .map(p => '<option value="' + awcEsc(p.name) + '"></option>').join('');
+    // Anyone no longer a technician drops off what's ticked
+    const known = (lsGet('technicians') || []).map(t => String(t.id));
+    awcWoTechs = awcWoTechs.filter(id => known.indexOf(id) !== -1);
+    awcTaskTechs = awcTaskTechs.filter(id => known.indexOf(id) !== -1);
+    awcLabelTechs();
+    awcRenderChips();
+  }
+  if(awcView === 'current') awcRenderCurrent();
+  if(awcView === 'history') awcRenderHistory();
+}
+
+function awcApplyRepeats(){
+  document.getElementById('awcWoCustom').style.display = document.getElementById('awcWoRepeat').value === 'custom' ? 'flex' : 'none';
+  const t = document.getElementById('awcTaskRepeat').value;
+  document.getElementById('awcTaskCustom').style.display = t === 'custom' ? 'flex' : 'none';
+  document.getElementById('awcTaskUntilWrap').style.display = t === 'none' ? 'none' : 'block';
+}
+
+// Customer search: the list appears once something is typed
+function awcWireSearch(inputId, boxId, picked, onPick){
+  const input = document.getElementById(inputId);
+  const box = document.getElementById(boxId);
+  const draw = ()=>{
+    const t = input.value.trim().toLowerCase();
+    if(!t){ box.style.display = 'none'; box.innerHTML = ''; return; }
+    const have = picked().map(String);
+    const matches = awcCustomers()
+      .filter(c => have.indexOf(String(c.id)) === -1)
+      .filter(c => [c.name, c.address, c.phone, c.email].filter(Boolean).join(' ').toLowerCase().includes(t))
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity: 'base'}))
+      .slice(0, 10);
+    box.innerHTML = '';
+    if(!matches.length){
+      box.innerHTML = '<div style="color:var(--muted);cursor:default;">No customers match that search.</div>';
+      box.style.display = 'block';
+      return;
+    }
+    matches.forEach(c=>{
+      const row = document.createElement('div');
+      row.innerHTML = '<div style="font-weight:600;">' + awcEsc(c.name) + '</div>'
+        + '<div style="font-size:11.5px;color:var(--muted);">' + awcEsc(c.address || 'No address on file') + '</div>';
+      row.addEventListener('click', ()=>{
+        onPick(c.id);
+        input.value = '';
+        box.style.display = 'none';
+        box.innerHTML = '';
+      });
+      box.appendChild(row);
+    });
+    box.style.display = 'block';
+  };
+  input.addEventListener('input', draw);
+  input.addEventListener('blur', ()=> setTimeout(()=>{ box.style.display = 'none'; }, 250));
+}
+
+function awcRenderChips(){
+  [['awcWoChips', ()=> awcWoCustomers, ids => { awcWoCustomers = ids; }],
+   ['awcTaskChips', ()=> awcTaskCustomers, ids => { awcTaskCustomers = ids; }]].forEach(([boxId, get, set])=>{
+    const box = document.getElementById(boxId);
+    if(!box) return;
+    // Anyone no longer on file drops off
+    set(get().filter(id => awcCustName(id)));
+    box.innerHTML = '';
+    get().forEach(id=>{
+      const chip = document.createElement('span');
+      chip.className = 'awc-chip';
+      chip.appendChild(document.createTextNode(awcCustName(id)));
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.textContent = '\u00d7';
+      x.setAttribute('aria-label', 'Remove');
+      x.addEventListener('click', ()=>{ set(get().filter(v => String(v) !== String(id))); awcRenderChips(); });
+      chip.appendChild(x);
+      box.appendChild(chip);
+    });
+    box.style.marginBottom = get().length ? '8px' : '0';
+  });
+}
+
+function awcTotal(){
+  const total = awcLineItems.reduce((sum, it) => sum + (parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0), 0);
+  const el = document.getElementById('awcTotal');
+  if(el) el.textContent = '$' + total.toFixed(2);
+  return total;
+}
+
+function awcRenderLines(){
+  const box = document.getElementById('awcLines');
+  box.innerHTML = '';
+  awcLineItems.forEach((item, i)=>{
+    const row = document.createElement('div');
+    row.className = 'awc-line';
+    const desc = document.createElement('input');
+    desc.placeholder = 'Description';
+    desc.value = item.description || '';
+    desc.style.flex = '2';
+    desc.setAttribute('list', 'awcProducts');
+    const qty = document.createElement('input');
+    qty.type = 'number'; qty.step = 'any'; qty.inputMode = 'decimal';
+    qty.placeholder = 'Qty';
+    qty.value = item.qty;
+    qty.style.cssText = 'flex:0.6;text-align:center;padding-left:6px;padding-right:6px;';
+    const priceWrap = document.createElement('div');
+    priceWrap.style.cssText = 'position:relative;flex:1.1;min-width:0;display:flex;';
+    const dollar = document.createElement('span');
+    dollar.textContent = '$';
+    dollar.style.cssText = 'position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px;pointer-events:none;';
+    const price = document.createElement('input');
+    price.type = 'number'; price.step = 'any'; price.inputMode = 'decimal';
+    price.placeholder = 'Price';
+    price.value = item.price;
+    price.style.cssText = 'flex:1;width:100%;padding-left:22px;';
+    priceWrap.appendChild(dollar); priceWrap.appendChild(price);
+    desc.addEventListener('input', ()=>{
+      item.description = desc.value;
+      // Anything entered starts with a quantity of one
+      if(desc.value.trim() && (item.qty === '' || item.qty == null || parseFloat(item.qty) === 0)){
+        item.qty = 1; qty.value = 1;
+      }
+      // A product or service brings its price, as on the website
+      const match = (lsGet('productsServices') || []).find(p => p && p.name === desc.value);
+      if(match){
+        item.price = match.price == null ? '' : match.price;
+        price.value = item.price;
+      }
+      awcTotal();
+    });
+    qty.addEventListener('input', ()=>{ item.qty = qty.value; awcTotal(); });
+    price.addEventListener('input', ()=>{ item.price = price.value; awcTotal(); });
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'awc-x';
+    x.textContent = '\u00d7';
+    x.setAttribute('aria-label', 'Remove line item');
+    x.addEventListener('click', ()=>{ awcLineItems.splice(i, 1); awcRenderLines(); });
+    row.appendChild(desc); row.appendChild(qty); row.appendChild(priceWrap); row.appendChild(x);
+    box.appendChild(row);
+  });
+  awcTotal();
+}
+
+function awcLabelTechs(){
+  [['awcWoTech', awcWoTechs], ['awcTaskTech', awcTaskTechs]].forEach(([id, ids])=>{
+    const btn = document.getElementById(id);
+    if(!btn) return;
+    btn.innerHTML = '';
+    const span = document.createElement('span');
+    span.textContent = ids.length ? awcTechNames(ids) : 'Choose technicians';
+    span.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (ids.length ? '' : 'color:var(--muted);');
+    const arrow = document.createElement('span');
+    arrow.textContent = '\u203a';
+    arrow.style.cssText = 'color:var(--muted);flex-shrink:0;';
+    btn.appendChild(span); btn.appendChild(arrow);
+  });
+}
+
+// The technician window: tick any number; it closes only from its buttons
+function awcPickTechs(current, done){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:380px;max-height:82vh;display:flex;flex-direction:column;';
+  box.innerHTML = '<h3 style="font-size:17px;margin:0 0 12px;">Saved technician</h3>'
+    + '<div class="btn-row" style="margin-bottom:10px;flex-wrap:nowrap;">'
+    + '<button type="button" class="btn btn-ghost" data-all style="flex:1;">Select all</button>'
+    + '<button type="button" class="btn btn-ghost" data-none style="flex:1;">Clear</button></div>'
+    + '<div data-list style="border:1px solid var(--line);border-radius:10px;padding:0 6px;overflow-y:auto;margin-bottom:14px;"></div>'
+    + '<div class="btn-row"><button type="button" class="btn btn-ghost" data-cancel>Cancel</button>'
+    + '<button type="button" class="btn btn-primary" data-save>Save</button></div>';
+  const list = box.querySelector('[data-list]');
+  const techs = (typeof techniciansInOrder === 'function') ? techniciansInOrder() : (lsGet('technicians') || []);
+  if(!techs.length){
+    list.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:11px 8px;">Add a technician first.</div>';
+  }
+  techs.forEach(t=>{
+    const row = document.createElement('label');
+    row.className = 'awc-pick-row';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = String(t.id);
+    cb.checked = current.map(String).indexOf(String(t.id)) !== -1;
+    row.appendChild(cb);
+    row.appendChild(document.createTextNode(t.name || 'Technician'));
+    list.appendChild(row);
+  });
+  const boxes = ()=> Array.from(list.querySelectorAll('input[type=checkbox]'));
+  box.querySelector('[data-all]').addEventListener('click', ()=> boxes().forEach(b => { b.checked = true; }));
+  box.querySelector('[data-none]').addEventListener('click', ()=> boxes().forEach(b => { b.checked = false; }));
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+  box.querySelector('[data-cancel]').addEventListener('click', close);
+  box.querySelector('[data-save]').addEventListener('click', ()=>{
+    done(boxes().filter(b => b.checked).map(b => b.value));
+    close();
+  });
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function awcClearWo(){
+  awcWoCustomers = [];
+  awcLineItems = [{description: '', qty: '', price: ''}];
+  awcWoTechs = [];
+  document.getElementById('awcWoSearch').value = '';
+  document.getElementById('awcWoNotes').value = '';
+  document.getElementById('awcWoDate').value = todayDateStr();
+  document.getElementById('awcWoPhoto').checked = true;
+  document.getElementById('awcWoRepeat').value = 'none';
+  awcRenderChips(); awcRenderLines(); awcLabelTechs(); awcApplyRepeats();
+  document.getElementById('awcWoNumber').textContent = '#' + String(awcNextWorkOrderNumber()).padStart(4, '0');
+}
+
+function awcClearTask(){
+  awcTaskCustomers = [];
+  awcTaskTechs = [];
+  document.getElementById('awcTaskSearch').value = '';
+  document.getElementById('awcTaskTitle').value = '';
+  document.getElementById('awcTaskDetails').value = '';
+  document.getElementById('awcTaskDate').value = todayDateStr();
+  document.getElementById('awcTaskPhoto').checked = false;
+  document.getElementById('awcTaskRepeat').value = 'none';
+  document.getElementById('awcTaskUntil').value = '';
+  awcRenderChips(); awcLabelTechs(); awcApplyRepeats();
+}
+
+// Finalize: onto each technician's route, exactly as the website does it
+function awcFinalize(){
+  const picked = awcWoCustomers.map(id => (customers || []).find(c => c && String(c.id) === String(id))).filter(Boolean);
+  if(!picked.length){ showToast('Add at least one customer'); return; }
+  const validItems = awcLineItems.filter(it => it.description && it.description.trim())
+    .map(it => ({description: it.description.trim(), qty: it.qty, price: it.price}));
+  if(!validItems.length){ showToast('Add at least one line item'); return; }
+  const date = document.getElementById('awcWoDate').value;
+  if(!date){ showToast('Pick a scheduled date'); return; }
+  const techIds = awcWoTechs.slice();
+  if(!techIds.length){ showToast('Assign a technician'); return; }
+  const notes = document.getElementById('awcWoNotes').value.trim();
+  const photoRequired = document.getElementById('awcWoPhoto').checked;
+  const dates = appWorkOrderDates(date, document.getElementById('awcWoRepeat').value,
+    document.getElementById('awcWoEvery').value, document.getElementById('awcWoUnit').value);
+
+  const jobs = lsGet('scheduledWorkOrders') || [];
+  const made = [];
+  picked.forEach(customer=>{
+    const woId = 'wo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const woNumber = awcNextWorkOrderNumber();
+    lsSet('workOrderCounter', woNumber);
+    // A separate job for each technician, each ticked off by its own person
+    techIds.forEach(techId => dates.forEach(d=>{
+      const job = {
+        id: 'woJob_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        workOrderId: woId,
+        workOrderNumber: woNumber,
+        customerId: customer.id,
+        technicianId: techId,
+        date: d,
+        title: validItems.map(i => i.description).join(', '),
+        lineItems: validItems,
+        notes,
+        photoRequired,
+        status: 'scheduled',
+        // Made in the app: the website has no copy of the work order itself
+        // (that comes with quotes), so it mustn't call it deleted
+        madeOnPhone: true
+      };
+      jobs.push(job);
+      made.push(job.id);
+    }));
+  });
+  if(!lsSet('scheduledWorkOrders', jobs)){ showToast('Could not save \u2014 the phone is full'); return; }
+  made.forEach(id => queueOfficeWork('work_order', id, false));
+  queueSetupSend('workOrderCounter');
+  fieldNoteLocalChange();
+  awcClearWo();
+  try{ if(typeof renderHomeList === 'function') renderHomeList(); }catch(e){}
+  const visits = dates.length * picked.length;
+  showToast('Finalized \u2014 ' + visits + (visits === 1 ? ' visit' : ' visits') +
+    ' added to ' + awcTechNames(techIds) + (techIds.length === 1 ? '\u2019s route' : '\u2019s routes'));
+}
+
+function awcTaskWeeks(){
+  const mode = document.getElementById('awcTaskRepeat').value;
+  if(mode === 'none') return 0;
+  if(mode === 'custom'){
+    const n = parseInt(document.getElementById('awcTaskWeeks').value, 10);
+    return (n > 0 && n <= 52) ? n : 1;
+  }
+  return parseInt(mode, 10) || 1;
+}
+
+function awcAddTask(){
+  const title = document.getElementById('awcTaskTitle').value.trim();
+  if(!title){ showToast('Say what needs doing first'); return; }
+  const techIds = awcTaskTechs.slice();
+  if(!techIds.length){ showToast('Choose a technician'); return; }
+  const date = document.getElementById('awcTaskDate').value;
+  if(!date){ showToast('Choose a day'); return; }
+  const details = document.getElementById('awcTaskDetails').value.trim();
+  const customerIds = awcTaskCustomers.slice();
+  const everyWeeks = awcTaskWeeks();
+  const until = document.getElementById('awcTaskUntil').value;
+  const photoRequired = document.getElementById('awcTaskPhoto').checked;
+
+  // Stored as the dates it falls on, a year ahead unless told otherwise
+  const dates = [date];
+  if(everyWeeks > 0){
+    const stop = until ? new Date(until + 'T12:00:00').getTime() : null;
+    let d = new Date(date + 'T12:00:00');
+    const horizon = stop || (d.getTime() + 365 * 86400000);
+    for(let i = 0; i < 200; i++){
+      d = new Date(d.getTime() + everyWeeks * 7 * 86400000);
+      if(d.getTime() > horizon) break;
+      dates.push(new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10));
+    }
+  }
+  const list = lsGet('tasks') || [];
+  const made = [];
+  // Each technician has their own copy, and their own series if it repeats
+  techIds.forEach(techId=>{
+    const series = everyWeeks > 0 ? 'series_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) : '';
+    dates.forEach(dt=>{
+      const t = {
+        id: awcNewId('task_'),
+        title, details,
+        technicianId: techId,
+        date: dt,
+        customerIds,
+        everyWeeks,
+        seriesId: series,
+        photoRequired,
+        done: false,
+        createdAt: new Date().toISOString()
+      };
+      list.push(t);
+      made.push(t.id);
+    });
+  });
+  // Queued first, so sync never sends half a task
+  made.forEach(id => queueOfficeWork('task', id, false));
+  if(!lsSet('tasks', list)){ showToast('Could not save \u2014 the phone is full'); return; }
+  try{ if(typeof tasks !== 'undefined') tasks = list; }catch(e){}
+  fieldNoteLocalChange();
+  awcClearTask();
+  try{ if(typeof renderHomeList === 'function') renderHomeList(); }catch(e){}
+  const who = techIds.length === 1 ? 'the route' : awcTechNames(techIds) + '\u2019s routes';
+  showToast(dates.length === 1 ? 'Task added to ' + who
+    : 'Added ' + dates.length + ' times to ' + who + ', every ' + (everyWeeks === 1 ? 'week' : everyWeeks + ' weeks'));
+}
+
+async function awcSaveTemplate(){
+  const title = document.getElementById('awcTaskTitle').value.trim();
+  if(!title){ showToast('Write the task first'); return; }
+  const name = await awcAskName(title);
+  if(!name) return;
+  const list = lsGet('taskTemplates') || [];
+  const entry = {name, title, details: document.getElementById('awcTaskDetails').value.trim()};
+  // One saved task per name: the same name again asks to overwrite
+  const same = list.findIndex(x => (x.name || '').trim().toLowerCase() === name.toLowerCase());
+  if(same !== -1){
+    const ok = await confirmDialog('A saved task called "' + awcEsc(list[same].name) + '" already exists. Overwrite it?', 'Overwrite');
+    if(!ok) return;
+    list[same] = Object.assign({id: list[same].id}, entry);
+    lsSet('taskTemplates', list);
+    queueSetupSend('taskTemplates');
+    fieldNoteLocalChange();
+    showToast('Overwrote "' + name + '"');
+    return;
+  }
+  list.push(Object.assign({id: 'tt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7)}, entry));
+  lsSet('taskTemplates', list);
+  queueSetupSend('taskTemplates');
+  fieldNoteLocalChange();
+  showToast('Saved \u2014 find it under Saved tasks');
+}
+
+// Name for a saved task, starting from the task itself
+function awcAskName(start){
+  return new Promise(resolve=>{
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = '<div class="confirm-box"><p>Name this saved task</p>'
+      + '<input id="awcNameInput" style="margin-bottom:14px;">'
+      + '<div class="btn-row"><button type="button" class="btn btn-ghost" data-c>Cancel</button>'
+      + '<button type="button" class="btn btn-primary" data-ok>Save</button></div></div>';
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('#awcNameInput');
+    input.value = start || '';
+    const done = v => { if(overlay.parentNode) overlay.parentNode.removeChild(overlay); resolve(v); };
+    overlay.querySelector('[data-c]').addEventListener('click', ()=> done(null));
+    overlay.querySelector('[data-ok]').addEventListener('click', ()=> done(input.value.trim() || null));
+    input.addEventListener('keydown', e=>{ if(e.key === 'Enter') done(input.value.trim() || null); });
+  });
+}
+
+function awcOpenTemplates(){
+  const list = lsGet('taskTemplates') || [];
+  if(!list.length){ showToast('Nothing saved yet \u2014 write a task and press Save for reuse'); return; }
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:420px;max-height:82vh;overflow-y:auto;';
+  box.innerHTML = '<h3 style="font-size:17px;margin:0 0 6px;">Saved tasks</h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;">Pick one to fill the form, then choose a technician and a day.</p>'
+    + '<div data-list></div>'
+    + '<div class="btn-row" style="margin-top:14px;"><button type="button" class="btn btn-ghost" data-close>Close</button></div>';
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+  const holder = box.querySelector('[data-list]');
+  const draw = ()=>{
+    holder.innerHTML = '';
+    const now = lsGet('taskTemplates') || [];
+    if(!now.length){ holder.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:9px 0;">Nothing saved.</div>'; return; }
+    now.forEach(t=>{
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);';
+      const pick = document.createElement('button');
+      pick.type = 'button';
+      pick.className = 'btn btn-ghost';
+      pick.style.cssText = 'flex:1;width:auto;justify-content:flex-start;text-align:left;padding:8px 12px;font-size:13.5px;display:block;';
+      pick.innerHTML = '<strong>' + awcEsc(t.name) + '</strong>'
+        + (t.details ? '<br><span style="font-size:11.5px;color:var(--muted);font-weight:400;">'
+          + awcEsc(t.details.slice(0, 60)) + (t.details.length > 60 ? '\u2026' : '') + '</span>' : '');
+      pick.addEventListener('click', ()=>{
+        document.getElementById('awcTaskTitle').value = t.title || '';
+        document.getElementById('awcTaskDetails').value = t.details || '';
+        // A template, not a customer's job: whoever was picked is cleared
+        awcTaskCustomers = [];
+        document.getElementById('awcTaskSearch').value = '';
+        awcRenderChips();
+        close();
+        showToast('Filled from "' + t.name + '"');
+      });
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn btn-ghost';
+      del.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;color:var(--rust);border-color:#EFC9BC;flex-shrink:0;';
+      del.textContent = 'Delete';
+      del.addEventListener('click', async ()=>{
+        const ok = await confirmDialog('Delete the saved task "' + awcEsc(t.name) + '"?', 'Delete');
+        if(!ok) return;
+        lsSet('taskTemplates', (lsGet('taskTemplates') || []).filter(x => x.id !== t.id));
+        queueSetupSend('taskTemplates');
+        fieldNoteLocalChange();
+        draw();
+      });
+      row.appendChild(pick); row.appendChild(del);
+      holder.appendChild(row);
+    });
+  };
+  draw();
+  box.querySelector('[data-close]').addEventListener('click', close);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function awcTechMenu(selId){
+  const sel = document.getElementById(selId);
+  const keep = sel.value;
+  const techs = (typeof techniciansInOrder === 'function') ? techniciansInOrder() : (lsGet('technicians') || []);
+  sel.innerHTML = '<option value="">All technicians</option>'
+    + techs.map(t => '<option value="' + awcEsc(t.id) + '">' + awcEsc(t.name || 'Technician') + '</option>').join('');
+  sel.value = keep && techs.some(t => String(t.id) === keep) ? keep : '';
+  return sel.value;
+}
+
+function awcMoreButton(box, total, redraw){
+  if(total <= awcShown) return;
+  const more = document.createElement('button');
+  more.type = 'button';
+  more.className = 'btn btn-ghost';
+  more.style.cssText = 'width:100%;margin-top:10px;';
+  more.textContent = 'Show more (' + (total - awcShown) + ' left)';
+  more.addEventListener('click', ()=>{ awcShown += 20; redraw(); });
+  box.appendChild(more);
+}
+
+function awcSmallBtn(text, danger){
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'btn btn-ghost awc-small';
+  if(danger){ b.style.color = 'var(--rust)'; b.style.borderColor = '#EFC9BC'; }
+  b.textContent = text;
+  return b;
+}
+
+// Current: what's still on the routes, soonest first
+function awcRenderCurrent(){
+  const box = document.getElementById('awcCurList');
+  const tech = awcTechMenu('awcCurTech');
+  const isTask = awcKind === 'Task';
+  const today = todayDateStr();
+  let rows;
+  if(isTask){
+    const open = (lsGet('tasks') || []).filter(t => t && !t.done);
+    rows = open.filter(t => !tech || String(t.technicianId) === tech).map(t=>{
+      const names = (t.customerIds || []).map(awcCustName).filter(Boolean);
+      return {id: t.id, date: t.date, what: t.title || 'Task',
+        who: names.length ? names.slice(0, 2).join(', ') + (names.length > 2 ? ' +' + (names.length - 2) : '') : 'No customer',
+        techName: awcTechName(t.technicianId) || 'No technician',
+        group: t.seriesId || '', groupLeft: t.seriesId ? open.filter(x => x.seriesId === t.seriesId).length : 1};
+    });
+  } else {
+    const jobs = (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'scheduled');
+    rows = jobs.filter(j => !tech || String(j.technicianId) === tech).map(j => ({
+      id: j.id, date: j.date, who: awcCustName(j.customerId) || 'Customer', what: j.title || 'Work order',
+      techName: awcTechName(j.technicianId) || 'No technician',
+      group: j.workOrderId || '', groupLeft: j.workOrderId ? jobs.filter(x => x.workOrderId === j.workOrderId).length : 1
+    }));
+  }
+  rows.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  box.innerHTML = '';
+  if(!rows.length){
+    box.innerHTML = '<p style="font-size:13.5px;color:var(--muted);margin:6px 0;">Nothing scheduled'
+      + (tech ? ' for ' + awcEsc(awcTechName(tech)) : '') + '.</p>';
+    return;
+  }
+  rows.slice(0, awcShown).forEach(r=>{
+    const row = document.createElement('div');
+    row.className = 'awc-row';
+    const top = document.createElement('div');
+    top.style.cssText = 'display:flex;gap:12px;align-items:flex-start;';
+    const when = document.createElement('div');
+    when.style.cssText = 'flex:0 0 92px;font-size:12.5px;font-weight:600;';
+    when.textContent = awcShortDate(r.date);
+    if(r.date && r.date < today){
+      const od = document.createElement('div');
+      od.style.cssText = 'font-size:11px;font-weight:700;color:var(--rust);';
+      od.textContent = 'Overdue';
+      when.appendChild(od);
+    }
+    const mid = document.createElement('div');
+    mid.style.cssText = 'flex:1;min-width:0;';
+    mid.innerHTML = '<div style="font-size:14px;font-weight:600;">' + awcEsc(r.who + ' \u2013 ' + r.what) + '</div>'
+      + '<div style="font-size:12px;color:var(--muted);margin-top:2px;">' + awcEsc(r.techName + (isTask && r.group ? ' \u00b7 Repeats' : '')) + '</div>';
+    top.appendChild(when); top.appendChild(mid);
+    const acts = document.createElement('div');
+    acts.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:8px;';
+    const complete = awcSmallBtn('Mark completed');
+    complete.addEventListener('click', ()=>{
+      const stamp = new Date().toISOString();
+      if(isTask){
+        const list = lsGet('tasks') || [];
+        const t = list.find(x => x.id === r.id);
+        if(!t) return;
+        Object.assign(t, {done: true, doneAt: stamp, doneBy: 'office'});
+        lsSet('tasks', list);
+        try{ if(typeof tasks !== 'undefined') tasks = list; }catch(e){}
+      } else {
+        const jobs = lsGet('scheduledWorkOrders') || [];
+        const j = jobs.find(x => x.id === r.id);
+        if(!j) return;
+        Object.assign(j, {status: 'done', doneAt: stamp, doneBy: 'office'});
+        lsSet('scheduledWorkOrders', jobs);
+      }
+      fieldNoteLocalChange();
+      awcRenderCurrent();
+      try{ if(typeof renderHomeList === 'function') renderHomeList(); }catch(e){}
+      showToast('Completed \u2014 moved to History');
+    });
+    acts.appendChild(complete);
+    if(r.groupLeft > 1){
+      const all = awcSmallBtn('Remove all ' + r.groupLeft, true);
+      all.addEventListener('click', async ()=>{
+        const ok = await confirmDialog('Take all ' + r.groupLeft + (isTask ? ' remaining dates of \u201c' + awcEsc(r.what) + '\u201d' : ' remaining visits of this work order') + ' off the routes?', 'Remove all ' + r.groupLeft);
+        if(!ok) return;
+        awcRemove(isTask, x => isTask ? (x.seriesId === r.group && !x.done) : (x.workOrderId === r.group && x.status === 'scheduled'));
+        showToast('Removed ' + r.groupLeft);
+      });
+      acts.appendChild(all);
+    }
+    const x = awcSmallBtn('Remove', true);
+    x.addEventListener('click', async ()=>{
+      const ok = await confirmDialog('Take \u201c' + awcEsc(r.who + ' \u2013 ' + r.what) + '\u201d on ' + awcShortDate(r.date) + ' off ' + awcEsc(r.techName) + '\u2019s route?', 'Remove');
+      if(!ok) return;
+      awcRemove(isTask, item => item.id === r.id);
+      showToast('Removed');
+    });
+    acts.appendChild(x);
+    row.appendChild(top); row.appendChild(acts);
+    box.appendChild(row);
+  });
+  awcMoreButton(box, rows.length, awcRenderCurrent);
+}
+
+// Taken off the route here, and off the server with the next sync
+function awcRemove(isTask, match){
+  const key = isTask ? 'tasks' : 'scheduledWorkOrders';
+  const kind = isTask ? 'task' : 'work_order';
+  const list = lsGet(key) || [];
+  const gone = list.filter(match);
+  gone.forEach(item => queueOfficeWork(kind, item.id, true));
+  const kept = list.filter(item => !match(item));
+  lsSet(key, kept);
+  if(isTask){ try{ if(typeof tasks !== 'undefined') tasks = kept; }catch(e){} }
+  fieldNoteLocalChange();
+  awcRenderCurrent();
+  try{ if(typeof renderHomeList === 'function') renderHomeList(); }catch(e){}
+}
+
+// History: finished in the field, or marked completed by the office
+function awcRenderHistory(){
+  const box = document.getElementById('awcHistList');
+  const tech = awcTechMenu('awcHistTech');
+  const isTask = awcKind === 'Task';
+  const byName = (doneBy, techId) => doneBy === 'office' ? 'the office' : (awcTechName(doneBy || techId) || '');
+  const whoDid = (doneBy, techId) => String(doneBy === 'office' ? (techId || '') : (doneBy || techId || ''));
+  const list = (isTask
+    ? (lsGet('tasks') || []).filter(t => t && t.done).map(t => ({
+        title: t.title || 'Task', customer: (t.customerIds || []).map(awcCustName).filter(Boolean).join(', '),
+        at: t.doneAt || '', notes: t.doneNotes || '', by: byName(t.doneBy, t.technicianId), techId: whoDid(t.doneBy, t.technicianId)}))
+    : (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'done').map(j => ({
+        title: j.title || 'Work order', customer: awcCustName(j.customerId),
+        at: j.doneAt || '', notes: j.doneNotes || '', by: byName(j.doneBy, j.technicianId), techId: whoDid(j.doneBy, j.technicianId)})))
+    .filter(x => !tech || x.techId === tech)
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  box.innerHTML = '';
+  if(!list.length){
+    box.innerHTML = '<p style="font-size:13.5px;color:var(--muted);margin:6px 0;">'
+      + (tech ? 'Nothing matches.' : 'Nothing finished yet. A ' + (isTask ? 'task' : 'work order') + ' a technician submits will show up here.') + '</p>';
+    return;
+  }
+  list.slice(0, awcShown).forEach(s=>{
+    const row = document.createElement('div');
+    row.className = 'awc-row';
+    row.innerHTML = '<div style="font-weight:700;font-size:14px;">' + awcEsc((s.customer ? s.customer + ' \u2013 ' : '') + s.title) + '</div>'
+      + '<div style="font-size:12px;color:var(--muted);margin-top:2px;">'
+      + awcEsc([s.at ? new Date(s.at).toLocaleString() : '', s.by ? 'by ' + s.by : ''].filter(Boolean).join(' \u00b7 ')) + '</div>'
+      + (s.notes ? '<div style="font-size:13px;margin-top:6px;white-space:pre-line;">' + awcEsc(s.notes) + '</div>' : '');
+    box.appendChild(row);
+  });
+  awcMoreButton(box, list.length, awcRenderHistory);
+}
+
+// Customers / WorkCenter
+function showCustomerPane(which){
+  const work = which === 'work';
+  const a = document.getElementById('custPaneList'), b = document.getElementById('custPaneWork');
+  if(!a || !b) return;
+  a.style.display = work ? 'none' : '';
+  b.style.display = work ? '' : 'none';
+  document.getElementById('btnCustPaneList').className = 'btn ' + (work ? 'btn-ghost' : 'btn-primary');
+  document.getElementById('btnCustPaneWork').className = 'btn ' + (work ? 'btn-primary' : 'btn-ghost');
+  if(work) renderAppWorkCenter();
+}
+(function wireCustomerPanes(){
+  const a = document.getElementById('btnCustPaneList'), b = document.getElementById('btnCustPaneWork');
+  if(!a || !b) return;
+  a.addEventListener('click', ()=> showCustomerPane('list'));
+  b.addEventListener('click', ()=> showCustomerPane('work'));
+  // Opening a customer's form from anywhere brings the Customers side back
+  const form = document.getElementById('newCustomerCard');
+  if(form) new MutationObserver(()=>{
+    if(form.style.display !== 'none') showCustomerPane('list');
+  }).observe(form, {attributes: true, attributeFilter: ['style']});
+})();
+
 
 (function leftHandedStyle(){
   const st = document.createElement('style');
