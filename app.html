@@ -15,6 +15,19 @@
 button[data-x-drawn]{align-items:center;justify-content:center;}
 button[data-x-drawn]:not([style*="display: none"]):not([style*="display:none"]){display:inline-flex;}
 button[data-x-drawn] > svg{display:block;width:0.62em;height:0.62em;margin:auto;flex-shrink:0;pointer-events:none;}
+/* The bin (Tyrus, Oct 2, option A): a solid red square with a white bin,
+   always square and the bin centred, wherever it is. Small ones sit inside
+   tags and tight rows. */
+button[data-x-drawn="bin"]{width:36px !important;height:36px !important;min-width:36px !important;max-width:36px !important;
+  padding:0 !important;margin-top:0;border-radius:10px !important;background:var(--rust) !important;color:#fff !important;
+  border:1px solid var(--rust) !important;flex:0 0 36px !important;line-height:0 !important;opacity:1;
+  align-items:center !important;justify-content:center !important;box-sizing:border-box !important;}
+button[data-x-drawn="bin"]:hover{background:#9E3D26 !important;border-color:#9E3D26 !important;}
+button[data-x-drawn="bin"] > svg{width:20px !important;height:20px !important;margin:0 auto !important;display:block !important;}
+button[data-x-drawn="bin"][data-bin-size="s"]{width:26px !important;height:26px !important;min-width:26px !important;max-width:26px !important;
+  flex-basis:26px !important;border-radius:7px !important;}
+button[data-x-drawn="bin"][data-bin-size="s"] > svg{width:15px !important;height:15px !important;}
+
 /* The regular before/after photo on a page that is only there for an extra photo */
 .photo-part-off{display:none !important;}
 /* A text cursor belongs in a field you type into and nowhere else. This is the
@@ -2784,6 +2797,8 @@ function switchView(view, opts){
     if(clear) clear.style.display = 'none';
     renderCustomerList();
     hideCustomerForm();
+    // ...and it opens on Customers again, not WorkCenter (Oct 2)
+    try{ if(typeof showCustomerPane === 'function') showCustomerPane('list'); }catch(e){}
   }
   if(view === 'report' && !opts.skipRefresh && !keepAsLeft){
     // Nor the customer searched for on Report
@@ -14647,7 +14662,8 @@ function awcOpenTemplates(){
       const del = document.createElement('button');
       del.type = 'button';
       del.className = 'btn btn-ghost';
-      del.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;color:var(--rust);border-color:#EFC9BC;flex-shrink:0;';
+      // Just wide enough for the word, about 4px around it (Oct 2)
+      del.style.cssText = 'width:auto;flex:0 0 auto;padding:4px;font-size:12px;line-height:1;border-radius:7px;color:var(--rust);border-color:#EFC9BC;';
       del.textContent = 'Delete';
       del.addEventListener('click', async ()=>{
         const ok = await confirmDialog('Delete the saved task "' + awcEsc(t.name) + '"?', 'Delete');
@@ -18574,17 +18590,46 @@ attachAllPhoneFormatting();
       return !(r > 240 && g > 240 && b > 240);
     }catch(e){ return false; }
   };
+  // In a pop-up window: a .confirm-overlay, or any full-screen fixed layer
+  // holding a window (Edit customers, groups and the like)
+  const inPopUp = btn=>{
+    let n = btn && btn.parentElement;
+    while(n && n !== document.body){
+      if(n.classList && n.classList.contains('confirm-overlay')) return true;
+      try{
+        const cs = getComputedStyle(n);
+        if(cs.position === 'fixed'){
+          const r = n.getBoundingClientRect();
+          if(r.width >= window.innerWidth - 2 && r.height >= window.innerHeight - 2) return true;
+          // A window built into the page is hidden until opened, so it can't
+          // be measured then: a fixed layer stacked over the page counts too
+          if((parseInt(cs.zIndex, 10) || 0) >= 100) return true;
+        }
+      }catch(e){}
+      n = n.parentElement;
+    }
+    return false;
+  };
+  // Small bins go inside tags (a chosen customer) and very tight spots
+  const markBinSize = btn=>{
+    const h = parseFloat(btn.style.height || '0');
+    const inTag = btn.parentElement && btn.parentElement.tagName === 'SPAN';
+    if(inTag || (h && h <= 26)) btn.dataset.binSize = 's';
+    else delete btn.dataset.binSize;
+  };
   const convertWord = btn=>{
     if(!btn || btn.dataset.binWord === '1') return false;
     const words = (btn.textContent || '').replace(/\s+/g, ' ').trim();
     if(!WORD.test(words) || KEEP_WORDS.test(words)) return false;
+    // Inside any pop-up window everything keeps its own words (Tyrus, Oct 2):
+    // bins are for the pages and tabs only
+    if(inPopUp(btn)) return false;
     btn.setAttribute('aria-label', words);
     btn.title = words;
     btn.innerHTML = BIN;
     btn.dataset.xDrawn = 'bin';
     btn.dataset.binWord = '1';
-    // Red, unless it's a filled button (a red Delete in a confirm window)
-    if(!filled(btn)){ btn.style.color = 'var(--rust)'; btn.style.borderColor = '#EFC9BC'; }
+    markBinSize(btn);
     return true;
   };
   // A bin button given new words later (a label that changes) is checked again
@@ -18601,9 +18646,10 @@ attachAllPhoneFormatting();
     if(btn.dataset.xDrawn || btn.childElementCount !== 0) return;
     if((btn.textContent || '').trim() !== '\u00d7') return;
     if(!btn.getAttribute('aria-label')) btn.setAttribute('aria-label', btn.title || 'Remove');
-    const red = isRed(btn);
+    const red = isRed(btn) && !inPopUp(btn);
     btn.innerHTML = red ? BIN : SVG;
     btn.dataset.xDrawn = red ? 'bin' : '1';
+    if(red) markBinSize(btn);
   };
   const sweep = root => { if(root && root.querySelectorAll) root.querySelectorAll('button').forEach(convert); };
   sweep(document);
