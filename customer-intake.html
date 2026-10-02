@@ -1877,7 +1877,10 @@ input::placeholder{color:#A9BCB9;}
       <p style="font-size:11.5px;color:var(--muted);margin:8px 0 0;">Removes photos from all but the four most recent visits per body of water. Readings, notes and service records are kept in full — only the images go.</p>
     </div>
 
-    <div class="card">
+    <!-- Keep photos on this device is hidden (Oct 2): photos live on the
+         server now and this switch no longer did anything. Kept in the page
+         so the code that reads it doesn't break. -->
+    <div class="card" style="display:none;">
       <div class="field">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
           <h2 style="margin:0;">Keep photos on this device</h2>
@@ -1903,9 +1906,10 @@ input::placeholder{color:#A9BCB9;}
       <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">When on, pool volume (in gallons) can be entered when adding or editing a customer, and shows on their profile right under their technician. When off, the field is hidden entirely.</p>
     </div>
 
-    <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;margin:24px 0 10px;">Field app</div>
-
-    <div class="card">
+    <!-- The Field app heading is gone, and Voice entry button and Quick buttons
+         are hidden (Oct 2): both are set on the phones now. Their switches stay
+         in the page so nothing that reads them breaks. -->
+    <div class="card" style="display:none;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
         <h2 style="margin:0;">Voice entry button</h2>
         <label class="toggle-switch">
@@ -1923,7 +1927,7 @@ input::placeholder{color:#A9BCB9;}
     
     
     
-    <div class="card">
+    <div class="card" style="display:none;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
         <h2 style="margin:0;">Quick buttons</h2>
         <label class="toggle-switch">
