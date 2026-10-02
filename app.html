@@ -15,18 +15,18 @@
 button[data-x-drawn]{align-items:center;justify-content:center;}
 button[data-x-drawn]:not([style*="display: none"]):not([style*="display:none"]){display:inline-flex;}
 button[data-x-drawn] > svg{display:block;width:0.62em;height:0.62em;margin:auto;flex-shrink:0;pointer-events:none;}
-/* The bin (Tyrus, Oct 2, option A): a solid red square with a white bin,
-   always square and the bin centred, wherever it is. Small ones sit inside
-   tags and tight rows. */
-button[data-x-drawn="bin"]{width:36px !important;height:36px !important;min-width:36px !important;max-width:36px !important;
-  padding:0 !important;margin-top:0;border-radius:10px !important;background:var(--rust) !important;color:#fff !important;
-  border:1px solid var(--rust) !important;flex:0 0 36px !important;line-height:0 !important;opacity:1;
+/* The bin (Tyrus, Oct 2, option B): a pale red square with a darker red
+   bin, always square and the bin centred, wherever it is. Small ones sit
+   inside tags and tight rows. */
+button[data-x-drawn="bin"]{width:33px !important;height:33px !important;min-width:33px !important;max-width:33px !important;
+  padding:0 !important;margin-top:0;border-radius:9px !important;background:#FBE3DC !important;color:#9E3D26 !important;
+  border:1px solid #E9B3A3 !important;flex:0 0 33px !important;line-height:0 !important;opacity:1;
   align-items:center !important;justify-content:center !important;box-sizing:border-box !important;}
-button[data-x-drawn="bin"]:hover{background:#9E3D26 !important;border-color:#9E3D26 !important;}
-button[data-x-drawn="bin"] > svg{width:20px !important;height:20px !important;margin:0 auto !important;display:block !important;}
-button[data-x-drawn="bin"][data-bin-size="s"]{width:26px !important;height:26px !important;min-width:26px !important;max-width:26px !important;
-  flex-basis:26px !important;border-radius:7px !important;}
-button[data-x-drawn="bin"][data-bin-size="s"] > svg{width:15px !important;height:15px !important;}
+button[data-x-drawn="bin"]:hover{background:#F6D0C4 !important;}
+button[data-x-drawn="bin"] > svg{width:18px !important;height:18px !important;margin:0 auto !important;display:block !important;}
+button[data-x-drawn="bin"][data-bin-size="s"]{width:24px !important;height:24px !important;min-width:24px !important;max-width:24px !important;
+  flex-basis:24px !important;border-radius:7px !important;}
+button[data-x-drawn="bin"][data-bin-size="s"] > svg{width:14px !important;height:14px !important;}
 
 /* The regular before/after photo on a page that is only there for an extra photo */
 .photo-part-off{display:none !important;}
