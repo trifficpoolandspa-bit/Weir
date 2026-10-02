@@ -1123,14 +1123,6 @@ select#customerSelect{font-weight:600;}
         <button class="btn btn-ghost" id="btnLogout" style="width:auto;flex-shrink:0;">Sign out</button>
       </div>
     </div>
-    <div class="card" id="syncCard">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <h2 style="margin:0;">Office sync</h2>
-        <button class="btn btn-ghost" id="btnSyncNow" style="width:auto;margin-left:auto;flex:0 0 auto;">Sync now</button>
-      </div>
-      <p id="fieldSyncStatus" style="font-size:12.5px;color:var(--muted);margin:10px 0 0;">Checking&hellip;</p>
-      <p style="font-size:11.5px;color:var(--muted);margin:8px 0 0;">Everything is saved on this phone first and works with no signal. It goes to the office whenever there is a connection.</p>
-    </div>
     <div class="card" id="backupRestoreCard" style="display:none;">
       <h2>Backup & restore</h2>
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Your data lives on this device only, so it works fully offline — but that also means it can be lost if you clear browser data or switch phones. Back it up regularly.</p>
@@ -1139,6 +1131,14 @@ select#customerSelect{font-weight:600;}
         <label class="btn btn-ghost" id="btnImportBackup" style="width:auto;cursor:pointer;">Restore from backup</label>
       </div>
       <input type="file" accept="application/json" id="importBackupInput" style="display:none;">
+    </div>
+    <div class="card" id="syncCard">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <h2 style="margin:0;">Office sync</h2>
+        <button class="btn btn-ghost" id="btnSyncNow" style="width:auto;margin-left:auto;flex:0 0 auto;">Sync now</button>
+      </div>
+      <p id="fieldSyncStatus" style="font-size:12.5px;color:var(--muted);margin:10px 0 0;">Checking&hellip;</p>
+      <p style="font-size:11.5px;color:var(--muted);margin:8px 0 0;">Everything is saved on this phone first and works with no signal. It goes to the office whenever there is a connection.</p>
     </div>
       <!-- Left-handed mode: this phone only -->
       <div class="card" id="leftHandedCard">
@@ -1151,6 +1151,39 @@ select#customerSelect{font-weight:600;}
             </label>
           </div>
           <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">Moves the main buttons to the left: Reverse route order, the date arrows and calendar on Today and on a technician's route, the Serviced day arrows, and Return to route / Back on every step of a visit. The voice entry microphone starts on the left too (Voice entry can still put it on the right). This phone only.</p>
+        </div>
+      </div>
+
+    <!-- Voice entry button: admins only, under Left-handed mode (Oct 2) -->
+    <div class="card" id="voiceButtonCard" style="display:none;">
+      <div class="field">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
+          <h2 style="margin:0;">Voice entry button</h2>
+          <label class="toggle-switch">
+            <input type="checkbox" id="settingPushToTalk" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <p style="font-size:12.5px;color:var(--muted);margin:16px 0 12px;">Shows a microphone next to the step button. Hold it and speak readings and dosages — "chlorine three, pH seven point four" — and they fill in wherever they belong. It only listens while you hold it, so there's no constant chiming.</p>
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px;">Microphone position</label>
+        <div class="btn-row" id="micSideRow">
+          <button type="button" class="btn btn-ghost" data-micside="left" style="flex:1;">Left of button</button>
+          <button type="button" class="btn btn-ghost" data-micside="right" style="flex:1;">Right of button</button>
+        </div>
+      </div>
+    </div>
+
+      <!-- Quick buttons: this phone only, on to start (Oct 2) -->
+      <div class="card" id="quickButtonsCard">
+        <div class="field">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
+            <h2 style="margin:0;">Quick buttons</h2>
+            <label class="toggle-switch">
+              <input type="checkbox" id="settingQuickButtonsHere">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">When on, readings and dosages show their quick buttons for common amounts, so you can tap instead of typing. On to start. This phone only.</p>
         </div>
       </div>
 
@@ -1172,7 +1205,7 @@ select#customerSelect{font-weight:600;}
               <span class="toggle-slider"></span>
             </label>
           </div>
-          <p style="font-size:12.5px;color:var(--muted);margin:8px 0 0;">Adds what was put in at each past visit under the readings. Off to start.</p>
+          <p style="font-size:12.5px;color:var(--muted);margin:8px 0 0;">Adds what was put in at each past visit under the readings. On to start.</p>
         </div>
       </div>
 
@@ -1219,26 +1252,7 @@ select#customerSelect{font-weight:600;}
     </div>
 
     <div id="adminSettingsCards">
-<div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;margin:24px 0 10px;">Field app</div>
 
-    <div class="card">
-      <div class="field">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
-          <h2 style="margin:0;">Voice entry button</h2>
-          <label class="toggle-switch">
-            <input type="checkbox" id="settingPushToTalk" checked>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <p style="font-size:12.5px;color:var(--muted);margin:16px 0 12px;">Shows a microphone next to the step button. Hold it and speak readings and dosages — "chlorine three, pH seven point four" — and they fill in wherever they belong. It only listens while you hold it, so there's no constant chiming.</p>
-        <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px;">Microphone position</label>
-        <div class="btn-row" id="micSideRow">
-          <button type="button" class="btn btn-ghost" data-micside="left" style="flex:1;">Left of button</button>
-          <button type="button" class="btn btn-ghost" data-micside="right" style="flex:1;">Right of button</button>
-        </div>
-      </div>
-    </div>
-    
     <div class="card">
       <div class="field">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
@@ -2251,7 +2265,9 @@ function renderConfigFields(containerId, list, type, kind, onInput){
       ? (item.buttonsOrdered === true ? item.buttons
          : item.buttons.slice().sort((a, b)=> (parseFloat(btnValue(a)) || 0) - (parseFloat(btnValue(b)) || 0)))
       : null;
+    // The company's Quick buttons setting, and this phone's own (Oct 2)
     const showSuggestions = appSettings.showDosageSuggestions !== false
+      && appSettings.quickButtonsHere !== false
       && configuredButtons && configuredButtons.length > 0;
     if(onInput) input.addEventListener('input', onInput);
 
@@ -2410,7 +2426,7 @@ async function renderRecentReadings(type, chemList, doseList){
   // Rows the office unticked "In history" for on the website stay out (Oct 2)
   chemList = chemList.filter(ch => ch && ch.noHistory !== true);
   if(Array.isArray(doseList)) doseList = doseList.filter(d => d && d.noHistory !== true);
-  const dosesWanted = appSettings && appSettings.showRecentDosages === true && Array.isArray(doseList) && doseList.length;
+  const dosesWanted = appSettings && appSettings.showRecentDosages !== false && Array.isArray(doseList) && doseList.length;
   if(!chemList.length && !dosesWanted) return;
   let list = [];
   try{
@@ -2448,7 +2464,7 @@ async function renderRecentReadings(type, chemList, doseList){
     html += '</tr>';
   });
   // What was put in at each of those visits, when the company has it on
-  const doses = (appSettings && appSettings.showRecentDosages === true && Array.isArray(doseList)) ? doseList : [];
+  const doses = (appSettings && appSettings.showRecentDosages !== false && Array.isArray(doseList)) ? doseList : [];
   if(doses.length){
     html += '<tr class="rt-group"><td class="rt-name">Chemicals added</td>' + visits.map(()=> '<td></td>').join('') + '</tr>';
     const builtIn = key => { for(const b of ['pool', 'spa', 'fountain']){ const f = ((DEFAULT_CHEM_CONFIG[b] || {}).dosages || []).find(x => x.key === key); if(f && f.unit) return f.unit; } return ''; };
@@ -3058,6 +3074,7 @@ function applyRoleUI(){
   // Settings
   show('adminSettingsCards', admin, 'block');
   show('backupRestoreCard', admin, 'block');
+  show('voiceButtonCard', admin, 'block');
   show('techVoiceCard', !admin, 'block');
   // Report view: the admin's search and Serviced/Reports switch, the
   // technician's plain customer list
@@ -3851,6 +3868,9 @@ function syncApplyRecord(kind, id, data, deleted, agreed){
     if(!wrote) return false;
     try{ if(typeof renderRouteTasks === 'function') renderRouteTasks(); }catch(e){}
     try{ if(typeof renderHomeList === 'function') renderHomeList(); }catch(e){}
+    if(key === 'scheduledWorkOrders'){
+      try{ const el = document.getElementById('awcWoNumber'); if(el) el.textContent = '#' + String(awcNextWorkOrderNumber()).padStart(4, '0'); }catch(e){}
+    }
     return true;
   }
   if(kind === 'technician'){
@@ -3892,6 +3912,10 @@ function syncApplyRecord(kind, id, data, deleted, agreed){
     // A new order from the website shows straight away on the Technicians list
     if(saved && id === 'technicianOrder'){
       try{ if(currentViewName === 'technicians' && !selectedTechId && !editingTechId) renderTechList(); }catch(e){}
+    }
+    // A work order numbered at the office: the WorkCenter shows the next one
+    if(saved && id === 'workOrderCounter'){
+      try{ const el = document.getElementById('awcWoNumber'); if(el) el.textContent = '#' + String(awcNextWorkOrderNumber()).padStart(4, '0'); }catch(e){}
     }
     if(saved && (id === 'chemConfig' || id === 'chemSeasons')){
       // Only the copy in memory is refreshed. Redrawing the route here would
@@ -4499,7 +4523,7 @@ async function pushSetupQueue(){
 // Until it has, the phone stays signed out and keeps trying whenever it has
 // signal. Nothing can be done about a phone that never connects again.
 const FIELD_DEVICE_SETTINGS = ['voiceModeEnabled', 'pushToTalkEnabled', 'micSide', 'leftHanded',
-  'showTechniciansTab', 'storePhotos'];
+  'showTechniciansTab', 'storePhotos', 'quickButtonsHere'];
 
 // How much this phone is still holding that the office has not got
 function fieldPendingCount(state){
@@ -12433,6 +12457,13 @@ document.getElementById('settingTechniciansTab').addEventListener('change', (e)=
 });
 
 
+document.getElementById('settingQuickButtonsHere').addEventListener('change', (e)=>{
+  appSettings.quickButtonsHere = e.target.checked;
+  saveSettings();
+  try{ renderAllConfigFields(); }catch(err){}
+  showToast(appSettings.quickButtonsHere ? 'Quick buttons on for this phone' : 'Quick buttons off for this phone');
+});
+
 document.getElementById('settingLeftHanded').addEventListener('change', (e)=>{
   appSettings.leftHanded = e.target.checked;
   appSettings.micSide = e.target.checked ? 'left' : 'right';
@@ -13979,11 +14010,14 @@ function awcBuild(pane){
 
     <div id="awcWoForm">
       <div class="field">
-        <label>Scheduled date</label>
+        <!-- The number on the Scheduled date line (Oct 2) -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px;">
+          <label style="margin:0;">Scheduled date</label>
+          <span class="awc-num" id="awcWoNumber"></span>
+        </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <input type="date" id="awcWoDate" style="width:auto;">
           <label class="inline-check"><input type="checkbox" id="awcWoPhoto" checked> Photo required</label>
-          <span class="awc-num" id="awcWoNumber"></span>
         </div>
       </div>
       <div class="field" style="position:relative;">
@@ -14046,7 +14080,7 @@ function awcBuild(pane){
           <label class="inline-check"><input type="checkbox" id="awcTaskPhoto"> Photo required</label>
         </div>
       </div>
-      <button type="button" class="btn btn-ghost" id="awcSavedTasks" style="width:100%;margin-bottom:12px;">Saved tasks</button>
+      <button type="button" class="btn btn-primary" id="awcSavedTasks" style="width:100%;margin-bottom:12px;">Saved tasks</button>
       <div class="field" style="position:relative;">
         <label>Customer (optional)</label>
         <div id="awcTaskChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
@@ -18211,8 +18245,9 @@ async function init(){
   document.getElementById('settingVoiceMode').checked = appSettings.voiceModeEnabled;
   document.getElementById('settingWaterBalance').checked = appSettings.showWaterBalance === true;
   document.getElementById('settingRecentReadings').checked = appSettings.showRecentReadings !== false;
-  document.getElementById('settingRecentDosages').checked = appSettings.showRecentDosages === true;
+  document.getElementById('settingRecentDosages').checked = appSettings.showRecentDosages !== false;
   document.getElementById('settingLeftHanded').checked = appSettings.leftHanded === true;
+  document.getElementById('settingQuickButtonsHere').checked = appSettings.quickButtonsHere !== false;
   applyLeftHanded();
   updateVoiceModeIndicator();
   document.getElementById('settingTechniciansTab').checked = appSettings.showTechniciansTab !== false;

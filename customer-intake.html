@@ -940,7 +940,7 @@ input::placeholder{color:#A9BCB9;}
     <!-- Opens over the page rather than unfolding below it. As a panel further
          down, pressing the button scrolled you away from the list you were
          working on and back again every time you finished. -->
-    <div id="techAssignOverlay" style="display:none;position:fixed;inset:0;z-index:300;
+    <div id="techAssignOverlay" data-closes-outside="1" style="display:none;position:fixed;inset:0;z-index:300;
       background:rgba(8,20,19,0.45);align-items:center;justify-content:center;padding:16px;">
     <div class="card" id="techAssignCard" style="display:none;max-width:620px;width:100%;
       max-height:86vh;overflow:auto;margin:0;">
@@ -1760,6 +1760,33 @@ input::placeholder{color:#A9BCB9;}
   </div>
 
   <div class="view" id="view-settings">
+    <!-- Tighter than a normal card: .card h2 carries a 14px bottom margin for
+         the content that usually follows it, and with nothing below that margin
+         just sat there and pushed the word upward. -->
+    <div class="card" style="padding:14px 18px;">
+      <h2 style="margin-bottom:0;">Settings</h2>
+    </div>
+
+    <div class="card">
+      <h2>Backup &amp; restore</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Download a snapshot of everything — customers, technicians, readings, equipment, routes, and settings. Keep it somewhere safe. If data is ever changed or deleted by mistake, restoring a backup puts it all back.</p>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btnBackupDownload" style="width:auto;">Download backup</button>
+        <button class="btn btn-ghost" id="btnBackupRestore" style="width:auto;">Restore from backup</button>
+      </div>
+      <input type="file" accept="application/json,.json" id="backupFileInput" style="display:none;">
+      <p id="backupStatus" style="font-size:11.5px;color:var(--muted);margin:12px 0 0;"></p>
+    </div>
+
+    <div class="card">
+      <h2>Customer sync</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Customers are saved on this device first and copied to the server whenever there is a connection, so every device you sign in on sees the same list. When two people change the same customer, each keeps the fields they changed; if both changed the same field, the newer change wins. Before the first sync on a device, a copy of everything here is kept safely in the browser.</p>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btnSyncNow" style="width:auto;">Sync now</button>
+        <button class="btn btn-ghost" id="btnSyncBackup" style="width:auto;">Download pre-sync backup</button>
+      </div>
+      <p id="syncStatus" style="font-size:11.5px;color:var(--muted);margin:12px 0 0;">Not synced yet on this device.</p>
+    </div>
       <!-- The "Last 4 weeks" readings table on the phones' visits: on or off for the company -->
       <div class="card">
         <div class="field">
@@ -1778,7 +1805,7 @@ input::placeholder{color:#A9BCB9;}
               <span class="toggle-slider"></span>
             </label>
           </div>
-          <p style="font-size:12.5px;color:var(--muted);margin:8px 0 0;">Adds what was put in at each past visit under the readings. Off to start.</p>
+          <p style="font-size:12.5px;color:var(--muted);margin:8px 0 0;">Adds what was put in at each past visit under the readings. On to start.</p>
         </div>
       </div>
 
@@ -1809,13 +1836,6 @@ input::placeholder{color:#A9BCB9;}
       </div>
 
 
-    <!-- Tighter than a normal card: .card h2 carries a 14px bottom margin for
-         the content that usually follows it, and with nothing below that margin
-         just sat there and pushed the word upward. -->
-    <div class="card" style="padding:14px 18px;">
-      <h2 style="margin-bottom:0;">Settings</h2>
-    </div>
-
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
         <h2 style="margin:0;">Automatic on my way message</h2>
@@ -1837,7 +1857,9 @@ input::placeholder{color:#A9BCB9;}
       </div>
     </div>
 
-    <div class="card">
+    <!-- Storage is hidden (Oct 2): not needed now everything is on the server.
+         Its code still runs, so nothing that reads it breaks. -->
+    <div class="card" style="display:none;">
       <h2>Storage</h2>
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 12px;">Everything lives in this browser's storage, which browsers cap at roughly 5&ndash;10&nbsp;MB. Photos take up the most room by far. When it fills, nothing new can be saved.</p>
       <div style="height:12px;border-radius:6px;background:var(--surface-alt);overflow:hidden;">
@@ -1868,27 +1890,9 @@ input::placeholder{color:#A9BCB9;}
       </div>
     </div>
 
-    <div class="card">
-      <h2>Backup &amp; restore</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Download a snapshot of everything — customers, technicians, readings, equipment, routes, and settings. Keep it somewhere safe. If data is ever changed or deleted by mistake, restoring a backup puts it all back.</p>
-      <div class="btn-row">
-        <button class="btn btn-primary" id="btnBackupDownload" style="width:auto;">Download backup</button>
-        <button class="btn btn-ghost" id="btnBackupRestore" style="width:auto;">Restore from backup</button>
-      </div>
-      <input type="file" accept="application/json,.json" id="backupFileInput" style="display:none;">
-      <p id="backupStatus" style="font-size:11.5px;color:var(--muted);margin:12px 0 0;"></p>
-    </div>
-
-    <div class="card">
-      <h2>Customer sync</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Customers are saved on this device first and copied to the server whenever there is a connection, so every device you sign in on sees the same list. When two people change the same customer, each keeps the fields they changed; if both changed the same field, the newer change wins. Before the first sync on a device, a copy of everything here is kept safely in the browser.</p>
-      <div class="btn-row">
-        <button class="btn btn-primary" id="btnSyncNow" style="width:auto;">Sync now</button>
-        <button class="btn btn-ghost" id="btnSyncBackup" style="width:auto;">Download pre-sync backup</button>
-      </div>
-      <p id="syncStatus" style="font-size:11.5px;color:var(--muted);margin:12px 0 0;">Not synced yet on this device.</p>
-    </div>
-    <div class="card">
+    <!-- Show water body sizes is hidden (Oct 2). Whatever it was last set to
+         still applies; the switch is just out of sight. -->
+    <div class="card" style="display:none;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
         <h2 style="margin:0;">Show water body sizes</h2>
         <label class="toggle-switch">
@@ -1921,7 +1925,7 @@ input::placeholder{color:#A9BCB9;}
     
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-        <h2 style="margin:0;">Dosage suggestion buttons</h2>
+        <h2 style="margin:0;">Quick buttons</h2>
         <label class="toggle-switch">
           <input type="checkbox" id="settingShowDosageSuggestions">
           <span class="toggle-slider"></span>
@@ -3851,7 +3855,7 @@ function saveSettings(){
 document.getElementById('settingShowDosageSuggestions').addEventListener('change', (e)=>{
   appSettings.showDosageSuggestions = e.target.checked;
   saveSettings();
-  showToast(appSettings.showDosageSuggestions ? 'Dosage suggestion buttons turned on' : 'Dosage suggestion buttons turned off');
+  showToast(appSettings.showDosageSuggestions ? 'Quick buttons turned on' : 'Quick buttons turned off');
 });
 
 function applyPoolGallonsFieldVisibility(){
@@ -11789,12 +11793,24 @@ function nextQuoteNumber(){
     .reduce((m, w) => Math.max(m, Number(w.number) || 0), 0);
   return Math.max(used, Number(lsGet('quoteCounter')) || 0) + 1;
 }
-// Work orders count on their own, from #0001
+// Work orders count on their own, from #0001. The visits on the routes count
+// too, so one made in the app is never numbered again here (Oct 2)
 function nextWorkOrderNumber(){
   const used = (workOrders || []).filter(w => w && w.type === 'Work Order')
     .reduce((m, w) => Math.max(m, Number(w.number) || 0), 0);
-  return Math.max(used, Number(lsGet('workOrderCounter')) || 0) + 1;
+  const onRoutes = (lsGet('scheduledWorkOrders') || [])
+    .reduce((m, j) => Math.max(m, Number(j && j.workOrderNumber) || 0), 0);
+  return Math.max(used, onRoutes, Number(lsGet('workOrderCounter')) || 0) + 1;
 }
+// Work orders made here before the number was shared left the shared number
+// behind them; the app only sees the shared one, so it's brought up to date
+(function workOrderCounterCatchUp(){
+  try{
+    const used = (workOrders || []).filter(w => w && w.type === 'Work Order')
+      .reduce((m, w) => Math.max(m, Number(w.number) || 0), 0);
+    if(used > (Number(lsGet('workOrderCounter')) || 0)) lsSet('workOrderCounter', used);
+  }catch(e){}
+})();
 // Shown with four digits: #0007
 function quoteNumberText(n){ return String(n).padStart(4, '0'); }
 function showNextQuoteNumber(){
@@ -13040,6 +13056,10 @@ function moveConfigItem(listKey, fromKey, toKey, placeBelow){
 }
 
 function makeConfigRow(item, listKey){
+  // Column widths, so the ticks and Dosage rules sit in the same place on
+  // every row and in both lists (Oct 2). Kept in here: this can run before a
+  // line further down the page has been read.
+  const CFG_COL_REQUIRED = 78, CFG_COL_HISTORY = 84, CFG_COL_RULES = 136;
   const card = document.createElement('div');
   card.style.padding = '12px 0';
   card.style.borderBottom = '1px solid var(--line)';
@@ -13137,7 +13157,7 @@ function makeConfigRow(item, listKey){
   if(listKey === 'chemicals'){
     const reqWrap = document.createElement('label');
     reqWrap.title = 'Technicians must fill this in before moving on';
-    reqWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;'
+    reqWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex:0 0 ' + CFG_COL_REQUIRED + 'px;'
       + 'font-size:11.5px;color:var(--muted);cursor:pointer;white-space:nowrap;';
     const reqCb = document.createElement('input');
     reqCb.type = 'checkbox';
@@ -13150,13 +13170,19 @@ function makeConfigRow(item, listKey){
     reqWrap.appendChild(reqCb);
     reqWrap.appendChild(document.createTextNode('Required'));
     row.appendChild(reqWrap);
+  } else {
+    // A dosage has no Required: an empty space the same width keeps its
+    // In history tick in the same column as the readings' (Oct 2)
+    const gap = document.createElement('span');
+    gap.style.cssText = 'flex:0 0 ' + CFG_COL_REQUIRED + 'px;';
+    row.appendChild(gap);
   }
 
   // In history: shown in the "Last 3 months" table on the app's visits.
   // Ticked to start; unticking hides the row there and deletes nothing (Oct 2)
   const histWrap = document.createElement('label');
   histWrap.title = 'Show this in the Last 3 months table on visits';
-  histWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;'
+  histWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex:0 0 ' + CFG_COL_HISTORY + 'px;'
     + 'font-size:11.5px;color:var(--muted);cursor:pointer;white-space:nowrap;';
   const histCb = document.createElement('input');
   histCb.type = 'checkbox';
@@ -13177,11 +13203,18 @@ function makeConfigRow(item, listKey){
     rulesBtn.type = 'button';
     rulesBtn.className = 'btn btn-ghost';
     const ruleCount = effectiveDoseRules(item, selectedChemConfigType).length;
-    rulesBtn.style.cssText = 'width:auto;flex-shrink:0;padding:6px 10px;font-size:11.5px;'
+    // One width with or without a count, so nothing beside it moves (Oct 2)
+    rulesBtn.style.cssText = 'width:' + CFG_COL_RULES + 'px;flex:0 0 ' + CFG_COL_RULES + 'px;padding:6px 6px;font-size:11.5px;'
+      + 'white-space:nowrap;justify-content:center;'
       + (ruleCount ? 'color:var(--teal-deep);border-color:var(--teal-mid);font-weight:700;' : '');
     rulesBtn.textContent = ruleCount ? 'Dosage rules (' + ruleCount + ')' : 'Dosage rules';
     rulesBtn.addEventListener('click', ()=> openDoseRulesModal(item));
     row.appendChild(rulesBtn);
+  } else {
+    // ...and the same space where a reading has its Dosage rules
+    const gap = document.createElement('span');
+    gap.style.cssText = 'flex:0 0 ' + CFG_COL_RULES + 'px;';
+    row.appendChild(gap);
   }
 
   const removeBtn = document.createElement('button');
@@ -15764,6 +15797,18 @@ function renderTechAssignList(techId){
   if(techAssignPage < 1) techAssignPage = 1;
   const assignStart = (techAssignPage - 1) * ASSIGN_PER_PAGE;
 
+  // Every "Currently ..." tag the same width: wide enough for the longest
+  // technician's name (Oct 2)
+  let currentlyWidth = 0;
+  try{
+    const ctx = document.createElement('canvas').getContext('2d');
+    ctx.font = "700 13px 'Inter', sans-serif";
+    (technicians || []).forEach(t=>{
+      currentlyWidth = Math.max(currentlyWidth, ctx.measureText('Currently ' + (t && t.name || '')).width);
+    });
+  }catch(e){}
+  currentlyWidth = Math.ceil(currentlyWidth) + 26;    // padding and border, plus a little room
+
   matches
     .slice(assignStart, assignStart + ASSIGN_PER_PAGE)
     .forEach(c=>{
@@ -15798,7 +15843,8 @@ function renderTechAssignList(techId){
         + (otherTech
             ? `<div style="margin-top:5px;text-align:center;font-size:13px;font-weight:700;`
               + `color:var(--rust);background:#FDF0EB;border:1px solid #EFC9BC;`
-              + `border-radius:8px;padding:4px 10px;">Currently ${otherTech}</div>`
+              + `border-radius:8px;padding:4px 10px;box-sizing:border-box;width:${currentlyWidth}px;max-width:100%;`
+              + `white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Currently ${otherTech}</div>`
             : '');
 
       label.appendChild(checkbox);
@@ -16379,6 +16425,20 @@ function closeAssignOverlay(){
   document.getElementById('techAssignCard').style.display = 'none';
   if(currentTechDetailId) renderTechAssignedList(currentTechDetailId);
 }
+// A click outside Edit customers closes it, the same as Done (Tyrus, Oct 2:
+// an exception to windows closing only from their buttons)
+(function assignClosesOutside(){
+  const overlay = document.getElementById('techAssignOverlay');
+  if(!overlay) return;
+  let downOnBackdrop = false;
+  // Only a click that both starts and ends on the dark area: a drag from
+  // inside the window (selecting text, a slider) never closes it
+  overlay.addEventListener('mousedown', e=>{ downOnBackdrop = e.target === overlay; });
+  overlay.addEventListener('click', e=>{
+    if(e.target === overlay && downOnBackdrop) closeAssignOverlay();
+    downOnBackdrop = false;
+  });
+})();
 
 document.getElementById('btnShowAssignCustomers').addEventListener('click', openAssignOverlay);
 
@@ -17004,9 +17064,12 @@ document.getElementById('btnSaveTech').addEventListener('click', async ()=>{
 
   const id = techId;
   // An after photo is the proof the work was done, so every new technician
-  // starts with it required. It can be turned off per technician afterwards.
+  // starts with it required on pools: the After photo row's Pool tick on
+  // Photo requirements. It can be unticked per technician afterwards. (The old
+  // requireAfterPhoto flag set here before Oct 2 was read by nothing.)
   technicians.push({id, name, phone, email, username, password, isAdmin,
-                    canPhotoEquipment, requireSkipProof, requireGatePhoto, requireAfterPhoto: true});
+                    canPhotoEquipment, requireSkipProof, requireGatePhoto,
+                    photoRules: {after: {pool: true}}});
   saveTechnicians();
   renderTechnicianList();
   populateTechnicianSelect();
@@ -18084,6 +18147,12 @@ async function openVisitVideos(refs){
     v.controls = true; v.playsInline = true; v.src = url;
     v.style.cssText = 'width:100%;max-height:65vh;border-radius:10px;background:#000;';
     box.appendChild(v);
+    // Plays as soon as it opens (Oct 2). If the browser won't start it with
+    // sound, it starts muted and the sound can be turned on in its controls.
+    try{
+      const go = v.play();
+      if(go && go.catch) go.catch(()=>{ v.muted = true; v.play().catch(()=>{}); });
+    }catch(e){}
     dl.style.display = '';
   }
   dl.addEventListener('click', ()=>{
@@ -20017,6 +20086,14 @@ function renderAlerts(){
 
   const rows = all.filter(a => (alertsView === 'new') === !seen[a.id])
     .filter(a => alertsKind === 'all' || a.kind === alertsKind);
+  // Only redrawn when what it shows has changed. A sync saves visits and
+  // customers often, and rebuilding the same list each time flashed the row
+  // under the pointer white (Oct 2).
+  // (today's date is part of it, so "Today" turns to "Yesterday" overnight)
+  const shape = new Date().toDateString() + '|' + alertsView + '|' + alertsKind + '|' + rows.map(a => a.id + ':' + (a.tech || '') + ':'
+    + (a.kind === 'video' ? a.refs.length : a.notes) + ':' + a.name + ':' + a.body).join('|');
+  if(box.dataset.shape === shape && box.childNodes.length) return;
+  box.dataset.shape = shape;
   box.innerHTML = '';
   if(!rows.length){
     box.innerHTML = emptyState(alertsView === 'new' ? 'Nothing new.' : 'Nothing seen yet.');
@@ -22225,7 +22302,7 @@ renderMicSideButtons();
 document.getElementById('settingShowDosageSuggestions').checked = appSettings.showDosageSuggestions;
 document.getElementById('settingWaterBalance').checked = appSettings.showWaterBalance === true;
 document.getElementById('settingRecentReadings').checked = appSettings.showRecentReadings !== false;
-document.getElementById('settingRecentDosages').checked = appSettings.showRecentDosages === true;
+document.getElementById('settingRecentDosages').checked = appSettings.showRecentDosages !== false;
 document.getElementById('settingRecentDosages').addEventListener('change', (e)=>{
   appSettings.showRecentDosages = e.target.checked;
   saveSettings();
