@@ -1191,13 +1191,13 @@ select#customerSelect{font-weight:600;}
       <div class="card" id="recentReadingsCard">
         <div class="field">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
-            <h2 style="margin:0;">Previous readings on visits</h2>
+            <h2 style="margin:0;">Service history table</h2>
             <label class="toggle-switch">
               <input type="checkbox" id="settingRecentReadings">
               <span class="toggle-slider"></span>
             </label>
           </div>
-          <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">On by default. When on, each visit's readings page shows a "Last 3 months" table of that body of water's past readings above today's fields. Applies to everyone in the company, on the phones and the website alike.</p>
+          <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">On to start. A table at the top of each visit's readings page showing that pool, spa or extra body of water's readings from the last 3 months, one column per visit with the newest first. Skipped visits show as Skipped. With Show chemicals added too on, what was put in at each visit is listed underneath. Set which readings and dosages appear with In history on the website's Readings and Dosages.</p>
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;">
             <span style="font-size:13.5px;font-weight:600;">Show chemicals added too</span>
             <label class="toggle-switch">
@@ -1205,7 +1205,6 @@ select#customerSelect{font-weight:600;}
               <span class="toggle-slider"></span>
             </label>
           </div>
-          <p style="font-size:12.5px;color:var(--muted);margin:8px 0 0;">Adds what was put in at each past visit under the readings. On to start.</p>
         </div>
       </div>
 
@@ -11619,15 +11618,21 @@ function routeOrderToday(){
   const movedHere = new Set(reschedules.filter(r => r.toDate === iso).map(r => r.customerId));
   const movedAway = new Set(reschedules.filter(r => r.fromDate === iso).map(r => r.customerId));
 
+  // The same stops Today shows (Oct 2). It used to take only customers
+  // assigned to whoever is signed in, so an admin on All customers, or on a
+  // route that isn't their own technician profile, got no route at all and
+  // the automatic On my way never went. A technician's phone only holds their
+  // own customers, so for them nothing changes.
+  const viewing = (typeof adminViewTechId !== 'undefined' && adminViewTechId) ? adminViewTechId : '';
   const base = customers
     .filter(c => customerServicedOn(c, selectedHomeDay) && c.active !== false)
-    .filter(c => currentUser ? c.technicianId === currentUser.id : false)
+    .filter(c => !viewing || c.technicianId === viewing)
     .filter(c => !movedAway.has(c.id));
 
   const movedWho = movedOntoDate(reschedules, iso);
   const extra = customers.filter(c => movedHere.has(c.id) && c.active !== false
     && !base.some(b => b.id === c.id)
-    && (currentUser ? movedHereFor(movedWho, c, currentUser.id) : false));
+    && (!viewing || movedHereFor(movedWho, c, viewing)));
 
   return orderCustomersForDay(selectedHomeDay, base.concat(extra));
 }
@@ -12483,9 +12488,13 @@ document.getElementById('settingRecentDosages').addEventListener('change', (e)=>
 
 document.getElementById('settingRecentReadings').addEventListener('change', (e)=>{
   appSettings.showRecentReadings = e.target.checked;
+  // Chemicals added follows it, on or off (Oct 2)
+  appSettings.showRecentDosages = e.target.checked;
+  const doses = document.getElementById('settingRecentDosages');
+  if(doses) doses.checked = e.target.checked;
   saveSettings();
   try{ renderAllConfigFields(); }catch(err){}
-  showToast(appSettings.showRecentReadings ? 'Previous readings shown on visits' : 'Previous readings hidden on visits');
+  showToast(appSettings.showRecentReadings ? 'Service history table shown on visits' : 'Service history table hidden on visits');
 });
 
 document.getElementById('settingWaterBalance').addEventListener('change', (e)=>{
@@ -14112,7 +14121,11 @@ function awcBuild(pane){
         <div id="awcTaskCustom" style="display:none;margin-top:10px;align-items:center;gap:10px;">
           <span style="font-size:13px;color:var(--muted);">Every</span>
           <input type="number" id="awcTaskWeeks" min="1" max="52" value="6" style="width:80px;">
-          <span style="font-size:13px;color:var(--muted);">weeks</span>
+          <!-- Weeks or days (Oct 2) -->
+          <select id="awcTaskUnit" style="width:auto;flex:1;">
+            <option value="weeks" selected>weeks</option>
+            <option value="days">days</option>
+          </select>
         </div>
         <div id="awcTaskUntilWrap" style="display:none;margin-top:12px;">
           <div style="font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px;">Until <span style="font-weight:400;">(optional &mdash; leave blank to keep going)</span></div>
@@ -14156,6 +14169,9 @@ function awcBuild(pane){
   document.getElementById('awcTaskTech').addEventListener('click', ()=> awcPickTechs(awcTaskTechs, ids=>{ awcTaskTechs = ids; awcLabelTechs(); }));
   document.getElementById('awcWoRepeat').addEventListener('change', awcApplyRepeats);
   document.getElementById('awcTaskRepeat').addEventListener('change', awcApplyRepeats);
+  document.getElementById('awcTaskUnit').addEventListener('change', e=>{
+    document.getElementById('awcTaskWeeks').max = e.target.value === 'days' ? '365' : '52';
+  });
   document.getElementById('awcFinalize').addEventListener('click', awcFinalize);
   document.getElementById('awcWoClear').addEventListener('click', awcClearWo);
   document.getElementById('awcAddTask').addEventListener('click', awcAddTask);
@@ -14408,6 +14424,8 @@ function awcClearTask(){
   document.getElementById('awcTaskPhoto').checked = false;
   document.getElementById('awcTaskRepeat').value = 'none';
   document.getElementById('awcTaskUntil').value = '';
+  document.getElementById('awcTaskUnit').value = 'weeks';
+  document.getElementById('awcTaskWeeks').max = '52';
   awcRenderChips(); awcLabelTechs(); awcApplyRepeats();
 }
 
@@ -14466,14 +14484,20 @@ function awcFinalize(){
     ' added to ' + awcTechNames(techIds) + (techIds.length === 1 ? '\u2019s route' : '\u2019s routes'));
 }
 
-function awcTaskWeeks(){
+// Days apart, or 0 for a one-off; Every… (choose) in weeks or days (Oct 2)
+function awcTaskDays(){
   const mode = document.getElementById('awcTaskRepeat').value;
   if(mode === 'none') return 0;
   if(mode === 'custom'){
     const n = parseInt(document.getElementById('awcTaskWeeks').value, 10);
-    return (n > 0 && n <= 52) ? n : 1;
+    if(document.getElementById('awcTaskUnit').value === 'days') return (n > 0 && n <= 365) ? n : 1;
+    return ((n > 0 && n <= 52) ? n : 1) * 7;
   }
-  return parseInt(mode, 10) || 1;
+  return (parseInt(mode, 10) || 1) * 7;
+}
+function awcRepeatWords(days){
+  if(days % 7 === 0){ const w = days / 7; return w === 1 ? 'week' : w + ' weeks'; }
+  return days === 1 ? 'day' : days + ' days';
 }
 
 function awcAddTask(){
@@ -14485,18 +14509,19 @@ function awcAddTask(){
   if(!date){ showToast('Choose a day'); return; }
   const details = document.getElementById('awcTaskDetails').value.trim();
   const customerIds = awcTaskCustomers.slice();
-  const everyWeeks = awcTaskWeeks();
+  const everyDays = awcTaskDays();
+  const everyWeeks = everyDays && everyDays % 7 === 0 ? everyDays / 7 : 0;
   const until = document.getElementById('awcTaskUntil').value;
   const photoRequired = document.getElementById('awcTaskPhoto').checked;
 
   // Stored as the dates it falls on, a year ahead unless told otherwise
   const dates = [date];
-  if(everyWeeks > 0){
+  if(everyDays > 0){
     const stop = until ? new Date(until + 'T12:00:00').getTime() : null;
     let d = new Date(date + 'T12:00:00');
     const horizon = stop || (d.getTime() + 365 * 86400000);
-    for(let i = 0; i < 200; i++){
-      d = new Date(d.getTime() + everyWeeks * 7 * 86400000);
+    for(let i = 0; i < 400; i++){
+      d = new Date(d.getTime() + everyDays * 86400000);
       if(d.getTime() > horizon) break;
       dates.push(new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10));
     }
@@ -14505,7 +14530,7 @@ function awcAddTask(){
   const made = [];
   // Each technician has their own copy, and their own series if it repeats
   techIds.forEach(techId=>{
-    const series = everyWeeks > 0 ? 'series_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) : '';
+    const series = everyDays > 0 ? 'series_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) : '';
     dates.forEach(dt=>{
       const t = {
         id: awcNewId('task_'),
@@ -14514,6 +14539,7 @@ function awcAddTask(){
         date: dt,
         customerIds,
         everyWeeks,
+        everyDays,
         seriesId: series,
         photoRequired,
         done: false,
@@ -14532,7 +14558,7 @@ function awcAddTask(){
   try{ if(typeof renderHomeList === 'function') renderHomeList(); }catch(e){}
   const who = techIds.length === 1 ? 'the route' : awcTechNames(techIds) + '\u2019s routes';
   showToast(dates.length === 1 ? 'Task added to ' + who
-    : 'Added ' + dates.length + ' times to ' + who + ', every ' + (everyWeeks === 1 ? 'week' : everyWeeks + ' weeks'));
+    : 'Added ' + dates.length + ' times to ' + who + ', every ' + awcRepeatWords(everyDays));
 }
 
 async function awcSaveTemplate(){
@@ -14685,6 +14711,8 @@ function awcRenderCurrent(){
       return {id: t.id, date: t.date, what: t.title || 'Task',
         who: names.length ? names.slice(0, 2).join(', ') + (names.length > 2 ? ' +' + (names.length - 2) : '') : 'No customer',
         techName: awcTechName(t.technicianId) || 'No technician',
+        techId: String(t.technicianId || ''),
+        every: t.everyDays || (t.everyWeeks ? t.everyWeeks * 7 : 0),
         group: t.seriesId || '', groupLeft: t.seriesId ? open.filter(x => x.seriesId === t.seriesId).length : 1};
     });
   } else {
@@ -14692,10 +14720,24 @@ function awcRenderCurrent(){
     rows = jobs.filter(j => !tech || String(j.technicianId) === tech).map(j => ({
       id: j.id, date: j.date, who: awcCustName(j.customerId) || 'Customer', what: j.title || 'Work order',
       techName: awcTechName(j.technicianId) || 'No technician',
-      group: j.workOrderId || '', groupLeft: j.workOrderId ? jobs.filter(x => x.workOrderId === j.workOrderId).length : 1
+      // A repeat is one work order's visits for one technician (Oct 2)
+      techId: String(j.technicianId || ''),
+      group: j.workOrderId || '',
+      groupLeft: j.workOrderId ? jobs.filter(x => x.workOrderId === j.workOrderId
+        && String(x.technicianId || '') === String(j.technicianId || '')).length : 1
     }));
   }
   rows.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  // A repeating task or work order is one row: its next date, with how many
+  // are left (Oct 2). History still lists each one.
+  const seenRepeat = new Set();
+  rows = rows.filter(r=>{
+    if(!r.group || r.groupLeft < 2) return true;
+    const key = r.group + '|' + (r.techId || '');
+    if(seenRepeat.has(key)) return false;
+    seenRepeat.add(key);
+    return true;
+  });
   box.innerHTML = '';
   if(!rows.length){
     box.innerHTML = '<p style="font-size:13.5px;color:var(--muted);margin:6px 0;">Nothing scheduled'
@@ -14719,7 +14761,8 @@ function awcRenderCurrent(){
     const mid = document.createElement('div');
     mid.style.cssText = 'flex:1;min-width:0;';
     mid.innerHTML = '<div style="font-size:14px;font-weight:600;">' + awcEsc(r.who + ' \u2013 ' + r.what) + '</div>'
-      + '<div style="font-size:12px;color:var(--muted);margin-top:2px;">' + awcEsc(r.techName + (isTask && r.group ? ' \u00b7 Repeats' : '')) + '</div>';
+      + '<div style="font-size:12px;color:var(--muted);margin-top:2px;">' + awcEsc(r.techName
+        + (r.group && r.groupLeft > 1 ? ' \u00b7 ' + (r.every ? 'Every ' + awcRepeatWords(r.every) : 'Repeats') + ' \u00b7 ' + r.groupLeft + ' left' : '')) + '</div>';
     top.appendChild(when); top.appendChild(mid);
     const acts = document.createElement('div');
     acts.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:8px;';
@@ -14751,7 +14794,8 @@ function awcRenderCurrent(){
       all.addEventListener('click', async ()=>{
         const ok = await confirmDialog('Take all ' + r.groupLeft + (isTask ? ' remaining dates of \u201c' + awcEsc(r.what) + '\u201d' : ' remaining visits of this work order') + ' off the routes?', 'Remove all ' + r.groupLeft);
         if(!ok) return;
-        awcRemove(isTask, x => isTask ? (x.seriesId === r.group && !x.done) : (x.workOrderId === r.group && x.status === 'scheduled'));
+        awcRemove(isTask, x => isTask ? (x.seriesId === r.group && !x.done)
+          : (x.workOrderId === r.group && x.status === 'scheduled' && String(x.technicianId || '') === String(r.techId || '')));
         showToast('Removed ' + r.groupLeft);
       });
       acts.appendChild(all);
@@ -18501,18 +18545,74 @@ attachAllPhoneFormatting();
 (function drawCloseMarks(){
   const SVG = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.6 1.6 L8.4 8.4 M8.4 1.6 L1.6 8.4" '
     + 'stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>';
+  // A red × (one that removes or deletes something) is drawn as a bin instead
+  // (Tyrus, Oct 2). Grey ×s that only clear a search box stay ×s.
+  const BIN = '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:1.1em;height:1.1em;display:block;">'
+    + '<path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" '
+    + 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+  const isRed = btn=>{
+    try{
+      const m = getComputedStyle(btn).color.match(/\d+(\.\d+)?/g);
+      if(!m) return false;
+      const [r, g, b] = m.map(Number);
+      return r > 140 && g < 120 && b < 100 && r - g > 60;
+    }catch(e){ return false; }
+  };
+  // Every Delete / Remove button shows just the red bin too (Tyrus, Oct 2,
+  // option C). Its words stay as the tooltip and the screen-reader label.
+  // "Remove changes" undoes a reorder rather than removing anything, so it
+  // keeps its words; so do Clear and Unassign all.
+  const WORD = /^(delete|remove)(\s|$)/i;
+  const KEEP_WORDS = /^remove changes$/i;
+  const filled = btn=>{
+    try{
+      const bg = getComputedStyle(btn).backgroundColor;
+      const m = bg.match(/[\d.]+/g);
+      if(!m) return false;
+      const [r, g, b, a] = m.map(Number);
+      if(a === 0 || (m.length === 4 && a < 0.1)) return false;
+      return !(r > 240 && g > 240 && b > 240);
+    }catch(e){ return false; }
+  };
+  const convertWord = btn=>{
+    if(!btn || btn.dataset.binWord === '1') return false;
+    const words = (btn.textContent || '').replace(/\s+/g, ' ').trim();
+    if(!WORD.test(words) || KEEP_WORDS.test(words)) return false;
+    btn.setAttribute('aria-label', words);
+    btn.title = words;
+    btn.innerHTML = BIN;
+    btn.dataset.xDrawn = 'bin';
+    btn.dataset.binWord = '1';
+    // Red, unless it's a filled button (a red Delete in a confirm window)
+    if(!filled(btn)){ btn.style.color = 'var(--rust)'; btn.style.borderColor = '#EFC9BC'; }
+    return true;
+  };
+  // A bin button given new words later (a label that changes) is checked again
+  const wordsChanged = btn=>{
+    if(btn && btn.dataset.binWord === '1' && btn.querySelector('svg') === null){
+      delete btn.dataset.binWord;
+      delete btn.dataset.xDrawn;
+    }
+  };
   const convert = btn=>{
-    if(!btn || btn.dataset.xDrawn || btn.childElementCount !== 0) return;
+    if(!btn) return;
+    wordsChanged(btn);
+    if(convertWord(btn)) return;
+    if(btn.dataset.xDrawn || btn.childElementCount !== 0) return;
     if((btn.textContent || '').trim() !== '\u00d7') return;
     if(!btn.getAttribute('aria-label')) btn.setAttribute('aria-label', btn.title || 'Remove');
-    btn.innerHTML = SVG;
-    btn.dataset.xDrawn = '1';
+    const red = isRed(btn);
+    btn.innerHTML = red ? BIN : SVG;
+    btn.dataset.xDrawn = red ? 'bin' : '1';
   };
   const sweep = root => { if(root && root.querySelectorAll) root.querySelectorAll('button').forEach(convert); };
   sweep(document);
   new MutationObserver(list=>{
     list.forEach(m=>{
-      if(m.type === 'characterData'){ convert(m.target.parentElement); return; }
+      if(m.type === 'characterData'){
+        const host = m.target.parentElement && m.target.parentElement.closest ? m.target.parentElement.closest('button') : null;
+        convert(host || m.target.parentElement); return;
+      }
       if(m.target && m.target.tagName === 'BUTTON') convert(m.target);
       m.addedNodes.forEach(n=>{
         if(n.nodeType !== 1) return;

@@ -1426,7 +1426,11 @@ input::placeholder{color:#A9BCB9;}
         <div id="taskRepeatCustom" style="display:none;margin-top:10px;align-items:center;gap:10px;">
           <span style="font-size:13px;color:var(--muted);">Every</span>
           <input type="number" id="taskRepeatWeeks" min="1" max="52" value="6" style="width:80px;">
-          <span style="font-size:13px;color:var(--muted);">weeks</span>
+          <!-- Weeks or days (Oct 2) -->
+          <select id="taskRepeatUnit" style="width:auto;">
+            <option value="weeks" selected>weeks</option>
+            <option value="days">days</option>
+          </select>
         </div>
         <div id="taskRepeatUntilWrap" style="display:none;margin-top:12px;">
           <label style="font-size:12.5px;">Until <span style="font-weight:400;color:var(--muted);">(optional &mdash; leave blank to keep going)</span></label>
@@ -1791,13 +1795,13 @@ input::placeholder{color:#A9BCB9;}
       <div class="card">
         <div class="field">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
-            <h2 style="margin:0;">Previous readings on visits</h2>
+            <h2 style="margin:0;">Service history table</h2>
             <label class="toggle-switch">
               <input type="checkbox" id="settingRecentReadings">
               <span class="toggle-slider"></span>
             </label>
           </div>
-          <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">On by default. When on, each visit's readings page in the app shows a "Last 3 months" table of that body of water's past readings above today's fields. Applies to everyone in the company.</p>
+          <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">On to start. A table at the top of each visit's readings page in the app showing that pool, spa or extra body of water's readings from the last 3 months, one column per visit with the newest first. Skipped visits show as Skipped. With Show chemicals added too on, what was put in at each visit is listed underneath. Choose which readings and dosages appear with In history on Readings and Dosages. Applies to everyone in the company.</p>
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;">
             <span style="font-size:13.5px;font-weight:600;">Show chemicals added too</span>
             <label class="toggle-switch">
@@ -1805,7 +1809,6 @@ input::placeholder{color:#A9BCB9;}
               <span class="toggle-slider"></span>
             </label>
           </div>
-          <p style="font-size:12.5px;color:var(--muted);margin:8px 0 0;">Adds what was put in at each past visit under the readings. On to start.</p>
         </div>
       </div>
 
@@ -8188,7 +8191,9 @@ const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'r
                          // The order of the Technicians list, which the phones follow
                          'technicianOrder',
                          // Saved tasks, shared with the app's WorkCenter (Oct 2)
-                         'taskTemplates'];
+                         'taskTemplates',
+                         // Equipment quick buttons, so every office computer has them (Oct 2)
+                         'equipmentChoices'];
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
   // The "Last 3 months" readings table on the phones' visits, and its chemicals added rows
   'showRecentReadings', 'showRecentDosages',
@@ -9489,16 +9494,30 @@ function applyTaskRepeat(){
   document.getElementById('taskRepeatUntilWrap').style.display = mode === 'none' ? 'none' : 'block';
 }
 
-// How many weeks apart, or 0 for a one-off
-function taskRepeatWeeks(){
+// How many days apart, or 0 for a one-off. Every… (choose) can be in weeks
+// or in days (Oct 2).
+function taskRepeatDays(){
   const mode = document.getElementById('taskRepeat').value;
   if(mode === 'none') return 0;
   if(mode === 'custom'){
     const n = parseInt(document.getElementById('taskRepeatWeeks').value, 10);
-    return (n > 0 && n <= 52) ? n : 1;
+    const unit = (document.getElementById('taskRepeatUnit') || {}).value || 'weeks';
+    if(unit === 'days') return (n > 0 && n <= 365) ? n : 1;
+    return ((n > 0 && n <= 52) ? n : 1) * 7;
   }
-  return parseInt(mode, 10) || 1;
+  return (parseInt(mode, 10) || 1) * 7;
 }
+// "every week", "every 3 weeks", "every day", "every 10 days"
+function repeatWords(days){
+  if(days % 7 === 0){ const w = days / 7; return w === 1 ? 'week' : w + ' weeks'; }
+  return days === 1 ? 'day' : days + ' days';
+}
+// The number box allows up to a year in either unit
+(function wireTaskRepeatUnit(){
+  const unit = document.getElementById('taskRepeatUnit');
+  const box = document.getElementById('taskRepeatWeeks');
+  if(unit && box) unit.addEventListener('change', ()=>{ box.max = unit.value === 'days' ? '365' : '52'; });
+})();
 
 // ---------- Choosing technicians for a task or work order ----------
 // Several can be ticked. Each one gets their own copy of the task or job, with
@@ -9648,6 +9667,8 @@ function clearTaskForm(){
   document.getElementById('taskPhotoRequired').checked = false;
   document.getElementById('taskRepeat').value = 'none';
   document.getElementById('taskRepeatUntil').value = '';
+  const unitBox = document.getElementById('taskRepeatUnit');
+  if(unitBox){ unitBox.value = 'weeks'; document.getElementById('taskRepeatWeeks').max = '52'; }
   document.getElementById('taskCustomerSearch').value = '';
   taskPicked.clear();
   renderTaskChips();
@@ -9704,8 +9725,8 @@ function renderTaskList(){
       + when + '  \u00b7  ' + (tech ? tech.name : 'Unassigned')
       + (named.length ? '  \u00b7  ' + (named.length <= 2 ? named.join(', ')
           : named.length + ' customers') : '')
-      + (t.everyWeeks ? '  \u00b7  every '
-          + (t.everyWeeks === 1 ? 'week' : t.everyWeeks + ' weeks') : '')
+      + (t.everyDays || t.everyWeeks ? '  \u00b7  every '
+          + repeatWords(t.everyDays || t.everyWeeks * 7) : '')
       + '</div>'
       + (t.details ? '<div style="font-size:12px;color:var(--muted);margin-top:6px;white-space:pre-line;">'
           + t.details + '</div>' : '');
@@ -9787,7 +9808,9 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
 
   const details = document.getElementById('taskDetails').value.trim();
   const customerIds = Array.from(taskPicked);
-  const everyWeeks = taskRepeatWeeks();
+  const everyDays = taskRepeatDays();
+  // Kept for anything that reads weeks; 0 when the gap isn't whole weeks
+  const everyWeeks = everyDays && everyDays % 7 === 0 ? everyDays / 7 : 0;
   const until = document.getElementById('taskRepeatUntil').value;
 
   if(editingTaskId){
@@ -9796,7 +9819,7 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
     const t = tasks.find(x => x.id === editingTaskId);
     if(t){
       Object.assign(t, {title, details, technicianId: techIds[0], date,
-                        customerIds, everyWeeks, until, done: false,
+                        customerIds, everyWeeks, everyDays, until, done: false,
                         photoRequired: document.getElementById('taskPhotoRequired').checked});
       techIds.slice(1).forEach(techId=>{
         tasks.push({
@@ -9818,14 +9841,14 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
   // A repeating task is stored as the dates it actually falls on, so a
   // technician's route never has to work out a schedule in the field.
   const dates = [date];
-  if(everyWeeks > 0){
+  if(everyDays > 0){
     const stop = until ? new Date(until + 'T12:00:00').getTime() : null;
     let d = new Date(date + 'T12:00:00');
     // A year ahead unless told otherwise — far enough to be useful, short
-    // enough that a mistake is not thousands of entries
+    // enough that a mistake is not thousands of entries (a daily task is 366)
     const horizon = stop || (d.getTime() + 365 * 86400000);
-    for(let i = 0; i < 200; i++){
-      d = new Date(d.getTime() + everyWeeks * 7 * 86400000);
+    for(let i = 0; i < 400; i++){
+      d = new Date(d.getTime() + everyDays * 86400000);
       if(d.getTime() > horizon) break;
       dates.push(new Date(d.getTime() - d.getTimezoneOffset() * 60000)
         .toISOString().slice(0, 10));
@@ -9834,7 +9857,7 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
 
   // Each technician has their own copy, and their own series if it repeats
   techIds.forEach(techId=>{
-    const series = everyWeeks > 0
+    const series = everyDays > 0
       ? 'series_' + Date.now() + '_' + Math.random().toString(36).slice(2,7)
       : '';
     dates.forEach(dt=>{
@@ -9845,6 +9868,7 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
         date: dt,
         customerIds,
         everyWeeks,
+        everyDays,
         seriesId: series,
         photoRequired: document.getElementById('taskPhotoRequired').checked,
         done: false,
@@ -9859,8 +9883,7 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
   const who = techIds.length === 1 ? 'the route' : techNamesFor(techIds) + '\u2019s routes';
   showToast(dates.length === 1
     ? 'Task added to ' + who
-    : 'Added ' + dates.length + ' times to ' + who + ', every '
-      + (everyWeeks === 1 ? 'week' : everyWeeks + ' weeks'));
+    : 'Added ' + dates.length + ' times to ' + who + ', every ' + repeatWords(everyDays));
 });
 
 document.getElementById('btnClearTask').addEventListener('click', clearTaskForm);
@@ -10748,7 +10771,11 @@ function renderCurrentList(kind){
       // quotes), so it isn't one that was deleted
       orphan: !!j.workOrderId && !j.madeOnPhone && !woIds.has(j.workOrderId),
       workOrderId: j.workOrderId,
-      group: j.workOrderId, groupLeft: jobs.filter(x => x.workOrderId && x.workOrderId === j.workOrderId).length
+      // A repeat is one work order's visits for one technician (Oct 2)
+      techId: String(j.technicianId || ''),
+      group: j.workOrderId || '',
+      groupLeft: j.workOrderId ? jobs.filter(x => x.workOrderId === j.workOrderId
+        && String(x.technicianId || '') === String(j.technicianId || '')).length : 1
     }));
   } else if(kind === 'Task'){
     heading.textContent = 'Scheduled tasks';
@@ -10759,6 +10786,8 @@ function renderCurrentList(kind){
       return {id: t.id, date: t.date, what: t.title || 'Task', look: custLook(t.customerIds || []),
         who: names.length ? names.slice(0, 2).join(', ') + (names.length > 2 ? ' +' + (names.length - 2) : '') : 'No customer',
         techName: technicianNameById(t.technicianId) || 'No technician',
+        techId: String(t.technicianId || ''),
+        every: t.everyDays || (t.everyWeeks ? t.everyWeeks * 7 : 0),
         group: t.seriesId || '', groupLeft: t.seriesId ? open.filter(x => x.seriesId === t.seriesId).length : 1};
     });
   } else {
@@ -10774,6 +10803,18 @@ function renderCurrentList(kind){
   }
   rows = rows.filter(r => !term || [r.who, r.look, r.what].filter(Boolean).join(' ').toLowerCase().includes(term));
   rows.sort((a, b) => kind === 'Quote' ? String(b.date).localeCompare(String(a.date)) : String(a.date).localeCompare(String(b.date)));
+  // A repeating task or work order is one row: its next date, with how many
+  // are left (Oct 2). History still lists each one.
+  if(kind !== 'Quote'){
+    const seen = new Set();
+    rows = rows.filter(r=>{
+      if(!r.group || r.groupLeft < 2) return true;
+      const key = r.group + '|' + (r.techId || '');
+      if(seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
 
   count.textContent = rows.length ? String(rows.length) : '';
   box.innerHTML = '';
@@ -10831,7 +10872,9 @@ function renderCurrentList(kind){
     const bits = [];
     if(kind === 'Quote') bits.push('$' + (Number(r.total) || 0).toFixed(2));
     else bits.push(r.techName);
-    if(kind === 'Task' && r.group) bits.push('Repeats');
+    if(r.group && r.groupLeft > 1){
+      bits.push((r.every ? 'Every ' + repeatWords(r.every) : 'Repeats') + ' \u00b7 ' + r.groupLeft + ' left');
+    }
     l2.textContent = bits.join(' \u00b7 ');
     if(r.orphan){
       const tag = document.createElement('span');
@@ -10950,7 +10993,8 @@ function renderCurrentList(kind){
           const ok = await confirmDialog('Take all ' + r.groupLeft + (kind === 'Task' ? ' remaining dates of \u201c' + r.what + '\u201d' : ' remaining visits of this work order') + ' off the routes?', 'Remove all ' + r.groupLeft);
           if(!ok) return;
           if(kind === 'Task'){ tasks = tasks.filter(t => !(t.seriesId === r.group && !t.done)); saveTasks(); }
-          else lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !(j.workOrderId === r.group && j.status === 'scheduled')));
+          else lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !(j.workOrderId === r.group && j.status === 'scheduled'
+            && String(j.technicianId || '') === String(r.techId || ''))));
           renderCurrentList(kind);
           showToast('Removed ' + r.groupLeft);
         });
@@ -19648,37 +19692,109 @@ function persistCurrentEquipmentItems(){
 }
 
 
-// After naming a new piece of equipment, offer to put it on other customers
-// too — most yards that have one thing have several of the same setup.
+// After naming a new piece of equipment: just this customer, or this customer
+// and a chosen set of others. The same window as deleting one (Oct 2).
+// Resolves null for Cancel (nothing is added), [] for just this customer, or
+// the other customers' ids.
 function openAddToCustomersModal(typeName){
   return new Promise((resolve)=>{
     const others = customers
       .filter(x => x.active !== false && x.id !== editingId)
       .sort((a,b)=> sortKeyName(a.name).localeCompare(sortKeyName(b.name)));
 
-    if(others.length === 0){ resolve([]); return; }
-
     const overlay = document.createElement('div');
     overlay.className = 'confirm-overlay';
     overlay.innerHTML = `
       <div class="confirm-box" style="max-width:460px;max-height:82vh;display:flex;flex-direction:column;">
-        <h3 style="font-size:15px;margin:0 0 4px;">Add ${typeName} to other customers?</h3>
-        <p style="font-size:11.5px;color:var(--muted);margin:0 0 10px;">It has already been added to this customer. Tick anyone else who has one.</p>
-        <div style="display:flex;gap:8px;margin-bottom:10px;">
-          <input id="addEqSearch" autocomplete="off" placeholder="Search customers" style="flex:1;font-size:13px;padding:7px 9px;">
-          <button class="btn btn-ghost" id="addEqAll" style="width:auto;padding:6px 11px;font-size:12px;">Select all</button>
+        <h3 style="font-size:15px;margin:0 0 6px;">Add ${escapeSyncText(typeName)}?</h3>
+        <p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">Add it to this customer, or to them and others who have the same.</p>
+
+        <!-- Quick buttons for this kind of equipment, set up while adding it (Oct 2) -->
+        <div style="border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:12px 0;margin:0 0 14px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;margin:0 0 6px;">Quick buttons (optional)</div>
+          <p style="font-size:11.5px;color:var(--muted);margin:0 0 8px;">Choices to tap on this equipment. They show for every customer who has ${escapeSyncText(baseEquipmentType(typeName))}.</p>
+          <div id="addEqBtnRows"></div>
+          <button type="button" class="btn btn-ghost" id="addEqBtnAdd" style="width:100%;padding:8px 12px;font-size:13px;margin-top:8px;">+ Add a button</button>
+          <div id="addEqBtnLine" style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;"></div>
         </div>
-        <div id="addEqList" style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:4px 10px;"></div>
+
+        <div class="btn-row" style="flex-direction:column;gap:8px;">
+          <button class="btn btn-primary" id="addEqOne" style="width:100%;">Just this customer</button>
+          ${others.length
+            ? '<button class="btn btn-ghost" id="addEqPick" style="width:100%;">Add to multiple customers</button>'
+            : ''}
+        </div>
+
+        <div id="addEqPickArea" style="display:none;margin-top:12px;flex:1;overflow-y:auto;">
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <input id="addEqSearch" autocomplete="off" placeholder="Search customers" style="flex:1;font-size:13px;padding:7px 9px;">
+            <button class="btn btn-ghost" id="addEqAll" style="width:auto;padding:6px 11px;font-size:12px;">Select all</button>
+          </div>
+          <div id="addEqList" style="border:1px solid var(--line);border-radius:10px;padding:4px 10px;max-height:230px;overflow-y:auto;"></div>
+        </div>
+
         <div class="btn-row" style="margin-top:12px;">
-          <button class="btn btn-ghost" id="addEqSkip" style="flex:1;">Just this customer</button>
-          <button class="btn btn-primary" id="addEqGo" style="flex:1;">Add to selected</button>
+          <button class="btn btn-ghost" id="addEqCancel" style="flex:1;">Cancel</button>
+          <button class="btn btn-ghost" id="addEqGo" style="flex:1;display:none;">Add to selected</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
 
+    // The quick buttons: whatever this kind of equipment already has, to edit
+    let quick = customEquipmentOptions(typeName);
+    const qRows = overlay.querySelector('#addEqBtnRows');
+    const qLine = overlay.querySelector('#addEqBtnLine');
+    function drawQuickLine(){
+      const list = quick.map(o => String(o || '').trim()).filter(Boolean);
+      qLine.innerHTML = '';
+      if(!list.length) return;
+      const lead = document.createElement('span');
+      lead.textContent = 'On the equipment row:';
+      lead.style.cssText = 'font-size:11.5px;color:var(--muted);width:100%;';
+      qLine.appendChild(lead);
+      list.concat(['Other']).forEach(o=>{
+        const chip = document.createElement('span');
+        chip.textContent = o;
+        chip.style.cssText = 'display:inline-flex;padding:6px 12px;border:1px solid var(--line);border-radius:9px;font-size:13px;color:var(--teal-deep);background:#fff;';
+        qLine.appendChild(chip);
+      });
+    }
+    function drawQuick(){
+      qRows.innerHTML = '';
+      quick.forEach((opt, idx)=>{
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);';
+        const input = document.createElement('input');
+        input.value = opt;
+        input.placeholder = 'Button name';
+        input.style.cssText = 'flex:1;min-width:0;font-size:13px;padding:6px 8px;';
+        input.addEventListener('input', ()=>{ quick[idx] = input.value; drawQuickLine(); });
+        row.appendChild(input);
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.textContent = '\u00D7';
+        del.title = 'Remove this button';
+        del.style.cssText = 'flex:0 0 30px;width:30px;height:30px;padding:0;border:1px solid #EFC9BC;'
+          + 'border-radius:8px;background:#fff;color:var(--rust);font-size:16px;cursor:pointer;';
+        del.addEventListener('click', ()=>{ quick.splice(idx, 1); drawQuick(); });
+        row.appendChild(del);
+        qRows.appendChild(row);
+      });
+      drawQuickLine();
+    }
+    overlay.querySelector('#addEqBtnAdd').addEventListener('click', ()=>{
+      quick.push('');
+      drawQuick();
+      const inputs = qRows.querySelectorAll('input');
+      if(inputs.length) inputs[inputs.length - 1].focus();
+    });
+    drawQuick();
+
     const picked = new Set();
+    const pickArea = overlay.querySelector('#addEqPickArea');
     const listBox = overlay.querySelector('#addEqList');
     const searchEl = overlay.querySelector('#addEqSearch');
+    const goBtn = overlay.querySelector('#addEqGo');
 
     function draw(){
       const q = searchEl.value.trim().toLowerCase();
@@ -19698,15 +19814,13 @@ function openAddToCustomersModal(typeName){
         box.style.margin = '0';
         box.addEventListener('change', ()=>{
           if(box.checked) picked.add(cust.id); else picked.delete(cust.id);
-          updateCount();
+          updateGo();
         });
         row.appendChild(box);
-
         const name = document.createElement('span');
         name.style.flex = '1';
         nameWithAddress(name, cust);
         row.appendChild(name);
-
         // Say so if they already have it, rather than adding a duplicate
         const has = (cust.equipmentTypeOptions || []).some(t =>
           baseEquipmentType(t) === baseEquipmentType(typeName));
@@ -19716,15 +19830,42 @@ function openAddToCustomersModal(typeName){
           tag.style.cssText = 'font-size:10.5px;color:var(--muted);flex-shrink:0;';
           row.appendChild(tag);
         }
-
         listBox.appendChild(row);
       });
     }
 
-    function updateCount(){
-      const go = overlay.querySelector('#addEqGo');
-      go.textContent = picked.size ? 'Add to ' + picked.size + ' customer' + (picked.size === 1 ? '' : 's')
-                                   : 'Add to selected';
+    function updateGo(){
+      goBtn.textContent = picked.size
+        ? 'Add to ' + (picked.size + 1) + ' customers'
+        : 'Add to selected';
+      goBtn.disabled = picked.size === 0;
+      goBtn.style.opacity = picked.size ? '' : '0.45';
+    }
+
+    const finish = (choice)=>{
+      // Added (not cancelled): the quick buttons are kept for this kind of
+      // equipment, for every customer who has it
+      if(choice !== null){
+        const list = quick.map(o => String(o || '').trim()).filter(Boolean);
+        const before = customEquipmentOptions(typeName);
+        if(JSON.stringify(list) !== JSON.stringify(before)) saveCustomEquipmentOptions(typeName, list);
+      }
+      document.body.removeChild(overlay);
+      resolve(choice);
+    };
+
+    overlay.querySelector('#addEqOne').addEventListener('click', ()=> finish([]));
+
+    const pickBtn = overlay.querySelector('#addEqPick');
+    if(pickBtn){
+      pickBtn.addEventListener('click', ()=>{
+        pickArea.style.display = 'block';
+        pickBtn.style.display = 'none';
+        overlay.querySelector('#addEqOne').style.display = 'none';
+        goBtn.style.display = 'inline-flex';
+        updateGo();
+        draw();
+      });
     }
 
     searchEl.addEventListener('input', draw);
@@ -19732,14 +19873,15 @@ function openAddToCustomersModal(typeName){
       const q = searchEl.value.trim().toLowerCase();
       others.filter(x => !q || (x.name || '').toLowerCase().includes(q))
             .forEach(x => picked.add(x.id));
-      draw(); updateCount();
+      draw(); updateGo();
     });
 
-    const finish = (ids)=>{ document.body.removeChild(overlay); resolve(ids); };
-    overlay.querySelector('#addEqSkip').addEventListener('click', ()=> finish([]));
-    overlay.querySelector('#addEqGo').addEventListener('click', ()=> finish(Array.from(picked)));
+    goBtn.addEventListener('click', ()=>{
+      if(picked.size === 0) return;
+      finish(Array.from(picked));
+    });
 
-    draw();
+    overlay.querySelector('#addEqCancel').addEventListener('click', ()=> finish(null));
   });
 }
 
@@ -19780,13 +19922,14 @@ document.getElementById('btnNewEquipmentType').addEventListener('click', async (
     while(currentEquipmentTypeOptions.includes(trimmed + ' ' + n)) n++;
     finalName = trimmed + ' ' + n;
   }
-  currentEquipmentTypeOptions.push(finalName);
+  // Just this customer, or others too; Cancel adds nothing (Oct 2)
+  const ids = await openAddToCustomersModal(finalName);
+  if(ids === null) return;
 
+  currentEquipmentTypeOptions.push(finalName);
   renderEquipmentTypeList();
   persistCurrentEquipmentTypeOptions();
 
-  // Offer to put it on other customers too
-  const ids = await openAddToCustomersModal(finalName);
   if(ids.length){
     const added = addEquipmentTypeToCustomers(finalName, ids);
     showToast(finalName + ' added to ' + (added + 1) + ' customers');
@@ -22314,8 +22457,12 @@ document.getElementById('settingRecentDosages').addEventListener('change', (e)=>
 });
 document.getElementById('settingRecentReadings').addEventListener('change', (e)=>{
   appSettings.showRecentReadings = e.target.checked;
+  // Chemicals added follows it, on or off (Oct 2)
+  appSettings.showRecentDosages = e.target.checked;
+  const doses = document.getElementById('settingRecentDosages');
+  if(doses) doses.checked = e.target.checked;
   saveSettings();
-  showToast(appSettings.showRecentReadings ? 'Previous readings shown on visits' : 'Previous readings hidden on visits');
+  showToast(appSettings.showRecentReadings ? 'Service history table shown on visits' : 'Service history table hidden on visits');
 });
 document.getElementById('settingAutoNotifyAll').checked = appSettings.autoNotifyAll === true;
 document.getElementById('settingAutoNotifyLead').value = String(appSettings.autoNotifyAllLead || 2);
@@ -22575,18 +22722,74 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
 (function drawCloseMarks(){
   const SVG = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.6 1.6 L8.4 8.4 M8.4 1.6 L1.6 8.4" '
     + 'stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>';
+  // A red × (one that removes or deletes something) is drawn as a bin instead
+  // (Tyrus, Oct 2). Grey ×s that only clear a search box stay ×s.
+  const BIN = '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:1.1em;height:1.1em;display:block;">'
+    + '<path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" '
+    + 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+  const isRed = btn=>{
+    try{
+      const m = getComputedStyle(btn).color.match(/\d+(\.\d+)?/g);
+      if(!m) return false;
+      const [r, g, b] = m.map(Number);
+      return r > 140 && g < 120 && b < 100 && r - g > 60;
+    }catch(e){ return false; }
+  };
+  // Every Delete / Remove button shows just the red bin too (Tyrus, Oct 2,
+  // option C). Its words stay as the tooltip and the screen-reader label.
+  // "Remove changes" undoes a reorder rather than removing anything, so it
+  // keeps its words; so do Clear and Unassign all.
+  const WORD = /^(delete|remove)(\s|$)/i;
+  const KEEP_WORDS = /^remove changes$/i;
+  const filled = btn=>{
+    try{
+      const bg = getComputedStyle(btn).backgroundColor;
+      const m = bg.match(/[\d.]+/g);
+      if(!m) return false;
+      const [r, g, b, a] = m.map(Number);
+      if(a === 0 || (m.length === 4 && a < 0.1)) return false;
+      return !(r > 240 && g > 240 && b > 240);
+    }catch(e){ return false; }
+  };
+  const convertWord = btn=>{
+    if(!btn || btn.dataset.binWord === '1') return false;
+    const words = (btn.textContent || '').replace(/\s+/g, ' ').trim();
+    if(!WORD.test(words) || KEEP_WORDS.test(words)) return false;
+    btn.setAttribute('aria-label', words);
+    btn.title = words;
+    btn.innerHTML = BIN;
+    btn.dataset.xDrawn = 'bin';
+    btn.dataset.binWord = '1';
+    // Red, unless it's a filled button (a red Delete in a confirm window)
+    if(!filled(btn)){ btn.style.color = 'var(--rust)'; btn.style.borderColor = '#EFC9BC'; }
+    return true;
+  };
+  // A bin button given new words later (a label that changes) is checked again
+  const wordsChanged = btn=>{
+    if(btn && btn.dataset.binWord === '1' && btn.querySelector('svg') === null){
+      delete btn.dataset.binWord;
+      delete btn.dataset.xDrawn;
+    }
+  };
   const convert = btn=>{
-    if(!btn || btn.dataset.xDrawn || btn.childElementCount !== 0) return;
+    if(!btn) return;
+    wordsChanged(btn);
+    if(convertWord(btn)) return;
+    if(btn.dataset.xDrawn || btn.childElementCount !== 0) return;
     if((btn.textContent || '').trim() !== '\u00d7') return;
     if(!btn.getAttribute('aria-label')) btn.setAttribute('aria-label', btn.title || 'Remove');
-    btn.innerHTML = SVG;
-    btn.dataset.xDrawn = '1';
+    const red = isRed(btn);
+    btn.innerHTML = red ? BIN : SVG;
+    btn.dataset.xDrawn = red ? 'bin' : '1';
   };
   const sweep = root => { if(root && root.querySelectorAll) root.querySelectorAll('button').forEach(convert); };
   sweep(document);
   new MutationObserver(list=>{
     list.forEach(m=>{
-      if(m.type === 'characterData'){ convert(m.target.parentElement); return; }
+      if(m.type === 'characterData'){
+        const host = m.target.parentElement && m.target.parentElement.closest ? m.target.parentElement.closest('button') : null;
+        convert(host || m.target.parentElement); return;
+      }
       if(m.target && m.target.tagName === 'BUTTON') convert(m.target);
       m.addedNodes.forEach(n=>{
         if(n.nodeType !== 1) return;
