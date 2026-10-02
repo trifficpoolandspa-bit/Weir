@@ -123,23 +123,20 @@ function boot(file){
           .forEach(t => w.eval("beforeControllerFor('" + t + "').setData('" + PNG + "');"));
         await new Promise(r => setTimeout(r, 250));
   
-        const previews = ['photoPreview','photoPreviewSpa','photoPreviewFountain','gatePhotoPreview',
-                          'photoPreviewBefore','photoPreviewBeforeSpa','photoPreviewBeforeFountain'];
-        const small = previews.filter(id => {
-          const el = d.getElementById(id);
-          return el && el.style.maxWidth === '25%';
-        });
+        // Each step's photos are small numbered thumbnails now (1eq), up to three
+        const wraps = ['photoPreviewWrap','photoPreviewWrapSpa','photoPreviewWrapFountain','gatePhotoWrap',
+                       'photoPreviewWrapBefore','photoPreviewWrapBeforeSpa','photoPreviewWrapBeforeFountain'];
+        const thumb = id => { const wr = d.getElementById(id); return wr ? wr.querySelector('[data-shot] img') : null; };
+        const small = wraps.filter(id => { const im = thumb(id); return im && /27%/.test(im.parentNode.style.width); });
         check(file + ' every photo shows as a thumbnail',
-              small.length === previews.length, small.length + ' of ' + previews.length);
-  
-        const tappable = previews.filter(id => {
-          const el = d.getElementById(id);
-          return el && el.style.cursor === 'zoom-in';
-        });
+              small.length === wraps.length, small.length + ' of ' + wraps.length);
+        const tappable = wraps.filter(id => { const im = thumb(id); return im && im.style.cursor === 'zoom-in'; });
         check(file + ' and every one invites a tap',
-              tappable.length === previews.length, tappable.length + ' of ' + previews.length);
-  
-        d.getElementById('photoPreviewSpa').click();
+              tappable.length === wraps.length, tappable.length + ' of ' + wraps.length);
+        w.eval('viewChangedAt = 0');
+        const spaThumb = () => thumb('photoPreviewWrapSpa');
+
+        spaThumb().click();
         await new Promise(r => setTimeout(r, 200));
         const ov = Array.from(d.querySelectorAll('.confirm-overlay')).pop();
         check(file + ' tapping one opens it full size', !!ov);
@@ -156,13 +153,13 @@ function boot(file){
                 d.querySelectorAll('.confirm-overlay').length === 0);
         }
 
-        // No button — tapping anywhere closes it, so the instruction just has to
-        // be big enough to notice against a full-screen photo
-        d.getElementById('photoPreviewSpa').click();
+        // One button only, Delete photo (1es); tapping anywhere else closes it
+        spaThumb().click();
         await new Promise(r => setTimeout(r, 200));
         const viewer = Array.from(d.querySelectorAll('.confirm-overlay')).pop();
-        check(file + ' the viewer has no buttons to hunt for',
-              viewer && viewer.querySelectorAll('button').length === 0);
+        check(file + ' the viewer\u2019s one button is Delete photo',
+              viewer && viewer.querySelectorAll('button').length === 1
+              && viewer.querySelector('button').textContent === 'Delete photo');
         // The innermost one — the bar around it also contains that text
         const hintEl = viewer
           ? Array.from(viewer.querySelectorAll('div'))
@@ -173,7 +170,8 @@ function boot(file){
         // what makes it read as a control instead of a caption
         check(file + ' the instruction looks like the camera buttons',
               hintEl && hintEl.style.fontSize === '15px'
-                     && hintEl.style.background === 'rgba(255, 255, 255, 0.15)'
+                     // Solid grey since Sept 29 (it was see-through)
+                     && hintEl.style.background === 'rgb(62, 71, 70)'
                      && hintEl.style.borderRadius === '10px',
               hintEl ? hintEl.style.fontSize + ' / ' + hintEl.style.background : 'not found');
         if(viewer){
@@ -183,7 +181,7 @@ function boot(file){
                 d.querySelectorAll('.confirm-overlay').length === 0);
         }
 
-        d.getElementById('photoPreviewSpa').click();
+        spaThumb().click();
         await new Promise(r => setTimeout(r, 200));
         w.eval("window.__cancelAsked = 0; confirmDialog = ()=>{ window.__cancelAsked++; return Promise.resolve(true); };");
         w.eval("window.dispatchEvent(new window.PopStateEvent('popstate'))");
@@ -262,7 +260,7 @@ function boot(file){
   ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
     const src = fs.readFileSync(file, 'utf8');
     const max = (src.match(/const MAX_REPORT_PHOTOS = (\d+)/) || [])[1];
-    check(file + ' carries ten photos to a report', Number(max) === 10, String(max));
+    check(file + ' carries fifteen photos to a report (three per step, 1eq)', Number(max) === 15, String(max));
     check(file + ' sizes them for an email rather than for printing',
           /LONGEST_EDGE = 1600/.test(src) && /toDataURL\('image\/jpeg', 0\.78\)/.test(src));
     check(file + ' sizes a photo that is already a JPEG too',

@@ -1340,8 +1340,9 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
       w.eval("__cbs.length = 0; renderTechRoute(); __cbs[0](['c1','c3','c2'])");
       d.getElementById('orderTempBtn').click(); await new Promise(r => setTimeout(r, 30));
       const once = JSON.parse(w.localStorage.getItem('weir:routeOrdersOnce') || '{}');
+      // Sent straight away (the office answers here), so nothing is left waiting
       check('Just today keeps it for that date only, for their phone', JSON.stringify((once[w.eval('techRouteDateISO()')] || {}).t1) === '["c1","c3","c2"]'
-            && !!JSON.parse(w.localStorage.getItem('weir:routeOrdersOnceToSend') || 'null')
+            && JSON.parse(w.localStorage.getItem('weir:routeOrdersOnceToSend') || 'null') === null
             && JSON.stringify(JSON.parse(w.localStorage.getItem('weir:routeOrders'))[todayName].t1) === '["c3","c1","c2"]', JSON.stringify(once));
       check('and the route shows it', order() === 'c1,c3,c2', order());
       w.eval("__cbs.length = 0; renderTechRoute(); __cbs[0](['c2','c3','c1'])");
@@ -1392,7 +1393,7 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
       await wait(400);
       t2w.eval("currentUser = {id:'t2', name:'Sam', isAdmin:false}; selectedHomeDay = '" + todayName + "'; weekOffset = 0; renderHomeList();");
       const names = Array.from(t2w.document.querySelectorAll('#homeCustomerList .cust-name')).map(n => n.textContent.trim());
-      check('on that technician\u2019s phone, the customer is on Today', names.includes('Bravo'), names.join(' | '));
+      check('on that technician\u2019s phone, the customer is on Today', names.some(n => /^Bravo/.test(n)), names.join(' | '));
       // For good: a technician only
       w.eval("selectedTechId = 't1'; renderTechRoute(); openTechRescheduleModal(customers.find(c => c.id === 'c3'));");
       d.getElementById('trTech').value = 't3';
@@ -1444,7 +1445,7 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
     const w = s.dom.window, d = w.document; w.Element.prototype.scrollIntoView = function(){};
     deferred.push(()=>{
       const shown = id => { w.eval("viewCustomer(customers.find(c => c.id === '" + id + "'))");
-        const row = Array.from(d.querySelectorAll('#profileMeta .profile-meta-row')).find(r => /On my way goes to/.test(r.textContent));
+        const row = Array.from(d.querySelectorAll('#profileMeta .profile-meta-row')).find(r => /On my way message/.test(r.textContent));
         return row ? row.querySelector('.profile-meta-value').textContent : '(no row)'; };
       check('only a phone: Text message', /^Text message \u2014 The customer$/.test(shown('p')), shown('p'));
       check('only an email: Email', /^Email \u2014 The customer$/.test(shown('e')), shown('e'));
@@ -1490,7 +1491,8 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
       // Edit the season's buttons and a label
       const baseButtons = JSON.stringify(w.eval("loadBaseChemConfig().pool.chemicals[0].buttons"));
       w.eval("chemConfig.pool.chemicals[0].buttons = [42]; chemConfig.pool.chemicals[0].label = 'Renamed'; saveChemConfig();");
-      const stored = JSON.parse(w.localStorage.getItem('weir:chemConfig'));
+      // Year-round as saved (a season never writes it, so it may not be saved at all yet)
+      const stored = JSON.parse(w.eval("JSON.stringify(loadBaseChemConfig())"));
       const key = w.eval("chemConfig.pool.chemicals[0].key");
       // Since Sept 29 a season keeps its own whole lists
       const inSeason = k => (w.eval('chemSeasons[0].lists.pool.chemicals') || []).find(c => c.key === k);
@@ -1500,7 +1502,7 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
       // Taking a chemical off in the season leaves it in year-round
       w.eval("chemConfig.pool.chemicals = chemConfig.pool.chemicals.filter(c => c.key !== '" + key + "'); saveChemConfig();");
       check('a chemical taken off in the season stays in year-round', !inSeason(key)
-            && JSON.parse(w.localStorage.getItem('weir:chemConfig')).pool.chemicals.some(c => c.key === key));
+            && JSON.parse(w.eval("JSON.stringify(loadBaseChemConfig())")).pool.chemicals.some(c => c.key === key));
       // Year-round shows its own again
       d.querySelector('#seasonControl .history-type-btn[data-season=""]').click();
       check('switching to Year-round shows its buttons', JSON.stringify(w.eval("chemConfig.pool.chemicals[0].buttons")) === baseButtons);
@@ -1519,8 +1521,9 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
       check('Remove this season removes it', w.eval('chemSeasons.length') === 3 && !w.eval("chemSeasons.some(x => x.name === 'Fall')"));
       // Leaving the page and coming back is Year-round
       d.querySelector('#seasonControl .history-type-btn[data-season="' + w.eval('chemSeasons[0].id') + '"]').click();
+      // Pages open fresh again (the 30-second memory was taken out Sept 30, 1ej)
       w.eval("switchView('customers'); switchView('chemconfig');");
-      check('coming back to the page opens on Year-round', w.eval('selectedSeasonId') === null);
+      check('coming back to the page opens on Year-round, straight away', w.eval('selectedSeasonId') === null);
       check('the window only closes from its buttons', !/seasonOverlay[^;]*addEventListener\('click'/.test(fs.readFileSync('customer-intake.html', 'utf8')));
       check('no errors along the way', s.errors.length === 0, s.errors[0]);
     });
@@ -1545,15 +1548,17 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
       const cards = Array.from(d.getElementById('view-technicians').children).filter(x => x.classList.contains('card') || x.id);
       check('Signing in on a phone is first, then the tabs, then Add technician',
             cards[0].id === 'techSignInCard' && !!cards[1].querySelector('#techMainTabs')
-            && d.getElementById('techListPane').querySelector('.card').contains(d.getElementById('btnAddTech')));
+            && !!d.getElementById('btnAddTech').closest('.section-head')
+            && /All technicians/.test(d.getElementById('btnAddTech').closest('.section-head').textContent));
       d.querySelector('#techMainTabs [data-techmain="photos"]').click();
       check('it stays on the Photo requirements tab', d.getElementById('techSignInCard').offsetParent !== undefined && d.getElementById('techSignInCard').style.display !== 'none');
       d.querySelector('#techMainTabs [data-techmain="list"]').click();
       const rows = Array.from(d.querySelectorAll('#technicianList .cust-row'));
       check('no Edit button on a technician row', rows.length === 3 && rows.every(r => !Array.from(r.querySelectorAll('button')).some(b => b.textContent.trim() === 'Edit')));
-      rows[1].querySelector('.cust-meta').click();
-      check('clicking the row opens them', d.getElementById('view-tech-detail').classList.contains('active') && w.eval('currentTechDetailId') === 't2');
-      check('their name large above the tabs', d.getElementById('techDetailHeading').textContent === 'Sam');
+      // Technicians are alphabetical (Sept 29): Lee, Pat, Sam
+      rows.find(r => /Pat/.test(r.textContent)).querySelector('.cust-meta').click();
+      check('clicking the row opens them', d.getElementById('view-tech-detail').classList.contains('active') && w.eval('currentTechDetailId') === 't1');
+      check('their name large above the tabs', d.getElementById('techDetailHeading').textContent === 'Pat');
       const meta = d.getElementById('techProfileMeta');
       const labels = Array.from(meta.querySelectorAll('.profile-meta-label')).map(x => x.textContent);
       check('Name, Email, Phone, Username, Password as rows', labels.slice(0, 5).join() === 'Name,Email,Phone,Username,Password', labels.join());
@@ -1564,22 +1569,22 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
       check('Previous and Next technician', !d.getElementById('btnPrevTech').disabled && !d.getElementById('btnNextTech').disabled);
       w.__scrolled = 0; w.scrollTo = () => { w.__scrolled++; };
       key('ArrowRight');
-      check('\u2192 goes to the next technician', w.eval('currentTechDetailId') === 't3' && d.getElementById('techDetailHeading').textContent === 'Lee');
+      check('\u2192 goes to the next technician', w.eval('currentTechDetailId') === 't2' && d.getElementById('techDetailHeading').textContent === 'Sam');
       check('without scrolling back to the top', w.__scrolled === 0, w.__scrolled);
       check('Next greys out on the last', d.getElementById('btnNextTech').disabled);
       d.querySelector('#techTabControl [data-techtab="customers"]').click();
       key('ArrowLeft');
-      check('\u2190 goes back one, staying on Customers', w.eval('currentTechDetailId') === 't2'
+      check('\u2190 goes back one, staying on Customers', w.eval('currentTechDetailId') === 't1'
             && d.getElementById('techCustomersCard').style.display === 'block');
       const input = d.createElement('input'); d.getElementById('techCustomersCard').appendChild(input); input.focus();
       key('ArrowRight', input);
-      check('not while typing in a field', w.eval('currentTechDetailId') === 't2');
+      check('not while typing in a field', w.eval('currentTechDetailId') === 't1');
       input.blur(); input.remove();
       key('Escape');
       check('Esc goes back to Technicians', d.getElementById('view-technicians').classList.contains('active'));
       // A name edited on the profile shows in the heading
-      w.eval("openTechDetail(technicians[0])");
-      w.eval("technicians[0].name = 'Patricia'; renderTechProfile('t1')");
+      w.eval("openTechDetail(technicians.find(t => t.id === 't1'))");
+      w.eval("technicians.find(t => t.id === 't1').name = 'Patricia'; renderTechProfile('t1')");
       check('the heading follows the name', d.getElementById('techDetailHeading').textContent === 'Patricia');
       // Row headers
       const css = fs.readFileSync('customer-intake.html', 'utf8').match(/\.profile-meta-label\{[^}]*\}/)[0];
@@ -1632,7 +1637,7 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
       const css = fs.readFileSync('app.html', 'utf8');
       check('it is held where it starts (12px down), with a page-coloured backing above and beside it',
             /\.sticky-head\{\s*position:sticky;\s*top:calc\(var\(--sticky-top, 0px\) \+ 12px\);/.test(css)
-            && /\.sticky-head::before\{[^}]*top:-12px;bottom:0;[^}]*background:var\(--surface\);/.test(css.replace(/\n\s*/g, '')));
+            && /\.sticky-head::before\{[^}]*top:-12px;bottom:16px;[^}]*background:var\(--surface\);/.test(css.replace(/\n\s*/g, '')));
       check('on a phone the Weir bar is hidden', /@media \(max-width:639px\)\{\s*nav\{display:none;\}\s*header\{display:none;\}/.test(css));
       check('the sticky height follows the bar where it shows', typeof w.setStickyTop === 'function'
             && /px$/.test(d.documentElement.style.getPropertyValue('--sticky-top')));
@@ -1641,8 +1646,8 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
             && tw.contains(d.getElementById('techPrevDay')) && !tw.contains(d.getElementById('techRouteList')));
       const st = id => d.getElementById(id).getAttribute('style');
       check('bigger counters on Today', /font-size:20px/.test(st('homeStopCount')) && /font-size:20px/.test(st('homeJobCount')));
-      check('stops left and jobs left both amber', /var\(--jobs-amber\)/.test(st('homeStopCount')) && /var\(--jobs-amber\)/.test(st('homeJobCount'))
-            && /--jobs-amber:#D97706/.test(css));
+      check('stops and jobs both dark teal (1ey.2)', /var\(--jobs-amber\)/.test(st('homeStopCount')) && /var\(--jobs-amber\)/.test(st('homeJobCount'))
+            && /--jobs-amber:#114B4F/.test(css));
       check('more space under the day row', /margin-top:16px/.test(d.getElementById('homeStopCount').parentElement.parentElement.getAttribute('style')));
       check('bigger date and arrows', /font-size:16px/.test(st('weekLabel')) && /font-size:21px/.test(st('prevWeekBtn')) && /font-size:21px/.test(st('nextWeekBtn')));
       check('bigger counters on a technician\u2019s route', /font-size:20px/.test(st('techRouteLeft')) && /font-size:21px/.test(st('techPrevDay')));
@@ -1654,10 +1659,10 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
     const t = quiet(load('app.html', {seed: {customers: custs, technicians: techs}})), w = t.dom.window, d = w.document;
     deferred.push(()=>{
       w.eval("currentUser = {id:'t9', name:'New', isAdmin:false}; selectedHomeDay = '" + todayName + "'; weekOffset = 0; renderHomeList();");
-      check('a technician with no customers sees 0 of 0 stops left', d.getElementById('homeStopCount').textContent === '0 of 0'
-            && d.getElementById('homeStopLabel').textContent === 'stops left', d.getElementById('homeStopCount').textContent);
+      check('a technician with no customers sees 0/0 stops', d.getElementById('homeStopCount').textContent === '0/0'
+            && d.getElementById('homeStopLabel').textContent === 'stops', d.getElementById('homeStopCount').textContent);
       w.eval("currentUser = {id:'t1', name:'Pat', isAdmin:false}; renderHomeList();");
-      check('one of theirs done, one to go: 1 of 2', d.getElementById('homeStopCount').textContent === '1 of 2', d.getElementById('homeStopCount').textContent);
+      check('one of theirs done, one to go: 1/2', d.getElementById('homeStopCount').textContent === '1/2', d.getElementById('homeStopCount').textContent);
       w.eval("applyRoleUI(); switchView('serviced');");
       const names = Array.from(d.querySelectorAll('#servicedList .cust-name')).map(n => n.textContent.trim());
       check('their Serviced lists only their own pools', names.length === 1 && /Bravo/.test(names[0]), names.join(' | '));
@@ -1669,7 +1674,7 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
     const a = quiet(load('app.html', {beforeParse: asAdmin, seed: {customers: custs, technicians: techs}})), aw = a.dom.window, ad = aw.document;
     deferred.push(()=>{
       aw.eval("currentUser = {id:'t9', name:'Boss', isAdmin:true}; applyRoleUI(); adminRouteStarted = true; adminViewTechId = 't2'; selectedHomeDay = '" + todayName + "'; weekOffset = 0; renderHomeList();");
-      check('an admin on one technician\u2019s route counts only theirs', ad.getElementById('homeStopCount').textContent === '0 of 2', ad.getElementById('homeStopCount').textContent);
+      check('an admin on one technician\u2019s route counts only theirs', ad.getElementById('homeStopCount').textContent === '0/2', ad.getElementById('homeStopCount').textContent);
       aw.eval("switchView('report');");
       check('an admin\u2019s Serviced still lists everyone\u2019s', ad.querySelectorAll('#servicedList .cust-name').length >= 0);
     });
@@ -1684,7 +1689,7 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
         + " selectedTechId = 't1'; techRouteDay = '" + todayName + "'; techRouteWeekOffset = 0; renderTechRoute();");
       const moveFor = id => Array.from(d.querySelectorAll('#techRouteList [data-reorder-key]')).find(r => r.dataset.reorderKey === id);
       const served = moveFor('c2');
-      const btn = served && Array.from(served.querySelectorAll('button')).find(b => b.textContent === 'Move');
+      const btn = served && Array.from(served.querySelectorAll('button')).find(b => b.textContent === 'Reschedule');
       check('Move is pressable on a serviced customer', btn && !/pointer-events:none/.test(btn.getAttribute('style') || ''), btn && btn.getAttribute('style'));
       w.eval("techRouteDay = '" + otherDay + "'; openTechRescheduleModal(customers.find(c => c.id === 'c1'));");
       check('Move\u2019s date starts empty, waiting for a date', d.getElementById('trDate').value === '', d.getElementById('trDate').value);
@@ -1728,7 +1733,7 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
       w.scrollTo = () => { jumps++; };
       // The On my way phone
       w.eval("switchView('customers'); viewCustomer(customers[0])");
-      const omw = rowOf('#profileMeta', 'On my way goes to');
+      const omw = rowOf('#profileMeta', 'On my way message');
       check('On my way shows the phone as (623) 555-0199', /\(623\) 555-0199/.test(omw.textContent), omw.textContent);
       jumps = 0;
       // A plain field open, then another row pressed: one click opens it
@@ -1800,6 +1805,225 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
       d.getElementById('ruleAdd').click();
       const rules = w.eval('__chem.doseRules');
       check('a new dosage rule starts with by pool size ticked', rules.length === 1 && rules[0].scaleByVolume === true, JSON.stringify(rules));
+      check('no errors along the way', s.errors.length === 0, s.errors[0]);
+    });
+  }
+}
+
+// ======== Sept 29 evening changes (1cq.9, 1cw.6, 1cz.8–1dz) ========
+{
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const todayName = DAYS[new Date().getDay()];
+  const localISO = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const todayISO = localISO(new Date());
+  const plusDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return localISO(d); };
+  const asAdmin = w => ['weirdevice:', 'weirdevice:beta-'].forEach(p =>
+    w.localStorage.setItem(p + 'membership', JSON.stringify({full_access: true})));
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const quiet = x => { x.dom.window.Element.prototype.scrollIntoView = function(){}; x.dom.window.scrollTo = function(){}; return x; };
+  const techs = [{id: 't2', name: 'Zed'}, {id: 't1', name: 'amy'}, {id: 't3', name: 'Bob'}];
+  const custs = [
+    {id: 'c1', name: 'Alpha', address: '1 A St', day: todayName, technicianId: 't1', active: true, hasPool: true},
+    {id: 'c2', name: 'Bravo', address: '2 B St', day: todayName, technicianId: 't2', active: true, hasPool: true,
+     lastServicedDate: todayISO, servicedFor: [{day: todayISO, on: todayISO, by: 't1'}]},
+    {id: 'c3', name: 'Charlie', address: '3 C St', day: todayName, technicianId: 't2', active: true, hasPool: true, hasSpa: true}
+  ];
+
+  console.log('\n=== App: evening changes ===');
+  {
+    const a = quiet(load('app.html', {beforeParse: asAdmin, seed: {customers: custs, technicians: techs,
+      rescheduledVisits: [{id: 'm1', customerId: 'c3', fromDate: todayISO, toDate: plusDays(1), technicianId: 't1'}]}}));
+    const w = a.dom.window, d = w.document;
+    deferred.push(async ()=>{
+      w.eval("currentUser = {id:'t9', name:'Boss', isAdmin:true}; applyRoleUI(); confirmDialog = () => Promise.resolve(true);");
+      check('technicians are always alphabetical', w.eval("techniciansInOrder().map(t => t.name).join()") === 'amy,Bob,Zed', w.eval("techniciansInOrder().map(t => t.name).join()"));
+      // Technicians tab row: no phone; temporary count first
+      w.eval("switchView('technicians')");
+      const amyRow = Array.from(d.querySelectorAll('#techList .cust-row')).find(r => /amy/.test(r.textContent));
+      check('a technician\u2019s row: temporary customers first, no phone', amyRow && /1 temporary customer \u00b7 1 customer/.test(amyRow.textContent), amyRow && amyRow.textContent);
+      check('the bottom bar has Report before Customer', Array.from(d.querySelectorAll('.bottombar .tab')).map(t => t.dataset.view).join().indexOf('report,customers') !== -1);
+      check('the stops and jobs numbers are both amber', /--jobs-amber/.test(d.getElementById('homeStopCount').getAttribute('style'))
+            && /--jobs-amber/.test(d.getElementById('techRouteLeft').getAttribute('style')));
+      // Edit: add or remove customers
+      w.eval("openTechEditor(adminTechnicians.find(t => t.id === 't3'))");
+      check('Edit has Add or remove customers', !!d.getElementById('btnTechCustomers') && /No customers yet/.test(d.getElementById('tcCustomerCount').textContent));
+      await wait(500);                     // past the guard against stray taps after a screen change
+      d.getElementById('btnTechCustomers').click();
+      const box = Array.from(d.querySelectorAll('#tcPickList label')).find(l => /Alpha/.test(l.textContent)).querySelector('input');
+      box.checked = true; box.dispatchEvent(new w.Event('change', {bubbles: true}));
+      await wait(50);
+      check('ticking a customer puts them on that route', w.eval("customers.find(c => c.id === 'c1').technicianId") === 't3');
+      d.getElementById('tcPickDone').click();
+      check('Done closes it and the count updates', !d.getElementById('tcPickList') && /1 customer/.test(d.getElementById('tcCustomerCount').textContent));
+      w.eval("customers.find(c => c.id === 'c1').technicianId = 't1'; saveCustomers();");
+      // Reschedule label and full-height press area
+      w.eval("editingTechId = null; selectedTechId = 't2'; techRouteDay = '" + todayName + "'; techRouteWeekOffset = 0; renderTechRoute();");
+      const btn = Array.from(d.querySelectorAll('#techRouteList button')).find(b => b.textContent === 'Reschedule');
+      check('Move now says Reschedule, inside a cell the row\u2019s full height', !!btn && /align-self:\s*stretch/.test(btn.parentElement.getAttribute('style')));
+      // Chained one-off moves
+      w.eval("localStorage.setItem('weir:rescheduledVisits', '[]'); saveMoveJustOnce('c1', '2026-10-05', '2026-10-07', null); saveMoveJustOnce('c1', '2026-10-07', '2026-10-09', null);");
+      const mv = JSON.parse(w.localStorage.getItem('weir:rescheduledVisits'));
+      check('moving an already-moved customer again starts from their usual day', mv.length === 1 && mv[0].fromDate === '2026-10-05' && mv[0].toDate === '2026-10-09', JSON.stringify(mv));
+      check('moving them back to their usual day just removes the move', w.eval("saveMoveJustOnce('c1', '2026-10-09', '2026-10-05', null)") === true
+            && JSON.parse(w.localStorage.getItem('weir:rescheduledVisits')).length === 0);
+      w.localStorage.setItem('weir:rescheduledVisits', JSON.stringify([{id: 'm2', customerId: 'c1', fromDate: plusDays(-1), toDate: todayISO}]));
+      check('a move to another day with the same technician says JUST TODAY', w.eval("movedJustTodayTo(customers.find(c => c.id === 'c1'), '" + todayISO + "')") === true);
+      // Serviced: who did it, the admin's picker, an admin's Reservice
+      w.eval("noteServicedFor(customers.find(c => c.id === 'c1'))");
+      check('a service notes who did it', w.eval("customers.find(c => c.id === 'c1').servicedFor.slice(-1)[0].by") === 't9');
+      w.eval("switchView('report'); setReportMode('serviced'); renderServicedList();");
+      check('an admin\u2019s Serviced has a technician list, starting on them', d.getElementById('servicedTechSel').style.display !== 'none'
+            && d.getElementById('servicedTechSel').value === 't9');
+      d.getElementById('servicedTechSel').value = 't1'; d.getElementById('servicedTechSel').dispatchEvent(new w.Event('change'));
+      const names = Array.from(d.querySelectorAll('#servicedList .cust-name')).map(n => n.textContent);
+      check('picking a technician shows the pools they serviced', names.some(n => /Bravo/.test(n)) && !names.some(n => /Alpha/.test(n)), names.join('|'));
+      // Reservice from an old copy of the customer still works, and goes on the admin's Today
+      const stale = JSON.parse(w.eval("JSON.stringify(customers.find(c => c.id === 'c2'))"));
+      w.eval("customers = customers.map(c => Object.assign({}, c));");
+      await w.reserviceCustomer(stale, todayISO);
+      check('Reservice works on the first press, even after a sync swapped the customers', !w.eval("(customers.find(c => c.id === 'c2').servicedFor || []).some(x => x.day === '" + todayISO + "')"));
+      check('an admin\u2019s Reservice puts it on their own Today, just for today', JSON.parse(w.localStorage.getItem('weir:rescheduledVisits'))
+            .some(r => r.customerId === 'c2' && r.technicianId === 't9' && r.toDate === todayISO));
+      check('Serviced\u2019s day row: the day, then \u2039 \u203a together', ['servicedDayLabel', 'servicedPrevDay', 'servicedNextDay']
+            .map(id => d.getElementById(id)).every((el, i, all) => i === 0 || all[i - 1].compareDocumentPosition(el) & 4));
+      // The photo bubble
+      w.eval("openPhotoFullSize('data:image/png;base64,iVBORw0KGgo=')");
+      const hint = Array.from(d.querySelectorAll('div')).filter(x => x.textContent === 'Tap the photo to close').pop();
+      check('\u201cTap the photo to close\u201d is solid grey on no black band', hint && /background:\s*(#3E4746|rgb\(62, 71, 70\))/i.test(hint.getAttribute('style'))
+            && /background:\s*transparent/.test(hint.parentElement.getAttribute('style')), hint && hint.getAttribute('style'));
+      Array.from(d.querySelectorAll('.confirm-overlay')).forEach(o => o.remove()); w.eval("photoViewerOpen = false;");
+      // Admin access with every sync
+      const src = fs.readFileSync('app.html', 'utf8');
+      check('admin access is checked with every sync, and the tabs switch when it\u2019s back',
+            /await pushCompanyRouteOrder\(\);[\s\S]{0,200}await checkAccessNow\(\);/.test(src) && /async function checkAccessNow\(\)\{\s*try\{ await fieldCheckAccount/.test(src));
+      // 30 seconds: Technicians comes back as it was
+      w.eval("switchView('technicians'); selectedTechId = 't2'; editingTechId = null; renderTechRoute(); switchView('options'); switchView('technicians');");
+      check('a tab comes back as it was within 30 seconds', w.eval('selectedTechId') === 't2');
+      w.eval("switchView('options'); tabLeftAt.technicians = Date.now() - 31000; switchView('technicians');");
+      check('after 30 seconds it opens as normal', w.eval('selectedTechId') === null);
+      check('no errors along the way', a.errors.length === 0, a.errors[0]);
+    });
+  }
+  {
+    // The Skipped screen, and an open report always coming back
+    const a = quiet(load('app.html', {beforeParse: asAdmin, seed: {customers: custs, technicians: techs}}));
+    const w = a.dom.window, d = w.document;
+    deferred.push(async ()=>{
+      w.eval("currentUser = {id:'t9', name:'Boss', isAdmin:true}; applyRoleUI(); confirmDialog = () => Promise.resolve(true);");
+      await w.eval("openVisit('c3')"); await wait(300);
+      w.eval("pendingVisit.doneSections.pool = 'skipped'; localStorage.setItem('weir:skipProof:c3', JSON.stringify([{section:'pool', note:'Drained', photo:'data:image/png;base64,x'}])); renderVisitSectionButtons(); showVisitSection('pool');");
+      check('a skipped body shows the Skipped screen instead of its readings', d.getElementById('visitSkippedSection').style.display === 'block'
+            && d.getElementById('visitPoolSection').style.display === 'none');
+      check('its tab reads \u201c\u00b7 skipped\u201d', Array.from(d.querySelectorAll('#visitSectionButtons button, #visitSectionCard button')).some(b => /skipped/.test(b.textContent)));
+      check('the photo shows small, with Remove photo and the note', !!d.querySelector('#skippedPhotoBox img') && /25%/.test(d.querySelector('#skippedPhotoBox img').style.maxWidth)
+            && d.getElementById('skippedNote').value === 'Drained');
+      await wait(500);                     // past the guard against stray taps after a screen change
+      d.getElementById('btnSkippedRemovePhoto').click();
+      w.eval("showVisitSection('spa')");
+      check('with the photo removed, other tabs won\u2019t open', w.eval('skippedScreenFor') === 'pool' && d.getElementById('skippedNeed').style.display === 'block');
+      await wait(500);
+      d.getElementById('btnUnskip').click();
+      check('Unskip puts it back on the report, one tap', !w.eval("pendingVisit.doneSections.pool") && d.getElementById('visitSkippedSection').style.display === 'none');
+      // The question about another day is asked once per report
+      let asked = 0; w.confirmDialog = () => { asked++; return Promise.resolve(true); };
+      w.eval("confirmDialog = window.confirmDialog; viewingToday = () => false;");
+      await w.eval("openVisit('c3')"); await wait(200);
+      check('going back into a report already started doesn\u2019t ask about the other day again', asked === 0, asked);
+      w.eval("viewingToday = () => true;");
+      // An open report comes back from another tab
+      w.eval("switchView('options')");
+      check('the report is remembered as open', w.eval('reportLeftOpen()') === true);
+      d.querySelector('.bottombar .tab[data-view="home"]').click(); await wait(300);
+      check('pressing Today goes back into the open report', w.eval('currentViewName') === 'visit');
+      check('no errors along the way', a.errors.length === 0, a.errors[0]);
+    });
+  }
+
+  // ---- Website
+  console.log('\n=== Website: evening changes ===');
+  {
+    const s = quiet(load('customer-intake.html', {seed: {customers: custs.concat([
+      {id: 'c4', name: 'Delta', address: '4 D St', day: 'Monday', technicianId: 't2', active: true}]), technicians: techs,
+      rescheduledVisits: [{id: 'm5', customerId: 'c4', fromDate: plusDays(-1), toDate: todayISO}]}}));
+    const w = s.dom.window, d = w.document;
+    w.eval("readingsFor = () => [];");
+    deferred.push(async ()=>{
+      check('technicians are always alphabetical', w.eval("technicians.map(t => t.name).join()") === 'amy,Bob,Zed', w.eval("technicians.map(t => t.name).join()"));
+      w.eval("switchView('technicians')");
+      check('the technician list has no drag grip', !d.querySelector('#technicianList .tech-handle'));
+      w.eval("openTechDetail(technicians.find(t => t.id === 't2'))");
+      const tabs = Array.from(d.querySelectorAll('#techTabControl .history-type-btn')).map(b => b.dataset.techtab).join();
+      check('Today\u2019s Route sits between Profile and Customers', tabs === 'profile,route,customers', tabs);
+      d.querySelector('#techTabControl .history-type-btn[data-techtab="route"]').click();
+      const rows = () => Array.from(d.querySelectorAll('#twList .tw-row'));
+      check('it lists their stops for today, as a table', rows().length === 3 && !!d.querySelector('#techRouteWebCard .tw-head'), rows().map(r => r.textContent).join('|'));
+      check('done ones say Done', rows().some(r => /Bravo/.test(r.textContent) && /Done/.test(r.textContent)));
+      check('moved-in ones say Just today', rows().some(r => /Delta/.test(r.textContent) && /Just today/.test(r.textContent)));
+      check('the count sits left of the date, which is in the middle', d.getElementById('twCounts').nextElementSibling === d.getElementById('twDayLabel')
+            && /grid-template-columns:minmax\(0,1fr\) auto minmax\(0,1fr\)/.test(d.getElementById('twCounts').parentElement.getAttribute('style')));
+      check('a stop still to do says Reschedule; a done one says Reservice', rows().every(r => Array.from(r.querySelectorAll('button')).some(b =>
+            /Done/.test(r.textContent) ? b.textContent === 'Reservice' : b.textContent === 'Reschedule')));
+      check('the Reschedule window sits below the confirm question', /z-index:260/.test(d.getElementById('twMoveOverlay').getAttribute('style')));
+      // Previous / Next keep the date
+      d.getElementById('twNext').click();
+      const shown = w.eval('twDateISO');
+      // Zed is last alphabetically: step back to Bob and forward again
+      w.eval("stepToTechnician(-1)");
+      check('Previous / Next technician keep the date showing', w.eval('twDateISO') === shown);
+      w.eval("stepToTechnician(1); twDateISO = '" + todayISO + "'; renderTechRouteWeb();");
+      // Just today badge: put back
+      w.eval("confirmDialog = () => Promise.resolve(true);");
+      rows().find(r => /Delta/.test(r.textContent)).querySelector('.tw-pill.moved').click();
+      await wait(50);
+      check('the Just today badge puts them back on their usual day', !(w.eval("JSON.stringify(lsGet('rescheduledVisits'))") || '').includes('"c4"')
+            && !rows().some(r => /Delta/.test(r.textContent)));
+      // A second move chains from the usual day
+      w.eval("twOpenMove(customers.find(c => c.id === 'c1'))");
+      d.getElementById('twMoveDate').value = plusDays(2); d.getElementById('twMoveOnce').click();
+      w.eval("twDateISO = '" + plusDays(2) + "'; twOpenMove(customers.find(c => c.id === 'c1'))");
+      d.getElementById('twMoveDate').value = plusDays(3); d.getElementById('twMoveOnce').click();
+      const moves = (w.eval("lsGet('rescheduledVisits')") || []).filter(r => r.customerId === 'c1');
+      check('moving an already-moved customer again starts from their usual day', moves.length === 1 && moves[0].fromDate === todayISO && moves[0].toDate === plusDays(3), JSON.stringify(moves));
+      // A stop pressed opens their reports, that day's opened
+      w.eval("twDateISO = '" + todayISO + "'; renderTechRouteWeb(); reportVisitsFor = c => c.id === 'c2' ? [{id: 'v_old', date: '2026-01-02T15:00:00Z', parts: [{r: {date: '2026-01-02T15:00:00Z'}}]},"
+        + " {id: 'v_today', date: '" + todayISO + "', parts: [{r: {date: '" + todayISO + "'}}]}] : [];");
+      rows().find(r => /Bravo/.test(r.textContent)).querySelector('.tw-name').click();
+      check('a stop opens their Service reports, all of them, with that day\u2019s opened', w.eval('historyOpenId') === 'v_today' && w.eval('historyDateFilter') === ''
+            && d.getElementById('historyCard').style.display === 'block', w.eval('historyOpenId'));
+      // Pages open as normal straight away (the 30-second memory was taken out Sept 30, 1ej)
+      w.eval("switchView('technicians'); switchView('customers');");
+      check('a page opens as normal when you come back', d.getElementById('allCustomersCard').style.display !== 'none' && d.getElementById('historyCard').style.display === 'none');
+      check('the WorkCenter form holds 30 seconds; filter groups a minute (1ej.2)', w.eval('WC_DRAFT_MS') === 30000 && w.eval('FILTERS_CLOSE_MS') === 60000);
+      // Back and Forward
+      let pushed = 0; const realPush = w.history.pushState.bind(w.history); w.history.pushState = (...x) => { pushed++; return realPush(...x); };
+      d.querySelector('nav .tab[data-view="technicians"]').click(); await wait(60);
+      d.querySelector('nav .tab[data-view="map"]').click(); await wait(60);
+      check('each page visited goes into the browser\u2019s history', pushed >= 1 && w.history.state && w.history.state.weirPlace
+            && w.history.state.weirPlace.v === 'map', pushed + ' ' + JSON.stringify(w.history.state));
+      w.eval("goToPlace({v: 'customers', c: 'c2', ct: 'history'})");
+      check('Back goes to the page and customer tab it was on', d.getElementById('view-customers').classList.contains('active')
+            && d.querySelector('#profileTabControl .history-type-btn.active').dataset.tab === 'history');
+      check('no errors along the way', s.errors.length === 0, s.errors[0]);
+    });
+  }
+  {
+    // Year-round changes reach every season; a season's own don't reach back
+    const s = quiet(load('customer-intake.html')), w = s.dom.window, d = w.document;
+    deferred.push(()=>{
+      w.eval("switchView('chemconfig')");
+      d.getElementById('btnAddSeason').click();
+      d.getElementById('seasonName').value = 'Summer'; d.getElementById('seasonFrom').value = '2026-06-01'; d.getElementById('seasonTo').value = '2026-08-31';
+      d.getElementById('btnSaveSeason').click();
+      d.querySelector('#seasonControl .history-type-btn[data-season=""]').click();
+      const key = w.eval('chemConfig.pool.chemicals[0].key');
+      w.eval("chemConfig.pool.chemicals[0].label = 'Renamed on year-round'; chemConfig.pool.chemicals[0].unit = 'mg'; saveChemConfig();");
+      const inSummer = () => (w.eval('chemSeasons[0].lists.pool.chemicals') || []).find(c => c.key === key) || {};
+      check('a name and unit changed on Year-round reach every season', inSummer().label === 'Renamed on year-round' && inSummer().unit === 'mg', JSON.stringify(inSummer()));
+      w.eval("chemConfig.pool.chemicals.push({key:'newchem', label:'New one', unit:'ppm'}); saveChemConfig();");
+      check('a chemical added on Year-round is added to every season', (w.eval('chemSeasons[0].lists.pool.chemicals') || []).some(c => c.key === 'newchem'));
+      d.querySelector('#seasonControl .history-type-btn[data-season="' + w.eval('chemSeasons[0].id') + '"]').click();
+      w.eval("chemConfig.pool.chemicals[0].label = 'Summer only'; saveChemConfig();");
+      check('a change in a season stays in that season', JSON.parse(w.localStorage.getItem('weir:chemConfig')).pool.chemicals[0].label === 'Renamed on year-round');
       check('no errors along the way', s.errors.length === 0, s.errors[0]);
     });
   }

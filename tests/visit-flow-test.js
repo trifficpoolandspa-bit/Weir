@@ -155,9 +155,9 @@ async function walkVisit(w, d, maxPresses){
       await wait(500);
       check('  the Salt cell cleaned button is there', !!d.getElementById('chkSaltCell'));
       const cell = d.getElementById('chkSaltCell').parentNode;
-      check('  the last-done note sits below the button',
-            cell.style.flexDirection === 'column' && cell.firstChild === d.getElementById('chkSaltCell')
-            && cell.lastChild.tagName === 'SPAN', cell.style.cssText);
+      check('  the last-done date sits inside the button (1en.3)',
+            d.getElementById('chkSaltCell').lastChild.tagName === 'SPAN'
+            && cell.lastChild === d.getElementById('chkSaltCell'), cell.innerHTML.slice(0, 120));
       check('  with nothing logged yet it says so', /Not logged yet/.test(cell.lastChild.textContent), cell.lastChild.textContent);
 
       set('pool_chem_chlorine', '3');
@@ -304,11 +304,13 @@ async function walkVisit(w, d, maxPresses){
 
       check('  the pool still reaches history',
             JSON.parse(w.eval("JSON.stringify(lsGet('readings:a') || [])")).length === 1);
-      check('  the skipped spa records nothing',
-            JSON.parse(w.eval("JSON.stringify(lsGet('spaReadings:a') || [])")).length === 0);
+      // A skipped body is kept as a Skipped entry with no readings (1fc, Sept 30)
+      const spaList = JSON.parse(w.eval("JSON.stringify(lsGet('spaReadings:a') || [])"));
+      check('  the skipped spa is kept as Skipped, with no readings',
+            spaList.length === 1 && spaList[0].skipped === true && !spaList[0].chlorine, JSON.stringify(spaList));
       const html = w.eval('currentReportHtml') || '';
       check('  the report covers the pool', html.indexOf('3.2') !== -1);
-      check('  and does not mention the spa', html.indexOf('Spa') === -1);
+      check('  and says the spa was skipped (1fc)', /Spa/.test(html) && /Skipped this visit/.test(html));
       check('  the visit finishes rather than stalling',
             w.eval('currentViewName') === 'home', String(w.eval('currentViewName')));
     }catch(e){ check('  skipping a body of water', false, e.message); }
@@ -548,7 +550,8 @@ async function walkVisit(w, d, maxPresses){
         src.indexOf('stamped.setHours(now.getHours()') === -1);
   // One app now: technicians' readings are stamped the same way
   check('technicians\u2019 readings are stamped the same way',
-        (src.match(/date: visitTimestamp\(\)/g) || []).length === 3 && !/date: new Date\(\)\.toISOString\(\)/.test(src));
+        // (four now: a skipped body's entry is dated the same way, 1fc)
+        (src.match(/date: visitTimestamp\(\)/g) || []).length === 4 && !/date: new Date\(\)\.toISOString\(\)/.test(src));
 }
 
 
@@ -610,7 +613,9 @@ async function walkVisit(w, d, maxPresses){
   console.log('\n=== moving a visit again replaces the first move ===');
   ['technician-app.html', 'admin-readings-app.html'].forEach(file=>{
     const src = fs.readFileSync(file, 'utf8');
-    const matches = src.match(/r\.customerId === customer\.id\s*\n?\s*&& \(r\.fromDate === fromISO \|\| r\.toDate === fromISO\)/g) || [];
+    // Since Sept 29 both windows go through saveMoveJustOnce, which also chains
+    // a second move from the usual day (driven for real in part 1)
+    const matches = src.match(/r\.customerId === customerId\s*\n?\s*&& \(r\.fromDate === fromISO \|\| r\.toDate === fromISO \|\| r\.fromDate === origin\)/g) || [];
     check(file + ' clears any move off this day or onto it', matches.length >= 1, String(matches.length));
     check(file + ' and no longer clears only the ones off it',
           !/!\(r\.customerId === customer\.id && r\.fromDate === fromISO\)/.test(src));
@@ -881,8 +886,9 @@ async function walkVisit(w, d, maxPresses){
   check('older orders kept on the phone are still understood',
         /orders\['date:' \+ routeIso \+ '\|' \+ selectedTechId\]/.test(src)
         && /orders\['tech:' \+ forThisTech\(selectedTechId\)\]/.test(src));
+  // Since Sept 29 a drag asks first (Just today / Every week); Every week saves it
   check('dragging here saves the office\u2019s order and sends it',
-        /saveCompanyRouteOrder\(techRouteDay, keys\);/.test(src));
+        /saveCompanyRouteOrder\(p\.day, p\.ids\);/.test(src));
   check('and no longer under a key of its own',
         src.indexOf("store['tech:' + orderKeyName]") === -1);
 }
@@ -1057,7 +1063,7 @@ async function walkVisit(w, d, maxPresses){
       check(file + ': and never brings their service onto the day', order.indexOf('svc:Wendy Other') === -1);
       check(file + ': another technician\u2019s job is not shown', !order.some(x => /Not mine/.test(x)));
       check(file + ': a job on another day is not shown today', !order.some(x => /Tomorrow job/.test(x)));
-      check(file + ': the jobs count counts each job', d.getElementById('homeJobCount').textContent === '2 of 2', d.getElementById('homeJobCount').textContent);
+      check(file + ': the jobs count counts each job', d.getElementById('homeJobCount').textContent === '2/2', d.getElementById('homeJobCount').textContent);
       const jobRow = Array.from(d.querySelectorAll('#homeCustomerList .route-job'))[0];
       check(file + ': a job row has a grip for rearranging', !!jobRow.querySelector('.route-grip'));
       check(file + ': and is saved in the route order as a job', /^job:/.test(jobRow.dataset.reorderKey));
@@ -1084,7 +1090,7 @@ async function walkVisit(w, d, maxPresses){
       check(file + ': submitting keeps the notes and photo, filed under its day',
             subs.length === 1 && subs[0].notes === 'Tightened the union.' && !!subs[0].photo && subs[0].date === iso, JSON.stringify(subs.map(x => [x.notes, x.date])));
       check(file + ': the page closes and the job leaves the list', !d.getElementById('jobPage') && !list().some(x => /Check seal/.test(x)));
-      check(file + ': the jobs count goes down', d.getElementById('homeJobCount').textContent === '1 of 2', d.getElementById('homeJobCount').textContent);
+      check(file + ': the jobs count goes down', d.getElementById('homeJobCount').textContent === '1/2', d.getElementById('homeJobCount').textContent);
 
       // A job saved at the top of the route stays there
       w.eval("fieldRouteOrder[orderKey(selectedHomeDay, isoForDay(selectedHomeDay))] = ['job:work order:w1', 'a', 'b']; renderHomeList();");
@@ -1155,8 +1161,8 @@ async function walkVisit(w, d, maxPresses){
       check(file + ': Skip this pool is filled red', /background:\s*var\(--rust\)/.test(skip.getAttribute('style')) && /color:\s*var\(--card\)/.test(skip.getAttribute('style')));
       check(file + ': and its row is centred', /justify-content:\s*center/.test(d.getElementById('poolSkipRow').getAttribute('style')));
       const src = fs.readFileSync(file, 'utf8');
-      check(file + ': on the step\u2019s heading line it sits in the middle column',
-            /head\.style\.gridTemplateColumns = '1fr auto 1fr';/.test(src) && /skipBtn\.style\.justifySelf = 'center'/.test(src));
+      check(file + ': on the step\u2019s heading line it sits beside Return to route / Back (1eu)',
+            /head\.style\.gridTemplateColumns = 'minmax\(0,1fr\)' \+ ' auto'\.repeat\(/.test(src) && /skipBtn\.style\.justifySelf = 'end'/.test(src));
     }catch(e){ check(file + ': thumbnails and captions', false, e.message); }
     w.close();
   }
@@ -1211,7 +1217,7 @@ async function walkVisit(w, d, maxPresses){
       check(file + ': a job on another date isn\u2019t shown today', !order.some(x => /Tomorrow job/.test(x)));
       const jobRow = Array.from(d.querySelectorAll('#homeCustomerList .route-job')).find(r => /Check seal/.test(r.textContent));
       check(file + ': job text in the jobs-count gold', /var\(--gold\)/.test(jobRow.children[1].getAttribute('style') || jobRow.children[0].getAttribute('style')));
-      check(file + ': every job counts: "3 of 3"', d.getElementById('homeJobCount').textContent === '3 of 3',
+      check(file + ': every job counts: "3/3"', d.getElementById('homeJobCount').textContent === '3/3',
             d.getElementById('homeJobCount').textContent);
       check(file + ': jobs have the grip when rearranging is allowed', !!jobRow.querySelector('.route-grip'));
       const chev = jobRow.querySelector('.chev');
@@ -1244,7 +1250,7 @@ async function walkVisit(w, d, maxPresses){
       check(file + ': Submit keeps the notes and photo for that date', saved.length === 1 && saved[0].notes === 'Tightened it.'
             && !!saved[0].photo && saved[0].date === isoToday, JSON.stringify(saved.map(x => [x.key, x.date])));
       check(file + ': the job leaves the route', !d.getElementById('jobPage') && !list().some(x => /Check seal/.test(x)));
-      check(file + ': and the count reads "2 of 3"', d.getElementById('homeJobCount').textContent === '2 of 3',
+      check(file + ': and the count reads "2/3"', d.getElementById('homeJobCount').textContent === '2/3',
             d.getElementById('homeJobCount').textContent);
 
       // A dragged job stays where it was left
@@ -1325,8 +1331,8 @@ async function walkVisit(w, d, maxPresses){
               caps.join('|') === 'Pool Filter gauge|Spa Heater panel|Spa extra photo', caps.join('|'));
         const src = fs.readFileSync(file, 'utf8');
         check(file + ': Skip is the filled red button', /id="btnPoolSkip" type="button" style="width:auto;background:var\(--rust\);color:var\(--card\)/.test(src));
-        check(file + ': and sits in the middle of the heading line',
-              /head\.style\.gridTemplateColumns = '1fr auto 1fr';/.test(src) && /skipBtn\.style\.justifySelf = 'center';/.test(src));
+        check(file + ': and sits beside Return to route / Back, the heading taking the room (1eu)',
+              /head\.style\.gridTemplateColumns = 'minmax\(0,1fr\)' \+ ' auto'\.repeat\(/.test(src) && /skipBtn\.style\.justifySelf = 'end';/.test(src));
       }catch(e){ check(file + ': reschedule and photos', false, e.message); }
       w3.close();
     }
@@ -1381,7 +1387,7 @@ async function walkVisit(w, d, maxPresses){
       check(file + ': and the arrow styled like a service row\u2019s',
             !jobRow.querySelector('.chev').getAttribute('style') || !/padding/.test(jobRow.querySelector('.chev').getAttribute('style')));
       check(file + ': the jobs count counts every work order and task',
-            d.getElementById('homeJobCount').textContent === '2 of 2', d.getElementById('homeJobCount').textContent);
+            d.getElementById('homeJobCount').textContent === '2/2', d.getElementById('homeJobCount').textContent);
       check(file + ': a job saved in a new place is drawn there',
             (w.eval("fieldRouteOrder[orderKey(selectedHomeDay, isoForDay(selectedHomeDay))] = ['job:work order:w1', 'a', 'b']; renderHomeList();"),
              listOf(d)[0] === 'job:Wendy Other \u2013 Replace cartridge'), listOf(d).join(' | '));
@@ -1412,7 +1418,7 @@ async function walkVisit(w, d, maxPresses){
       check(file + ': submitting keeps the notes and photo on this phone',
             subs.length === 1 && subs[0].notes === 'Tightened it.' && !!subs[0].photo && subs[0].date === iso, JSON.stringify(subs).slice(0, 120));
       check(file + ': and takes that job off the route', !listOf(d).some(x => /Check seal/.test(x)));
-      check(file + ': the count goes down', d.getElementById('homeJobCount').textContent === '1 of 2', d.getElementById('homeJobCount').textContent);
+      check(file + ': the count goes down', d.getElementById('homeJobCount').textContent === '1/2', d.getElementById('homeJobCount').textContent);
     }catch(e){ check(file + ': jobs on the route', false, e.message); }
     w.close();
 
@@ -1452,7 +1458,7 @@ async function walkVisit(w, d, maxPresses){
       check(file + ': the serviced customer leaves Today straight away', after.indexOf('service:a') === -1, after.join(' | '));
       check(file + ': their jobs stay on the list', after.some(x => /Check seal/.test(x)) && after.some(x => /Fix light/.test(x)), after.join(' | '));
       // This setup's work orders are only "Fix light", plus the task: two jobs
-      check(file + ': and in the count', /^2 of 2$/.test(d.getElementById('homeJobCount').textContent), d.getElementById('homeJobCount').textContent);
+      check(file + ': and in the count', /^2\/2$/.test(d.getElementById('homeJobCount').textContent), d.getElementById('homeJobCount').textContent);
     }catch(e){ check(file + ': service and jobs', false, e.message); }
     w.close();
 
@@ -1486,8 +1492,8 @@ async function walkVisit(w, d, maxPresses){
       const skip = d.getElementById('btnPoolSkip');
       check(file + ': Skip this pool is filled red', /background:\s*var\(--rust\)/.test(skip.getAttribute('style')));
       const src = fs.readFileSync(file, 'utf8');
-      check(file + ': and sits in the middle of the heading line',
-            /head\.style\.gridTemplateColumns = '1fr auto 1fr';/.test(src) && /skipBtn\.style\.justifySelf = 'center'/.test(src));
+      check(file + ': and sits beside Return to route / Back (1eu)',
+            /head\.style\.gridTemplateColumns = 'minmax\(0,1fr\)' \+ ' auto'\.repeat\(/.test(src) && /skipBtn\.style\.justifySelf = 'end'/.test(src));
       check(file + ': a × button is drawn, not typed',
             /function drawCloseMarks\(\)/.test(src) && /button\[data-x-drawn\] > svg/.test(src));
     }catch(e){ check(file + ': reschedule, photos, skip', false, e.message); }
@@ -1537,7 +1543,7 @@ async function walkVisit(w, d, maxPresses){
       check(file + ': and never brings their service onto the day', order.indexOf('svc:Wendy Later') === -1);
       check(file + ': another technician\u2019s task is not shown', !order.some(x => /Other tech/.test(x)));
       check(file + ': a job on another date is not shown', !order.some(x => /Tomorrow job/.test(x)));
-      check(file + ': the jobs count counts every job', d.getElementById('homeJobCount').textContent === '2 of 2', d.getElementById('homeJobCount').textContent);
+      check(file + ': the jobs count counts every job', d.getElementById('homeJobCount').textContent === '2/2', d.getElementById('homeJobCount').textContent);
       const jobRow = Array.from(d.querySelectorAll('#homeCustomerList .route-job')).find(r => /Check seal/.test(r.textContent));
       check(file + ': a job row has the grip for rearranging', !!jobRow.querySelector('.route-grip'));
       const onWay = Array.from(jobRow.querySelectorAll('button')).find(b => b.textContent === 'On my way');
@@ -1562,7 +1568,7 @@ async function walkVisit(w, d, maxPresses){
       Array.from(page.querySelectorAll('button')).find(b => /^Submit/.test(b.textContent)).click(); await wait(300);
       const saved = JSON.parse(w.localStorage.getItem('weir:jobSubmissions') || '[]');
       check(file + ': submitting keeps the notes and photo, dated for the job', saved.length === 1 && saved[0].notes === 'Tightened it.' && !!saved[0].photo && saved[0].date === iso, JSON.stringify(saved));
-      check(file + ': the job leaves the list and the count goes down', !list().some(x => /Check seal/.test(x)) && d.getElementById('homeJobCount').textContent === '1 of 2',
+      check(file + ': the job leaves the list and the count goes down', !list().some(x => /Check seal/.test(x)) && d.getElementById('homeJobCount').textContent === '1/2',
             d.getElementById('homeJobCount').textContent);
 
       // Servicing a customer never touches their jobs, and they leave Today at once
@@ -1667,7 +1673,7 @@ async function walkVisit(w, d, maxPresses){
     check('with no signal it\u2019s held', !!JSON.parse(w.localStorage.getItem('weir:routeOrdersToSend')));
     w.eval("window.__reply = null;"); await w.eval("pushCompanyRouteOrder()");
     check('and sent once there\u2019s signal', !JSON.parse(w.localStorage.getItem('weir:routeOrdersToSend')));
-    check('every sync tries anything waiting', /await pushCompanyRouteOrder\(\);\s*\n(\s*refreshSignedInRole\(\);\s*\n)?\s*\/\/ Tasks ticked off and visits moved here/.test(src));
+    check('every sync tries anything waiting', /await pushCompanyRouteOrder\(\);\s*\n\s*await pushOnceRouteOrders\(\);[\s\S]{0,160}\/\/ Tasks ticked off and visits moved here/.test(src));
     w.close();
 
     // Remove changes
@@ -1811,7 +1817,14 @@ async function walkVisit(w, d, maxPresses){
       await w.eval("skipBodyOfWater('pool')"); await wait(300);
       const spa = d.getElementById('spa_chem_chlorine'); spa.value = '4'; spa.dispatchEvent(new w.Event('input', {bubbles: true}));
       await wait(450);
-      d.querySelector('.step-back').click(); await wait(400);
+      // The spa's first page says Return to pool now (1ex): go to the pool to leave
+      const spaBack = Array.from(d.querySelectorAll('.step-back')).find(b => b.offsetParent !== null || b.closest('[style*="display: block"]')) || d.querySelector('.step-back');
+      check(file + ': the spa\u2019s first page says Return to pool (1ex)',
+            Array.from(d.querySelectorAll('.step-back')).some(b => /Return to pool/.test(b.textContent)));
+      w.eval("viewChangedAt = 0; showVisitSection('pool'); goToVisitStep(1)"); await wait(150);
+      const routeBack = Array.from(d.querySelectorAll('.step-back')).find(b => /Return to route/.test(b.textContent));
+      if(routeBack){ w.eval('viewChangedAt = 0'); routeBack.click(); }
+      await wait(400);
       w.eval("openVisit('v')"); await wait(400);
       check(file + ': Return to route cancels the whole report, a skipped body included',
             d.getElementById('spa_chem_chlorine').value === '' && w.eval("!(pendingVisit && pendingVisit.doneSections && pendingVisit.doneSections.pool)"));

@@ -717,7 +717,8 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     check('clicking a window\u2019s backdrop leaves it open', ov.style.display === 'flex');
     d.getElementById('btnCancelQuoteEmail').click();
     check('its own button closes it', ov.style.display === 'none');
-    check('no window closes from its backdrop any more', !/target === overlay\) (cleanup|close|shut|done|finish)/.test(fs.readFileSync('customer-intake.html', 'utf8')));
+    check('no window closes from its backdrop, except a picture and a video (1ep, 1em.10)',
+      ((fs.readFileSync('customer-intake.html', 'utf8').match(/target === overlay\) (cleanup|close|shut|done|finish)/g)) || []).length === 2);
     d.getElementById('btnAddLineItem').click(); await wait(50);
     const xBtn = d.querySelector('#wcLineItems .fountain-remove');
     check('a remove button\u2019s \u00d7 is drawn, not typed', xBtn.dataset.xDrawn === '1' && !!xBtn.querySelector('svg') && xBtn.textContent.trim() === '');

@@ -617,7 +617,7 @@ console.log('\n=== The WorkCenter tab always matches what is shown ===');
           shown().join(',') === 'wcBroadcastSection', shown().join(','));
 
     // The bug: leaving and returning left the email section on screen
-    w.eval("switchView('customers'); switchView('workcenter');");
+    w.eval("switchView('customers'); webLeftAt = {}; switchView('workcenter');");  // past the page's 20 seconds (Sept 29)
     check('  returning selects Work Orders again', activeTab() === 'quotes', activeTab());
     check('  and the email section is hidden',
           shown().indexOf('wcBroadcastSection') === -1, shown().join(','));
@@ -629,7 +629,7 @@ console.log('\n=== The WorkCenter tab always matches what is shown ===');
     press('filters');
     check('  filter cleans shows only its own section',
           shown().join(',') === 'wcFiltersSection', shown().join(','));
-    w.eval("switchView('settings'); switchView('workcenter');");
+    w.eval("switchView('settings'); webLeftAt = {}; switchView('workcenter');");  // past the page's 20 seconds (Sept 29)
     check('  and is hidden on returning',
           shown().indexOf('wcFiltersSection') === -1, shown().join(','));
 
@@ -697,8 +697,8 @@ console.log('\n=== Heads-up reminders before arriving ===');
             d.getElementById('customerNotifyCard').style.display === 'none');
 
       w.eval("customCustomerId = 'a'; renderChemConfigLists();");
-      check('  it appears once one is picked',
-            d.getElementById('customerNotifyCard').style.display === 'block');
+      check('  it lives on the customer\u2019s profile now, so the card here stays hidden (1ez)',
+            d.getElementById('customerNotifyCard').style.display === 'none');
       check('  it is called an automatic on my way message',
             d.getElementById('customerNotifyHeading').textContent
               .indexOf('Automatic on my way message') === 0,
@@ -761,7 +761,12 @@ console.log('\n=== Heads-up reminders before arriving ===');
       // Two stops before D is B
       w.eval("checkHeadsUpAfter('c1');");
       deferred.push(()=>{
-        check(file + ' sends two stops before the customer',
+        // The phone only opens Messages straight after a tap, so a window asks for one (1fb)
+        const go = Array.from(w.document.querySelectorAll('button')).find(b => b.textContent === 'Open text message');
+        check(file + ' asks for one tap two stops before the customer', !!go
+              && /Cust D/.test(go.closest('.confirm-box').textContent));
+        if(go) go.click();
+        check(file + ' the tap opens the text to them',
               w.eval('window.__sentTo') === 'Cust D', String(w.eval('window.__sentTo')));
         check(file + ' without asking first', w.eval('window.__prompted') === false);
         check(file + ' through one switchable function',
@@ -1439,7 +1444,7 @@ setTimeout(()=>{
     w.eval("resetWorkOrderForm();");
     check('finishing one leaves you on Work Order',
           d.getElementById('wcType').value === 'Work Order', d.getElementById('wcType').value);
-    w.eval("switchView('customers'); switchView('workcenter');");
+    w.eval("switchView('customers'); webLeftAt = {}; switchView('workcenter');");  // past the page's 20 seconds (Sept 29)
     check('coming back to the WorkCenter starts on Quote again',
           d.getElementById('wcType').value === 'Quote', d.getElementById('wcType').value);
   }catch(e){ check('the work order form', false, e.message); }
@@ -1512,8 +1517,8 @@ setTimeout(()=>{
         && /customerPage = Math\.min\(pages, Math\.max\(1, customerPage \+ step\)\);/.test(src));
   check('but not while a customer profile is open',
         /const profile = document\.getElementById\('customerProfileCard'\);\s*\n\s*if\(profile && profile\.style\.display !== 'none'\) return;/.test(src));
-  check('and stepping between customers needs a profile actually on screen',
-        /if\(!card \|\| card\.style\.display === 'none'\) return;/.test(src));
+  check('and stepping between customers needs a customer open (any of its tabs, 1eo)',
+        /if\(!bar \|\| bar\.style\.display === 'none'\) return;/.test(src));
   check('its pages are marked so they can be counted',
         /b\.dataset\.customerPage = String\(p\);/.test(src));
   check('and it already had arrows to press', /next\.textContent = '\u203a';/.test(src));
@@ -1642,7 +1647,7 @@ setTimeout(()=>{
     Array.from(d.querySelectorAll('#workCenterTypeControl .history-type-btn')).find(b => b.dataset.type === 'quotes').click();
     check('and after another WorkCenter tab', wc() === today, wc());
     d.getElementById('wcDate').value = '2027-01-05';
-    w.eval("switchView('customers'); switchView('workcenter');");
+    w.eval("switchView('customers'); webLeftAt = {}; switchView('workcenter');");  // past the page's 20 seconds (Sept 29)
     check('and after another page', wc() === today, wc());
   }catch(e){ check('several technicians', false, e.message); }
 }
@@ -1738,8 +1743,21 @@ setTimeout(()=>{
 {
   console.log('\n=== Website: windows close only from their buttons ===');
   const site = fs.readFileSync('customer-intake.html', 'utf8');
-  check('no window closes on a click outside it',
-        !/if\(e\.target === (overlay|view|box)\)/.test(site) && !/target\.id === 'techAssignOverlay'/.test(site));
+  // Tyrus asked for two exceptions: a picture (1ep) and a video (1em.10)
+  const outside = [];
+  const re = /if\(e\.target === (overlay|view|box)\)/g; let mm;
+  while((mm = re.exec(site))){
+    const before = site.slice(0, mm.index);
+    const fnAt = Math.max(before.lastIndexOf('function openPhotoWindow'), before.lastIndexOf('function openHistoryPhotoModal'),
+                          before.lastIndexOf('function openVisitVideos'));
+    const lastFn = before.lastIndexOf('\nfunction ') > before.lastIndexOf('\nasync function ') ? before.lastIndexOf('\nfunction ') : before.lastIndexOf('\nasync function ');
+    outside.push(fnAt !== -1 && fnAt >= lastFn - 1 ? 'allowed' : 'other');
+  }
+  check('the page-wide guard lets those two through, and only them',
+        /if\(el\.dataset && el\.dataset\.closesOutside === '1'\) return false;/.test(site)
+        && (site.match(/overlay\.dataset\.closesOutside = '1';/g) || []).length === 2);
+  check('no window closes on a click outside it, except a picture and a video',
+        outside.length === 2 && outside.every(x => x === 'allowed') && !/target\.id === 'techAssignOverlay'/.test(site), outside.join(','));
   check('and a page-wide guard ignores clicks on any backdrop, for windows added later',
         /windowsCloseOnlyFromButtons/.test(site) && /document\.addEventListener\('click', e=>\{\s*if\(isBackdrop\(e\.target\)\)\{ e\.stopPropagation\(\); e\.preventDefault\(\); \}\s*\}, true\);/.test(site));
 }

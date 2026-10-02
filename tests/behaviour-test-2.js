@@ -521,8 +521,8 @@ console.log('\n=== The Report tab opens on Serviced today ===');
     w.eval("switchView('report');");
     check('  tapping the tab shows Serviced today', showing() === 'serviced', showing());
 
-    // A previous choice must not stick
-    w.eval("setReportMode('reports'); switchView('home'); switchView('report');");
+    // A previous choice must not stick (once the tab's 30 seconds are up, Sept 29)
+    w.eval("setReportMode('reports'); switchView('home'); tabLeftAt = {}; switchView('report');");
     check('  coming back still shows Serviced today', showing() === 'serviced', showing());
 
     // Opening a specific report goes to Reports
@@ -532,7 +532,7 @@ console.log('\n=== The Report tab opens on Serviced today ===');
     // And the buttons reflect it
     check('  the Serviced button is highlighted when it should be',
           (function(){
-            w.eval("switchView('home'); switchView('report');");
+            w.eval("switchView('home'); tabLeftAt = {}; switchView('report');");   // past its 30 seconds
             return d.getElementById('btnReportModeServiced').className.indexOf('btn-primary') !== -1;
           })());
   }catch(e){
@@ -571,10 +571,10 @@ console.log('\n=== Today reopens a report only if it was left open ===');
         w.eval("currentUser = {id:'t1', name:'Alex'}; openVisit('a');");
         w.eval("switchView('options');");
         tapToday(w, d);
-        // Today means the route. Reopening the visit dropped technicians back
-        // inside a report they were trying to leave.
-        check(file + ' Today shows the route, not the open report',
-              w.eval('currentViewName') === 'home', w.eval('currentViewName'));
+        // Changed Sept 29 at Tyrus's request: an open report always comes back,
+        // so Today goes back into it (Return to route is how it's left)
+        check(file + ' Today goes back into the open report',
+              w.eval('currentViewName') === 'visit', w.eval('currentViewName'));
         check(file + ' and the draft is kept so the visit can resume',
               w.eval("visitDraft && visitDraft.customerId") === 'a',
               String(w.eval("visitDraft && visitDraft.customerId")));
@@ -1103,11 +1103,314 @@ console.log('\n=== Quick button colours ===');
 
 
 
+
+// ======================= Sept 30 – Oct 1 changes =======================
+console.log('\n=== Sept 30 – Oct 1: phone app ===');
+{
+  const today = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
+  const seed = {
+    customers: [
+      {id:'a', name:'Alpha One', active:true, day: today, technicianId:'t1', hasPool:true},
+      {id:'b', name:'Bravo Two', active:true, day: today, technicianId:'t1', hasPool:true},
+      {id:'s', name:'Spa Only', active:true, day: today, technicianId:'t1', hasPool:false, hasSpa:true},
+      {id:'ps', name:'Pool And Spa', active:true, day: 'Nonday', technicianId:'t1', hasPool:true, hasSpa:true}
+    ],
+    technicians: [{id:'t1', name:'Alex'}],
+    chemConfig: {pool:{chemicals:[{key:'chlorine', label:'Free chlorine', unit:'ppm', buttons:[5, 1, {v:3, c:'red'}]}],
+                       dosages:[{key:'acid', label:'Acid', unit:'gal'}]},
+                 spa:{chemicals:[],dosages:[]}, fountain:{chemicals:[],dosages:[]}}
+  };
+  const {dom} = load('app.html', {seed});
+  const w = dom.window, d = w.document;
+  w.console.warn = ()=>{};
+  w.Element.prototype.scrollIntoView = function(){};
+  try{
+    w.eval("currentUser={id:'t1',name:'Alex'}; renderHomeList();");
+    const stops = (d.getElementById('homeStopCount') || {}).textContent || '';
+    check('Today counts read left/total with a slash (1ey)', /^\d+\/\d+$/.test(stops.trim()), stops);
+    check('Today counts label reads "stops" (1ey)', ((d.getElementById('homeStopLabel') || {}).textContent || '').trim() === 'stops');
+  }catch(e){ check('Today counts', false, e.message); }
+
+  try{
+    w.eval("openVisit('a');");
+    const field = d.getElementById('pool_chem_chlorine').closest('.field');
+    const vals = Array.from(field.querySelectorAll('.quick-row button')).map(b => b.textContent.trim());
+    check('Quick buttons in number order, low to high (1fe)', vals.join(',') === '1,3,5', vals.join(','));
+    const row = field.querySelector('.quick-row');
+    check('Quick buttons sit on one swipeable line (1fa)', !!row && row.style.flexWrap === 'nowrap' && row.style.overflowX === 'auto');
+  }catch(e){ check('Quick buttons order and line', false, e.message); }
+
+  try{
+    w.eval("poolPhotoController.clear(); poolPhotoController.setAll(['data:image/png;base64,QQ==','data:image/png;base64,Qg==','data:image/png;base64,Qw==','data:image/png;base64,RA==']);");
+    check('A photo step holds up to three photos (1eq)', w.eval("poolPhotoController.getAll().length") === 3);
+    check('The first photo stays the main one (1eq)', w.eval("poolPhotoController.getData()") === 'data:image/png;base64,QQ==');
+    check('Take photo hides at three (1eq)', d.getElementById('btnTakePhoto').style.display === 'none');
+    w.eval("poolPhotoController.setAll(['data:image/png;base64,QQ==']);");
+    check('Take another reads "(2 of 3)" after one (1eq)', /2 of 3/.test(d.getElementById('btnTakePhoto').textContent));
+    check('No Remove photo button or × on thumbnails (1es)',
+      d.getElementById('btnRemovePhoto').style.display === 'none'
+      && !d.querySelector('#photoPreviewWrap [data-shot] button'));
+  }catch(e){ check('Up to three photos', false, e.message); }
+
+  try{
+    let deleted = false;
+    w.__del = ()=>{ deleted = true; };
+    // A press within 0.4 s of the screen changing is ignored on purpose; this one is later
+    w.eval("viewChangedAt = 0; openPhotoFullSize('data:image/png;base64,QQ==', ()=> window.__del());");
+    const del = Array.from(d.querySelectorAll('button')).find(b => b.textContent === 'Delete photo');
+    check('Full-size photo shows Delete photo (1es)', !!del);
+    if(del) del.click();
+    check('Delete photo removes it (1es)', deleted);
+  }catch(e){ check('Delete photo from full size', false, e.message); }
+
+  try{
+    const caps = w.eval("collectReportPhotos([{label:'Pool', reading:{beforePhoto:'data:x', photo:'data:a', photoMore:['data:b','data:c'], gatePhoto:'data:g', gatePhotoMore:['data:h']}}]).map(p => p.caption).join('|')");
+    check('Email photos keep labels, numbered when more than one (1eq)',
+      caps === 'Pool before|Pool after 1|Pool after 2|Pool after 3|Gate 1|Gate 2', caps);
+  }catch(e){ check('Email photo labels', false, e.message); }
+
+  try{
+    const html = w.eval("buildReportEmailHtml({name:'Alpha One', email:'a@example.com'}, 'Oct 1', [{label:'Spa', skipped:true, readingPairs:[], productPairs:[], servicePairs:[]}], {})");
+    check('A skipped body says "Skipped this visit" in the email (1fc)', /Skipped this visit/.test(html));
+  }catch(e){ check('Skipped body in the email', false, e.message); }
+
+  try{
+    w.eval("currentVisitCustomerId = 's';");
+    check('One body of water reads the pool\u2019s photo rules (1er)', w.eval("photoBodyType('spa')") === 'pool');
+    w.eval("currentVisitCustomerId = 'ps';");
+    check('Two or more bodies keep their own (1er)', w.eval("photoBodyType('spa')") === 'spa');
+    w.eval("currentVisitCustomerId = 'a';");
+  }catch(e){ check('Single body photo rules', false, e.message); }
+
+  try{
+    w.eval("appSettings.leftHanded = true; applyLeftHanded();");
+    check('Left-handed mode marks the page (1et)', d.body.classList.contains('left-handed'));
+    w.eval("appSettings.leftHanded = false; applyLeftHanded();");
+    check('Left-handed mode off clears it (1et)', !d.body.classList.contains('left-handed'));
+  }catch(e){ check('Left-handed mode', false, e.message); }
+
+  try{
+    check('Readings history covers 3 months (1fd)', w.eval("RECENT_READINGS_DAYS") === 91);
+    check('Videos only for technicians allowed them (1em)', w.eval("currentUser={id:'t1',name:'Alex'}; visitVideoAllowed()") === false);
+    check('A technician with Video ticked may record (1em)', w.eval("currentUser={id:'t1',name:'Alex',allowVideo:true}; visitVideoAllowed()") === true);
+    check('Up to three videos (1em)', w.eval("VISIT_VIDEOS_MAX") === 3);
+  }catch(e){ check('Readings window and videos', false, e.message); }
+
+  try{
+    w.eval("promptHeadsUpText({id:'b', name:'Bravo Two', phone:'6235550101'}, 2);");
+    const go = Array.from(d.querySelectorAll('button')).find(b => b.textContent === 'Open text message');
+    check('Automatic On my way asks for one tap to open the text (1fb)', !!go);
+    const later = Array.from(d.querySelectorAll('button')).find(b => b.textContent === 'Not now');
+    if(later) later.click();
+  }catch(e){ check('Automatic On my way prompt', false, e.message); }
+
+  try{
+    const vids = d.querySelectorAll('video[controls]');
+    w.eval("openVideoFullScreen('data:video/mp4;base64,AA==', ()=>{});");
+    const v = d.querySelector('video[controls]');
+    check('App video players offer no full screen of their own (1em.14)',
+      !!v && /nofullscreen/.test(v.getAttribute('controlsList') || ''));
+    const del = Array.from(d.querySelectorAll('button')).find(b => b.textContent === 'Delete video');
+    check('Full-screen video has Delete video (1em.11)', !!del);
+  }catch(e){ check('Video viewer', false, e.message); }
+}
+
+console.log('\n=== Sept 30 – Oct 1: website ===');
+{
+  const seed = {
+    technicians: [{id:'t1', name:'Alex'}],
+    customers: [{id:'c1', name:'Alpha One', active:true}],
+    skippedVisits: undefined,
+    chemConfig: {pool:{chemicals:[],dosages:[]}, spa:{chemicals:[],dosages:[]}, fountain:{chemicals:[],dosages:[]}}
+  };
+  delete seed.skippedVisits;
+  const {dom} = load('customer-intake.html', {seed, beforeParse(w){
+    w.localStorage.setItem('weir:skippedVisits:c1', JSON.stringify([{id:'skip_1', date:'2026-09-29', timestamp:'2026-09-29T16:00:00.000Z', reason:'Gate locked'}]));
+  }});
+  const w = dom.window, d = w.document;
+  w.console.warn = ()=>{};
+  w.Element.prototype.scrollIntoView = function(){};
+
+  try{
+    const sorted = w.eval("(function(){ const it = {buttons:[5, 1, {v:3, c:'red'}]}; sortQuickButtons(it); return JSON.stringify(it.buttons); })()");
+    check('Website quick buttons sort low to high (1fe)', sorted === '[1,{"v":3,"c":"red"},5]', sorted);
+    const kept = w.eval("(function(){ const it = {buttons:[5, 1, 3], buttonsOrdered:true}; sortQuickButtons(it); return JSON.stringify(it.buttons); })()");
+    check('A dragged order is kept (1fe)', kept === '[5,1,3]', kept);
+  }catch(e){ check('Quick button order', false, e.message); }
+
+  try{
+    const all = w.eval("(function(){ const it = {buttons:[1, 2, 3]}; colorAllButtons(it, 'green'); return JSON.stringify(it.buttons); })()");
+    check('All colors paints every button, order unchanged (1ff)', all === '[{"v":1,"c":"green"},{"v":2,"c":"green"},{"v":3,"c":"green"}]', all);
+    check('A field\u2019s own colour starts new buttons (1ff.3)', w.eval("newButtonColor({buttonColor:'red'})") === 'red');
+  }catch(e){ check('Quick button colours', false, e.message); }
+
+  try{
+    const pairs = w.eval("reportPhotoPairs({beforePhoto:'b1', photo:'a1', photoMore:['a2']}).map(p => p[0]).join('|')");
+    check('Website report photos numbered when more than one (1eq)', pairs === 'Before|After 1|After 2', pairs);
+  }catch(e){ check('Website photo labels', false, e.message); }
+
+  try{
+    const visits = w.eval("JSON.stringify(reportVisitsFor(customers.find(c => c.id === 'c1')).map(v => v.parts.map(p => p.label)))");
+    check('A whole skipped visit is a "Service skipped" report (1fc)', /Service skipped/.test(visits), visits);
+  }catch(e){ check('Skipped visit report', false, e.message); }
+
+  try{
+    w.eval("switchView('technicians');");
+    const tab = d.querySelector('[data-techtab="photos"], #techTabPhotos, [data-tab="photos"]');
+    if(tab) tab.click();
+    w.eval("renderPhotoRequirements();");
+    const first = d.querySelector('#photoRequireRows [data-photo-step]');
+    check('Photo requirements: Video is the first row (1em.6)', !!first && first.dataset.photoStep === 'video', first ? first.dataset.photoStep : 'none');
+    check('Its note is hidden while the row is closed (1em.6b)', !/delete themselves after 7 days/.test(d.getElementById('photoRequireRows').textContent));
+  }catch(e){ check('Photo requirements Video row', false, e.message); }
+
+  try{
+    const svc = w.eval("JSON.stringify(equipmentServiceFor('Filter', {filterTypeChoice:'Sand'}))");
+    check('A sand filter gets a Backwashed date (1en)', /lastBackwashed/.test(svc), svc);
+    check('A cartridge filter gets none (1en)', w.eval("equipmentServiceFor('Filter', {filterTypeChoice:'Cartridge'})") === null);
+  }catch(e){ check('Equipment service dates', false, e.message); }
+}
+
+console.log('\n=== Sept 30: one company per browser ===');
+{
+  const {dom} = load('customer-intake.html', {seed: {customers: [{id:'x', name:'Old Company Customer', active:true}]}, beforeParse(w){
+    w.localStorage.setItem('weir:sync:state:other-co', JSON.stringify({pulledOnce: true, edits: {}, records: {edits: {}}}));
+  }});
+  const w = dom.window;
+  w.console.warn = ()=>{};
+  try{
+    const prefix = w.eval("SYNC_PREFIX");
+    w.localStorage.setItem(prefix + 'state:other-co', JSON.stringify({pulledOnce: true, edits: {}, records: {edits: {}}}));
+    const r = w.eval("siteMatchCompany('new-co')");
+    check('Signing in as another company clears the old copy (1eh)', r === 'reload', r);
+    check('The old company\u2019s customers are gone from this browser (1eh)', w.localStorage.getItem('weir:customers') === null);
+    check('This browser is now marked for the new company (1eh)', JSON.parse(w.localStorage.getItem('weir:dataCompany')) === 'new-co');
+    w.localStorage.setItem(prefix + 'state:third-co', JSON.stringify({v: 2, pulledOnce: true, edits: {k: {name: '2026-10-01T10:00:00Z'}}, records: {edits: {}}}));
+    check('Unsent changes of another company stop the switch (1eh)', w.eval("siteMatchCompany('fourth-co')") === 'blocked');
+  }catch(e){ check('One company per browser', false, e.message); }
+}
+
+
 // Checks that had to wait for an app to finish starting up.
-setTimeout(()=>{
+setTimeout(async ()=>{
   deferred.forEach(fn => {
     try{ fn(); }catch(e){ check('deferred check', false, e.message); }
   });
+  // Today's server snippets and company separation, against real Postgres
+  await serverOct1();
   console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);
 }, 2500);
+
+// ======== Sept 30 – Oct 1: the server (real snippets, real Postgres) ========
+// Needs: bash sync-test-setup.sh
+async function serverOct1(){
+  const { Pool } = require('pg');
+  const pool = new Pool({host: '127.0.0.1', user: 'postgres', password: 'pw', database: 'pl', max: 4});
+  const CO = 'aaaaaaaa-0000-0000-0000-0000000000a1', OTHER = 'bbbbbbbb-0000-0000-0000-0000000000b2';
+  const OWNER = '11111111-0000-0000-0000-0000000000a1', OTHER_OWNER = '22222222-0000-0000-0000-0000000000b2';
+  const TECH = '33333333-0000-0000-0000-0000000000a1';
+  async function asUser(uid, sql, params){
+    const c = await pool.connect();
+    try{
+      await c.query('begin');
+      await c.query('set local role authenticated');
+      await c.query("select set_config('request.uid', $1, true)", [uid]);
+      const r = await c.query(sql, params);
+      await c.query('commit');
+      return r;
+    }catch(e){ await c.query('rollback').catch(()=>{}); throw e; }
+    finally{ c.release(); }
+  }
+  try{ await pool.query('select 1'); }
+  catch(e){ check('Postgres is reachable for the server checks (run: bash sync-test-setup.sh)', false); await pool.end().catch(()=>{}); return; }
+  try{
+    // Two companies, each with an owner; Triffic with a technician; something of every kind for both
+    await pool.query('delete from public.members where company_id in ($1, $2)', [CO, OTHER]);
+    await pool.query('delete from public.companies where id in ($1, $2)', [CO, OTHER]);
+    await pool.query('delete from auth.users where id in ($1, $2, $3)', [OWNER, OTHER_OWNER, TECH]);
+    await pool.query(`insert into auth.users(id, email) values ($1, 'o@triffic.test'), ($2, 'o@affinity.test'), ($3, 'tech-x@accounts.weir.invalid')`, [OWNER, OTHER_OWNER, TECH]);
+    await pool.query(`insert into public.companies(id, name, code) values ($1, 'Triffic Test', 'TTEST1'), ($2, 'Affinity Test', 'ATEST1')`, [CO, OTHER]);
+    await pool.query(`insert into public.members(user_id, company_id, role, name) values ($1, $2, 'owner', 'John'), ($3, $4, 'owner', 'Mike')`, [OWNER, CO, OTHER_OWNER, OTHER]);
+    await pool.query(`insert into public.members(user_id, company_id, role, name, technician_id, username) values ($1, $2, 'technician', 'Pat', 't_pat', 'pat')`, [TECH, CO]);
+    for(const [co, tag] of [[CO, 'tri'], [OTHER, 'aff']]){
+      await pool.query(`insert into public.customers(company_id, id, data) values ($1, $2, $3)`, [co, 'cust_' + tag, {name: tag + ' customer', technicianId: 't_pat'}]);
+      await pool.query(`insert into public.company_records(company_id, kind, id, data) values ($1, 'technician', $2, $3)`, [co, 't_' + tag, {name: tag + ' tech'}]);
+      await pool.query(`insert into public.visits(company_id, customer_id, kind, id, data, occurred_at, service_date) values ($1, $2, 'reading', $3, '{}', now(), current_date)`, [co, 'cust_' + tag, 'v_' + tag]);
+      await pool.query(`insert into public.photos(company_id, id, customer_id, kind, path, taken_at) values ($1, $2, $3, 'after', $4, now())`, [co, 'p_' + tag, 'cust_' + tag, co + '/cust_' + tag + '/p_' + tag]);
+      await pool.query(`insert into public.quote_responses(company_id, quote_id, token) values ($1, $2, $3)`, [co, 'q_' + tag, 'tok_' + tag + '_' + Date.now()]);
+    }
+
+    console.log('\n=== Server: no company sees another\u2019s data ===');
+    for(const [who, uid, own] of [['Triffic owner', OWNER, CO], ['Affinity owner', OTHER_OWNER, OTHER], ['Triffic technician', TECH, CO]]){
+      let seen = 0; const where = [];
+      for(const t of ['customers', 'company_records', 'visits', 'photos', 'quote_responses', 'members', 'customer_versions', 'record_versions']){
+        const r = await asUser(uid, `select count(*)::int n from public.${t} where company_id <> $1`, [own]);
+        if(r.rows[0].n){ seen += r.rows[0].n; where.push(t); }
+      }
+      const co = await asUser(uid, 'select count(*)::int n from public.companies where id <> $1', [own]);
+      seen += co.rows[0].n;
+      check(who + ' sees nothing of any other company', seen === 0, where.join(', '));
+    }
+    const mine = await asUser(OWNER, 'select count(*)::int n from public.customers', []);
+    check('and still sees its own', mine.rows[0].n >= 1);
+
+    console.log('\n=== Server: snippet 22, videos ===');
+    const vid = await asUser(TECH, `select public.push_photo('vid_1', 'cust_tri', 'video', 'pool', 'v_tri', null, $1, 2000000, now() - interval '8 days', current_date) r`, [CO + '/cust_tri/vid_1']);
+    check('a technician can send a video (kind video accepted)', vid.rows[0].r.result === 'saved', JSON.stringify(vid.rows[0].r));
+    const techSees = await asUser(TECH, `select count(*)::int n from public.photos where kind = 'video'`, []);
+    check('a technician can\u2019t see videos', techSees.rows[0].n === 0);
+    const techPhotos = await asUser(TECH, `select count(*)::int n from public.photos where kind <> 'video'`, []);
+    check('but still sees their customers\u2019 photos', techPhotos.rows[0].n >= 1);
+    const ownerSees = await asUser(OWNER, `select count(*)::int n from public.photos where kind = 'video'`, []);
+    check('the owner sees the video', ownerSees.rows[0].n === 1);
+    const old = await asUser(OWNER, `select id from public.photos_past_keeping()`, []);
+    check('a video over 7 days old is listed for the clean-up', old.rows.some(r => r.id === 'vid_1'));
+    let refused = false;
+    try{ await asUser(TECH, `select public.push_photo('bad_1', 'cust_tri', 'movie', 'pool', null, null, $1, 1, now(), current_date)`, [CO + '/cust_tri/bad_1']); }
+    catch(e){ refused = true; }
+    check('an unknown kind is still refused', refused);
+
+    console.log('\n=== Server: snippet 20, quote expiry days ===');
+    let bad = false;
+    try{ await pool.query(`update public.quote_responses set expires_days = 400 where company_id = $1`, [CO]); }catch(e){ bad = true; }
+    check('expiry days must be 1 to 365', bad);
+    await pool.query(`update public.quote_responses set expires_days = 14 where company_id = $1`, [CO]);
+    const ex = await pool.query(`select expires_days from public.quote_responses where company_id = $1`, [CO]);
+    check('a quote keeps its own number of days', ex.rows[0].expires_days === 14);
+
+    console.log('\n=== Server: snippet 23, deleting a technician shuts them out at once ===');
+    await pool.query(`insert into public.company_records(company_id, kind, id, data) values ($1, 'technician', 't_pat', '{"name":"Pat","username":"pat"}')
+                      on conflict (company_id, kind, id) do update set data = excluded.data, deleted = false`, [CO]);
+    await pool.query(`insert into public.record_versions(company_id, kind, record_id, data) values ($1, 'technician', 't_pat', '{"name":"Pat old"}')`, [CO]).catch(()=>{});
+    let notOwner = false;
+    try{ await asUser(TECH, `select public.remove_technician_account('t_pat')`, []); }catch(e){ notOwner = true; }
+    check('only an owner can delete a technician', notOwner);
+    await asUser(OWNER, `select public.remove_technician_account('t_pat')`, []);
+    const pw = await pool.query('select encrypted_password p from auth.users where id = $1', [TECH]);
+    check('their password stops working at once', pw.rows[0] && pw.rows[0].p === '');
+    const seesNow = await asUser(TECH, `select count(*)::int n from public.customers`, []);
+    check('they can read nothing at once', seesNow.rows[0].n === 0);
+    const free = await asUser(OWNER, `select public.username_available('pat') ok`, []);
+    check('their username is free straight away', free.rows[0].ok === true);
+    const rec = await pool.query(`select data, deleted from public.company_records where company_id = $1 and kind = 'technician' and id = 't_pat'`, [CO]);
+    check('their profile is an empty deleted marker', rec.rows[0] && rec.rows[0].deleted === true && JSON.stringify(rec.rows[0].data) === '{}');
+    const rv = await pool.query(`select count(*)::int n from public.record_versions where company_id = $1 and kind = 'technician' and record_id = 't_pat'`, [CO]);
+    check('and no earlier versions are kept', rv.rows[0].n === 0);
+    const held = await asUser(TECH, `select public.push_photo('held_1', 'cust_tri', 'after', 'pool', 'v_tri', null, $1, 1000, now(), current_date) r`, [CO + '/cust_tri/held_1']);
+    check('for a day, their phone may still send what it held', held.rows[0].r.result === 'saved');
+    const told = await asUser(TECH, `select public.my_membership() m`, []);
+    check('and is told it was removed, and until when', told.rows[0].m.removed === true && !!told.rows[0].m.upload_until);
+    await pool.query(`update public.members set removed_at = now() - interval '2 days' where user_id = $1`, [TECH]);
+    let late = false;
+    try{ await asUser(TECH, `select public.push_photo('held_2', 'cust_tri', 'after', 'pool', 'v_tri', null, $1, 1000, now(), current_date)`, [CO + '/cust_tri/held_2']); }catch(e){ late = true; }
+    check('after the day, nothing more is accepted', late);
+    await asUser(OWNER, `select public.username_available('anyone')`, []);
+    await asUser(OWNER, `select public.remove_technician_account('nobody')`, []);
+    const u = await pool.query('select count(*)::int n from auth.users where id = $1', [TECH]);
+    check('then the account is deleted the next time technicians are managed', u.rows[0].n === 0);
+    const otherCo = await pool.query(`select count(*)::int n from public.company_records where company_id = $1 and deleted = false`, [OTHER]);
+    check('the other company is untouched', otherCo.rows[0].n === 1);
+  }catch(e){ check('server checks, Sept 30 – Oct 1', false, e.message); }
+  await pool.end().catch(()=>{});
+}

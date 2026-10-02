@@ -562,7 +562,7 @@ Last updated: Sept 27, 2026
 **1el. App: tap-to-talk microphone on every note box** — *not yet tested (Sept 30)*
 *(File: `app.html`)*
 1el.1. Every note box in the app (visit notes for pool / spa / others, skip reason and skip note, access and equipment notes, job notes, and any made later) gets a small round microphone at its bottom right. One tap starts voice-to-text (no holding); the words are added to the end of the note and saved as if typed. It keeps listening while it hears speech, restarting itself through the phone's own pauses, and stops after 6 seconds with nothing heard, on a second tap, when the note box goes away, or when the app is left. Separate from the hold-to-talk readings button (it won't start while that one is listening). Needs the browser's speech recognition (Chrome on Android; Safari on iPhone — may not be available inside an iPhone home-screen app). **Tyrus tested Oct 1 ✓**
-1el.2. *(Reported Oct 1)* Words repeated a lot. Android's speech in continuous mode hands back each phrase again as it grows, all marked final, so words were added over and over. Now each listen is one phrase (the mic restarts itself between phrases, so it still keeps going while you talk), and a phrase that only repeats or extends the last one adds just the new words. *Not yet tested.*
+1el.2. *(Reported Oct 1)* Words repeated a lot. Android's speech in continuous mode hands back each phrase again as it grows, all marked final, so words were added over and over. Now each listen is one phrase (the mic restarts itself between phrases, so it still keeps going while you talk), and a phrase that only repeats or extends the last one adds just the new words. *Not yet tested.* **Tyrus tested Oct 1 ✓**
 
 **1em. Visit video (office only, kept 7 days)** — *not yet tested (Sept 30); snippet 22 run and checked on live and beta (push_photo takes 'video', videos office only, clean-up includes videos over 7 days, bucket 10 MB)*
 *(Files: `app.html`, `customer-intake.html`, `tests/sql/22 - visit videos.sql`)*
@@ -571,15 +571,24 @@ Last updated: Sept 27, 2026
 1em.3. Owners and admins see **▶ Watch video** on the report (app Report tab, admin version only; website service report), played from the phone's copy or fetched from the office; after 7 days it reads "Video deleted after 7 days". Never in the customer's email (the email's photo list doesn't include it). Technicians can't see videos on the server (snippet 22's read rule). **Tyrus tested Oct 1 ✓**
 1em.4. Server (snippet 22): push_photo accepts kind 'video'; videos readable by owners/admins only; photos_past_keeping lists videos over 7 days old, so the office website's daily clean-up deletes them from storage; the bucket limit is 10 MB (was 5 MB). The clean-up runs when the office website is open (once a day).
 1em.5. *(Sept 30)* Up to **3 videos** per visit, numbered in the order recorded: each shows with its own Remove; the button reads "Record another (2 of 3)" and goes at 3. Saved as `video` + `videoMore`, uploaded as their own videos a second apart (order kept). Reports show "Watch video 1 / 2 / 3" (just "Watch video" for one). The Photo requirements note and the app's box say "up to 3 videos of 15 seconds each". *Not yet tested.* **Tyrus tested Oct 1 ✓**
-1em.6. *(Oct 1)* Photo requirements: the Video row is first (above Before photo), and its note shows only while the row is open. *Not yet tested.*
-1em.7. *(Reported Oct 1)* In the app the report showed the video twice (the website was fine): the report is drawn twice in quick succession after a visit, and each drawing added its own button. Now any earlier video buttons are cleared before they're added. The video window (app and website) has **Download video**, saving it as .mp4 or .webm (whichever the phone recorded). *Not yet tested.*
-1em.8. *(Oct 1)* One button on the report (app and website): "▶ Watch video", or "▶ Watch videos (3)". It opens one window titled "Video 1 of 3" with ‹ › to step between them (a sideways swipe too, in the app), Download video for the one showing, and Close. Each video is sized to itself (no black bars beside a tall phone video). *Not yet tested.*
+1em.6. *(Oct 1)* Photo requirements: the Video row is first (above Before photo), and its note shows only while the row is open. *Not yet tested.* **Tyrus tested Oct 1 ✓**
+1em.6b. *(Oct 1)* The Video row's note now sits inside the row when it's open (a small pale-teal box above the technicians), not beside its name; closed, there's no note. *Not yet tested.* The note now ends: "Videos can be downloaded in the Reports tab." **Tyrus tested Oct 1 ✓**
+1em.7. *(Reported Oct 1)* In the app the report showed the video twice (the website was fine): the report is drawn twice in quick succession after a visit, and each drawing added its own button. Now any earlier video buttons are cleared before they're added. The video window (app and website) has **Download video**, saving it as .mp4 or .webm (whichever the phone recorded). *Not yet tested.* **Tyrus tested Oct 1 ✓**
+1em.8. *(Oct 1)* One button on the report (app and website): "▶ Watch video", or "▶ Watch videos (3)". It opens one window titled "Video 1 of 3" with ‹ › to step between them (a sideways swipe too, in the app), Download video for the one showing, and Close. Each video is sized to itself (no black bars beside a tall phone video). *Not yet tested.* **Tyrus tested Oct 1 ✓**
+1em.9. *(Oct 1)* Sizing to the video (no black side bars) is for the app only: the website's video window is back to its full-width player. In the app, the visit page's video preview is now sized to the video too. The recorder goes full screen and lets the screen turn, so a video can be filmed holding the phone sideways (the app itself stays upright otherwise); it turns back upright when the recorder closes. *Not yet tested.* **Tyrus tested Oct 1 ✓**
+1em.10. *(Oct 1)* The website's video window closes on a click anywhere outside it, or Escape, as well as Close (like a picture). *Not yet tested.* **Tyrus tested Oct 1 ✓**
+1em.11. *(Oct 1)* App, visit page: the videos are small numbered thumbnails side by side, the same size as the photo thumbnails, with a play mark. A tap opens one full screen (playing), with **Delete video** above a "Tap outside the video to close" bubble; tapping the video plays / pauses, tapping around it closes, and the phone's Back closes it. The Remove video buttons are gone. The box's note adds "Tap a video to watch it full screen." *Not yet tested.* **Tyrus tested Oct 1 ✓**
+1em.12. *(Reported Oct 1)* Pressing Record showed Chrome's "…github.io — to exit full screen…" bubble: that's Chrome's own notice whenever a page goes full screen, and no page can hide it. The recorder no longer goes full screen; it only asks the phone to allow the screen to turn while recording. If the phone won't allow that without full screen, filming sideways won't turn the picture (see the reply for the alternative). *Not yet tested.* **Tyrus tested Oct 1 ✓**
+1em.13. *(Oct 1)* Reports (the app's Report tab and the website's service reports): **Download all videos** ("Download video" for one) to the right of Watch videos. It saves each video in turn, a moment apart, named weir-video-<date>-1, -2…, and says how many it saved. *Not yet tested.* **Tyrus tested Oct 1 ✓**
+1em.14. *(Reported Oct 1)* The video player's own full-screen button (app) also brought Chrome's "to exit full screen" bubble. The app's players no longer offer full screen (or picture-in-picture / cast); the windows they're in already fill the screen. *Not yet tested.* **Tyrus tested Oct 1 ✓**
+1em.15. *(Oct 1)* Tyrus: landscape filming matters more than the bubble. The recorder goes full screen again while it's open (so the phone lets the screen turn), and Chrome's "to exit full screen" bubble shows briefly when it opens. Chrome has no setting to turn that bubble off. The players keep no full-screen button of their own (1em.14). *Not yet tested.*
+1em.16. *(Oct 1)* Replaces 1em.15: video now works like photos. No full screen (so no Chrome bubble). When Record is pressed, the phone's tilt decides; held on its side, each frame is turned as it's recorded (through a canvas, sound kept), so the saved video is landscape. The direction is fixed for the clip; the on-screen preview stays upright. iPhone left alone. *Not yet tested.* **Tyrus tested Oct 1 ✓**
 
 **1en. Equipment: backwashed / salt cell cleaned on a date** — *not yet tested (Sept 30)*
 *(Files: `customer-intake.html`, `app.html`)*
 1en.1. Website → customer → Equipment: a Sand or DE filter gets a **Backwashed** button, and a Chlorination set to Salt Cell a **Cleaned** button, between its choice buttons and the Type box. It reads "Backwashed Sep 28" (the later of the date set here and the last visit a technician ticked it on) or "Backwashed: set date". Pressing it asks for the day (today to start, no future dates): Save, Clear date, Cancel. Kept on the equipment item (`lastBackwashed`, `saltCellCleanedOn`). **Tyrus tested Oct 1 ✓**
 1en.2. App: the visit's "Filter backwashed" / "Salt cell cleaned" buttons say "Last done …" from the later of that office date and the last visit it was ticked on. **Tyrus tested Oct 1 ✓**
-1en.3. *(Oct 1)* That "Last done …" now sits inside the Filter backwashed / Salt cell cleaned button, on a small second line, instead of underneath it. *Not yet tested.*
+1en.3. *(Oct 1)* That "Last done …" now sits inside the Filter backwashed / Salt cell cleaned button, on a small second line, instead of underneath it. *Not yet tested.* **Tyrus tested Oct 1 ✓**
 
 **1eo. Website: ← → between customers on every customer tab** — *not yet tested (Sept 30)*
 *(File: `customer-intake.html`)*
@@ -587,7 +596,7 @@ Last updated: Sept 27, 2026
 
 **1ep. Website: a picture closes on an outside click or Escape** — *not yet tested (Sept 30)*
 *(File: `customer-intake.html`)*
-1ep.1. Tyrus asked: the photo window (a report's photos, or an equipment photo full size) closes from Close, a click anywhere outside it, or Escape. An exception to "windows close only from their buttons"; every other window is unchanged.
+1ep.1. Tyrus asked: the photo window (a report's photos, or an equipment photo full size) closes from Close, a click anywhere outside it, or Escape. An exception to "windows close only from their buttons"; every other window is unchanged. **Tyrus tested Oct 1 ✓**
 
 **1eq. Up to three photos per before / after / closed gate step** — *not yet tested (Sept 30)*
 *(Files: `app.html`, `customer-intake.html`)*
@@ -607,13 +616,15 @@ Last updated: Sept 27, 2026
 
 **1et. App: left-handed mode** — *not yet tested (Sept 30)*
 *(File: `app.html`)*
-1et.1. Settings → **Left-handed mode** (everyone, this phone only; `appSettings.leftHanded`, not a company setting). When on:
+1et.1. Settings → **Left-handed mode** (everyone, this phone only; `appSettings.leftHanded`, not a company setting). When on: **Tyrus tested Oct 1 ✓**
 - Today: Reverse route order on the left, the day heading on the right; the counts stay centred; the date row is ‹ › then the calendar on the left, with the date centred in the space to their right.
 - A technician's route (Techs tab): ← Back on the left, the stops left / jobs left on the right; the same date row as Today.
 - Serviced (an admin's Report tab, a technician's Serviced Pools): ‹ › on the left, the day centred to their right.
 - Every visit step on every body of water: Return to route / Back on the left and the heading on the right (with Skip still in the middle, and an admin's Save report still beside Back).
 - Customer rows are unchanged (On my way stays on the right). Done with CSS on a class on the page, so nothing else changes.
 1et.2. *(Sept 30)* Turning left-handed mode on puts the voice entry microphone on the left of the step button (Voice entry → Left of button); it can be switched back to Right of button with left-handed mode still on. Turning left-handed mode off puts it back on the right. Left-handed mode is kept with this phone's own settings (like the microphone's side). *Not yet tested.* **Tyrus tested Oct 1 ✓**
+1et.3. *(Oct 1)* In left-handed mode the headings sit right against the right edge: each visit step's heading (Chemical readings, Chemicals added, Before / After photos…) and the date on Today, a technician's route and Serviced. The buttons are unchanged. *Not yet tested.* **Tyrus tested Oct 1 ✓**
+1et.4. *(Oct 1)* Corrected: the dates go back to centred in the space right of their buttons (Today, a technician's route, Serviced); it's Today's day name (Monday…Sunday) on the top row that sits right against the right edge. The visit step headings stay right-aligned. *Not yet tested.* **Tyrus tested Oct 1 ✓**
 
 **1eu. App: Skip button** — *not yet tested (Sept 30)*
 *(File: `app.html`)*
@@ -621,8 +632,8 @@ Last updated: Sept 27, 2026
 
 **1ev. App: a visit reads as one card** — *not yet tested (Sept 30)*
 *(File: `app.html`)*
-1ev.1. The Pool / Spa / Fountain / Equipment tabs card joins onto whatever is showing below it (the step, the equipment page, the skipped screen), and on the last step the service notes and Submit join onto the after photos: square where they meet, a thin line between parts, rounded only at the very top and bottom. Follows every change of step or tab by itself (it watches which cards are showing). The tabs still stay at the top while scrolling.
-1ev.2. *(Reported Oct 1)* Scrolling a report moved the tabs card up a little, and the readings showed past its corners. The tabs are now held like Today's header: they stay exactly where they start, with a solid page-coloured backing above and beside them, so the report disappears as it reaches the bottom edge of the tabs (square there when joined). *Not yet tested.*
+1ev.1. The Pool / Spa / Fountain / Equipment tabs card joins onto whatever is showing below it (the step, the equipment page, the skipped screen), and on the last step the service notes and Submit join onto the after photos: square where they meet, a thin line between parts, rounded only at the very top and bottom. Follows every change of step or tab by itself (it watches which cards are showing). The tabs still stay at the top while scrolling. **Tyrus tested Oct 1 ✓**
+1ev.2. *(Reported Oct 1)* Scrolling a report moved the tabs card up a little, and the readings showed past its corners. The tabs are now held like Today's header: they stay exactly where they start, with a solid page-coloured backing above and beside them, so the report disappears as it reaches the bottom edge of the tabs (square there when joined). *Not yet tested.* **Tyrus tested Oct 1 ✓**
 
 **1ew. Voice entry setting's wording** — *not yet tested (Sept 30)*
 *(Files: `app.html`, `customer-intake.html`)*
@@ -636,11 +647,12 @@ Last updated: Sept 27, 2026
 *(File: `app.html`)*
 1ey.1. On Today and a technician's route (Techs tab) the counts read left / the day's total with a slash ("0/0", "5/8 stops", "1/2 jobs") instead of "5 of 8 stops left". The total is the day's whole count (left + done), so it holds while the first number counts down. The website's Today's Route keeps its own wording. **Tyrus tested Oct 1 ✓**
 1ey.2. *(Sept 30)* Those counts are dark teal now (#114B4F, the app's dark teal), not amber. *Not yet tested.* **Tyrus tested Oct 1 ✓**
-1ey.3. *(Oct 1)* About double the space between "stops" and the jobs number, on Today and a technician's route. *Not yet tested.*
+1ey.3. *(Oct 1)* About double the space between "stops" and the jobs number, on Today and a technician's route. *Not yet tested.* **Tyrus tested Oct 1 ✓**
 
 **1ez. Website: On my way message on the profile** — *not yet tested (Sept 30)*
 *(File: `customer-intake.html`)*
-1ez.1. The customer profile's "On my way goes to" is now **On my way message**, and its row also says "Automatic, 2 stops before" when that's on. Its editor has, on the same line as "Tell them by", **Automatic on my way message** with a switch; turned on, a "N stops before" picker (1–5, 2 to start) appears beside it. Saved with Done, with the rest. The Automatic on my way card is gone from Customer Customization (same setting, `autoNotify` / `autoNotifyLead`, so nothing set before is lost).
+1ez.1. The customer profile's "On my way goes to" is now **On my way message**, and its row also says "Automatic, 2 stops before" when that's on. Its editor has, on the same line as "Tell them by", **Automatic on my way message** with a switch; turned on, a "N stops before" picker (1–5, 2 to start) appears beside it. Saved with Done, with the rest. The Automatic on my way card is gone from Customer Customization (same setting, `autoNotify` / `autoNotifyLead`, so nothing set before is lost). **Tyrus tested Oct 1 ✓**
+1ez.2. *(Oct 1)* The Automatic on my way message switch and its stops-before picker sit just after Tell them by, with a small gap, instead of at the far right of the line. *Not yet tested.* **Tyrus tested Oct 1 ✓**
 
 **1fa. App: quick buttons on one line** — *not yet tested (Sept 30)*
 *(File: `app.html`)*
@@ -663,8 +675,9 @@ Last updated: Sept 27, 2026
 *(Files: `app.html`, `customer-intake.html`)*
 1fd.1. The table above a visit's readings is now **Last 3 months** (was 4 weeks). It's a fixed window showing the dates and three rows; it scrolls down for the rest of the rows and sideways for older dates, with the dates and the row names held in place while scrolling. **Tyrus tested Oct 1 ✓**
 1fd.2. New company setting **Show chemicals added too** (website Settings, and admins in the app, under Previous readings on visits; off to start; `showRecentDosages`). When on, a "Chemicals added" section under the readings lists what was put in at each of those visits, with units; — where nothing was added. **Tyrus tested Oct 1 ✓**
-1fd.3. *(Oct 1)* The dates row is the same height as every other row (one fixed row height for all; a skipped date reads "Sep 23 · Skipped" on one line), and the window shows exactly the dates and three rows. *Not yet tested.*
-1fd.4. *(Reported Oct 1)* (a) The dates row was see-through while scrolling: its colour (`--surface-alt`) isn't defined in the app, so it had none. The dates row, the Reading column and the Chemicals added heading row now have solid colours. (b) Dosages showed no unit: each dosage row now names its unit ("Acid (gal)") and its amounts carry it, using the unit set on Readings and Dosages, or the built-in one for a standard dosage set up without one. *Not yet tested.*
+1fd.3. *(Oct 1)* The dates row is the same height as every other row (one fixed row height for all; a skipped date reads "Sep 23 · Skipped" on one line), and the window shows exactly the dates and three rows. *Not yet tested.* **Tyrus tested Oct 1 ✓**
+1fd.4. *(Reported Oct 1)* (a) The dates row was see-through while scrolling: its colour (`--surface-alt`) isn't defined in the app, so it had none. The dates row, the Reading column and the Chemicals added heading row now have solid colours. (b) Dosages showed no unit: each dosage row now names its unit ("Acid (gal)") and its amounts carry it, using the unit set on Readings and Dosages, or the built-in one for a standard dosage set up without one. *Not yet tested.* **Tyrus tested Oct 1 ✓**
+1fd.5. *(Oct 1)* Tyrus: dosages in the readings history show no units at all (name and amount alone). The solid header and column from 1fd.4 stay. *Not yet tested.* **Tyrus tested Oct 1 ✓**
 
 **1fe. Quick buttons in number order** — *not yet tested (Sept 30)*
 *(Files: `customer-intake.html`, `app.html`)*
@@ -674,12 +687,27 @@ Last updated: Sept 27, 2026
 *(File: `customer-intake.html`)*
 1ff.1. Each Quick buttons window (Readings and Dosages, Customer Customization, seasons) has **All colors** at the far right of the + Add button row: pick a colour and every button in that list takes it. **Tyrus tested Oct 1 ✓**
 1ff.2. Beside **+ Add chemical**: **All quick button colors**. Pick a colour and every quick button on this body of water (its chemicals and its dosages) takes it; tick **Apply to all bodies of water** in the chooser to do pool, spa and extras together. On Customer Customization, "all" covers that customer's own setups (bodies still following the company's setup aren't changed). **Tyrus tested Oct 1 ✓**
-1ff.3. *(Oct 1)* New buttons start in the chosen colour: a field's own **All colors** choice first (`buttonColor` on the field), otherwise the body of water's **All quick button colors** (`defaultButtonColor` on its lists), otherwise blue. Using All quick button colors again recolours everything there and clears the fields' own choices (they were just painted over). Button order is never changed by either. *Not yet tested.*
+1ff.3. *(Oct 1)* New buttons start in the chosen colour: a field's own **All colors** choice first (`buttonColor` on the field), otherwise the body of water's **All quick button colors** (`defaultButtonColor` on its lists), otherwise blue. Using All quick button colors again recolours everything there and clears the fields' own choices (they were just painted over). Button order is never changed by either. *Not yet tested.* **Tyrus tested Oct 1 ✓**
 
 **1fg. Report emails: photo labels above the photos, in teal** — *not yet tested (Oct 1); deployed on live and beta*
 *(File: `functions/send-report/index.ts`)*
-1fg.1. In the service report email, each photo's label ("Pool before", "Spa after 2", "Gate") now sits above its photo, in the app's teal (#1F8A8C, semi-bold), instead of grey underneath. The function was checked to match the repo's copy on both servers before the change, then redeployed on live and beta.
-1fg.2. *(Oct 1)* The labels are centred above their photos: in the email (redeployed on live and beta), on the app's report ("After 1", "After 2", with the photo centred), and in the website's service report photo strip. *Not yet tested.*
+1fg.1. In the service report email, each photo's label ("Pool before", "Spa after 2", "Gate") now sits above its photo, in the app's teal (#1F8A8C, semi-bold), instead of grey underneath. The function was checked to match the repo's copy on both servers before the change, then redeployed on live and beta. **Tyrus tested Oct 1 ✓**
+1fg.2. *(Oct 1)* The labels are centred above their photos: in the email (redeployed on live and beta), on the app's report ("After 1", "After 2", with the photo centred), and in the website's service report photo strip. *Not yet tested.* **Tyrus tested Oct 1 ✓**
+
+**1fh. App: photos taken sideways come out landscape** — *not yet tested (Oct 1)*
+*(File: `app.html`)*
+1fh.1. Tyrus asked whether landscape works for photos: it didn't — the app stays upright, so the camera's picture was always upright and a photo taken with the phone on its side came out sideways. Now the in-app camera reads the phone's tilt sensor (no permission needed on Android) and, when the phone is held on its side while the screen is upright, turns the photo to match, so it's a proper landscape photo. No full screen, so no Chrome bubble. iPhone is left alone (the whole app turns with the phone there). If a sideways photo comes out upside down, the two directions are swapped — tell Claude which way the phone was held. **Tyrus tested Oct 1 ✓**
+
+**1fi. Found by the Oct 1 checks, and fixed** — *not yet tested*
+*(Files: `app.html`, `customer-intake.html`)*
+1fi.1. Automatic On my way counted stops passed earlier in the route as still ahead. Now only stops after the one just finished count; whoever is exactly their number of stops away is messaged first, then anyone missed is caught up.
+1fi.2. Website: a page-wide rule swallowed clicks outside a picture or video, so "click outside to close" likely only worked with Escape. Those two windows are now let through.
+1fi.3. Website, one company per browser: unsent changes from the older sync version now count too, so they can't be lost on a switch.
+1fi.4. Website: a photo downloaded from a phone could be dropped instead of attached (the photo list it used didn't include it yet, Sept 30), and a photo removed at the office could be kept as if taken there. Both fixed: the live photo list is used, and a phone's photo is never mistaken for an office one.
+1fi.5. Checks: 106 new checks for Sept 30 – Oct 1 (phone app, website, and the server snippets with company separation proven); every suite's out-of-date checks brought up to date. `sync-test-setup.sh` loads snippets 16–24. All suites pass.
+1fi.6. *(Tyrus chose (a), Oct 1)* Deleting a technician (snippet 23, run on live and beta): their password stops working and their username is free at once, and they can read nothing; the phone already signed in may send what it was holding for 1 day, is told the sign-in was removed, then wipes the company's data and forgets the offline sign-in. After the day the account is deleted the next time technicians are managed. The website's delete question says so. Also fixed: a second wipe could forget whose sign-in it was, leaving the removed technician's offline sign-in on the phone.
+1fi.7. Snippet 24 (run on live and beta): signed-out visitors have no table rights at all (Supabase's defaults had left some on photos, visits and quote responses; row-level security already blocked every row).
+1fi.8. Company separation checked on the real servers with `check - company separation.sql`: beta PASS (7 accounts, 70 checks, all 0), live PASS (3 accounts, 40 checks, all 0); no table without row-level security; nothing open to signed-out visitors.
 
 **2. Only a real phone or browser can prove these** *(built, approved and suite-tested)*
 2.1. Open in Outlook: does its Bcc line fill in by itself, or does it need pasting? (The addresses are copied either way.)

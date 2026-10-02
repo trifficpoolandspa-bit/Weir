@@ -242,10 +242,10 @@ console.log('\n=== Customer Customization opens blank each time ===');
     check('  choosing a customer loads them', w.eval("customCustomerId") === 'a');
     check('  and fills the search box',
           d.getElementById('customCustSearch').value.indexOf('Alpha') !== -1);
-    check('  showing their own settings',
-          d.getElementById('customerNotifyCard').style.display === 'block');
+    check('  the automatic message isn\u2019t here any more: it lives on the profile (1ez)',
+          d.getElementById('customerNotifyCard').style.display === 'none');
 
-    w.eval("switchView('customers'); switchView('customerconfig');");
+    w.eval("switchView('customers'); webLeftAt = {}; switchView('customerconfig');");  // past its 30 seconds (Sept 29)
     check('  leaving and returning clears the customer',
           w.eval('customCustomerId') === null);
     check('  the search box is empty again',
@@ -303,6 +303,9 @@ console.log('\n=== Automatic on my way: app-wide, with per-customer override ===
     w.eval("currentUser = {id:'t1', name:'Alex'}; renderHomeList();");
     w.eval("window.__sentTo = null; sendOnMyWay = (c)=>{ window.__sentTo = c.name; };");
     w.eval("checkHeadsUpAfter('c1');");
+    // A text needs one tap to open (1fb): press it in the window that comes up
+    const go = Array.from(w.document.querySelectorAll('button')).find(b => b.textContent === 'Open text message');
+    if(go){ w.eval('viewChangedAt = 0'); go.click(); }
     return w.eval('window.__sentTo');
   }
 
@@ -311,8 +314,9 @@ console.log('\n=== Automatic on my way: app-wide, with per-customer override ===
           fires(file, {autoNotifyAll:false}, {}) === null);
     check(file + ' the app-wide setting covers everyone',
           fires(file, {autoNotifyAll:true, autoNotifyAllLead:2}, {}) === 'Cust D');
+    // With everyone else on, the next stop may be caught up instead (1fb); never D
     check(file + ' a customer turned off is respected',
-          fires(file, {autoNotifyAll:true, autoNotifyAllLead:2}, {3:{autoNotify:false}}) === null);
+          fires(file, {autoNotifyAll:true, autoNotifyAllLead:2}, {3:{autoNotify:false}}) !== 'Cust D');
     check(file + ' a customer turned on works with it off',
           fires(file, {autoNotifyAll:false}, {3:{autoNotify:true, autoNotifyLead:2}}) === 'Cust D');
   });
@@ -897,7 +901,8 @@ console.log('\n=== A photo requirement survives a sync ===');
   check('saving a technician tells sync at once',
         site.indexOf("function saveTechnicians(){") !== -1
         && site.slice(site.indexOf("function saveTechnicians(){"),
-                      site.indexOf("function saveTechnicians(){") + 500)
+                      // 900: the technician order (Sept 29) sits above it now
+                      site.indexOf("function saveTechnicians(){") + 1300)
                .indexOf('syncNoteLocalChange()') !== -1);
   check('and that marks records, not only customers',
         /function syncNoteLocalChange\(\)\{[\s\S]{0,400}syncScanRecords\(state\);/.test(site));
@@ -971,7 +976,7 @@ console.log('\n=== Photo requirements do not depend on Settings ===');
 
   try{
     const off = onPhotoTab({showBeforePhotos: false, showAfterPhotos: false, showGatePhoto: false});
-    check('  all four requirements are there', off.rows.length === 4, String(off.rows.length));
+    check('  all five requirements are there (Video added, 1em)', off.rows.length === 5, String(off.rows.length));
     check('  none are greyed out by an old setting', off.rows.every(r => !off.dim(r)));
     check('  and nothing says a step is switched off',
           off.text.indexOf('switched off in Settings') === -1, off.text.slice(0, 120));
@@ -1350,7 +1355,7 @@ console.log('\n=== Admin app: a past day hides the customers finished that day =
     check('last week: a customer sent back with Reservice is listed again', names.indexOf('Reserviced') !== -1, names.join(' | '));
     check('last week: another day\'s customers are not mixed in', names.indexOf('Other Day') === -1, names.join(' | '));
     const stops = d.getElementById('homeStopCount').textContent;
-    check('last week: the stop count matches, 2 left of 6', stops === '2 of 6', stops);
+    check('last week: the stop count matches, 2/6 (1ey)', stops === '2/6', stops);
 
     // Today's tab still works as before
     w.eval(`(function(){
@@ -1365,7 +1370,7 @@ console.log('\n=== Admin app: a past day hides the customers finished that day =
     names = shown();
     check('today: a customer finished today drops off', names.indexOf('Done That Day') === -1, names.join(' | '));
     check('today: everyone else is listed', names.length === 6, names.join(' | '));
-    check('today: the count still includes the finished one', d.getElementById('homeStopCount').textContent === '6 of 7',
+    check('today: the count still includes the finished one', d.getElementById('homeStopCount').textContent === '6/7',
           d.getElementById('homeStopCount').textContent);
 
     // Next week nobody is hidden
@@ -1564,7 +1569,7 @@ async function serverAccounts(){
       check('another company\'s owner cannot touch the account', !r.ok, r.error);
       r = await as(SAM, 'select public.set_technician_password($1,$2) j', ['t1', 'bysam12345']);
       check('an admin technician cannot set passwords', !r.ok && /Only an owner/.test(r.error), r.error);
-      console.log('\n=== Removing a technician: 7 days to upload, nothing else ===');
+      console.log('\n=== Removing a technician: shut out at once, 1 day to upload what the phone held (snippet 23) ===');
       await pool.query('insert into auth.sessions(user_id) values ($1)', [ALEX]);
       // Alex is a plain technician again for this part
       await as(OWNER, 'select public.update_technician_account($1,$2,$3,$4) j', ['t1', null, null, false]);
@@ -1588,12 +1593,14 @@ async function serverAccounts(){
       check('so his phone stays signed in for that', sessions === 1, sessions);
       r = await as('anon', 'select public.sign_in_address($1, $2) a', [CO, 'alex.rivera']);
       check('but he cannot sign in again', r.ok && val(r) === null, JSON.stringify(r));
+      const pw = (await pool.query('select encrypted_password p from auth.users where id = $1', [ALEX])).rows[0].p;
+      check('and his password no longer works anywhere', pw === '', String(pw));
       r = await as(OWNER, 'select public.username_available($1) a', ['alex.rivera']);
       check('his username is free for someone new straight away', val(r) === true);
       r = await as(OWNER, 'select public.set_technician_password($1,$2) j', ['t1', 'anotherpass1']);
       check('a removed account cannot be given a new password', !r.ok, r.error);
       r = await as(OWNER, 'select public.remove_technician_account($1) j', ['t1']);
-      check('removing twice does nothing', r.ok && val(r) === null, JSON.stringify(r));
+      check('removing twice does nothing more', r.ok && val(r) && val(r).upload_until === null, JSON.stringify(r));
       const NEW_ALEX = '88888888-8888-8888-8888-888888888888';
       await pool.query(`insert into auth.users(id, email) values ($1, 'tech-n8@accounts.weir.invalid')`, [NEW_ALEX]);
       r = await attach(OWNER, NEW_ALEX, 'alex.rivera', 't1', false);
@@ -1603,10 +1610,10 @@ async function serverAccounts(){
       check('the new account sees the customer', (await ids(NEW_ALEX)) === 'c3', await ids(NEW_ALEX));
       check('the removed one still does not', (await ids(ALEX)) === '');
 
-      // Eight days later
-      await pool.query(`update public.members set removed_at = now() - interval '8 days' where user_id = $1`, [ALEX]);
+      // Two days later
+      await pool.query(`update public.members set removed_at = now() - interval '2 days' where user_id = $1`, [ALEX]);
       r = await as(ALEX, 'select public.my_upload_grace_company() c');
-      check('after 7 days his phone can no longer upload', r.ok && val(r) === null, JSON.stringify(r));
+      check('after a day his phone can no longer upload', r.ok && val(r) === null, JSON.stringify(r));
       let still = (await pool.query('select count(*)::int n from auth.users where id = $1', [ALEX])).rows[0].n;
       check('the account lingers only until an owner next manages accounts', still === 1, still);
       await as(OWNER, 'select public.update_technician_account($1,$2,$3,$4) j', ['t2', null, null, null]);
@@ -1891,7 +1898,8 @@ async function serverTechniciansTab(){
       check('the admin shows as Admin', /Signs in as sam · Admin/.test(rowText(d, 'Sam Admin')), rowText(d, 'Sam Admin'));
 
       console.log('\n=== Editing a technician ===');
-      const alex = () => w.eval("technicians.find(t => t.name.indexOf('Alex') === 0)");
+      // By name: technicians are alphabetical now (Sept 29), and "Alex Pool" comes first
+      const alex = () => w.eval("technicians.find(t => t.name === 'Alex Rivera') || technicians.find(t => t.name.indexOf('Alex R') === 0)");
       w.eval("editTechnician(technicians.find(t => t.name === 'Alex Rivera'))"); await sleep(50);
       check('the password is never shown back', d.getElementById('techPassword').value === '');
       check('the form says blank keeps it', /Leave blank/.test(d.getElementById('techPassword').placeholder));
@@ -2019,7 +2027,8 @@ async function serverTechniciansTab(){
       Array.from(d.querySelectorAll('#techMainTabs .history-type-btn'))
         .find(b => b.dataset.techmain === 'photos').click();
       await sleep(250);
-      const gateHead = Array.from(d.querySelectorAll('#photoRequireRows > div > div:first-child'))[2];
+      // Video is the first row now (1em.6), so the gate is the fourth
+      const gateHead = Array.from(d.querySelectorAll('#photoRequireRows > div > div:first-child'))[3];
       gateHead.click(); await sleep(250);
       const gateBoxes = Array.from(d.querySelectorAll('#photoRequireRows input[type=checkbox]'));
       const patAt = w.eval("technicians.findIndex(t => t.id === 'tech_pat')") + 1;
@@ -2122,7 +2131,7 @@ async function serverTechniciansTab(){
       // Leaving and coming back lands on the technician list again
       tabs[1].click(); await sleep(200);
       w.eval("switchView('customers')"); await sleep(200);
-      w.eval("switchView('technicians')"); await sleep(250);
+      w.eval("webLeftAt = {}; switchView('technicians')"); await sleep(250);  // past its 30 seconds (Sept 29)
       check('coming back opens the Technicians tab, not Photo requirements',
             d.getElementById('techListPane').style.display !== 'none'
             && d.getElementById('photoRequireCard').style.display === 'none',
@@ -2139,18 +2148,18 @@ async function serverTechniciansTab(){
             && d.getElementById('techListPane').style.display === 'none');
 
       const rowHeads = () => Array.from(d.querySelectorAll('#photoRequireRows > div > div:first-child'));
-      check('there is a row for each requirement', rowHeads().length === 4,
+      check('there is a row for each requirement (Video first, 1em.6)', rowHeads().length === 5,
             rowHeads().map(r => r.textContent.slice(0, 22)).join(' | '));
       check('and no Technicians buttons any more',
             Array.from(d.querySelectorAll('#photoRequireRows button'))
               .filter(b => /Technicians/.test(b.textContent)).length === 0);
       check('each row says who must and who may',
-            /Nobody yet|must|optional/.test(rowHeads()[0].textContent),
-            rowHeads()[0].textContent);
+            /Nobody yet|must|optional/.test(rowHeads()[1].textContent),
+            rowHeads()[1].textContent);
       check('and there are no Off / Optional / Required buttons on the row any more',
-            !Array.from(rowHeads()[0].querySelectorAll('button')).some(b => /^(off|optional|required)$/.test(b.textContent)),
-            Array.from(rowHeads()[0].querySelectorAll('button')).map(b => b.textContent).join(','));
-      const firstName = rowHeads()[0].querySelector('div').firstElementChild;
+            !Array.from(rowHeads()[1].querySelectorAll('button')).some(b => /^(off|optional|required)$/.test(b.textContent)),
+            Array.from(rowHeads()[1].querySelectorAll('button')).map(b => b.textContent).join(','));
+      const firstName = rowHeads()[1].querySelector('div').firstElementChild;
       const src2 = fs.readFileSync('customer-intake.html', 'utf8');
       check('a line separates the heading from the first requirement',
             /border-top:1px solid var\(--line\);"><\/div>\s*<div id="photoRequireRows"/.test(src2));
@@ -2181,17 +2190,17 @@ async function serverTechniciansTab(){
         const fields = (css.match(/input, textarea, select, \[contenteditable\][^{]*\{[^}]*user-select:text[^}]*\}/) || [''])[0];
         check(file + ' turns it back on for anything you type into', !!fields, 'fields not re-enabled');
       });
-      rowHeads()[0].click(); await sleep(250);
-      const listBox = rowHeads()[0].parentElement.querySelector('div:not([style*="flex-wrap"])');
-      const opened = Array.from(rowHeads()[0].parentElement.children)
+      rowHeads()[1].click(); await sleep(250);
+      const listBox = rowHeads()[1].parentElement.querySelector('div:not([style*="flex-wrap"])');
+      const opened = Array.from(rowHeads()[1].parentElement.children)
         .find(el => el.style && el.style.maxWidth === '460px');
       check('the technicians are held to a middle column rather than stretched',
             !!opened && opened.style.margin.indexOf('auto') !== -1,
             opened ? opened.style.cssText : 'no list');
-      rowHeads()[0].click(); await sleep(200);
+      rowHeads()[1].click(); await sleep(200);
       check('nobody is listed until it is opened', d.querySelectorAll('#photoRequireRows input[type=checkbox]').length === 0);
 
-      rowHeads()[0].click(); await sleep(250);
+      rowHeads()[1].click(); await sleep(250);
       const ticks = Array.from(d.querySelectorAll('#photoRequireRows input[type=checkbox]'));
       check('opening it lists every technician with Pool, Spa and Extra, plus an Everyone row',
             ticks.length === (w.eval('technicians.length') + 1) * 3, String(ticks.length));
@@ -2224,14 +2233,14 @@ async function serverTechniciansTab(){
             JSON.stringify(w.eval("JSON.stringify(technicians.map(t => t.photoRules || null))")));
       check('and not for the pool', w.eval("technicians.find(t => t.id === 'tp1').photoRules.before.pool") !== true);
       check('the row says how many technicians it applies to',
-            /1 technician/.test(rowHeads()[0].textContent), rowHeads()[0].textContent);
+            /1 technician/.test(rowHeads()[1].textContent), rowHeads()[1].textContent);
 
       // The gate has a row of its own, under the two built-in photos
       const rowsNow2 = Array.from(d.querySelectorAll('#photoRequireRows > div'));
       check('the gate is a row under before and after',
-            /closed gate/i.test(rowsNow2[2].textContent), rowsNow2.map(r => r.textContent.slice(0, 26)).join(' | '));
+            /closed gate/i.test(rowsNow2[3].textContent), rowsNow2.map(r => r.textContent.slice(0, 26)).join(' | '));
       check('there is no separate tick for everyone any more', !d.getElementById('chkRequireGatePhoto'));
-      rowHeads()[2].click(); await sleep(250);
+      rowHeads()[3].click(); await sleep(250);
       const gateTicks = Array.from(d.querySelectorAll('#photoRequireRows input[type=checkbox]'));
       check('its list is one tick per technician, plus Everyone',
             gateTicks.length === w.eval('technicians.length') + 1, String(gateTicks.length));
@@ -2296,7 +2305,7 @@ async function serverTechniciansTab(){
               .find(t => t.id === 'tp1') || {}).requireGatePhoto !== true,
             w.localStorage.getItem('weir:technicians'));
       tabs[1].click(); await sleep(250);
-      rowHeads()[2].click(); await sleep(200);
+      rowHeads()[3].click(); await sleep(200);
 
       // Your own photos: added in a window, listed with the built-in rows
       d.getElementById('btnAddCustomPhoto').click(); await sleep(200);
@@ -2315,18 +2324,18 @@ async function serverTechniciansTab(){
       check('pressing Enter saves it', d.getElementById('photoTaskOverlay').style.display === 'none');
 
       const allRows = Array.from(d.querySelectorAll('#photoRequireRows > div'));
-      check('it is listed under the four built-in rows', allRows.length === 5
-            && /Filter gauge/.test(allRows[4].textContent), allRows.map(r => r.textContent.slice(0, 24)).join(' | '));
+      check('it is listed under the five built-in rows (Video first, 1em.6)', allRows.length === 6
+            && /Filter gauge/.test(allRows[5].textContent), allRows.map(r => r.textContent.slice(0, 24)).join(' | '));
       const crosses = Array.from(d.querySelectorAll('#photoRequireRows button')).filter(b => b.textContent === '\u00d7' || b.dataset.xDrawn === '1');
       check('only your own photo has an X beside it', crosses.length === 1);
       check('and the X sits after its name and its Edit button',
             crosses[0].previousElementSibling && crosses[0].previousElementSibling.textContent === 'Edit'
             && /Filter gauge/.test(crosses[0].previousElementSibling.previousElementSibling.textContent));
-      check('it says when it is taken and where', /before readings and after readings/.test(allRows[4].textContent)
-            && /Pool, Spa/.test(allRows[4].textContent), allRows[4].textContent.slice(0, 120));
+      check('it says when it is taken and where', /before readings and after readings/.test(allRows[5].textContent)
+            && /Pool, Spa/.test(allRows[5].textContent), allRows[5].textContent.slice(0, 120));
 
       // Its own technician list, with only the bodies it was given
-      rowHeads()[4].click(); await sleep(250);
+      rowHeads()[5].click(); await sleep(250);
       const ownTicks = Array.from(d.querySelectorAll('#photoRequireRows input[type=checkbox]'));
       const techCount = w.eval('technicians.length');
       check('its list has a column per body it was given, and no gate',
@@ -2358,7 +2367,7 @@ async function serverTechniciansTab(){
       w.__answer = 'ok';
       Array.from(d.querySelectorAll('#photoRequireRows button')).filter(b => b.textContent === '\u00d7' || b.dataset.xDrawn === '1')[0].click();
       await sleep(400);
-      check('the X removes it', Array.from(d.querySelectorAll('#photoRequireRows > div')).length === 4,
+      check('the X removes it', Array.from(d.querySelectorAll('#photoRequireRows > div')).length === 5,
             String(d.querySelectorAll('#photoRequireRows > div').length));
       check('and takes its requirements with it',
             !w.eval("technicians.some(t => t.photoRules && t.photoRules['" + taskId + "'])"));
@@ -2518,7 +2527,7 @@ async function serverTechniciansTab(){
     console.log('\n=== Deleting a technician ===');
       const alexId = alex().id;
       w.eval("deleteTechnician(technicians.find(t => t.name === 'Alex Rivera'))"); await sleep(500);
-      check('the question explains the 7 days', dialogs.some(t => /upload visits it was holding for 7 days/.test(t)), dialogs.join(' | '));
+      check('the question explains the one day (snippet 23)', dialogs.some(t => /upload visits it was holding for 1 day/.test(t)), dialogs.join(' | '));
       const removed = (await pool.query(`select removed_at from public.members where technician_id = $1`, [alexId])).rows[0];
       check('their sign-in is stopped on the server', removed && !!removed.removed_at);
       check('and they are gone from the list', !rowText(d, 'Alex Rivera') && !w.eval("technicians.some(t => t.name === 'Alex Rivera')"));
@@ -3133,6 +3142,71 @@ async function serverFieldSignIn(){
 
     // Reported: Every week on the phone put the moved customers back as if the
     // change never happened, while Just today kept it
+    // Reported Sept 29: a pool moved "just once" to another technician (not an
+    // admin) came back on their Today after they'd serviced it, and never
+    // showed on Serviced. The office only let them see and save customers
+    // assigned to them. Snippet 18 lets them see that customer and record its
+    // service, nothing else.
+    console.log('\n=== technician-app.html: a pool moved to another technician just once ===');
+    {
+      const t0 = new Date(Date.now() - 3600000).toISOString();
+      const localISO = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      const todayISO = localISO(new Date());
+      await makeTech(OWNER, 'owen', 'owenpass12', 't_owen', 'Owen Own', false);
+      await makeTech(OWNER, 'mia', 'miapass123', 't_mia', 'Mia Moved', false);
+      await asUser(OWNER, 'select public.push_customer_fields($1,$2::jsonb,null)',
+        ['mv1', JSON.stringify({id: {t: t0, v: 'mv1'}, name: {t: t0, v: 'Moved Pool'}, day: {t: t0, v: 'Sunday'}, active: {t: t0, v: true},
+                                hasPool: {t: t0, v: true}, technicianId: {t: t0, v: 't_owen'}})]);
+      // Moved to Mia for today, just once
+      await asUser(OWNER, 'select public.push_record_fields($1,$2,$3::jsonb,null)',
+        ['reschedule', 'mv_once', JSON.stringify({id: {t: t0, v: 'mv_once'}, customerId: {t: t0, v: 'mv1'},
+          fromDate: {t: t0, v: todayISO}, toDate: {t: t0, v: todayISO}, technicianId: {t: t0, v: 't_mia'}})]);
+      const ph = await boot(srv, 'technician-app.html', {storage: {
+        'weirdevice:company': JSON.stringify({id: CO, name: 'Triffic Pool and Spa'})}});
+      await signIn(ph, 'mia', 'miapass123');
+      for(let i = 0; i < 900 && ph.w.eval('syncRunning'); i++) await sleep(10);
+      await sleep(300);
+      const theirs = () => JSON.parse(ph.storage()['weir:customers'] || '[]');
+      check('the moved customer reaches the other technician\u2019s phone', theirs().some(c => c.id === 'mv1'), ph.storage()['weir:customers']);
+      check('and so does the move', JSON.parse(ph.storage()['weir:rescheduledVisits'] || '[]').some(r => r.id === 'mv_once'));
+      ph.w.eval("selectedHomeDay = DAYS_OF_WEEK[new Date().getDay()]; weekOffset = 0; renderHomeList();");
+      const onToday = () => Array.from(ph.d.querySelectorAll('#homeCustomerList .cust-name')).map(n => n.textContent.trim());
+      check('it is on their Today', onToday().some(n => /Moved Pool/.test(n)), onToday().join(' | '));
+      // Serviced, as finishing a visit does
+      ph.w.eval("const c = customers.find(x => x.id === 'mv1'); c.lastServicedDate = todayDateStr(); noteServicedFor(c);"
+        + " c.lastServicedAt = new Date().toISOString(); c.lastServiceDurationMs = 900000; saveCustomers();");
+      await sleep(200);
+      for(let i = 0; i < 900 && ph.w.eval('syncRunning'); i++) await sleep(10);
+      await ph.w.eval('fieldSync()');
+      for(let i = 0; i < 900 && ph.w.eval('syncRunning'); i++) await sleep(10);
+      await ph.w.eval('fieldSync()');
+      for(let i = 0; i < 900 && ph.w.eval('syncRunning'); i++) await sleep(10);
+      await sleep(300);
+      const office = (await pool.query("select data from public.customers where id = 'mv1'")).rows[0].data;
+      check('the office accepts the service they recorded', office.lastServicedDate === todayISO && Array.isArray(office.servicedFor)
+            && office.servicedFor.some(x => x && x.on === todayISO), JSON.stringify(office));
+      check('it stays their customer\u2019s technician\u2019s', office.technicianId === 't_owen');
+      ph.w.eval("renderHomeList(); applyRoleUI(); switchView('serviced');");
+      const served = Array.from(ph.d.querySelectorAll('#servicedList .cust-name')).map(n => n.textContent.trim());
+      check('after syncing it is off their Today', !ph.w.eval("switchView('home'); Array.from(document.querySelectorAll('#homeCustomerList .cust-name')).some(n => /Moved Pool/.test(n.textContent))"));
+      check('and on their Serviced', served.some(n => /Moved Pool/.test(n)), served.join(' | '));
+      // Anything else on that customer is still the office's
+      const miaUid = (await pool.query("select user_id from public.members where technician_id = 't_mia'")).rows[0].user_id;
+      let refused = '';
+      try{
+        await asUser(miaUid, 'select public.push_customer_fields($1,$2::jsonb,null)',
+          ['mv1', JSON.stringify({name: {t: new Date().toISOString(), v: 'Renamed by Mia'}})]);
+      }catch(e){ refused = e.message; }
+      check('they still cannot change anything else on that customer', /only moved to you/.test(refused), refused || 'accepted');
+      let refusedOther = '';
+      try{
+        await asUser(miaUid, 'select public.push_customer_fields($1,$2::jsonb,null)',
+          ['n1', JSON.stringify({lastServicedDate: {t: new Date().toISOString(), v: todayISO}})]);
+      }catch(e){ refusedOther = e.message; }
+      check('nor record a service on a customer not moved to them', /not assigned to you|not on the server|Only the office/.test(refusedOther), refusedOther || 'accepted');
+      ph.close();
+    }
+
     console.log('\n=== admin-readings-app.html: Every week keeps the new order, through a sync ===');
     {
       await makeTech(OWNER, 'eve', 'evepass1234', 't_eve', 'Eve Admin', true);
@@ -4026,9 +4100,9 @@ async function photoRequirementsPage(){
                    spa: {chemicals: [], dosages: []}, fountain: {chemicals: [], dosages: []}}});
     try{
       const names = Array.from(d.querySelectorAll('#photoRequireRows > div')).map(r => r.firstChild.firstChild.firstChild.textContent);
-      check('the rows read Before photo, After photo, Closed gate photo',
-            names[0] === 'Before photo' && names[1] === 'After photo' && names[2] === 'Closed gate photo', names.join(' | '));
-      check('the skip row keeps its full wording', names[3] === 'Require a photo and note to skip a body of water', names[3]);
+      check('the rows read Video, Before photo, After photo, Closed gate photo (Video first, 1em.6)',
+            names[0] === 'Video' && names[1] === 'Before photo' && names[2] === 'After photo' && names[3] === 'Closed gate photo', names.join(' | '));
+      check('the skip row keeps its full wording', names[4] === 'Require a photo and note to skip a body of water', names[4]);
       const site = fs.readFileSync('customer-intake.html', 'utf8');
       check('the line under the heading says what a tick does',
             site.indexOf('Checking a box requires that technician to take the photo before moving on to the next step of the service report.') !== -1

@@ -147,7 +147,7 @@ async function survives(file, steps, opts){
       check('  and cancelling knows there is something to undo',
             w.eval('visitHasAnything()') === true);
 
-      w.eval("goToVisitStep(1); confirmDialog = ()=> Promise.resolve(true);");
+      w.eval("showVisitSection('pool'); goToVisitStep(1); confirmDialog = ()=> Promise.resolve(true);");
       await wait(200);
       const back = Array.from(d.querySelectorAll('button'))
         .find(b => /Return to route/.test(b.textContent));
@@ -174,7 +174,7 @@ async function survives(file, steps, opts){
       d.getElementById('btnSaveReading').click();
       await wait(800);
 
-      w.eval("goToVisitStep(1); confirmDialog = ()=> Promise.resolve(false);");
+      w.eval("showVisitSection('pool'); goToVisitStep(1); confirmDialog = ()=> Promise.resolve(false);");
       await wait(200);
       const back = Array.from(d.querySelectorAll('button'))
         .find(b => /Return to route/.test(b.textContent));
@@ -223,8 +223,8 @@ async function survives(file, steps, opts){
               !!w.eval('poolPhotoController.getData()'));
         check('  and the before photo',
               !!w.eval("beforeControllerFor('pool').getData()"));
-        check('  so it can be removed if it was wrong',
-              (d.getElementById('btnRemovePhoto') || {}).style.display !== 'none');
+        check('  so it can be removed if it was wrong (tap it, then Delete photo, 1es)',
+              !!d.querySelector('#photoPreviewWrap [data-shot] img'));
       }catch(e){ check('  revisiting a finished body', false, e.message); }
     }
   }

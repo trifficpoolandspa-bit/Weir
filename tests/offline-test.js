@@ -866,7 +866,10 @@ async function serverCustomerSync(){
               && !!restoreRow.querySelector('#btnAddCustomer') && !!restoreRow.querySelector('#btnImportCustomers'), restoreRow ? restoreRow.outerHTML.slice(0, 120) : '');
         check('it comes after them', !!restoreRow && restoreRow.lastElementChild === restoreBtn
               && (restoreBtn.compareDocumentPosition(doc.getElementById('btnImportCustomers')) & 2) === 2);
-        check('pushed to the far right', !!restoreBtn && restoreBtn.style.marginLeft === 'auto', restoreBtn ? restoreBtn.style.cssText : '');
+        // Export customers sits before it now (1ed), and the two are pushed right together
+        const exportBtn = doc.getElementById('btnExportCustomers');
+        check('pushed to the far right, with Export customers', !!restoreBtn && !!exportBtn && exportBtn.style.marginLeft === 'auto'
+              && exportBtn.nextElementSibling === restoreBtn, exportBtn ? exportBtn.style.cssText : '');
         check('the old button at the bottom of the list is gone',
               !doc.getElementById('btnDeletedCustomers')
               && !Array.from(doc.querySelectorAll('#allCustomersCard button')).some(b => /Deleted customers|Restore customers/.test(b.textContent)));
@@ -1613,9 +1616,9 @@ async function serverVisits(){
     r = await visit(ALEX, 'c1', 'reading', 'pool', 'read_after', {chlorine: '3.0'});
     check('  a removed technician can still upload what their phone held', r.ok && val(r).result === 'saved', r.error);
     check('  while seeing nothing', await seen(ALEX) === 0);
-    await pool.query(`update public.members set removed_at = now() - interval '8 days' where technician_id = 't_alex'`);
+    await pool.query(`update public.members set removed_at = now() - interval '2 days' where technician_id = 't_alex'`);
     r = await visit(ALEX, 'c1', 'reading', 'pool', 'read_way_after', {});
-    check('  after the 7 days, no more uploads', !r.ok, r.error);
+    check('  after the day, no more uploads (snippet 23)', !r.ok, r.error);
   }catch(e){
     check('  visits', false, e.stack);
   }
