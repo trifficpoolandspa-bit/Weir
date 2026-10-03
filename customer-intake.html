@@ -148,6 +148,21 @@ nav{
   font-family:'Inter',sans-serif;
 }
 .tab.active{color:#fff;background:rgba(255,255,255,0.08);border-left-color:var(--gold);}
+/* WorkCenter's sections as smaller tabs branching off it in the sidebar (Oct 2).
+   Shown while WorkCenter is open. Switched by the sidebar-subtabs class on the
+   page's body: without it, the old strip on the page is back ("go back to the old tabs"). */
+.nav-subs{display:none;padding:2px 0 8px;}
+body.sidebar-subtabs nav .tab.active[data-view="workcenter"] + .nav-subs{display:block;}
+.nav-sub{position:relative;display:block;width:100%;text-align:left;background:none;border:none;cursor:pointer;
+  padding:8px 20px 8px 42px;font-family:'Inter',sans-serif;font-size:12.5px;font-weight:600;color:#9CC8C4;}
+.nav-sub::before{content:"";position:absolute;left:26px;top:0;bottom:0;border-left:1.5px solid rgba(175,214,210,0.35);}
+.nav-sub::after{content:"";position:absolute;left:26px;top:50%;width:9px;border-top:1.5px solid rgba(175,214,210,0.35);}
+.nav-sub:last-child::before{bottom:50%;}
+.nav-sub:hover{color:#fff;}
+.nav-sub span{display:inline-block;padding:3px 8px;margin-left:-8px;border-radius:7px;}
+.nav-sub.active{color:#fff;}
+.nav-sub.active span{background:rgba(255,255,255,0.12);}
+body.sidebar-subtabs #workCenterTypeControl{display:none;}
 
 .view{display:none;}
 .view.active{display:block;}
@@ -473,7 +488,7 @@ input::placeholder{color:#A9BCB9;}
 .hist-val.ideal{color:var(--green);}
 </style>
 </head>
-<body>
+<body class="sidebar-subtabs">
 <div id="loginScreen" style="display:none;position:fixed;inset:0;z-index:400;background:linear-gradient(168deg,#16585C 0%,#114B4F 55%,#0D3E42 100%);align-items:center;justify-content:center;padding:24px;">
   <div style="background:#fff;border-radius:16px;padding:26px 22px;max-width:360px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,0.28);">
     <h2 style="font-size:20px;margin:0 0 4px;">Weir</h2>
@@ -536,6 +551,11 @@ input::placeholder{color:#A9BCB9;}
       <button class="tab" data-view="chemconfig">Readings and Dosages</button>
       <button class="tab" data-view="productsservices">Products and Services</button>
       <button class="tab" data-view="workcenter">WorkCenter</button>
+      <div class="nav-subs" id="wcNavSubs">
+        <button type="button" class="nav-sub active" data-type="quotes"><span>Work orders and quotes</span></button>
+        <button type="button" class="nav-sub" data-type="filters"><span>Filter cleans</span></button>
+        <button type="button" class="nav-sub" data-type="broadcast"><span>Email</span></button>
+      </div>
       <button class="tab" data-view="history">History / Billing</button>
       <button class="tab" data-view="alerts">Alerts <span class="nav-badge" id="alertsBadge" style="display:none;"></span></button>
       <button class="tab" data-view="settings">Settings</button>
@@ -5876,6 +5896,13 @@ function resetScheduleDates(){
   });
 }
 
+// The sidebar's WorkCenter sections: to WorkCenter if not there, then that section
+document.querySelectorAll('#wcNavSubs .nav-sub').forEach(b => b.addEventListener('click', ()=>{
+  const page = document.getElementById('view-workcenter');
+  if(!page || !page.classList.contains('active')) switchView('workcenter');
+  applyWorkCenterMode(b.dataset.type);
+}));
+
 function applyWorkCenterMode(mode){
   const cameFrom = workCenterMode;
   workCenterMode = mode;
@@ -5893,7 +5920,7 @@ function applyWorkCenterMode(mode){
     if(more) more.style.display = 'none';
   }
 
-  document.querySelectorAll('#workCenterTypeControl .history-type-btn').forEach(b=>{
+  document.querySelectorAll('#workCenterTypeControl .history-type-btn, #wcNavSubs .nav-sub').forEach(b=>{
     b.classList.toggle('active', b.dataset.type === mode);
   });
 
