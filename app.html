@@ -14008,7 +14008,7 @@ function appWorkOrderDates(startISO, repeat, customEvery, customUnit){
     return out;
   }
 
-  const stepDays = {weekly:7, biweekly:14};
+  const stepDays = {weekly:7, biweekly:14, triweekly:21, fourweekly:28};
   const stepMonths = {monthly:1, bimonthly:2, quarterly:3, biannual:6, yearly:12};
   const start = new Date(startISO + 'T12:00:00');
   const limit = new Date(start.getTime());
@@ -14164,27 +14164,28 @@ function awcBuild(pane){
       </div>
       <div class="field">
         <label>Repeat</label>
+        <!-- The same choices as a task's Repeat (Oct 2) -->
         <select id="awcWoRepeat">
-          <option value="none">One time only</option>
+          <option value="none">Just once</option>
           <option value="weekly">Every week</option>
           <option value="biweekly">Every 2 weeks</option>
-          <option value="monthly">Every month</option>
-          <option value="bimonthly">Every 2 months</option>
-          <option value="quarterly">Every 3 months</option>
-          <option value="biannual">Every 6 months</option>
-          <option value="yearly">Every year</option>
-          <option value="custom">Custom&hellip;</option>
+          <option value="triweekly">Every 3 weeks</option>
+          <option value="fourweekly">Every 4 weeks</option>
+          <option value="custom">Every&hellip; (choose)</option>
         </select>
-        <div id="awcWoCustom" style="display:none;align-items:center;gap:8px;margin-top:8px;">
-          <span style="font-size:13px;color:var(--muted);flex-shrink:0;">Every</span>
-          <input type="number" id="awcWoEvery" min="1" step="1" value="3" style="width:80px;flex-shrink:0;">
-          <select id="awcWoUnit" style="flex:1;">
-            <option value="days">days</option>
+        <div id="awcWoCustom" style="display:none;margin-top:10px;align-items:center;gap:10px;">
+          <span style="font-size:13px;color:var(--muted);">Every</span>
+          <input type="number" id="awcWoEvery" min="1" max="52" value="6" style="width:80px;">
+          <select id="awcWoUnit" style="width:auto;">
             <option value="weeks" selected>weeks</option>
-            <option value="months">months</option>
+            <option value="days">days</option>
           </select>
         </div>
-        <p style="font-size:11.5px;color:var(--muted);margin:6px 0 0;">Repeats are scheduled a year ahead from the date above.</p>
+        <!-- An end date for a repeating work order (Oct 2), as tasks have -->
+        <div id="awcWoUntilWrap" style="display:none;margin-top:12px;">
+          <div style="font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px;">Until <span style="font-weight:400;">(optional &mdash; leave blank to keep going)</span></div>
+          <input type="date" id="awcWoUntil">
+        </div>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0 14px;">
         <span style="font-size:13px;font-weight:600;color:var(--muted);">Total</span>
@@ -14284,6 +14285,9 @@ function awcBuild(pane){
   document.getElementById('awcTaskTech').addEventListener('click', ()=> awcPickTechs(awcTaskTechs, ids=>{ awcTaskTechs = ids; awcLabelTechs(); }));
   document.getElementById('awcWoRepeat').addEventListener('change', awcApplyRepeats);
   document.getElementById('awcTaskRepeat').addEventListener('change', awcApplyRepeats);
+  document.getElementById('awcWoUnit').addEventListener('change', e=>{
+    document.getElementById('awcWoEvery').max = e.target.value === 'days' ? '365' : '52';
+  });
   document.getElementById('awcTaskUnit').addEventListener('change', e=>{
     document.getElementById('awcTaskWeeks').max = e.target.value === 'days' ? '365' : '52';
   });
@@ -14330,6 +14334,7 @@ function awcApply(){
 
 function awcApplyRepeats(){
   document.getElementById('awcWoCustom').style.display = document.getElementById('awcWoRepeat').value === 'custom' ? 'flex' : 'none';
+  document.getElementById('awcWoUntilWrap').style.display = document.getElementById('awcWoRepeat').value === 'none' ? 'none' : 'block';
   const t = document.getElementById('awcTaskRepeat').value;
   document.getElementById('awcTaskCustom').style.display = t === 'custom' ? 'flex' : 'none';
   document.getElementById('awcTaskUntilWrap').style.display = t === 'none' ? 'none' : 'block';
@@ -14526,6 +14531,10 @@ function awcClearWo(){
   document.getElementById('awcWoDate').value = todayDateStr();
   document.getElementById('awcWoPhoto').checked = true;
   document.getElementById('awcWoRepeat').value = 'none';
+  document.getElementById('awcWoUntil').value = '';
+  document.getElementById('awcWoUnit').value = 'weeks';
+  document.getElementById('awcWoEvery').value = '6';
+  document.getElementById('awcWoEvery').max = '52';
   awcRenderChips(); awcRenderLines(); awcLabelTechs(); awcApplyRepeats();
   document.getElementById('awcWoNumber').textContent = '#' + String(awcNextWorkOrderNumber()).padStart(4, '0');
 }
@@ -14561,6 +14570,9 @@ function awcFinalize(){
   const photoRequired = document.getElementById('awcWoPhoto').checked;
   let dates = appWorkOrderDates(date, document.getElementById('awcWoRepeat').value,
     document.getElementById('awcWoEvery').value, document.getElementById('awcWoUnit').value);
+  // Up to Until, when one is set (the first date always goes)
+  const repeatUntil = document.getElementById('awcWoRepeat').value !== 'none' ? (document.getElementById('awcWoUntil').value || '') : '';
+  if(repeatUntil) dates = dates.filter((d, i) => i === 0 || d <= repeatUntil);
 
   // Editing one from Current: its visits still to come are replaced, it ends
   // where it ended, and the first customer keeps its work order and number
@@ -14607,7 +14619,8 @@ function awcFinalize(){
   awcClearWo();
   if(wasEdit){
     try{ if(typeof renderHomeList === 'function') renderHomeList(); }catch(e){}
-    showToast('Work order saved \u2014 ' + dates.length + (dates.length === 1 ? ' visit' : ' visits'));
+    awcKind = 'Work Order'; awcView = 'current'; awcApply();
+    showToast('Work order saved');
     return;
   }
   try{ if(typeof renderHomeList === 'function') renderHomeList(); }catch(e){}
@@ -14669,6 +14682,10 @@ function awcAddTask(){
   goneTasks.forEach(id => queueOfficeWork('task', id, true));
   const list = (lsGet('tasks') || []).filter(t => !goneTasks.has(t.id));
   const made = [];
+  // Made for several technicians, or edited as part of such a group: they
+  // share a group, so Current shows them as one (Oct 2)
+  const taskGroupId = (editedTask && editedTask.groupId)
+    || (techIds.length > 1 ? 'tgroup_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) : '');
   // Each technician has their own copy, and their own series if it repeats
   techIds.forEach(techId=>{
     const series = everyDays > 0 ? 'series_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) : '';
@@ -14682,6 +14699,7 @@ function awcAddTask(){
         everyWeeks,
         everyDays,
         seriesId: series,
+        taskGroupId,
         photoRequired,
         done: false,
         createdAt: new Date().toISOString()
@@ -14697,7 +14715,7 @@ function awcAddTask(){
   fieldNoteLocalChange();
   awcClearTask();
   try{ if(typeof renderHomeList === 'function') renderHomeList(); }catch(e){}
-  if(editedTask){ showToast('Task saved \u2014 ' + dates.length + (dates.length === 1 ? ' date' : ' dates')); return; }
+  if(editedTask){ awcKind = 'Task'; awcView = 'current'; awcApply(); showToast('Task saved'); return; }
   const who = techIds.length === 1 ? 'the route' : awcTechNames(techIds) + '\u2019s routes';
   showToast(dates.length === 1 ? 'Task added to ' + who
     : 'Added ' + dates.length + ' times to ' + who + ', every ' + awcRepeatWords(everyDays));
@@ -14919,7 +14937,7 @@ function awcRenderEditDates(){
 
 // A repeat's own window: every date still to come, each with Mark completed
 // and a ×. Closes from Close only. (Oct 2)
-function awcOpenRepeatWindow(isTask, r){
+function awcOpenRepeatWindow(isTask, r, onClose){
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
   overlay.innerHTML = '<div class="confirm-box" style="max-width:420px;width:100%;max-height:82vh;display:flex;flex-direction:column;">'
@@ -14929,7 +14947,7 @@ function awcOpenRepeatWindow(isTask, r){
     + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-ghost" data-close>Close</button></div>'
     + '</div>';
   document.body.appendChild(overlay);
-  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); awcRenderCurrent(); };
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); awcRenderCurrent(); if(onClose) onClose(); };
   overlay.querySelector('[data-close]').addEventListener('click', close);
   const key = isTask ? 'tasks' : 'scheduledWorkOrders';
   const left = ()=> (lsGet(key) || []).filter(x => x && (isTask
@@ -14970,12 +14988,12 @@ function awcOpenRepeatWindow(isTask, r){
         showToast(awcShortDate(item.date) + ' completed \u2014 moved to History');
         draw();
       });
+      // The square bin here, as on the pages (Tyrus, Oct 2)
       const x = document.createElement('button');
       x.type = 'button';
-      x.textContent = '\u00d7';
+      x.innerHTML = '<svg class="weir-bin" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
       x.title = 'Take ' + awcShortDate(item.date) + ' off the route';
-      x.style.cssText = 'flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid #EFC9BC;'
-        + 'border-radius:8px;background:#fff;color:var(--rust);font-size:16px;cursor:pointer;';
+      x.setAttribute('aria-label', x.title);
       x.addEventListener('click', async ()=>{
         const ok = await confirmDialog('Take ' + awcShortDate(item.date) + ' off the route?', 'Remove');
         if(!ok) return;
@@ -14988,6 +15006,200 @@ function awcOpenRepeatWindow(isTask, r){
     });
   };
   draw();
+}
+
+// ---- Several technicians on one work order or task (Oct 2) ----
+function awcBundleTechRows(isTask, key){
+  const items = isTask
+    ? (lsGet('tasks') || []).filter(t => t && !t.done && t.taskGroupId === key)
+    : (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'scheduled' && j.workOrderId === key);
+  const byTech = {};
+  items.forEach(x=>{ (byTech[String(x.technicianId || '')] = byTech[String(x.technicianId || '')] || []).push(x); });
+  return Object.keys(byTech).map(techId=>{
+    const list = byTech[techId].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+    const first = list[0];
+    const names = isTask ? (first.customerIds || []).map(awcCustName).filter(Boolean) : [awcCustName(first.customerId) || 'Customer'];
+    return {id: first.id, date: first.date, techId, techName: awcTechName(techId) || 'No technician',
+      what: first.title || (isTask ? 'Task' : 'Work order'),
+      who: names.length ? names.slice(0, 2).join(', ') + (names.length > 2 ? ' +' + (names.length - 2) : '') : 'No customer',
+      group: isTask ? (first.seriesId || '') : (first.workOrderId || ''), groupLeft: list.length,
+      every: isTask ? (first.everyDays || (first.everyWeeks ? first.everyWeeks * 7 : 0)) : 0, ids: list.map(x => x.id)};
+  }).sort((a, b) => a.techName.localeCompare(b.techName));
+}
+function awcBinButton(title){
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.title = title;
+  b.setAttribute('aria-label', title);
+  b.innerHTML = '<svg class="weir-bin" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+  return b;
+}
+function awcBundleRow(isTask, r, row, today){
+  const techs = awcBundleTechRows(isTask, r.bundle);
+  row.style.cursor = 'pointer';
+  row.addEventListener('click', e=>{
+    if(e.target.closest('button, input, a, select')) return;
+    awcOpenBundleWindow(isTask, r.bundle);
+  });
+  const top = document.createElement('div');
+  top.style.cssText = 'display:flex;gap:12px;align-items:flex-start;';
+  const when = document.createElement('div');
+  when.style.cssText = 'flex:0 0 92px;font-size:12.5px;font-weight:600;';
+  when.textContent = awcShortDate(r.date);
+  if(r.date && r.date < today){
+    const od = document.createElement('div');
+    od.style.cssText = 'font-size:11px;font-weight:700;color:var(--rust);';
+    od.textContent = 'Overdue';
+    when.appendChild(od);
+  }
+  const bits = [];
+  if(!isTask && r.workOrderNumber) bits.push('#' + String(r.workOrderNumber).padStart(4, '0'));
+  bits.push(techs.length + ' technicians');
+  if(r.every) bits.push('Every ' + awcRepeatWords(r.every));
+  const mid = document.createElement('div');
+  mid.style.cssText = 'flex:1;min-width:0;';
+  mid.innerHTML = '<div style="font-size:14px;font-weight:600;">' + awcEsc(r.who + ' \u2013 ' + r.what) + '</div>'
+    + '<div style="font-size:12px;color:var(--muted);margin-top:2px;">' + awcEsc(bits.join(' \u00b7 ')) + '</div>';
+  top.appendChild(when); top.appendChild(mid);
+  const acts = document.createElement('div');
+  acts.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:8px;align-items:center;';
+  const editAll = awcSmallBtn('Edit all');
+  editAll.addEventListener('click', e=>{ e.stopPropagation(); awcOpenBundleForEditing(isTask, r.bundle); });
+  acts.appendChild(editAll);
+  const all = techs.reduce((n, t) => n + t.ids.length, 0);
+  const bin = awcBinButton('Take it off every technician\u2019s route');
+  bin.addEventListener('click', async e=>{
+    e.stopPropagation();
+    const ok = await confirmDialog('Take \u201c' + awcEsc(r.who + ' \u2013 ' + r.what) + '\u201d off every technician\u2019s route? That\u2019s '
+      + all + (all === 1 ? ' date' : ' dates') + ' still to come.', 'Remove all');
+    if(!ok) return;
+    const ids = new Set(techs.reduce((a, t) => a.concat(t.ids), []));
+    awcRemove(isTask, x => ids.has(x.id));
+    showToast('Removed');
+  });
+  acts.appendChild(bin);
+  const chev = document.createElement('span');
+  chev.textContent = '\u203a';
+  chev.setAttribute('aria-hidden', 'true');
+  chev.style.cssText = 'color:var(--muted);font-size:22px;line-height:1;padding:0 2px;';
+  acts.appendChild(chev);
+  row.appendChild(top); row.appendChild(acts);
+}
+function awcOpenBundleWindow(isTask, key){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:420px;width:100%;max-height:82vh;display:flex;flex-direction:column;">'
+    + '<h3 style="font-size:16px;margin:0 0 2px;" data-title></h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;" data-sub></p>'
+    + '<div data-list style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:0 10px;"></div>'
+    + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-ghost" data-close>Close</button></div>'
+    + '</div>';
+  document.body.appendChild(overlay);
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); awcRenderCurrent(); };
+  overlay.querySelector('[data-close]').addEventListener('click', close);
+  const draw = ()=>{
+    if(!overlay.parentNode) return;
+    const techs = awcBundleTechRows(isTask, key);
+    if(!techs.length){ close(); return; }
+    overlay.querySelector('[data-title]').textContent = techs[0].who + ' \u2013 ' + techs[0].what;
+    overlay.querySelector('[data-sub]').textContent = techs.length + (techs.length === 1 ? ' technician' : ' technicians');
+    const box = overlay.querySelector('[data-list]');
+    box.innerHTML = '';
+    techs.forEach((t, i)=>{
+      const repeats = t.groupLeft > 1;
+      const row = document.createElement('div');
+      row.style.cssText = 'padding:10px 0;' + (i === techs.length - 1 ? '' : 'border-bottom:1px solid var(--line);');
+      const head = document.createElement('div');
+      head.style.cssText = 'display:flex;align-items:center;gap:8px;';
+      const body = document.createElement('div');
+      body.style.cssText = 'flex:1;min-width:0;';
+      body.innerHTML = '<div style="font-size:14px;font-weight:600;"></div><div style="font-size:12px;color:var(--muted);"></div>';
+      body.children[0].textContent = t.techName;
+      body.children[1].textContent = awcShortDate(t.date) + ' \u00b7 '
+        + (repeats ? (t.every ? 'Every ' + awcRepeatWords(t.every) : 'Repeats') + ' \u00b7 ' + t.groupLeft + ' left' : 'just once');
+      head.appendChild(body);
+      if(repeats){
+        const chev = document.createElement('span');
+        chev.textContent = '\u203a';
+        chev.setAttribute('aria-hidden', 'true');
+        chev.style.cssText = 'color:var(--muted);font-size:22px;line-height:1;';
+        head.appendChild(chev);
+        // A window within the window: this technician's dates
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', e=>{
+          if(e.target.closest('button')) return;
+          awcOpenRepeatWindow(isTask, t, draw);
+        });
+      }
+      const acts = document.createElement('div');
+      acts.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:6px;align-items:center;';
+      const edit = awcSmallBtn('Edit');
+      edit.addEventListener('click', e=>{
+        e.stopPropagation();
+        if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        awcOpenForEditing(isTask, t);
+      });
+      acts.appendChild(edit);
+      if(!repeats){
+        const done = awcSmallBtn('Mark completed');
+        done.addEventListener('click', e=>{
+          e.stopPropagation();
+          const stamp = new Date().toISOString();
+          const keyName = isTask ? 'tasks' : 'scheduledWorkOrders';
+          const all = lsGet(keyName) || [];
+          const it = all.find(x => x.id === t.id);
+          if(it){
+            Object.assign(it, isTask ? {done: true, doneAt: stamp, doneBy: 'office'} : {status: 'done', doneAt: stamp, doneBy: 'office'});
+            lsSet(keyName, all);
+            if(isTask){ try{ if(typeof tasks !== 'undefined') tasks = all; }catch(err){} }
+            fieldNoteLocalChange();
+          }
+          showToast(t.techName + '\u2019s completed \u2014 moved to History');
+          draw();
+        });
+        acts.appendChild(done);
+      }
+      const bin = awcBinButton('Take it off ' + t.techName + '\u2019s route');
+      bin.addEventListener('click', async e=>{
+        e.stopPropagation();
+        const ok = await confirmDialog('Take it off ' + awcEsc(t.techName) + '\u2019s route'
+          + (repeats ? ' \u2014 all ' + t.groupLeft + ' dates still to come' : '') + '?', repeats ? 'Remove all ' + t.groupLeft : 'Remove');
+        if(!ok) return;
+        const ids = new Set(t.ids);
+        awcRemove(isTask, x => ids.has(x.id));
+        showToast('Removed');
+        draw();
+      });
+      acts.appendChild(bin);
+      row.appendChild(head); row.appendChild(acts);
+      box.appendChild(row);
+    });
+  };
+  draw();
+}
+// Edit all: every technician's dates still to come, changed in place
+function awcOpenBundleForEditing(isTask, key){
+  const techs = awcBundleTechRows(isTask, key);
+  if(!techs.length) return;
+  const techIds = techs.map(t => t.techId);
+  const allIds = techs.reduce((a, t) => a.concat(t.ids), []);
+  const items = (lsGet(isTask ? 'tasks' : 'scheduledWorkOrders') || []).filter(x => allIds.indexOf(x.id) !== -1)
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  const first = items[0];
+  awcOpenForEditing(isTask, isTask ? {group: first.seriesId || '', id: first.id}
+    : {group: first.workOrderId, techId: String(first.technicianId || ''), id: first.id});
+  if(isTask){
+    awcTaskTechs = techIds.slice();
+    awcEdit = {kind: 'task', ids: allIds, groupId: key};
+    if(document.getElementById('awcTaskRepeat').value !== 'none') document.getElementById('awcTaskUntil').value = items[items.length - 1].date || '';
+  } else {
+    awcWoTechs = techIds.slice();
+    awcEdit = Object.assign({}, awcEdit || {}, {kind: 'wo', ids: allIds, workOrderId: first.workOrderId || '',
+      number: first.workOrderNumber || 0, lastDate: items[items.length - 1].date || ''});
+  }
+  awcLabelTechs();
+  awcRenderEditDates();
+  showToast('Editing it for all ' + techIds.length + ' technicians');
 }
 
 // Opening a row from Current into its form (Oct 2)
@@ -15033,7 +15245,7 @@ function awcOpenForEditing(isTask, r){
       document.getElementById('awcTaskUntil').value = '';
     }
     awcRenderChips(); awcLabelTechs(); awcApplyRepeats();
-    awcEdit = {kind: 'task', ids: left.map(t => t.id)};
+    awcEdit = {kind: 'task', ids: left.map(t => t.id), groupId: first.taskGroupId || ''};
     document.getElementById('awcAddTask').textContent = 'Save changes';
     awcRenderEditDates();
     window.scrollTo(0, 0);
@@ -15089,6 +15301,7 @@ function awcRenderCurrent(){
         who: names.length ? names.slice(0, 2).join(', ') + (names.length > 2 ? ' +' + (names.length - 2) : '') : 'No customer',
         techName: awcTechName(t.technicianId) || 'No technician',
         techId: String(t.technicianId || ''),
+        bundle: t.taskGroupId || '',
         every: t.everyDays || (t.everyWeeks ? t.everyWeeks * 7 : 0),
         group: t.seriesId || '', groupLeft: t.seriesId ? open.filter(x => x.seriesId === t.seriesId).length : 1};
     });
@@ -15099,6 +15312,8 @@ function awcRenderCurrent(){
       techName: awcTechName(j.technicianId) || 'No technician',
       // A repeat is one work order's visits for one technician (Oct 2)
       techId: String(j.technicianId || ''),
+      bundle: j.workOrderId || '',
+      workOrderNumber: j.workOrderNumber || 0,
       group: j.workOrderId || '',
       groupLeft: j.workOrderId ? jobs.filter(x => x.workOrderId === j.workOrderId
         && String(x.technicianId || '') === String(j.technicianId || '')).length : 1
@@ -15115,6 +15330,21 @@ function awcRenderCurrent(){
     seenRepeat.add(key);
     return true;
   });
+  // One work order or task for several technicians is one row (Oct 2)
+  {
+    const byBundle = {};
+    rows.forEach(r=>{ if(r.bundle) (byBundle[r.bundle] = byBundle[r.bundle] || []).push(r); });
+    const placed = new Set();
+    rows = rows.reduce((acc, r)=>{
+      const members = r.bundle ? byBundle[r.bundle] : null;
+      if(!members || new Set(members.map(m => m.techId)).size < 2){ acc.push(r); return acc; }
+      if(placed.has(r.bundle)) return acc;
+      placed.add(r.bundle);
+      acc.push({isBundle: true, bundle: r.bundle, id: 'bundle:' + r.bundle, date: r.date, who: r.who, what: r.what,
+        every: r.every || 0, workOrderNumber: r.workOrderNumber || 0});
+      return acc;
+    }, []);
+  }
   box.innerHTML = '';
   if(!rows.length){
     box.innerHTML = '<p style="font-size:13.5px;color:var(--muted);margin:6px 0;">Nothing scheduled'
@@ -15124,6 +15354,7 @@ function awcRenderCurrent(){
   rows.slice(0, awcShown).forEach(r=>{
     const row = document.createElement('div');
     row.className = 'awc-row';
+    if(r.isBundle){ awcBundleRow(isTask, r, row, today); box.appendChild(row); return; }
     const top = document.createElement('div');
     top.style.cssText = 'display:flex;gap:12px;align-items:flex-start;';
     const when = document.createElement('div');
@@ -15151,6 +15382,10 @@ function awcRenderCurrent(){
     }
     const acts = document.createElement('div');
     acts.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:8px;';
+    // Edit: this one, in its form, changed in place (Oct 2)
+    const edit = awcSmallBtn('Edit');
+    edit.addEventListener('click', e=>{ e.stopPropagation(); awcOpenForEditing(isTask, r); });
+    acts.appendChild(edit);
     const complete = awcSmallBtn('Mark completed');
     complete.addEventListener('click', ()=>{
       const stamp = new Date().toISOString();
@@ -15209,6 +15444,31 @@ function awcRenderCurrent(){
   awcMoreButton(box, rows.length, awcRenderCurrent);
 }
 
+// A repeat's completed dates, newest first, in their own window (Oct 2)
+function awcOpenHistoryGroup(lead){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:420px;width:100%;max-height:82vh;display:flex;flex-direction:column;">'
+    + '<h3 style="font-size:16px;margin:0 0 2px;"></h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;"></p>'
+    + '<div data-list style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:0 10px;"></div>'
+    + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-ghost" data-close>Close</button></div>'
+    + '</div>';
+  overlay.querySelector('h3').textContent = lead.title;
+  overlay.querySelector('p').textContent = [lead.customer, lead.members.length + ' completed'].filter(Boolean).join(' \u00b7 ');
+  const box = overlay.querySelector('[data-list]');
+  lead.members.forEach((m, i)=>{
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:9px 0;' + (i === lead.members.length - 1 ? '' : 'border-bottom:1px solid var(--line);');
+    row.innerHTML = '<div style="font-size:14px;font-weight:600;">' + awcEsc(m.at ? new Date(m.at).toLocaleString() : 'Completed') + '</div>'
+      + (m.by ? '<div style="font-size:12px;color:var(--muted);">by ' + awcEsc(m.by) + '</div>' : '')
+      + (m.notes ? '<div style="font-size:13px;margin-top:4px;white-space:pre-line;">' + awcEsc(m.notes) + '</div>' : '');
+    box.appendChild(row);
+  });
+  overlay.querySelector('[data-close]').addEventListener('click', ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); });
+  document.body.appendChild(overlay);
+}
+
 // Taken off the route here, and off the server with the next sync
 function awcRemove(isTask, match){
   const key = isTask ? 'tasks' : 'scheduledWorkOrders';
@@ -15231,15 +15491,29 @@ function awcRenderHistory(){
   const isTask = awcKind === 'Task';
   const byName = (doneBy, techId) => doneBy === 'office' ? 'the office' : (awcTechName(doneBy || techId) || '');
   const whoDid = (doneBy, techId) => String(doneBy === 'office' ? (techId || '') : (doneBy || techId || ''));
-  const list = (isTask
+  let list = (isTask
     ? (lsGet('tasks') || []).filter(t => t && t.done).map(t => ({
+        group: t.seriesId || '',
         title: t.title || 'Task', customer: (t.customerIds || []).map(awcCustName).filter(Boolean).join(', '),
         at: t.doneAt || '', notes: t.doneNotes || '', by: byName(t.doneBy, t.technicianId), techId: whoDid(t.doneBy, t.technicianId)}))
     : (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'done').map(j => ({
+        group: j.workOrderId ? j.workOrderId + '|' + (j.technicianId || '') : '',
         title: j.title || 'Work order', customer: awcCustName(j.customerId),
         at: j.doneAt || '', notes: j.doneNotes || '', by: byName(j.doneBy, j.technicianId), techId: whoDid(j.doneBy, j.technicianId)})))
     .filter(x => !tech || x.techId === tech)
     .sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  // A repeat is one row, placed by its latest completion (Oct 2); it opens
+  // every completed date
+  {
+    const lead = {};
+    list = list.filter(x=>{
+      if(!x.group) return true;
+      if(lead[x.group]){ lead[x.group].members.push(x); return false; }
+      x.members = [x];
+      lead[x.group] = x;
+      return true;
+    });
+  }
   box.innerHTML = '';
   if(!list.length){
     box.innerHTML = '<p style="font-size:13.5px;color:var(--muted);margin:6px 0;">'
@@ -15249,10 +15523,18 @@ function awcRenderHistory(){
   list.slice(0, awcShown).forEach(s=>{
     const row = document.createElement('div');
     row.className = 'awc-row';
-    row.innerHTML = '<div style="font-weight:700;font-size:14px;">' + awcEsc((s.customer ? s.customer + ' \u2013 ' : '') + s.title) + '</div>'
+    const many = s.members && s.members.length > 1;
+    row.innerHTML = '<div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;min-width:0;">'
+      + '<div style="font-weight:700;font-size:14px;">' + awcEsc((s.customer ? s.customer + ' \u2013 ' : '') + s.title) + '</div>'
       + '<div style="font-size:12px;color:var(--muted);margin-top:2px;">'
-      + awcEsc([s.at ? new Date(s.at).toLocaleString() : '', s.by ? 'by ' + s.by : ''].filter(Boolean).join(' \u00b7 ')) + '</div>'
-      + (s.notes ? '<div style="font-size:13px;margin-top:6px;white-space:pre-line;">' + awcEsc(s.notes) + '</div>' : '');
+      + awcEsc([(many ? 'Last completed ' : '') + (s.at ? new Date(s.at).toLocaleString() : ''), s.by ? 'by ' + s.by : '',
+          many ? s.members.length + ' completed' : ''].filter(Boolean).join(' \u00b7 ')) + '</div>'
+      + (s.notes ? '<div style="font-size:13px;margin-top:6px;white-space:pre-line;">' + awcEsc(s.notes) + '</div>' : '')
+      + '</div>' + (many ? '<span aria-hidden="true" style="color:var(--muted);font-size:22px;line-height:1;">\u203a</span>' : '') + '</div>';
+    if(many){
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', ()=> awcOpenHistoryGroup(s));
+    }
     box.appendChild(row);
   });
   awcMoreButton(box, list.length, awcRenderHistory);
@@ -19046,6 +19328,53 @@ attachAllPhoneFormatting();
       });
     });
   }).observe(document.body, {childList: true, subtree: true, characterData: true});
+})();
+
+// Every window closes on a click outside it (Tyrus, Oct 2: the default from
+// now on; replaces "windows close only from their own buttons"). The click on
+// the dark area presses the window's own way out — Cancel, Close, Not now,
+// or Done — so it behaves exactly as that button does. Only a click that
+// starts and ends on the dark area counts: a drag from inside the window
+// (selecting text) never closes it. A full-screen layer with no way out of
+// its own (the sign-in screen) is left alone.
+(function windowsCloseOnOutsideClick(){
+  const isBackdrop = el=>{
+    if(!el || el === document.body || el === document.documentElement) return false;
+    const cs = getComputedStyle(el);
+    if(cs.position !== 'fixed') return false;
+    const r = el.getBoundingClientRect();
+    const coversScreen = r.left <= 1 && r.top <= 1
+      && r.right >= window.innerWidth - 1 && r.bottom >= window.innerHeight - 1;
+    return coversScreen && el.children.length > 0;
+  };
+  const wayOut = layer=>{
+    const btns = Array.from(layer.querySelectorAll('button')).filter(b => b.offsetParent !== null && !b.disabled);
+    const words = b => ((b.textContent || '').trim() || b.getAttribute('aria-label') || '').toLowerCase();
+    for(const want of [/^cancel$/, /^close$/, /^not now$/, /^back$/, /^done$/]){
+      const hit = btns.find(b => want.test(words(b)));
+      if(hit) return hit;
+    }
+    return null;
+  };
+  let downOn = null;
+  ['mousedown', 'touchstart'].forEach(evt=>{
+    document.addEventListener(evt, e=>{ downOn = isBackdrop(e.target) ? e.target : null; }, {capture: true, passive: true});
+  });
+  document.addEventListener('click', e=>{
+    const layer = e.target;
+    if(!isBackdrop(layer)) return;
+    // A picture or video viewer, and Edit customers, close themselves
+    if(layer.dataset && layer.dataset.closesOutside === '1') return;
+    e.stopPropagation(); e.preventDefault();
+    if(downOn !== layer){ downOn = null; return; }
+    downOn = null;
+    const way = wayOut(layer);
+    if(way){ way.click(); return; }
+    // A plain window with no button of its own: it simply goes
+    if(layer.classList.contains('confirm-overlay')){
+      if(layer.id) layer.style.display = 'none'; else layer.remove();
+    }
+  }, true);
 })();
 
 // Where the header shows, sticky cards sit under it rather than behind it

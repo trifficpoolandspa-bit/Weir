@@ -1359,27 +1359,28 @@ input::placeholder{color:#A9BCB9;}
       </div>
       <div class="field" id="wcRepeatField">
         <label>Repeat</label>
+        <!-- The same choices as a task's Repeat (Oct 2) -->
         <select id="wcRepeat">
-          <option value="none">One time only</option>
+          <option value="none">Just once</option>
           <option value="weekly">Every week</option>
           <option value="biweekly">Every 2 weeks</option>
-          <option value="monthly">Every month</option>
-          <option value="bimonthly">Every 2 months</option>
-          <option value="quarterly">Every 3 months</option>
-          <option value="biannual">Every 6 months</option>
-          <option value="yearly">Every year</option>
-          <option value="custom">Custom…</option>
+          <option value="triweekly">Every 3 weeks</option>
+          <option value="fourweekly">Every 4 weeks</option>
+          <option value="custom">Every&hellip; (choose)</option>
         </select>
-        <div id="wcCustomRepeat" style="display:none;align-items:center;gap:8px;margin-top:8px;">
-          <span style="font-size:13px;color:var(--muted);flex-shrink:0;">Every</span>
-          <input type="number" id="wcCustomEvery" min="1" step="1" value="3" style="width:80px;flex-shrink:0;">
-          <select id="wcCustomUnit" style="flex:1;">
-            <option value="days">days</option>
+        <div id="wcCustomRepeat" style="display:none;margin-top:10px;align-items:center;gap:10px;">
+          <span style="font-size:13px;color:var(--muted);">Every</span>
+          <input type="number" id="wcCustomEvery" min="1" max="52" value="6" style="width:80px;">
+          <select id="wcCustomUnit" style="width:auto;">
             <option value="weeks" selected>weeks</option>
-            <option value="months">months</option>
+            <option value="days">days</option>
           </select>
         </div>
-        <p style="font-size:11px;color:var(--muted);margin:6px 0 0;">Repeats are scheduled a year ahead from the date above.</p>
+        <!-- An end date for a repeating work order (Oct 2), as tasks have -->
+        <div id="wcRepeatUntilWrap" style="display:none;margin-top:12px;">
+          <label style="font-size:12.5px;">Until <span style="font-weight:400;color:var(--muted);">(optional &mdash; leave blank to keep going)</span></label>
+          <input type="date" id="wcRepeatUntil">
+        </div>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
         <span style="font-size:13px;font-weight:600;color:var(--muted);">Total</span>
@@ -9923,6 +9924,11 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
     if(!dates.length){ saveTasks(); clearTaskForm(); renderTaskList(); showToast('No dates left'); return; }
   }
 
+  // Made for several technicians at once, or edited as part of such a group:
+  // they share a group, so Current shows them as one (Oct 2)
+  const taskGroupId = (editedSeries && editedSeries.groupId)
+    || (techIds.length > 1 ? 'tgroup_' + Date.now() + '_' + Math.random().toString(36).slice(2,7) : '');
+
   // Each technician has their own copy, and their own series if it repeats
   techIds.forEach(techId=>{
     const series = everyDays > 0
@@ -9938,6 +9944,7 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
         everyWeeks,
         everyDays,
         seriesId: series,
+        taskGroupId,
         photoRequired: document.getElementById('taskPhotoRequired').checked,
         done: false,
         createdAt: new Date().toISOString()
@@ -9949,7 +9956,14 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
   clearTaskForm();
   renderTaskList();
   const who = techIds.length === 1 ? 'the route' : techNamesFor(techIds) + '\u2019s routes';
-  if(editedSeries){ showToast('Task saved \u2014 ' + dates.length + (dates.length === 1 ? ' date' : ' dates') + ' on ' + who); return; }
+  if(editedSeries){
+    // Back to Current, where it was opened from
+    document.getElementById('wcType').value = 'Task';
+    wcView = 'current';
+    applyWorkOrderType();
+    showToast('Task saved \u2014 ' + dates.length + (dates.length === 1 ? ' date' : ' dates') + ' on ' + who);
+    return;
+  }
   showToast(dates.length === 1
     ? 'Task added to ' + who
     : 'Added ' + dates.length + ' times to ' + who + ', every ' + repeatWords(everyDays));
@@ -10511,6 +10525,12 @@ function resetWorkOrderForm(backToQuote){
   if(r) r.value = 'none';
   const cr = document.getElementById('wcCustomRepeat');
   if(cr) cr.style.display = 'none';
+  const uw = document.getElementById('wcRepeatUntilWrap');
+  if(uw) uw.style.display = 'none';
+  const cu = document.getElementById('wcCustomUnit'), ce = document.getElementById('wcCustomEvery');
+  if(cu && ce){ cu.value = 'weeks'; ce.value = '6'; ce.max = '52'; }
+  const ue = document.getElementById('wcRepeatUntil');
+  if(ue) ue.value = '';
   populateWorkOrderTechnicians();
   applyWorkOrderType();
   recalcWorkOrderTotal();
@@ -10890,7 +10910,7 @@ function renderEditDates(){
 
 // A repeating task or work order's own window: every date still to come,
 // each with Mark completed and a ×. Closes from Close only. (Oct 2)
-function openRepeatWindow(kind, r){
+function openRepeatWindow(kind, r, onClose){
   const isTask = kind === 'Task';
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
@@ -10901,7 +10921,7 @@ function openRepeatWindow(kind, r){
     + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-ghost" data-close style="flex:1;">Close</button></div>'
     + '</div>';
   document.body.appendChild(overlay);
-  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); renderCurrentList(kind); };
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); renderCurrentList(kind); if(onClose) onClose(); };
   overlay.querySelector('[data-close]').addEventListener('click', close);
   const left = ()=>{
     if(isTask) return tasks.filter(t => t && !t.done && t.seriesId === r.group)
@@ -10953,12 +10973,12 @@ function openRepeatWindow(kind, r){
         showToast(wcShortDate(item.date) + ' completed \u2014 moved to History');
         draw();
       });
+      // The square bin here, as on the pages (Tyrus, Oct 2)
       const x = document.createElement('button');
       x.type = 'button';
-      x.textContent = '\u00d7';
+      x.innerHTML = '<svg class="weir-bin" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
       x.title = 'Take ' + wcShortDate(item.date) + ' off the route';
-      x.style.cssText = 'flex:0 0 30px;width:30px;height:30px;padding:0;border:1px solid #EFC9BC;'
-        + 'border-radius:8px;background:#fff;color:var(--rust);font-size:16px;cursor:pointer;';
+      x.setAttribute('aria-label', x.title);
       x.addEventListener('click', async ()=>{
         const ok = await confirmDialog('Take ' + wcShortDate(item.date) + ' off the route?', 'Remove');
         if(!ok) return;
@@ -10972,6 +10992,229 @@ function openRepeatWindow(kind, r){
     });
   };
   draw();
+}
+
+// ---------- Several technicians on one work order or task (Oct 2) ----------
+// Current shows them as one row: Edit all, a bin for everyone, and pressing it
+// opens a window with a row per technician — Edit for just them, a bin for
+// theirs, Mark completed on a one-off; a repeat opens its dates in a window on
+// top. Built fresh from what's stored each time, so it's never out of date.
+function bundleTechRows(kind, key){
+  const tname = id => technicianNameById(id) || 'No technician';
+  const custNameOf = id => { const c = customers.find(x => String(x.id) === String(id)); return c ? displayName(c.name) : 'A customer no longer on file'; };
+  const items = kind === 'Task'
+    ? tasks.filter(t => t && !t.done && t.taskGroupId === key)
+    : (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'scheduled' && j.workOrderId === key);
+  const byTech = {};
+  items.forEach(x=>{ (byTech[String(x.technicianId || '')] = byTech[String(x.technicianId || '')] || []).push(x); });
+  return Object.keys(byTech).map(techId=>{
+    const list = byTech[techId].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+    const first = list[0];
+    const names = kind === 'Task' ? (first.customerIds || []).map(custNameOf) : [custNameOf(first.customerId)];
+    return {id: first.id, date: first.date, techId, techName: tname(techId),
+      what: kind === 'Task' ? (first.title || 'Task') : (first.title || 'Work order'),
+      who: names.length ? names.slice(0, 2).join(', ') + (names.length > 2 ? ' +' + (names.length - 2) : '') : 'No customer',
+      group: kind === 'Task' ? (first.seriesId || '') : (first.workOrderId || ''),
+      groupLeft: list.length, every: kind === 'Task' ? (first.everyDays || (first.everyWeeks ? first.everyWeeks * 7 : 0)) : 0,
+      workOrderId: first.workOrderId, ids: list.map(x => x.id)};
+  }).sort((a, b) => a.techName.localeCompare(b.techName));
+}
+
+function binButton(title){
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.title = title;
+  b.setAttribute('aria-label', title);
+  b.innerHTML = '<svg class="weir-bin" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+  return b;
+}
+function smallGhost(text){
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'btn btn-ghost';
+  b.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;flex:0 0 auto;';
+  b.textContent = text;
+  return b;
+}
+function removeBundleItems(kind, ids){
+  const set = new Set(ids);
+  if(kind === 'Task'){ tasks = tasks.filter(t => !set.has(t.id)); saveTasks(); }
+  else lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !set.has(j.id)));
+}
+
+function renderBundleRow(kind, r, row, ticking, today){
+  if(!ticking){
+    row.style.cursor = 'pointer';
+    row.title = 'See each technician';
+    row.addEventListener('click', e=>{
+      if(e.target.closest('button, input, a, select')) return;
+      openBundleWindow(kind, r.bundle);
+    });
+  }
+  const when = document.createElement('div');
+  when.style.cssText = 'flex:0 0 118px;font-size:12.5px;font-weight:600;';
+  when.textContent = wcShortDate(r.date);
+  if(r.date && r.date < today){
+    const od = document.createElement('div');
+    od.style.cssText = 'font-size:11px;font-weight:700;color:var(--rust);';
+    od.textContent = 'Overdue';
+    when.appendChild(od);
+  }
+  const mid = document.createElement('div');
+  mid.style.cssText = 'flex:1;min-width:0;';
+  const l1 = document.createElement('div');
+  l1.style.cssText = 'font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  l1.textContent = r.who + ' \u2013 ' + r.what;
+  const l2 = document.createElement('div');
+  l2.style.cssText = 'font-size:12px;color:var(--muted);';
+  const techs = bundleTechRows(kind, r.bundle);
+  const bits = [];
+  if(kind !== 'Task' && r.workOrderNumber) bits.push('#' + quoteNumberText(r.workOrderNumber));
+  bits.push(techs.length + ' technicians');
+  if(r.every) bits.push('Every ' + repeatWords(r.every));
+  l2.textContent = bits.join(' \u00b7 ');
+  mid.appendChild(l1); mid.appendChild(l2);
+  row.appendChild(when); row.appendChild(mid);
+  const acts = document.createElement('div');
+  acts.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
+  const editAll = smallGhost('Edit all');
+  editAll.title = 'Change it for every technician';
+  editAll.addEventListener('click', e=>{ e.stopPropagation(); openBundleForEditing(kind, r.bundle); });
+  acts.appendChild(editAll);
+  const all = techs.reduce((n, t) => n + t.ids.length, 0);
+  const bin = binButton('Take it off every technician\u2019s route');
+  bin.addEventListener('click', async e=>{
+    e.stopPropagation();
+    const ok = await confirmDialog('Take \u201c' + escapeSyncText(r.who + ' \u2013 ' + r.what) + '\u201d off every technician\u2019s route? That\u2019s '
+      + all + (all === 1 ? ' date' : ' dates') + ' still to come.', 'Remove all');
+    if(!ok) return;
+    removeBundleItems(kind, techs.reduce((a, t) => a.concat(t.ids), []));
+    renderCurrentList(kind);
+    showToast('Removed');
+  });
+  acts.appendChild(bin);
+  const chev = document.createElement('span');
+  chev.textContent = '\u203a';
+  chev.setAttribute('aria-hidden', 'true');
+  chev.style.cssText = 'color:var(--muted);font-size:20px;line-height:1;padding:0 2px;';
+  acts.appendChild(chev);
+  row.appendChild(acts);
+}
+
+function openBundleWindow(kind, key){
+  const isTask = kind === 'Task';
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:520px;width:100%;max-height:82vh;display:flex;flex-direction:column;">'
+    + '<h3 style="font-size:16px;margin:0 0 2px;" data-title></h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;" data-sub></p>'
+    + '<div data-list style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:0 10px;"></div>'
+    + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-ghost" data-close style="flex:1;">Close</button></div>'
+    + '</div>';
+  document.body.appendChild(overlay);
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); renderCurrentList(kind); };
+  overlay.querySelector('[data-close]').addEventListener('click', close);
+  const draw = ()=>{
+    if(!overlay.parentNode) return;
+    const techs = bundleTechRows(kind, key);
+    if(!techs.length){ close(); return; }
+    overlay.querySelector('[data-title]').textContent = techs[0].who + ' \u2013 ' + techs[0].what;
+    overlay.querySelector('[data-sub]').textContent = techs.length + (techs.length === 1 ? ' technician' : ' technicians');
+    const box = overlay.querySelector('[data-list]');
+    box.innerHTML = '';
+    techs.forEach((t, i)=>{
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 0;'
+        + (i === techs.length - 1 ? '' : 'border-bottom:1px solid var(--line);');
+      const repeats = t.groupLeft > 1;
+      const body = document.createElement('div');
+      body.style.cssText = 'flex:1;min-width:0;';
+      body.innerHTML = '<div style="font-size:13.5px;font-weight:600;"></div><div style="font-size:12px;color:var(--muted);"></div>';
+      body.children[0].textContent = t.techName;
+      body.children[1].textContent = [wcShortDate(t.date),
+        repeats ? (t.every ? 'Every ' + repeatWords(t.every) : 'Repeats') + ' \u00b7 ' + t.groupLeft + ' left' : 'just once'].join(' \u00b7 ');
+      row.appendChild(body);
+      const edit = smallGhost('Edit');
+      edit.title = 'Change it for ' + t.techName + ' only';
+      edit.addEventListener('click', e=>{
+        e.stopPropagation();
+        if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        openCurrentForEditing(kind, t);
+      });
+      row.appendChild(edit);
+      if(!repeats){
+        const done = smallGhost('Mark completed');
+        done.addEventListener('click', e=>{
+          e.stopPropagation();
+          const stamp = new Date().toISOString();
+          if(isTask){ const x = tasks.find(y => y.id === t.id); if(x){ Object.assign(x, {done: true, doneAt: stamp, doneBy: 'office'}); saveTasks(); } }
+          else { const jobs = lsGet('scheduledWorkOrders') || []; const j = jobs.find(y => y.id === t.id);
+            if(j){ Object.assign(j, {status: 'done', doneAt: stamp, doneBy: 'office'}); lsSet('scheduledWorkOrders', jobs); } }
+          showToast(t.techName + '\u2019s completed \u2014 moved to History');
+          draw();
+        });
+        row.appendChild(done);
+      }
+      const bin = binButton('Take it off ' + t.techName + '\u2019s route');
+      bin.addEventListener('click', async e=>{
+        e.stopPropagation();
+        const ok = await confirmDialog('Take it off ' + escapeSyncText(t.techName) + '\u2019s route'
+          + (repeats ? ' \u2014 all ' + t.groupLeft + ' dates still to come' : '') + '?', repeats ? 'Remove all ' + t.groupLeft : 'Remove');
+        if(!ok) return;
+        removeBundleItems(kind, t.ids);
+        showToast('Removed');
+        draw();
+      });
+      row.appendChild(bin);
+      if(repeats){
+        const chev = document.createElement('span');
+        chev.textContent = '\u203a';
+        chev.setAttribute('aria-hidden', 'true');
+        chev.style.cssText = 'color:var(--muted);font-size:20px;line-height:1;padding:0 2px;';
+        row.appendChild(chev);
+        // A window within the window: this technician's dates
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', e=>{
+          if(e.target.closest('button')) return;
+          openRepeatWindow(kind, t, draw);
+        });
+      }
+      box.appendChild(row);
+    });
+  };
+  draw();
+}
+
+// Edit all: every technician's dates still to come, in the form, changed in
+// place (the same work order and number, or the same group of tasks)
+function openBundleForEditing(kind, key){
+  const techs = bundleTechRows(kind, key);
+  if(!techs.length) return;
+  const techIds = techs.map(t => t.techId);
+  const allIds = techs.reduce((a, t) => a.concat(t.ids), []);
+  if(kind === 'Task'){
+    const items = tasks.filter(t => allIds.indexOf(t.id) !== -1).sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+    const first = items[0];
+    const mine = items.filter(t => String(t.technicianId) === String(first.technicianId));
+    openCurrentForEditing('Task', {group: first.seriesId || '', id: first.id});
+    setPickedTechIds(document.getElementById('taskTechnician'), techIds);
+    wcEditSeries = {kind: 'task', ids: allIds, groupId: key};
+    if(mine.length > 1) document.getElementById('taskRepeatUntil').value = items[items.length - 1].date || '';
+    renderEditDates();
+    showToast('Editing it for all ' + techIds.length + ' technicians');
+    return;
+  }
+  const jobs = (lsGet('scheduledWorkOrders') || []).filter(j => allIds.indexOf(j.id) !== -1)
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  const first = jobs[0];
+  openCurrentForEditing('Work Order', {group: first.workOrderId, techId: String(first.technicianId || ''), id: first.id});
+  setTimeout(()=>{
+    setPickedTechIds(document.getElementById('wcTechnician'), techIds);
+    wcEditSeries = {kind: 'wo', ids: allIds, workOrderId: first.workOrderId || '',
+      lastDate: jobs[jobs.length - 1].date || '', number: first.workOrderNumber || 0};
+    renderEditDates();
+    showToast('Editing it for all ' + techIds.length + ' technicians');
+  }, 200);
 }
 
 function repeatFromGap(days){
@@ -10995,7 +11238,7 @@ function openCurrentForEditing(kind, r){
     const first = left[0];
     openTaskForEditing(first);
     editingTaskId = null;
-    wcEditSeries = {kind: 'task', ids: left.map(t => t.id)};
+    wcEditSeries = {kind: 'task', ids: left.map(t => t.id), groupId: first.taskGroupId || ''};
     const every = first.everyDays || (first.everyWeeks ? first.everyWeeks * 7 : 0);
     const rep = document.getElementById('taskRepeat');
     if(left.length > 1 && every){
@@ -11102,6 +11345,8 @@ function renderCurrentList(kind){
       // quotes), so it isn't one that was deleted
       orphan: !!j.workOrderId && !j.madeOnPhone && !woIds.has(j.workOrderId),
       workOrderId: j.workOrderId,
+      bundle: j.workOrderId || '',
+      workOrderNumber: j.workOrderNumber || 0,
       // A repeat is one work order's visits for one technician (Oct 2)
       techId: String(j.technicianId || ''),
       group: j.workOrderId || '',
@@ -11118,6 +11363,7 @@ function renderCurrentList(kind){
         who: names.length ? names.slice(0, 2).join(', ') + (names.length > 2 ? ' +' + (names.length - 2) : '') : 'No customer',
         techName: technicianNameById(t.technicianId) || 'No technician',
         techId: String(t.technicianId || ''),
+        bundle: t.taskGroupId || '',
         every: t.everyDays || (t.everyWeeks ? t.everyWeeks * 7 : 0),
         group: t.seriesId || '', groupLeft: t.seriesId ? open.filter(x => x.seriesId === t.seriesId).length : 1};
     });
@@ -11145,6 +11391,21 @@ function renderCurrentList(kind){
       seen.add(key);
       return true;
     });
+    // One work order or task for several technicians is one row; it opens a
+    // window with a row per technician (Oct 2)
+    const byBundle = {};
+    rows.forEach(r=>{ if(r.bundle){ (byBundle[r.bundle] = byBundle[r.bundle] || []).push(r); } });
+    const placed = new Set();
+    rows = rows.reduce((acc, r)=>{
+      const members = r.bundle ? byBundle[r.bundle] : null;
+      if(!members || new Set(members.map(m => m.techId)).size < 2){ acc.push(r); return acc; }
+      if(placed.has(r.bundle)) return acc;
+      placed.add(r.bundle);
+      acc.push({isBundle: true, bundle: r.bundle, id: 'bundle:' + r.bundle, date: r.date, who: r.who, look: r.look,
+        what: r.what, members, every: r.every || 0, workOrderNumber: r.workOrderNumber || 0,
+        techName: members.length + ' technicians'});
+      return acc;
+    }, []);
   }
 
   count.textContent = rows.length ? String(rows.length) : '';
@@ -11160,7 +11421,13 @@ function renderCurrentList(kind){
   const redrawCur = () => renderCurrentList(kind);
   box.appendChild(selectionBar(selKey, pageRows.map(r => r.id),
     kind === 'Task' ? 'task' : (kind === 'Quote' ? 'quote' : 'scheduled visit'), ids=>{
-      const set = new Set(ids);
+      const set = new Set();
+      ids.forEach(id=>{
+        if(String(id).indexOf('bundle:') !== 0){ set.add(id); return; }
+        const key = String(id).slice(7);
+        if(kind === 'Task') tasks.filter(t => t.taskGroupId === key && !t.done).forEach(t => set.add(t.id));
+        else (lsGet('scheduledWorkOrders') || []).filter(j => j.workOrderId === key && j.status === 'scheduled').forEach(j => set.add(j.id));
+      });
       if(kind === 'Task'){ tasks = tasks.filter(t => !set.has(t.id)); saveTasks(); }
       else if(kind === 'Quote'){ workOrders = workOrders.filter(w => !set.has(w.id)); saveWorkOrders(); }
       else lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !set.has(j.id)));
@@ -11172,6 +11439,8 @@ function renderCurrentList(kind){
       + (i === shown.length - 1 ? '' : 'border-bottom:1px solid var(--line);');
     const tick = selectionTick(selKey, r.id, redrawCur);
     if(tick){ row.appendChild(tick); row.style.cursor = 'pointer'; row.addEventListener('click', e=>{ if(e.target.closest('button')) return; toggleSelected(selKey, r.id, redrawCur); }); }
+    if(r.isBundle){ renderBundleRow(kind, r, row, !!tick, today); box.appendChild(row); return; }
+    if(tick){}
     else if(kind !== 'Quote' && r.groupLeft > 1){
       // A repeat opens its own window of dates (Oct 2); a single one doesn't open
       row.style.cursor = 'pointer';
@@ -11284,16 +11553,18 @@ function renderCurrentList(kind){
       });
       acts.appendChild(deny);
     } else {
-      // Edit: to the Work Order tab with it loaded
-      const wo = kind === 'Work Order' && r.workOrderId ? workOrders.find(x => x.id === r.workOrderId) : null;
-      if(wo){
+      // Edit: this one, in its form, for this technician only (Oct 2). Saving
+      // changes it in place — the same work order and number, only this
+      // technician's visits still to come — never a new one, never a copy
+      // for another technician. Tasks have it too.
+      {
         const edit = document.createElement('button');
         edit.type = 'button';
         edit.className = 'btn btn-ghost';
         edit.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;';
         edit.textContent = 'Edit';
-        edit.title = 'Open this work order to change it';
-        edit.addEventListener('click', e => { e.stopPropagation(); loadWorkOrderIntoForm(wo); });
+        edit.title = kind === 'Task' ? 'Change this task' : 'Change this work order';
+        edit.addEventListener('click', e => { e.stopPropagation(); openCurrentForEditing(kind, r); });
         acts.appendChild(edit);
       }
       // Done without going through the field: to History, as if submitted there
@@ -11393,10 +11664,12 @@ function renderSubmittedHistory(kind){
     .map(c => [c.name, displayName(c.name), c.address, c.phone, c.email].filter(Boolean).join(' ')).join(' ');
   const fromServer = kind === 'task'
     ? tasks.filter(t => t && t.done).map(t => ({key: 'task:' + t.id, sourceId: t.id, title: t.title || 'Task',
+        group: t.seriesId || '',
         customerName: (t.customerIds || []).map(nameOf).filter(Boolean).join(', '),
         submittedAt: t.doneAt || '', notes: t.doneNotes || '', by: t.doneBy === 'office' ? 'the office' : (technicianNameById(t.doneBy || t.technicianId) || ''), techId: String(t.doneBy === 'office' ? (t.technicianId || '') : (t.doneBy || t.technicianId || '')),
         lookup: lookupOf(t.customerIds || [])}))
     : (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'done').map(j => ({key: 'wo:' + j.id, sourceId: j.id, workOrderId: j.workOrderId,
+        group: j.workOrderId ? j.workOrderId + '|' + (j.technicianId || '') : '',
         title: j.title || 'Work order', customerName: nameOf(j.customerId),
         submittedAt: j.doneAt || '', notes: j.doneNotes || '', by: j.doneBy === 'office' ? 'the office' : (technicianNameById(j.doneBy || j.technicianId) || ''), techId: String(j.doneBy === 'office' ? (j.technicianId || '') : (j.doneBy || j.technicianId || '')),
         lookup: lookupOf([j.customerId])}));
@@ -11414,12 +11687,25 @@ function renderSubmittedHistory(kind){
   const term = (document.getElementById('wcSubmittedSearch').value || '').trim().toLowerCase();
   const onDay = document.getElementById('wcSubmittedDate').value || '';
   const dayOf = at => at ? new Date(new Date(at).getTime() - new Date(at).getTimezoneOffset() * 60000).toISOString().slice(0, 10) : '';
-  const list = fromServer.concat((lsGet('jobSubmissions') || [])
+  let list = fromServer.concat((lsGet('jobSubmissions') || [])
       .filter(sub => sub && sub.kind === kind && !seen.has(String(sub.sourceId))))
     .filter(sub => !wantTech || String(sub.techId || sub.technicianId || '') === wantTech)
     .filter(sub => !onDay || dayOf(sub.submittedAt) === onDay)
     .filter(sub => !term || [sub.customerName, sub.lookup, sub.title, sub.notes, sub.by].filter(Boolean).join(' ').toLowerCase().includes(term))
     .sort((a, b) => String(b.submittedAt || '').localeCompare(String(a.submittedAt || '')));
+  // A repeat is one row, placed by its latest completion, so completing one
+  // brings it back to the top (Oct 2). Its row opens every completed date.
+  {
+    const lead = {};
+    list = list.filter(sub=>{
+      if(!sub.group) return true;
+      if(lead[sub.group]){ lead[sub.group].members.push(sub); return false; }
+      sub.members = [sub];
+      lead[sub.group] = sub;
+      return true;
+    });
+  }
+  const membersOf = key => { const x = list.find(s => s.key === key); return x && x.members ? x.members : null; };
   countEl.textContent = list.length ? String(list.length) : '';
   if(!list.length){
     box.innerHTML = emptyState((wantTech || term || onDay) ? 'Nothing matches.'
@@ -11435,7 +11721,9 @@ function renderSubmittedHistory(kind){
   const allSubs = list;
   const pageSubs = allSubs.slice((wcSubmittedPage - 1) * CUSTOM_PER_PAGE, wcSubmittedPage * CUSTOM_PER_PAGE);
   box.appendChild(selectionBar(subKey, pageSubs.map(x => x.key), 'submitted ' + kind, ids=>{
-    const set = new Set(ids);
+    // A repeat's row stands for all its completed dates
+    const set = new Set();
+    ids.forEach(id=>{ const m = membersOf(id); (m || [{key: id}]).forEach(x => set.add(x.key)); });
     tasks = tasks.filter(t => !set.has('task:' + t.id)); saveTasks();
     lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !set.has('wo:' + j.id)));
     lsSet('jobSubmissions', (lsGet('jobSubmissions') || []).filter(x => !(x && x.kind === kind && set.has(x.key))));
@@ -11455,8 +11743,18 @@ function renderSubmittedHistory(kind){
     title.textContent = (sub.customerName ? sub.customerName + ' \u2013 ' : '') + (sub.title || kind);
     const when = document.createElement('div');
     when.style.cssText = 'font-size:12px;color:var(--muted);margin-top:2px;';
-    when.textContent = [sub.submittedAt ? new Date(sub.submittedAt).toLocaleString() : '', sub.by ? 'by ' + sub.by : '']
+    const many = sub.members && sub.members.length > 1;
+    when.textContent = [(many ? 'Last completed ' : '') + (sub.submittedAt ? new Date(sub.submittedAt).toLocaleString() : ''),
+        sub.by ? 'by ' + sub.by : '', many ? sub.members.length + ' completed' : '']
       .filter(Boolean).join(' \u00b7 ');
+    if(many && !subTick){
+      row.style.cursor = 'pointer';
+      row.title = 'See every completed date';
+      row.addEventListener('click', e=>{
+        if(e.target.closest('button, input, a, select')) return;
+        openHistoryGroupWindow(kind, sub);
+      });
+    }
     body.appendChild(title); body.appendChild(when);
     if(sub.notes){
       const notes = document.createElement('div');
@@ -11471,7 +11769,7 @@ function renderSubmittedHistory(kind){
     // Edit & resend: a work order opens on the Work Order tab, a task on the Task tab
     const woOf = kind === 'work order' && sub.workOrderId ? workOrders.find(x => x.id === sub.workOrderId) : null;
     const taskOf = kind === 'task' && String(sub.key || '').indexOf('task:') === 0 ? tasks.find(x => String(x.id) === String(sub.sourceId)) : null;
-    if(woOf || taskOf){
+    if((woOf || taskOf) && !many){
       const again = document.createElement('button');
       again.type = 'button';
       again.className = 'btn btn-ghost';
@@ -11488,18 +11786,93 @@ function renderSubmittedHistory(kind){
     del.textContent = 'Delete';
     del.addEventListener('click', async e=>{
       e.stopPropagation();
-      const ok = await confirmDialog('Delete "' + (sub.title || kind) + '"' + (sub.customerName ? ' for ' + sub.customerName : '') + '? This cannot be undone.', 'Delete');
+      const ok = await confirmDialog(many
+        ? 'Delete all ' + sub.members.length + ' completed dates of "' + (sub.title || kind) + '"' + (sub.customerName ? ' for ' + sub.customerName : '') + '? This cannot be undone.'
+        : 'Delete "' + (sub.title || kind) + '"' + (sub.customerName ? ' for ' + sub.customerName : '') + '? This cannot be undone.',
+        many ? 'Delete all ' + sub.members.length : 'Delete');
       if(!ok) return;
-      if(String(sub.key).indexOf('task:') === 0 && !sub.kind){ tasks = tasks.filter(t => 'task:' + t.id !== sub.key); saveTasks(); }
-      else if(String(sub.key).indexOf('wo:') === 0){ lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => 'wo:' + j.id !== sub.key)); }
-      else lsSet('jobSubmissions', (lsGet('jobSubmissions') || []).filter(x => x.key !== sub.key));
+      (many ? sub.members : [sub]).forEach(removeSubmitted);
       renderSubmittedHistory(kind);
-      showToast('Deleted');
+      showToast(many ? 'Deleted ' + sub.members.length : 'Deleted');
     });
     acts.appendChild(del);
+    if(many){
+      const chev = document.createElement('span');
+      chev.textContent = '\u203a';
+      chev.setAttribute('aria-hidden', 'true');
+      chev.style.cssText = 'color:var(--muted);font-size:20px;line-height:1;align-self:center;padding:0 2px;';
+      acts.appendChild(chev);
+    }
     row.appendChild(acts);
     box.appendChild(row);
   });
+}
+
+// Takes one completed task or work order visit out of History
+function removeSubmitted(sub){
+  if(String(sub.key).indexOf('task:') === 0 && !sub.kind){ tasks = tasks.filter(t => 'task:' + t.id !== sub.key); saveTasks(); }
+  else if(String(sub.key).indexOf('wo:') === 0){ lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => 'wo:' + j.id !== sub.key)); }
+  else lsSet('jobSubmissions', (lsGet('jobSubmissions') || []).filter(x => x.key !== sub.key));
+}
+
+// A repeat's completed dates, newest first, in their own window (Oct 2)
+function openHistoryGroupWindow(kind, lead){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:480px;width:100%;max-height:82vh;display:flex;flex-direction:column;">'
+    + '<h3 style="font-size:16px;margin:0 0 2px;" data-title></h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;" data-sub></p>'
+    + '<div data-list style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:0 10px;"></div>'
+    + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-ghost" data-close style="flex:1;">Close</button></div>'
+    + '</div>';
+  document.body.appendChild(overlay);
+  let members = lead.members.slice();
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); renderSubmittedHistory(kind); };
+  overlay.querySelector('[data-close]').addEventListener('click', close);
+  const draw = ()=>{
+    if(!members.length){ close(); return; }
+    overlay.querySelector('[data-title]').textContent = lead.title || kind;
+    overlay.querySelector('[data-sub]').textContent = [lead.customerName, members.length + ' completed'].filter(Boolean).join(' \u00b7 ');
+    const box = overlay.querySelector('[data-list]');
+    box.innerHTML = '';
+    members.forEach((m, i)=>{
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:9px 0;'
+        + (i === members.length - 1 ? '' : 'border-bottom:1px solid var(--line);');
+      const body = document.createElement('div');
+      body.style.cssText = 'flex:1;min-width:0;';
+      const l1 = document.createElement('div');
+      l1.style.cssText = 'font-size:13.5px;font-weight:600;';
+      l1.textContent = m.submittedAt ? new Date(m.submittedAt).toLocaleString() : 'Completed';
+      const l2 = document.createElement('div');
+      l2.style.cssText = 'font-size:12px;color:var(--muted);';
+      l2.textContent = m.by ? 'by ' + m.by : '';
+      body.appendChild(l1); body.appendChild(l2);
+      if(m.notes){
+        const n = document.createElement('div');
+        n.style.cssText = 'font-size:13px;margin-top:4px;white-space:pre-line;';
+        n.textContent = m.notes;
+        body.appendChild(n);
+      }
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.textContent = '\u00d7';
+      x.title = 'Delete this one';
+      x.style.cssText = 'flex:0 0 30px;width:30px;height:30px;padding:0;border:1px solid #EFC9BC;'
+        + 'border-radius:8px;background:#fff;color:var(--rust);font-size:16px;cursor:pointer;';
+      x.addEventListener('click', async ()=>{
+        const ok = await confirmDialog('Delete this completed one? This cannot be undone.', 'Delete');
+        if(!ok) return;
+        removeSubmitted(m);
+        members = members.filter(y => y.key !== m.key);
+        showToast('Deleted');
+        draw();
+      });
+      row.appendChild(body); row.appendChild(x);
+      box.appendChild(row);
+    });
+  };
+  draw();
 }
 
 function applyWorkOrderType(){
@@ -11723,9 +12096,14 @@ document.querySelectorAll('#wcTypeToggle [data-wctype]').forEach(btn=>{
   });
 });
 
+document.getElementById('wcCustomUnit').addEventListener('change', (e)=>{
+  document.getElementById('wcCustomEvery').max = e.target.value === 'days' ? '365' : '52';
+});
 document.getElementById('wcRepeat').addEventListener('change', (e)=>{
   const box = document.getElementById('wcCustomRepeat');
   if(box) box.style.display = e.target.value === 'custom' ? 'flex' : 'none';
+  const until = document.getElementById('wcRepeatUntilWrap');
+  if(until) until.style.display = e.target.value === 'none' ? 'none' : 'block';
 });
 
 // Builds the repeat dates, a year out from the start
@@ -11761,7 +12139,7 @@ function workOrderDates(startISO, repeat, customEvery, customUnit){
     return out;
   }
 
-  const stepDays = {weekly:7, biweekly:14};
+  const stepDays = {weekly:7, biweekly:14, triweekly:21, fourweekly:28};
   const stepMonths = {monthly:1, bimonthly:2, quarterly:3, biannual:6, yearly:12};
   const start = new Date(startISO + 'T12:00:00');
   const limit = new Date(start.getTime());
@@ -11895,6 +12273,9 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
     let dates = workOrderDates(date, repeat,
       document.getElementById('wcCustomEvery').value,
       document.getElementById('wcCustomUnit').value);
+    // Up to Until, when one is set (the first date always goes)
+    const repeatUntil = repeat !== 'none' ? (document.getElementById('wcRepeatUntil').value || '') : '';
+    if(repeatUntil) dates = dates.filter((d, i) => i === 0 || d <= repeatUntil);
 
     // Editing one from Current: its visits still to come are replaced, and
     // the first customer keeps its work order and number (Oct 2)
@@ -11937,14 +12318,21 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
         number: woNumber,
         photoRequired: type === 'Work Order' && document.getElementById('wcPhotoRequired').checked,
         id: woId, customerId: customer.id, type, lineItems: validItems, notes, total,
-        technicianId: techIds[0], technicianIds: techIds, date, repeat,
+        technicianId: techIds[0], technicianIds: techIds, date, repeat, repeatUntil,
         createdAt: new Date().toISOString(),
         status: 'finalized'
       };
       const was = keep ? workOrders.findIndex(w => w && w.id === woId) : -1;
-      if(was !== -1) workOrders[was] = Object.assign({}, workOrders[was], header, {createdAt: workOrders[was].createdAt || header.createdAt});
+      if(was !== -1){
+        // Edited for one technician: the others stay on it
+        const others = (workOrders[was].technicianIds || []).map(String);
+        header.technicianIds = Array.from(new Set(others.concat(techIds.map(String))));
+        header.technicianId = header.technicianIds[0];
+        workOrders[was] = Object.assign({}, workOrders[was], header, {createdAt: workOrders[was].createdAt || header.createdAt});
+      }
       else workOrders.push(header);
     });
+    const wasEditing = !!editing;
     wcEditSeries = null;
     lsSet('scheduledWorkOrders', jobs);
     saveWorkOrders();
@@ -11953,6 +12341,14 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
 
     const visits = dates.length * picked.length;
     showNextQuoteNumber();
+    if(wasEditing){
+      // Back to Current, where it was opened from
+      document.getElementById('wcType').value = 'Work Order';
+      wcView = 'current';
+      applyWorkOrderType();
+      showToast('Work order saved \u2014 ' + visits + (visits === 1 ? ' visit' : ' visits'));
+      return;
+    }
     showToast('Finalized — ' + visits + (visits === 1 ? ' visit' : ' visits') +
       ' added to ' + techNamesFor(techIds) + (techIds.length === 1 ? "'s route" : "'s routes"));
     return;
@@ -12492,8 +12888,14 @@ function loadWorkOrderIntoForm(w){
     const repeatEl = document.getElementById('wcRepeat');
     if(repeatEl){
       repeatEl.value = w.repeat || 'none';
+      // An older work order set to months: no longer a choice, so Just once
+      if(!repeatEl.value) repeatEl.value = 'none';
       const box = document.getElementById('wcCustomRepeat');
       if(box) box.style.display = repeatEl.value === 'custom' ? 'flex' : 'none';
+      const untilWrap = document.getElementById('wcRepeatUntilWrap');
+      if(untilWrap) untilWrap.style.display = repeatEl.value === 'none' ? 'none' : 'block';
+      const untilEl = document.getElementById('wcRepeatUntil');
+      if(untilEl) untilEl.value = w.repeatUntil || '';
     }
 
     // No "Editing a saved …" heading: it only took up space
@@ -23275,10 +23677,14 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
   }).observe(document.body, {childList: true, subtree: true, characterData: true});
 })();
 
-// Windows close only from their own buttons. A click on the dark backdrop
-// around a window, the full-screen layer behind it, is ignored before any
-// handler can act on it. Clicks inside the window itself are untouched.
-(function windowsCloseOnlyFromButtons(){
+// Every window closes on a click outside it (Tyrus, Oct 2: the default from
+// now on; replaces "windows close only from their own buttons"). The click on
+// the dark area presses the window's own way out — Cancel, Close, Not now,
+// or Done — so it behaves exactly as that button does. Only a click that
+// starts and ends on the dark area counts: a drag from inside the window
+// (selecting text) never closes it. A full-screen layer with no way out of
+// its own (the sign-in screen) is left alone.
+(function windowsCloseOnOutsideClick(){
   const isBackdrop = el=>{
     if(!el || el === document.body || el === document.documentElement) return false;
     const cs = getComputedStyle(el);
@@ -23286,13 +23692,35 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
     const r = el.getBoundingClientRect();
     const coversScreen = r.left <= 1 && r.top <= 1
       && r.right >= window.innerWidth - 1 && r.bottom >= window.innerHeight - 1;
-    // A picture or a video may close from outside (Tyrus, 1ep / 1em.10)
-    if(el.dataset && el.dataset.closesOutside === '1') return false;
-    // A backdrop holds a window; an empty full-screen layer is something else
     return coversScreen && el.children.length > 0;
   };
+  const wayOut = layer=>{
+    const btns = Array.from(layer.querySelectorAll('button')).filter(b => b.offsetParent !== null && !b.disabled);
+    const words = b => ((b.textContent || '').trim() || b.getAttribute('aria-label') || '').toLowerCase();
+    for(const want of [/^cancel$/, /^close$/, /^not now$/, /^back$/, /^done$/]){
+      const hit = btns.find(b => want.test(words(b)));
+      if(hit) return hit;
+    }
+    return null;
+  };
+  let downOn = null;
+  ['mousedown', 'touchstart'].forEach(evt=>{
+    document.addEventListener(evt, e=>{ downOn = isBackdrop(e.target) ? e.target : null; }, {capture: true, passive: true});
+  });
   document.addEventListener('click', e=>{
-    if(isBackdrop(e.target)){ e.stopPropagation(); e.preventDefault(); }
+    const layer = e.target;
+    if(!isBackdrop(layer)) return;
+    // A picture or video viewer, and Edit customers, close themselves
+    if(layer.dataset && layer.dataset.closesOutside === '1') return;
+    e.stopPropagation(); e.preventDefault();
+    if(downOn !== layer){ downOn = null; return; }
+    downOn = null;
+    const way = wayOut(layer);
+    if(way){ way.click(); return; }
+    // A plain window with no button of its own: it simply goes
+    if(layer.classList.contains('confirm-overlay')){
+      if(layer.id) layer.style.display = 'none'; else layer.remove();
+    }
   }, true);
 })();
 
