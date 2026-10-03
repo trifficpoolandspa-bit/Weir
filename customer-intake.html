@@ -165,6 +165,12 @@ body.sidebar-subtabs nav .tab.active[data-view="chemconfig"] + .nav-subs{display
 .nav-sub.active{color:#fff;}
 .nav-sub.active span{background:rgba(255,255,255,0.12);}
 body.sidebar-subtabs #workCenterTypeControl{display:none;}
+/* No "WorkCenter" header or its line of description (Oct 2: too much room).
+   With the sections in the sidebar the whole card goes; with the old tabs
+   only the strip is left in it. */
+#view-workcenter > .card:has(> #workCenterTypeControl) > h2,
+#view-workcenter > .card:has(> #workCenterTypeControl) > p{display:none;}
+body.sidebar-subtabs #view-workcenter > .card:has(> #workCenterTypeControl){display:none;}
 body.sidebar-subtabs .card:has(> #techMainTabs){display:none;}
 body.sidebar-subtabs #chemConfigTypeControl{display:none !important;}
 
@@ -263,6 +269,8 @@ input::placeholder{color:#A9BCB9;}
 }
 .section-head h2{margin-bottom:0;}
 .section-count{font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;white-space:nowrap;}
+.ps-tick:hover{border-color:var(--line) !important;background:var(--surface);}
+.ps-col{font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;white-space:nowrap;}
 /* Alerts (Oct 2): the count beside the tab, and the rows */
 .nav-badge{min-width:22px;height:20px;padding:0 7px;margin-left:8px;border-radius:10px;background:var(--gold);color:#fff;
   font-size:11.5px;font-weight:700;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;vertical-align:middle;}
@@ -1993,19 +2001,30 @@ input::placeholder{color:#A9BCB9;}
 
   <div class="view" id="view-productsservices">
     <div class="card">
-      <h2>Products and Services</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Add any product or service you offer — like a filter replacement, a pool opening, or an algae treatment — along with its price.</p>
+      <!-- No header or subtext here (Oct 2): the list starts straight away -->
       <div class="seg-control" id="psCategoryControl" style="margin-bottom:14px;">
         <button class="history-type-btn active" data-pscat="all" type="button">All</button>
         <button class="history-type-btn" data-pscat="repairs" type="button">Repairs</button>
         <button class="history-type-btn" data-pscat="chemicals" type="button">Chemicals</button>
       </div>
-      <div style="position:relative;margin-bottom:12px;">
+      <!-- Search, with Add product or service at the far right of the same line (Oct 2) -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+      <div style="position:relative;flex:1;min-width:0;">
         <input id="psSearch" placeholder="Search products and services" autocomplete="off" style="padding-right:38px;">
         <button type="button" id="psSearchClear" style="display:none;position:absolute;right:8px;bottom:4px;height:30px;width:30px;padding:0;border:1px solid #EFC9BC;border-radius:8px;background:#fff;color:var(--rust);font-size:18px;line-height:1;cursor:pointer;align-items:center;justify-content:center;">×</button>
       </div>
+      <button class="btn btn-ghost" id="btnAddProductService" style="width:auto;flex:0 0 auto;white-space:nowrap;">+ Add product or service</button>
+      </div>
+      <!-- What each column is (Oct 2) -->
+      <div id="psColumnLabels" style="display:flex;align-items:center;gap:8px;padding:0 0 6px;border-bottom:1px solid var(--line);margin-bottom:6px;">
+        <span class="ps-col" style="flex:1 1 auto;min-width:0;">Name</span>
+        <span class="ps-col" style="flex:0 0 110px;">Price</span>
+        <span class="ps-col" style="flex:0 0 78px;">Unit</span>
+        <span class="ps-col" style="flex:0 0 168px;">Extra charge</span>
+        <span class="ps-col" style="flex:0 0 132px;">Category</span>
+        <span style="flex:0 0 33px;"></span>
+      </div>
       <div id="productsServicesList"></div>
-      <button class="btn btn-ghost" id="btnAddProductService" style="width:auto;margin-top:10px;">+ Add product or service</button>
     </div>
   </div>
 
@@ -4056,8 +4075,8 @@ document.getElementById('psSearchClear').addEventListener('click', ()=>{
 });
 
 const PS_CATEGORIES = [
-  {key:'repairs', label:'Repairs'},
-  {key:'chemicals', label:'Chemicals'}
+  {key:'repairs', label:'Repair'},
+  {key:'chemicals', label:'Chemical'}
 ];
 
 document.querySelectorAll('#psCategoryControl .history-type-btn').forEach(btn=>{
@@ -4127,8 +4146,16 @@ function renderProductsServicesList(){
     priceInput.type = 'number';
     priceInput.step = 'any';
     priceInput.value = item.price !== undefined && item.price !== null ? item.price : '';
-    priceInput.placeholder = 'Price ($)';
-    priceInput.style.cssText = 'flex:0 0 110px;';
+    priceInput.placeholder = 'Price';
+    // A $ in front of the amount (Oct 2)
+    priceInput.style.cssText = 'width:100%;padding-left:22px;';
+    const priceWrap = document.createElement('div');
+    priceWrap.style.cssText = 'position:relative;flex:0 0 110px;display:flex;';
+    const dollar = document.createElement('span');
+    dollar.textContent = '$';
+    dollar.style.cssText = 'position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px;pointer-events:none;';
+    priceWrap.appendChild(dollar);
+    priceWrap.appendChild(priceInput);
     priceInput.addEventListener('input', ()=>{
       item.price = priceInput.value;
       saveProductsServices();
@@ -4174,7 +4201,17 @@ function renderProductsServicesList(){
     unitInput.value = item.unit || '';
     unitInput.style.cssText = 'flex:0 0 78px;min-width:0;';
 
-    if(needsUnitPrompt){
+    if((item.category || '') === 'repairs'){
+      // A repair has no unit: the box can't be pressed at all (Oct 2)
+      unitInput.readOnly = true;
+      unitInput.disabled = true;
+      unitInput.tabIndex = -1;
+      unitInput.placeholder = '';
+      unitInput.title = 'Repairs have no unit';
+      unitInput.style.background = 'var(--surface-alt)';
+      unitInput.style.cursor = 'default';
+      unitInput.style.pointerEvents = 'none';
+    } else if(needsUnitPrompt){
       unitInput.readOnly = true;
       unitInput.placeholder = '';
       unitInput.title = 'No unit set — tap to add one';
@@ -4271,7 +4308,7 @@ function renderProductsServicesList(){
     }
 
     row.appendChild(nameInput);
-    row.appendChild(priceInput);
+    row.appendChild(priceWrap);
     row.appendChild(unitInput);
     row.appendChild(extraWrap);
     row.appendChild(catSel);
@@ -4328,26 +4365,47 @@ document.getElementById('btnAddProductService').addEventListener('click', ()=>{
   openProductServiceModal();
 });
 
+// Products and Services: pressing into a box selects everything in it, so
+// typing replaces it (Oct 2) — names, prices and units, on the page and in
+// the Add product or service window. A second press puts the cursor where
+// it's pressed, as usual.
+(function psSelectAllOnPress(){
+  const inPS = el => el && el.tagName === 'INPUT' && el.type !== 'checkbox'
+    && !!el.closest('#view-productsservices, .ps-window');
+  let justFocused = null;
+  document.addEventListener('focusin', e=>{
+    if(!inPS(e.target)) return;
+    justFocused = e.target;
+    try{ e.target.select(); }catch(err){}
+  });
+  // The mouse let go just after: don't let it undo the selection
+  document.addEventListener('mouseup', e=>{
+    if(justFocused && e.target === justFocused){ e.preventDefault(); }
+    justFocused = null;
+  }, true);
+})();
+
 function openProductServiceModal(){
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
   overlay.innerHTML = `
-    <div class="confirm-box" style="max-width:420px;">
+    <div class="confirm-box ps-window" style="max-width:420px;">
       <h3 style="font-size:15px;margin:0 0 4px;">Add product or service</h3>
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Name it and set the price. You can schedule it for a customer now or later.</p>
       <div class="field"><label>Product or service</label><input id="psName" placeholder="e.g. Filter replacement"></div>
       <div class="field"><label>Price ($)</label><input id="psPrice" type="number" step="0.01" placeholder="0.00"></div>
       <div class="field"><label>Unit (optional)</label><input id="psUnit" placeholder="gal, lb, oz, tab…"></div>
+      <!-- Only the box and its words tick it (Oct 2); the rest of the line does nothing -->
       <div class="field">
-        <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:14px;font-weight:500;color:var(--ink);">
-          <input type="checkbox" id="psExtraCharge" style=""> Extra charge chemical
+        <label class="ps-tick" style="display:inline-flex;align-items:center;gap:8px;width:auto;margin:0;padding:6px 10px 6px 8px;border:1px solid transparent;border-radius:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-family:'Inter',sans-serif;font-size:14px;font-weight:500;color:var(--ink);">
+          <input type="checkbox" id="psExtraCharge" style="width:18px;height:18px;margin:0;cursor:pointer;"> Extra charge chemical
         </label>
       </div>
       <div class="field"><label>Category</label>
         <select id="psCategoryPick">
           <option value="">Uncategorised</option>
-          <option value="repairs">Repairs</option>
-          <option value="chemicals">Chemicals</option>
+          <option value="repairs">Repair</option>
+          <option value="chemicals">Chemical</option>
         </select>
       </div>
       <div class="btn-row">
@@ -5943,9 +6001,24 @@ function resetScheduleDates(){
     if(p) p.click();
     mirror();
   }));
+  // The heading says which body of water is showing: "Readings and Dosages — Spa"
+  // (Oct 2). Not on Customer Customization, which shares the page.
+  const heading = ()=>{
+    const h = document.getElementById('chemConfigHeading');
+    const seg = document.getElementById('chemConfigTypeControl');
+    if(!h || !seg || seg.style.display === 'none') return;
+    const on = seg.querySelector('.history-type-btn.active');
+    h.textContent = 'Readings and Dosages' + (on ? ' \u2014 ' + on.textContent.trim() : '');
+  };
+  const both = ()=>{ mirror(); heading(); };
   document.querySelectorAll('#chemConfigTypeControl .history-type-btn').forEach(p =>
-    new MutationObserver(mirror).observe(p, {attributes: true, attributeFilter: ['class']}));
-  mirror();
+    new MutationObserver(both).observe(p, {attributes: true, attributeFilter: ['class']}));
+  // Customer Customization hands the page back: the heading is set again
+  const segEl = document.getElementById('chemConfigTypeControl');
+  if(segEl) new MutationObserver(heading).observe(segEl, {attributes: true, attributeFilter: ['style']});
+  const hEl = document.getElementById('chemConfigHeading');
+  if(hEl) new MutationObserver(()=>{ if(hEl.textContent === 'Readings and Dosages') heading(); }).observe(hEl, {childList: true});
+  both();
 })();
 
 // The sidebar's WorkCenter sections: to WorkCenter if not there, then that section
@@ -23696,7 +23769,7 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
         const cs = getComputedStyle(n);
         if(cs.position === 'fixed'){
           const r = n.getBoundingClientRect();
-          if(r.width >= window.innerWidth - 2 && r.height >= window.innerHeight - 2) return true;
+          if(r.width >= Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth) - 2 && r.height >= Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight) - 2) return true;
           // A window built into the page is hidden until opened, so it can't
           // be measured then: a fixed layer stacked over the page counts too
           if((parseInt(cs.zIndex, 10) || 0) >= 100) return true;
@@ -23778,8 +23851,13 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
     const cs = getComputedStyle(el);
     if(cs.position !== 'fixed') return false;
     const r = el.getBoundingClientRect();
+    // Measured against the page's visible area, not the window: on a computer
+    // the scrollbar takes some width, so a full-screen layer is that much
+    // narrower than window.innerWidth (Oct 2: outside clicks did nothing)
+    const vw = Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth);
+    const vh = Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight);
     const coversScreen = r.left <= 1 && r.top <= 1
-      && r.right >= window.innerWidth - 1 && r.bottom >= window.innerHeight - 1;
+      && r.right >= vw - 1 && r.bottom >= vh - 1;
     return coversScreen && el.children.length > 0;
   };
   const wayOut = layer=>{
@@ -23829,7 +23907,7 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
       try{
         if(getComputedStyle(n).position === 'fixed'){
           const r = n.getBoundingClientRect();
-          if(r.width >= window.innerWidth - 2 && r.height >= window.innerHeight - 2) return true;
+          if(r.width >= Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth) - 2 && r.height >= Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight) - 2) return true;
         }
       }catch(e){}
       n = n.parentElement;
@@ -23900,7 +23978,7 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
       const cs = getComputedStyle(el);
       if(cs.position !== 'fixed' || cs.display === 'none' || cs.visibility === 'hidden') return false;
       const r = el.getBoundingClientRect();
-      return r.width >= window.innerWidth - 2 && r.height >= window.innerHeight - 2 && el.children.length > 0;
+      return r.width >= Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth) - 2 && r.height >= Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight) - 2 && el.children.length > 0;
     }catch(e){ return false; }
   };
   let open = new Set();
