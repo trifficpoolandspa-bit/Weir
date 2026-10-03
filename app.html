@@ -516,7 +516,9 @@ select#customerSelect{font-weight:600;}
   position:fixed;top:0;left:0;right:0;bottom:0;
   background:rgba(15,46,46,0.45);
   display:flex;align-items:center;justify-content:center;
-  z-index:100;padding:20px;
+  /* Above the work order / filter clean screen (150), so its windows show
+     (Oct 3); still under the sign-in screen (200) and the camera (500) */
+  z-index:160;padding:20px;
 }
 .confirm-box{
   background:#fff;border-radius:14px;padding:20px;max-width:340px;width:100%;
