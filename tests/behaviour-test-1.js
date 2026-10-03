@@ -994,9 +994,9 @@ console.log('\n=== Quick buttons are shared across customers ===');
 
   try{
     w.eval("viewCustomer(customers[0]);");
-    check('  every type offers a quick-buttons control',
-          texts().filter(t => t === '+ Quick buttons' || t === 'Edit buttons').length >= 2,
-          texts().join(','));
+    // Oct 2 (1hj): no "+ Quick buttons" on a row with none; "Edit buttons" stays where there are some
+    check('  a type with no quick buttons has no "+ Quick buttons" bubble',
+          !texts().includes('+ Quick buttons'), texts().join(','));
     check('  a new option is not there yet', !texts().includes('Pentair CCP420'));
 
     // What choosing "Other" and typing a name does

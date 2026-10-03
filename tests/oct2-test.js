@@ -406,6 +406,20 @@ const ROOT = 'file://' + path.resolve('.') + '/';
     });
   }
 
+  await run('customer-intake.html', 'Website: Other on equipment', async ()=>{
+    const out = [];
+    customers.push({id:'a', name:'Alpha', active:true, equipmentTypeOptions:['Filter'], equipment:[]},
+                   {id:'b', name:'Beta', active:true, equipmentTypeOptions:['Filter', 'Filter 2'], equipment:[]}); saveCustomers();
+    window.promptDialog = ()=> Promise.resolve('Hayward Pro');
+    viewCustomer(customers.find(c => c.id === 'a')); await wait(200);
+    const labels = () => Array.from(document.querySelectorAll('#icEquipmentList button')).map(b => b.textContent.trim());
+    out.push(['a row with no quick buttons has no "+ Quick buttons" bubble', labels().indexOf('+ Quick buttons') === -1]);
+    Array.from(document.querySelectorAll('#icEquipmentList button')).find(b => b.textContent.trim() === 'Other').click(); await wait(150);
+    viewCustomer(customers.find(c => c.id === 'b')); await wait(200);
+    out.push(['a name typed under Other becomes a button on every filter, every customer', labels().filter(t => t === 'Hayward Pro').length === 2]);
+    return out;
+  });
+
   await browser.close();
   console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
   process.exit(fail ? 1 : 0);

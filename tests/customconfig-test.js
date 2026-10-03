@@ -686,7 +686,8 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     check('the quote\u2019s answer code is saved before the email goes', !!code && calls.indexOf(code) < calls.indexOf(mails[0]) && /^[0-9a-f]{32}$/.test(code.body.token || ''));
     check('the email has Approve and Decline buttons for that code', !!code && (mail.body.html || '').indexOf('t=' + code.body.token + '&a=approve') !== -1
           && (mail.body.html || '').indexOf('&a=deny') !== -1 && />Decline</.test(mail.body.html || ''));
-    check('and the quote\u2019s number beside QUOTE (#0001)', /#0001/.test(mail.body.html || ''));
+    // Oct 2 (1ib): the # is in its own light-grey span, then the number
+    check('and the quote\u2019s number beside QUOTE (#0001)', /#(<\/span>)?0001/.test(mail.body.html || ''));
     check('the quote keeps its number and a copy of the email', w.eval("(()=>{ const q = workOrders.filter(x => (x.type||'Quote')==='Quote').slice(-1)[0]; return q.number === 1 && /Acid wash/.test(q.emailHtml || ''); })()"));
     check('the company name is not written into the page', fs.readFileSync('customer-intake.html', 'utf8').indexOf('Triffic Pool & Spa') === -1);
     // Customize email
