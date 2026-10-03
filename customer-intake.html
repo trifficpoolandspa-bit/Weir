@@ -8478,6 +8478,13 @@ function syncApplyRecord(kind, id, data, deleted){
         renderGroupList();
       }catch(e){}
     }
+    // Equipment quick buttons from another computer: an open profile shows
+    // them straight away (Oct 2), unless a window is open over it
+    if(id === 'equipmentChoices'){
+      try{
+        if(editingId && !document.querySelector('.confirm-overlay') && typeof renderEquipmentTypeList === 'function') renderEquipmentTypeList();
+      }catch(e){}
+    }
     // The same for the other settings the page keeps a working copy of. A
     // dosage added on another device was saved here but never reached the
     // copy the page edits, so the next save on this computer deleted it.
@@ -10040,12 +10047,8 @@ document.getElementById('btnTaskTemplates').addEventListener('click', ()=>{
     });
     row.appendChild(pick);
 
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.className = 'btn btn-ghost fountain-remove';   // the red × in a red square, like the rest
-    del.style.cssText = 'width:24px;height:26px;font-size:13px;border-radius:7px;';
-    del.textContent = '\u00d7';
-    del.title = 'Delete this saved task';
+    // The square bin, as in the app's Saved tasks (Tyrus, Oct 2)
+    const del = binButton('Delete this saved task');
     del.addEventListener('click', async ()=>{
       const ok = await confirmDialog('Delete the saved task "' + t.name + '"?', 'Delete');
       if(!ok) return;
@@ -10753,7 +10756,9 @@ function selectionBar(key, visibleIds, noun, onDelete, redraw, pager, onLeft){
   // (when there's more than one page), Select and the rest on the right
   const row = document.createElement('div');
   row.style.cssText = 'display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;margin:0 0 6px;';
-  // Select and the rest go far left on the WorkCenter's lists, far right elsewhere
+  // Select and the rest go far right everywhere, the WorkCenter's lists too
+  // (Tyrus, Oct 2; they used to sit far left there)
+  onLeft = false;
   const bar = document.createElement('div');
   bar.style.cssText = 'display:flex;align-items:center;justify-content:' + (onLeft ? 'flex-start' : 'flex-end') + ';gap:8px;flex-wrap:wrap;';
   const mid = document.createElement('div');
@@ -11020,6 +11025,8 @@ function bundleTechRows(kind, key){
   }).sort((a, b) => a.techName.localeCompare(b.techName));
 }
 
+// The bin drawing; a button holding it is styled as the square pale red bin
+var WEIR_BIN_SVG = '<svg class="weir-bin" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
 function binButton(title){
   const b = document.createElement('button');
   b.type = 'button';
@@ -11856,7 +11863,7 @@ function openHistoryGroupWindow(kind, lead){
       }
       const x = document.createElement('button');
       x.type = 'button';
-      x.textContent = '\u00d7';
+      x.innerHTML = WEIR_BIN_SVG;   // the square bin here (Tyrus, Oct 2)
       x.title = 'Delete this one';
       x.style.cssText = 'flex:0 0 30px;width:30px;height:30px;padding:0;border:1px solid #EFC9BC;'
         + 'border-radius:8px;background:#fff;color:var(--rust);font-size:16px;cursor:pointer;';
@@ -13488,7 +13495,7 @@ function openDoseRulesModal(item){
 
       const del = document.createElement('button');
       del.type = 'button';
-      del.textContent = '\u00D7';
+      del.innerHTML = WEIR_BIN_SVG;   // the square bin here (Tyrus, Oct 2)
       del.style.cssText = 'flex:0 0 30px;width:30px;height:30px;padding:0;border:1px solid #EFC9BC;'
         + 'border-radius:8px;background:#fff;color:var(--rust);font-size:16px;cursor:pointer;';
       del.addEventListener('click', ()=>{
@@ -13757,7 +13764,7 @@ function openQuickButtonsModal(item){
 
       const del = document.createElement('button');
       del.type = 'button';
-      del.textContent = '×';
+      del.innerHTML = WEIR_BIN_SVG;   // the square bin here (Tyrus, Oct 2)
       del.setAttribute('aria-label', 'Remove this button');
       del.style.cssText = 'flex-shrink:0;width:32px;height:32px;padding:0;'
         + 'border:1px solid #EFC9BC;border-radius:8px;background:#fff;'
@@ -18118,7 +18125,7 @@ function openMultiReportPicker(){
       label.textContent = fmtDate(available.get(dateStr));
       const rm = document.createElement('button');
       rm.type = 'button';
-      rm.textContent = '×';
+      rm.innerHTML = WEIR_BIN_SVG;   // the square bin here (Tyrus, Oct 2)
       rm.setAttribute('aria-label', 'Remove this visit');
       rm.style.cssText = 'border:none;background:none;color:var(--rust);font-size:16px;line-height:1;cursor:pointer;padding:0 4px;flex-shrink:0;';
       rm.addEventListener('click', ()=>{
@@ -20356,7 +20363,9 @@ function renderEquipmentTypeList(){
       e.stopPropagation();
       openEquipmentOptionsModal(type, ()=> renderEquipmentTypeList());
     });
-    middleArea.appendChild(setupBtn);
+    // No "+ Quick buttons" bubble on a row with none (Tyrus, Oct 2): they're
+    // set up in the Add equipment window. A row that has some keeps "Edit buttons".
+    if(extraCount) middleArea.appendChild(setupBtn);
 
     const existingItem = currentEquipmentItems.find(i => i.type === type);
 
@@ -20562,7 +20571,7 @@ function openAddToCustomersModal(typeName){
         row.appendChild(input);
         const del = document.createElement('button');
         del.type = 'button';
-        del.textContent = '\u00D7';
+        del.innerHTML = WEIR_BIN_SVG;   // the square bin here (Tyrus, Oct 2)
         del.title = 'Remove this button';
         del.style.cssText = 'flex:0 0 30px;width:30px;height:30px;padding:0;border:1px solid #EFC9BC;'
           + 'border-radius:8px;background:#fff;color:var(--rust);font-size:16px;cursor:pointer;';
