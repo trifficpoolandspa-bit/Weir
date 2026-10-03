@@ -4322,9 +4322,9 @@ const SYNC_WORK_LISTS = [
 // and the notes (snippet 16 lets a technician change exactly these on their own),
 // and a work order's photo and video (snippet 25, Oct 3)
 const SYNC_WORK_SENDABLE = ['task', 'reschedule', 'work_order', 'filter_clean'];
-const SYNC_FILTER_CLEAN_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo'];
+const SYNC_FILTER_CLEAN_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore'];
 const SYNC_TASK_FIELDS = ['done', 'doneAt', 'doneBy', 'doneNotes'];
-const SYNC_WORK_ORDER_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo'];
+const SYNC_WORK_ORDER_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore'];
 
 // A work order submitted before its photo and video went to the office (Oct 3)
 // kept them only in this phone's submissions: hang them on the visit now, so
@@ -4823,6 +4823,8 @@ function syncPhotosHere(){
     const when = sub.submittedAt || new Date().toISOString();
     add(sub.photo, {customerId: String(sub.customerId), kind: 'custom', visitId: String(sub.sourceId), takenAt: when});
     add(sub.video, {customerId: String(sub.customerId), kind: 'video', visitId: String(sub.sourceId), takenAt: when});
+    (sub.photoMore || []).forEach(r => add(r, {customerId: String(sub.customerId), kind: 'custom', visitId: String(sub.sourceId), takenAt: when}));
+    (sub.videoMore || []).forEach(r => add(r, {customerId: String(sub.customerId), kind: 'video', visitId: String(sub.sourceId), takenAt: when}));
   });
   return out;
 }
@@ -10378,7 +10380,6 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
 // server comes later.
 function openJobPage(customer, job){
   if(openJobPage.open) openJobPage.open.remove();
-  let photo = null;
 
   const page = document.createElement('div');
   page.id = 'jobPage';
@@ -10415,65 +10416,78 @@ function openJobPage(customer, job){
     card.appendChild(said);
   }
 
-  // A photo: the same thumbnail and tap-to-enlarge as the visit photos
-  const photoHead = document.createElement('div');
-  photoHead.style.cssText = 'font-size:13.5px;font-weight:700;color:var(--teal-deep);margin-bottom:8px;';
-  photoHead.textContent = job.photoRequired ? 'Photo \u00b7 Required' : 'Photo';
-  card.appendChild(photoHead);
-  const imgWrap = document.createElement('div');
-  imgWrap.style.cssText = 'display:none;justify-content:center;margin-bottom:8px;';
-  const img = document.createElement('img');
-  img.style.cssText = 'max-width:25%;min-width:96px;border-radius:10px;border:1px solid var(--line);display:block;cursor:zoom-in;';
-  img.title = 'Tap to see it full size';
-  img.addEventListener('click', ()=>{ if(photo) openPhotoFullSize(photo, ()=> remove.click()); });
-  imgWrap.appendChild(img);
-  card.appendChild(imgWrap);
-  const photoRow = document.createElement('div');
-  photoRow.className = 'btn-row';
-  photoRow.style.cssText = 'justify-content:center;margin-bottom:16px;';
-  const take = document.createElement('button');
-  take.type = 'button';
-  take.className = 'btn';
-  take.style.cssText = 'width:auto;padding:11px 20px;font-size:14px;background:var(--rust);color:var(--card);border:1.5px solid var(--rust);';
-  take.textContent = 'Take photo';
-  const remove = document.createElement('button');
-  remove.type = 'button';
-  remove.className = 'btn btn-ghost';
-  remove.style.cssText = 'width:auto;color:var(--rust);border-color:#EFC9BC;display:none;';
-  remove.textContent = 'Remove photo';
-  photoRow.appendChild(take);     // removing is from the full-size photo
-  card.appendChild(photoRow);
-  const showPhoto = data=>{
-    photo = data || null;
-    if(photo){ img.src = photo; imgWrap.style.display = 'flex'; take.textContent = 'Retake photo'; remove.style.display = 'inline-flex'; }
-    else { img.removeAttribute('src'); imgWrap.style.display = 'none'; take.textContent = 'Take photo'; remove.style.display = 'none'; }
-  };
-  take.addEventListener('click', async ()=>{
-    try{ const data = await captureFromCamera(900, 0.5); if(data) showPhoto(data); }
-    catch(err){ showToast('Could not open the camera'); }
-  });
-  remove.addEventListener('click', ()=> showPhoto(null));
+  // Photos and videos: the same as a service report's (Oct 3) — up to three
+  // photos, numbered, tap one for full size and Delete; up to three videos in
+  // the blue box, tap one to watch or delete. Taken the same way, sideways too.
+  const jobSeq = (openJobPage.seq = (openJobPage.seq || 0) + 1);
+  const pid = n => 'job' + jobSeq + n;
+  const photoBlock = document.createElement('div');
+  photoBlock.innerHTML = '<h2 style="margin:4px 0 6px;"></h2>'
+    + '<p class="voice-hint" style="margin:0 0 14px;">Tap a photo to access the delete button.</p>'
+    + '<div id="' + pid('Wrap') + '" style="display:none;margin-bottom:12px;">'
+    + '<img id="' + pid('Img') + '" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="Job photo preview"></div>'
+    + '<div class="btn-row" style="justify-content:center;margin:24px 0 24px;">'
+    + '<button class="btn btn-secondary" id="' + pid('Take') + '" style="width:auto;padding:16px 40px;font-size:17px;background:#B8492E;color:#fff;border:1.5px solid #B8492E;">Take photo</button>'
+    + '<button class="btn btn-ghost" id="' + pid('Remove') + '" style="width:auto;display:none;color:var(--rust);border-color:#EFC9BC;">Remove photo</button>'
+    + '</div>'
+    + '<input type="file" accept="image/*" capture="environment" id="' + pid('File') + '" style="display:none;">';
+  photoBlock.querySelector('h2').textContent = job.photoRequired ? 'Photos \u00b7 Required' : 'Photos';
+  card.appendChild(photoBlock);
 
-  // A video, when the office asks for one (Oct 2): recorded like a visit's,
-  // kept on the phone with the submission
-  let videoRef = null;
-  const videoHead = document.createElement('div');
-  videoHead.style.cssText = 'font-size:13.5px;font-weight:700;color:var(--teal-deep);margin-bottom:8px;';
-  videoHead.textContent = 'Video \u00b7 Required';
-  const videoRow = document.createElement('div');
-  videoRow.className = 'btn-row';
-  videoRow.style.cssText = 'justify-content:center;align-items:center;gap:10px;margin-bottom:16px;';
-  const recVideo = document.createElement('button');
-  recVideo.type = 'button';
-  recVideo.className = 'btn';
-  recVideo.style.cssText = 'width:auto;padding:11px 20px;font-size:14px;background:var(--rust);color:var(--card);border:1.5px solid var(--rust);';
-  recVideo.textContent = 'Record video';
-  const videoDone = document.createElement('span');
-  videoDone.style.cssText = 'display:none;font-size:13px;font-weight:600;color:var(--green);';
-  videoDone.textContent = '\u2713 Video recorded';
-  videoRow.appendChild(recVideo); videoRow.appendChild(videoDone);
-  if(job.videoRequired){ card.appendChild(videoHead); card.appendChild(videoRow); }
+  let videoRefs = [];
+  const showVideo = !!job.videoRequired || (typeof visitVideoAllowed === 'function' && visitVideoAllowed());
+  const videoBlock = document.createElement('div');
+  videoBlock.style.cssText = 'margin:6px 0 18px;padding:14px;border:1.5px solid #A8CBE0;border-radius:11px;background:#EEF6FB;text-align:center;'
+    + (showVideo ? '' : 'display:none;');
+  videoBlock.innerHTML = '<div style="font-size:14px;font-weight:700;color:#0B6FA4;margin-bottom:4px;"></div>'
+    + '<p style="font-size:12px;color:#3E5B6E;margin:0 0 12px;">Up to 3 videos of 15 seconds each, for the office only &mdash; they aren&rsquo;t sent to the customer. Videos delete themselves after 7 days to save storage. Tap a video to watch it full screen.</p>'
+    + '<button type="button" class="btn" data-rec style="width:auto;padding:12px 24px;font-size:15px;background:#0B6FA4;color:#fff;border:1.5px solid #0B6FA4;margin:0 auto;">Record video</button>'
+    + '<div data-vids style="display:none;margin-top:12px;"></div>';
+  videoBlock.firstChild.textContent = job.videoRequired ? 'Videos \u00b7 Required' : 'Videos (optional)';
+  card.appendChild(videoBlock);
+  const recVideo = videoBlock.querySelector('[data-rec]');
+  const vidWrap = videoBlock.querySelector('[data-vids]');
+  const drawJobVideos = async ()=>{
+    vidWrap.innerHTML = '';
+    vidWrap.style.cssText = 'display:none;margin-top:12px;margin-bottom:10px;justify-content:center;align-items:flex-start;flex-wrap:wrap;gap:10px;';
+    for(let i = 0; i < videoRefs.length; i++){
+      const ref = videoRefs[i];
+      const data = await loadPhotoData(ref.slice(PHOTO_REF.length));
+      if(!data) continue;
+      const cell = document.createElement('div');
+      cell.style.cssText = 'position:relative;width:27%;min-width:96px;cursor:pointer;';
+      const v = document.createElement('video');
+      v.muted = true; v.playsInline = true; v.preload = 'metadata'; v.src = data;
+      v.style.cssText = 'display:block;width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;'
+        + 'border:1px solid var(--line);background:#0E1A19;pointer-events:none;';
+      cell.appendChild(v);
+      const play = document.createElement('span');
+      play.textContent = '\u25b6';
+      play.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:34px;height:34px;'
+        + 'border-radius:50%;background:rgba(9,32,34,0.6);color:#fff;font-size:14px;display:flex;align-items:center;justify-content:center;pointer-events:none;';
+      cell.appendChild(play);
+      if(videoRefs.length > 1){
+        const num = document.createElement('span');
+        num.textContent = String(i + 1);
+        num.style.cssText = 'position:absolute;left:6px;top:6px;min-width:22px;height:22px;border-radius:11px;'
+          + 'background:rgba(9,32,34,0.75);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 6px;pointer-events:none;';
+        cell.appendChild(num);
+      }
+      cell.addEventListener('click', ()=> openVideoFullScreen(data, async ()=>{
+        const at = videoRefs.indexOf(ref);
+        if(at !== -1) videoRefs.splice(at, 1);
+        try{ await deletePhotoData(ref.slice(PHOTO_REF.length)); }catch(e){}
+        drawJobVideos();
+      }));
+      vidWrap.appendChild(cell);
+    }
+    vidWrap.style.display = videoRefs.length ? 'flex' : 'none';
+    recVideo.style.display = videoRefs.length >= VISIT_VIDEOS_MAX ? 'none' : '';
+    recVideo.textContent = (videoRefs.length ? 'Record another' : 'Record video') + ' (Max ' + VISIT_VIDEOS_MAX + ')';
+  };
+  drawJobVideos();
   recVideo.addEventListener('click', async ()=>{
+    if(videoRefs.length >= VISIT_VIDEOS_MAX) return;
     try{
       const file = await recordClip({small: true});
       if(!file) return;
@@ -10486,12 +10500,13 @@ function openJobPage(customer, job){
       });
       if(!dataUrl){ showToast('Could not keep that video'); return; }
       const id = 'vid_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-      await savePhotoData(id, dataUrl);
-      videoRef = PHOTO_REF + id;
-      recVideo.textContent = 'Record again';
-      videoDone.style.display = 'inline';
+      try{ await savePhotoData(id, dataUrl); }catch(e){ showToast('Not enough room on this phone for the video'); return; }
+      videoRefs.push(PHOTO_REF + id);
+      drawJobVideos();
+      showToast('Video ' + videoRefs.length + ' added');
     }catch(err){ showToast('Could not record a video'); }
   });
+  let photos = null;          // the photo controller, made once the page is on screen
 
   // Notes
   const notesLabel = document.createElement('label');
@@ -10512,7 +10527,7 @@ function openJobPage(customer, job){
 
   const close = ()=> page.remove();
   back.addEventListener('click', async ()=>{
-    if((photo || videoRef || notes.value.trim())){
+    if(((photos && photos.getAll().length) || videoRefs.length || notes.value.trim())){
       const ok = await confirmDialog('Leave this ' + job.kind + '? The photo, video and notes will be lost.', 'Leave');
       if(!ok) return;
     }
@@ -10520,21 +10535,27 @@ function openJobPage(customer, job){
   });
   submit.addEventListener('click', async ()=>{
     // A task marked "Photo required" can't go without one
-    if(job.photoRequired && !photo){
+    const shots = photos ? photos.getAll() : [];
+    if(job.photoRequired && !shots.length){
       showToast('Take the photo first \u2014 this ' + job.kind + ' needs one');
       return;
     }
-    if(job.videoRequired && !videoRef){
+    if(job.videoRequired && !videoRefs.length){
       showToast('Record the video first \u2014 this ' + job.kind + ' needs one');
       return;
     }
     submit.disabled = true;
-    const stored = photo ? await storePhoto(photo, 'job') : null;
+    const storedAll = [];
+    for(const shot of shots){ const r = await storePhoto(shot, 'job'); if(r) storedAll.push(r); }
+    const stored = storedAll[0] || null;
+    const storedMore = storedAll.slice(1).filter(isPhotoRef);
+    const videoRef = videoRefs[0] || null;
+    const videoMore = videoRefs.slice(1);
     const list = jobSubmissions();
     list.push({
       key: job.key, kind: job.kind, sourceId: job.id,
       customerId: customer ? customer.id : null, customerName: customer ? customer.name : '', title: job.title,
-      notes: notes.value.trim(), photo: stored, video: videoRef, date: job.dayISO || todayDateStr(),
+      notes: notes.value.trim(), photo: stored, photoMore: storedMore, video: videoRef, videoMore: videoMore, date: job.dayISO || todayDateStr(),
       technicianId: currentUser ? currentUser.id : '',
       submittedAt: new Date().toISOString()
     });
@@ -10573,7 +10594,9 @@ function openJobPage(customer, job){
         fc.doneBy = currentUser ? currentUser.id : '';
         fc.doneNotes = noteText;
         if(isPhotoRef(stored)) fc.donePhoto = stored;
+        if(storedMore.length) fc.donePhotoMore = storedMore;
         if(isPhotoRef(videoRef)) fc.doneVideo = videoRef;
+        if(videoMore.length) fc.doneVideoMore = videoMore;
         lsSet('scheduledFilterCleans', cleans);
         if(customer) queueJobEmail(customer, Object.assign({kind: 'filter clean'}, fc));
       }
@@ -10587,7 +10610,9 @@ function openJobPage(customer, job){
         j.doneNotes = noteText;
         // The photo and video go to the office with it (Oct 3)
         if(isPhotoRef(stored)) j.donePhoto = stored;
+        if(storedMore.length) j.donePhotoMore = storedMore;
         if(isPhotoRef(videoRef)) j.doneVideo = videoRef;
+        if(videoMore.length) j.doneVideoMore = videoMore;
         lsSet('scheduledWorkOrders', jobs);
         // Unless the office unticked Email customer on it (Oct 3)
         if(customer && j.emailCustomer !== false) queueJobEmail(customer, Object.assign({kind: 'work order'}, j));
@@ -10601,6 +10626,9 @@ function openJobPage(customer, job){
   page.appendChild(card);
   document.body.appendChild(page);
   openJobPage.open = page;
+  // The visit's own photo controller, now its buttons are on the page
+  photos = makePhotoController({takeBtn: pid('Take'), fileInput: pid('File'),
+    previewWrap: pid('Wrap'), previewImg: pid('Img'), removeBtn: pid('Remove')});
   page.scrollTop = 0;
 }
 
@@ -12354,23 +12382,26 @@ async function renderWorkOrderReport(customerId, jobId, isClean){
     + (items.length ? sec('Line items') + '<table class="report-table">' + rows + '</table>' : '')
     + (j.notes ? sec('Work order notes') + '<div class="report-notes" style="white-space:pre-wrap;">' + esc(j.notes) + '</div>' : '')
     + (j.doneNotes ? sec('Technician\u2019s notes') + '<div class="report-notes" style="white-space:pre-wrap;">' + esc(j.doneNotes) + '</div>' : '')
-    + (j.donePhoto ? sec('Photo') + '<div data-wo-photo style="font-size:12.5px;color:var(--muted);">Loading the photo\u2026</div>' : '')
+    + (j.donePhoto ? sec((j.donePhotoMore || []).length ? 'Photos' : 'Photo') + '<div data-wo-photo style="display:flex;gap:10px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);">Loading the photo\u2026</div>' : '')
     + '</div>';
   const doc = out.querySelector('.report-doc');
 
   // The photo, full size when pressed
   if(j.donePhoto){
     const holder = doc.querySelector('[data-wo-photo]');
-    resolvePhoto(j.donePhoto).then(src=>{
+    Promise.all([j.donePhoto].concat(j.donePhotoMore || []).map(r => resolvePhoto(r))).then(list=>{
       if(!holder.isConnected) return;
-      if(!src){ holder.textContent = 'The photo couldn\u2019t be loaded (no signal, or it hasn\u2019t reached the office yet).'; return; }
+      const srcs = list.filter(Boolean);
+      if(!srcs.length){ holder.textContent = 'The photos couldn\u2019t be loaded (no signal, or they haven\u2019t reached the office yet).'; return; }
       holder.textContent = '';
-      const img = document.createElement('img');
-      img.src = src;
-      img.alt = 'Work order photo';
-      img.style.cssText = 'width:130px;border-radius:9px;border:1px solid var(--line);display:block;cursor:zoom-in;';
-      img.addEventListener('click', ()=> openPhotoFullSize(src));
-      holder.appendChild(img);
+      srcs.forEach((src, i)=>{
+        const img = document.createElement('img');
+        img.src = src;
+        img.alt = 'Photo ' + (i + 1);
+        img.style.cssText = 'width:130px;border-radius:9px;border:1px solid var(--line);display:block;cursor:zoom-in;';
+        img.addEventListener('click', ()=> openPhotoFullSize(src));
+        holder.appendChild(img);
+      });
     });
   }
 
@@ -12381,13 +12412,18 @@ async function renderWorkOrderReport(customerId, jobId, isClean){
     btn.type = 'button';
     btn.className = 'btn btn-ghost';
     btn.style.cssText = 'width:auto;padding:6px 12px;font-size:12.5px;margin:8px 0 0 0;';
-    btn.textContent = '\u25b6 Watch video';
+    const vcount = 1 + (j.doneVideoMore || []).length;
+    btn.textContent = '\u25b6 Watch video' + (vcount > 1 ? 's (' + vcount + ')' : '');
     btn.title = 'The technician\u2019s video \u2014 office only';
     btn.addEventListener('click', async e=>{
       e.stopPropagation();
-      const src = await workOrderVideoSource(j.doneVideo);
-      if(!src || src.gone){ showToast('This video couldn\u2019t be loaded (no signal, or past its 7 days)'); return; }
-      openVisitVideos([src]);
+      const srcs = [];
+      for(const r of [j.doneVideo].concat(j.doneVideoMore || [])){
+        const src = await workOrderVideoSource(r);
+        if(src && !src.gone) srcs.push(src);
+      }
+      if(!srcs.length){ showToast('This video couldn\u2019t be loaded (no signal, or past its 7 days)'); return; }
+      openVisitVideos(srcs);
     });
     headText.appendChild(btn);
   }
@@ -18770,7 +18806,8 @@ function queueJobEmail(customer, job){
   q.push({key: job.kind + ':' + job.id, to: to, customerId: customer.id,
           subject: (isWO ? 'Work order' + num : 'Filter clean') + ' completed \u2014 ' + customer.name,
           html: buildJobEmailHtml(customer, job, techName),
-          photo: isPhotoRef(job.donePhoto) ? job.donePhoto : null});
+          photo: isPhotoRef(job.donePhoto) ? job.donePhoto : null,
+          photoMore: (job.donePhotoMore || []).filter(isPhotoRef)});
   lsSet('jobEmailsToSend', q);
   sendJobEmails();
 }
@@ -18786,14 +18823,14 @@ async function sendJobEmails(){
   try{
     for(const item of q){
       const photos = [];
-      if(item.photo){
-        const src = await resolvePhoto(item.photo);
-        if(src){
-          let content = '';
-          try{ content = String(await webpToJpegDataUrl(src) || '').split(',')[1] || ''; }catch(e){}
-          if(!content){ try{ content = String(src).split(',')[1] || ''; }catch(e){} }
-          if(content) photos.push({filename: 'photo.jpg', content: content, caption: ''});
-        }
+      const refs = [item.photo].concat(item.photoMore || []).filter(Boolean);
+      for(let i = 0; i < refs.length; i++){
+        const src = await resolvePhoto(refs[i]);
+        if(!src) continue;
+        let content = '';
+        try{ content = String(await webpToJpegDataUrl(src) || '').split(',')[1] || ''; }catch(e){}
+        if(!content){ try{ content = String(src).split(',')[1] || ''; }catch(e){} }
+        if(content) photos.push({filename: 'photo-' + (i + 1) + '.jpg', content: content, caption: ''});
       }
       let res;
       try{

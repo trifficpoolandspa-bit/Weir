@@ -11967,7 +11967,7 @@ function renderSubmittedHistory(kind){
         customerName: (t.customerIds || []).map(nameOf).filter(Boolean).join(', '),
         submittedAt: t.doneAt || '', notes: t.doneNotes || '', by: t.doneBy === 'office' ? 'the office' : (technicianNameById(t.doneBy || t.technicianId) || ''), techId: String(t.doneBy === 'office' ? (t.technicianId || '') : (t.doneBy || t.technicianId || '')),
         lookup: lookupOf(t.customerIds || [])}))
-    : (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'done').map(j => ({key: 'wo:' + j.id, sourceId: j.id, workOrderId: j.workOrderId,
+    : (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'done').map(j => ({key: 'wo:' + j.id, sourceId: j.id, workOrderId: j.workOrderId, customerId: j.customerId,
         group: j.workOrderId ? j.workOrderId + '|' + (j.technicianId || '') : '',
         title: j.title || 'Work order', customerName: nameOf(j.customerId),
         submittedAt: j.doneAt || '', notes: j.doneNotes || '', by: j.doneBy === 'office' ? 'the office' : (technicianNameById(j.doneBy || j.technicianId) || ''), techId: String(j.doneBy === 'office' ? (j.technicianId || '') : (j.doneBy || j.technicianId || '')),
@@ -12052,6 +12052,14 @@ function renderSubmittedHistory(kind){
       row.addEventListener('click', e=>{
         if(e.target.closest('button, input, a, select')) return;
         openHistoryGroupWindow(kind, sub);
+      });
+    } else if(!subTick && kind === 'work order' && sub.customerId && sub.sourceId){
+      // A work order opens on the customer's Service reports (Oct 3)
+      row.style.cursor = 'pointer';
+      row.title = 'Open this work order in the customer\u2019s Service reports';
+      row.addEventListener('click', e=>{
+        if(e.target.closest('button, input, a, select')) return;
+        openWorkOrderReport(sub.customerId, sub.sourceId);
       });
     }
     body.appendChild(title); body.appendChild(when);
@@ -12138,6 +12146,16 @@ function openHistoryGroupWindow(kind, lead){
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:9px 0;'
         + (i === members.length - 1 ? '' : 'border-bottom:1px solid var(--line);');
+      // A work order's date opens it on the customer's Service reports (Oct 3)
+      if(kind === 'work order' && m.customerId && m.sourceId){
+        row.style.cursor = 'pointer';
+        row.title = 'Open this one in the customer\u2019s Service reports';
+        row.addEventListener('click', e=>{
+          if(e.target.closest('button')) return;
+          if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
+          openWorkOrderReport(m.customerId, m.sourceId);
+        });
+      }
       const body = document.createElement('div');
       body.style.cssText = 'flex:1;min-width:0;';
       const l1 = document.createElement('div');
@@ -19566,6 +19584,7 @@ function renderWorkOrderReportRow(histList, customerId, customer, name, v, repKe
   const isOpen = historyOpenId === v.id;
   const repTick = selectionTick(repKey, v.id, redrawRep);
   const bar = document.createElement('div');
+  bar.dataset.histId = v.id;
   bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;'
     + 'padding:11px 12px;border:1px solid var(--line);border-radius:10px;margin-top:8px;'
     + 'cursor:pointer;user-select:none;background:' + (isOpen ? 'var(--teal-pale)' : 'var(--card)') + ';';
@@ -19644,27 +19663,32 @@ function buildWorkOrderDoc(customerId, j){
     + (items.length ? '<div class="report-sec">Line items</div><table class="report-table">' + rows + '</table>' : '')
     + (j.notes ? '<div class="report-sec">Work order notes</div><div class="report-notes">' + esc(j.notes) + '</div>' : '')
     + (j.doneNotes ? '<div class="report-sec">Technician\u2019s notes</div><div class="report-notes">' + esc(j.doneNotes) + '</div>' : '')
-    + (j.donePhoto ? '<div class="report-sec">Photo</div><div class="report-photos" data-wo-photo>'
+    + (j.donePhoto ? '<div class="report-sec">' + ((j.donePhotoMore || []).length ? 'Photos' : 'Photo') + '</div><div class="report-photos" data-wo-photo>'
        + '<span style="font-size:12.5px;color:var(--muted);">Loading the photo\u2026</span></div>' : '');
 
   // The photo, full size when pressed
   if(j.donePhoto){
     const wrap = doc.querySelector('[data-wo-photo]');
-    resolvePhoto(j.donePhoto).then(src=>{
-      if(!src){ wrap.firstChild.textContent = 'The photo hasn\u2019t reached the office yet. It comes with the technician\u2019s next sync.'; return; }
+    Promise.all([j.donePhoto].concat(j.donePhotoMore || []).map(r => resolvePhoto(r))).then(list=>{
+      const srcs = list.filter(Boolean);
+      if(!srcs.length){ wrap.firstChild.textContent = 'The photos haven\u2019t reached the office yet. They come with the technician\u2019s next sync.'; return; }
       wrap.innerHTML = '';
-      const img = document.createElement('img');
-      img.src = src;
-      img.alt = 'Work order photo';
-      img.addEventListener('click', ()=> openPhotoWindow([['Photo', src]], fmtDate(j.doneAt || ((j.date || '') + 'T12:00:00'))));
-      wrap.appendChild(img);
+      const shown = srcs.map((src, i) => [srcs.length > 1 ? 'Photo ' + (i + 1) : 'Photo', src]);
+      srcs.forEach((src, i)=>{
+        const img = document.createElement('img');
+        img.src = src;
+        img.alt = 'Photo ' + (i + 1);
+        img.addEventListener('click', ()=> openPhotoWindow(shown, fmtDate(j.doneAt || ((j.date || '') + 'T12:00:00'))));
+        wrap.appendChild(img);
+      });
     });
   }
   // The video, beside the heading as on a visit (office only, kept 7 days)
   if(j.doneVideo){
     const headText = doc.querySelector('.report-head > div');
-    headText.appendChild(visitVideoButton([j.doneVideo]));
-    headText.appendChild(downloadAllVideosButton([j.doneVideo]));
+    const vids = [j.doneVideo].concat(j.doneVideoMore || []).filter(Boolean);
+    headText.appendChild(visitVideoButton(vids));
+    headText.appendChild(downloadAllVideosButton(vids));
   }
   // Delete at the foot, as on a visit
   const footer = document.createElement('div');
@@ -19680,6 +19704,48 @@ function buildWorkOrderDoc(customerId, j){
   return doc;
 }
 
+// Every report on a customer's Service reports, newest first: visits, and the
+// work orders and filter cleans submitted from the field (Oct 3)
+function historyEntriesFor(customer){
+  const cid = customer.id;
+  return reportVisitsFor(customer)
+    .concat(workOrderVisitsFor(cid).map(j => ({id: 'wo:' + j.id, wo: j,
+      date: j.doneAt || ((j.date || '') + 'T12:00:00'), parts: []})))
+    .concat((lsGet('scheduledFilterCleans') || [])
+      .filter(f => f && f.status === 'done' && String(f.customerId) === String(cid))
+      .map(f => ({id: 'fc:' + f.id, wo: Object.assign({}, f, {_clean: true}),
+        date: f.doneAt || ((f.date || '') + 'T12:00:00'), parts: []})))
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+}
+
+// From WorkCenter → Work Order → History: the customer's Service reports, with
+// that work order opened and in view (Oct 3)
+function openWorkOrderReport(customerId, jobId){
+  const c = (customers || []).find(x => x && String(x.id) === String(customerId));
+  if(!c){ showToast('This customer is no longer on file'); return; }
+  switchView('customers');
+  viewCustomer(c);
+  const tab = document.querySelector('#profileTabControl .history-type-btn[data-tab="history"]');
+  if(tab) tab.click();
+  historyDateFilter = '';
+  const box = document.getElementById('historyDateFilter');
+  if(box) box.value = '';
+  const key = 'wo:' + jobId;
+  const all = historyEntriesFor(c);
+  const at = all.findIndex(v => v.id === key);
+  historyOpenId = at >= 0 ? key : null;
+  historyOpenBody = null;
+  historyPageKey = c.id + '|visits|';
+  historyPage = at >= 0 ? Math.floor(at / HISTORY_PER_PAGE) + 1 : 1;
+  try{ showHistory(c.id, c.name); }catch(e){}
+  if(at < 0){ showToast('That work order is no longer here \u2014 showing all their reports'); return; }
+  // Its row at the top of the screen, the report open under it
+  setTimeout(()=>{
+    const bar = document.querySelector('#historyList [data-hist-id="' + key + '"]');
+    if(bar) bar.scrollIntoView({block: 'start'});
+  }, 0);
+}
+
 function showHistory(customerId, name){
   selectedHistoryCustomerId = customerId;
   const customer = customers.find(c => c.id === customerId);
@@ -19692,18 +19758,8 @@ function showHistory(customerId, name){
   const seg = document.getElementById('historySegControl');
   if(seg) seg.style.display = 'none';
 
-  let list = reportVisitsFor(customer);
-  // Work orders submitted from the field sit among the visits, by when they
-  // were done (Oct 3)
+  let list = historyEntriesFor(customer);
   const woDay = j => j.doneAt ? localDayOfStamp(j.doneAt) : (j.date || '');
-  list = list.concat(workOrderVisitsFor(customerId).map(j => ({id: 'wo:' + j.id, wo: j,
-      date: j.doneAt || ((j.date || '') + 'T12:00:00'), parts: []})))
-    // Filter cleans submitted on the job screen, the same way (Oct 3)
-    .concat((lsGet('scheduledFilterCleans') || [])
-      .filter(f => f && f.status === 'done' && String(f.customerId) === String(customerId))
-      .map(f => ({id: 'fc:' + f.id, wo: Object.assign({}, f, {_clean: true}),
-        date: f.doneAt || ((f.date || '') + 'T12:00:00'), parts: []})))
-    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
   if(historyDateFilter){
     list = list.filter(v => v.wo ? (woDay(v.wo) === historyDateFilter || v.wo.date === historyDateFilter)
       : v.parts.some(p => (p.r.date || '').slice(0, 10) === historyDateFilter));
@@ -24560,6 +24616,85 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
   }))).observe(document.body, {childList: true, subtree: true});
 })();
 
+
+// ---- Clear date (Oct 3) ----
+// Every date box on the website with a date in it gets a "Clear date" button
+// just left of its calendar icon. Clearing it empties the box and tells the
+// page, exactly as if the date had been deleted by hand. Boxes made later
+// (in windows, filter groups) get it too.
+(function clearDateButtons(){
+  const proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  const ICON_ROOM = 34;                         // the calendar icon's space at the right
+  function attach(input){
+    if(!input || input.type !== 'date' || input.dataset.clearDate) return;
+    if(input.style.opacity === '0' || input.style.pointerEvents === 'none') return;
+    input.dataset.clearDate = '1';
+    const wrap = document.createElement('span');
+    wrap.className = 'date-clear-wrap';
+    const st = input.style;
+    const hasWidth = !!st.width && st.width !== '100%';
+    wrap.style.cssText = 'position:relative;display:inline-flex;align-items:center;vertical-align:middle;max-width:100%;'
+      + 'width:' + (hasWidth ? 'auto' : '100%') + ';'
+      + (st.flex ? 'flex:' + st.flex + ';' : '')
+      + (st.flexShrink ? 'flex-shrink:' + st.flexShrink + ';' : '')
+      + (st.minWidth ? 'min-width:' + st.minWidth + ';' : '')
+      + (st.marginBottom ? 'margin-bottom:' + st.marginBottom + ';' : '');
+    if(st.marginBottom) st.marginBottom = '0';
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'date-clear-btn';
+    btn.textContent = 'Clear date';
+    btn.title = 'Clear this date';
+    btn.style.cssText = 'position:absolute;right:' + ICON_ROOM + 'px;top:50%;transform:translateY(-50%);display:none;'
+      + 'padding:3px 8px;font-size:11.5px;font-weight:600;line-height:1.3;border-radius:7px;cursor:pointer;'
+      + 'border:1px solid var(--line);background:var(--card);color:var(--teal-deep);white-space:nowrap;'
+      + "font-family:'Inter',sans-serif;";
+    wrap.appendChild(btn);
+    const basePad = input.style.paddingRight || '';
+    const baseWidth = input.style.width || '';
+    const refresh = ()=>{
+      const on = !!proto.get.call(input);
+      btn.style.display = on ? 'block' : 'none';
+      if(on){
+        const w = btn.offsetWidth || 72;
+        input.style.paddingRight = (w + ICON_ROOM + 6) + 'px';
+        // A narrow box grows by the button's width so the date still shows
+        if(/px$/.test(baseWidth)) input.style.width = (parseFloat(baseWidth) + w + 6) + 'px';
+      } else {
+        input.style.paddingRight = basePad;
+        if(/px$/.test(baseWidth)) input.style.width = baseWidth;
+      }
+    };
+    // A date put in by the page itself (a form reset, an edit) shows it too
+    Object.defineProperty(input, 'value', {
+      configurable: true,
+      get(){ return proto.get.call(this); },
+      set(v){ proto.set.call(this, v); refresh(); }
+    });
+    input.addEventListener('input', refresh);
+    input.addEventListener('change', refresh);
+    btn.addEventListener('mousedown', e => e.preventDefault());   // the box keeps its place
+    btn.addEventListener('click', e=>{
+      e.preventDefault();
+      e.stopPropagation();
+      proto.set.call(input, '');
+      input.dispatchEvent(new Event('input', {bubbles: true}));
+      input.dispatchEvent(new Event('change', {bubbles: true}));
+      refresh();
+    });
+    refresh();
+  }
+  const sweep = root => { if(root && root.querySelectorAll) root.querySelectorAll('input[type="date"]').forEach(attach); };
+  sweep(document);
+  new MutationObserver(list=>{
+    list.forEach(m => m.addedNodes.forEach(n=>{
+      if(n.nodeType !== 1) return;
+      if(n.tagName === 'INPUT') attach(n); else sweep(n);
+    }));
+  }).observe(document.body, {childList: true, subtree: true});
+})();
 </script>
 
 </body>
