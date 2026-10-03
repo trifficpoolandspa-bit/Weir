@@ -152,7 +152,9 @@ nav{
    Shown while WorkCenter is open. Switched by the sidebar-subtabs class on the
    page's body: without it, the old strip on the page is back ("go back to the old tabs"). */
 .nav-subs{display:none;padding:2px 0 8px;}
-body.sidebar-subtabs nav .tab.active[data-view="workcenter"] + .nav-subs{display:block;}
+body.sidebar-subtabs nav .tab.active[data-view="workcenter"] + .nav-subs,
+body.sidebar-subtabs nav .tab.active[data-view="technicians"] + .nav-subs,
+body.sidebar-subtabs nav .tab.active[data-view="chemconfig"] + .nav-subs{display:block;}
 .nav-sub{position:relative;display:block;width:100%;text-align:left;background:none;border:none;cursor:pointer;
   padding:8px 20px 8px 42px;font-family:'Inter',sans-serif;font-size:12.5px;font-weight:600;color:#9CC8C4;}
 .nav-sub::before{content:"";position:absolute;left:26px;top:0;bottom:0;border-left:1.5px solid rgba(175,214,210,0.35);}
@@ -163,6 +165,8 @@ body.sidebar-subtabs nav .tab.active[data-view="workcenter"] + .nav-subs{display
 .nav-sub.active{color:#fff;}
 .nav-sub.active span{background:rgba(255,255,255,0.12);}
 body.sidebar-subtabs #workCenterTypeControl{display:none;}
+body.sidebar-subtabs .card:has(> #techMainTabs){display:none;}
+body.sidebar-subtabs #chemConfigTypeControl{display:none !important;}
 
 .view{display:none;}
 .view.active{display:block;}
@@ -546,9 +550,20 @@ input::placeholder{color:#A9BCB9;}
     <nav>
       <button class="tab active" data-view="customers">Customers</button>
       <button class="tab" data-view="technicians">Technicians</button>
+      <!-- Technicians' sections in the sidebar (Oct 2); they press the page's own tabs -->
+      <div class="nav-subs" id="techNavSubs">
+        <button type="button" class="nav-sub active" data-techmain="list"><span>Technicians</span></button>
+        <button type="button" class="nav-sub" data-techmain="photos"><span>Photo requirements</span></button>
+      </div>
       <button class="tab" data-view="customerconfig">Customer Customization</button>
       <button class="tab" data-view="map">Route Scheduling</button>
       <button class="tab" data-view="chemconfig">Readings and Dosages</button>
+      <!-- Readings and Dosages' sections in the sidebar (Oct 2); they press the page's own tabs -->
+      <div class="nav-subs" id="chemNavSubs">
+        <button type="button" class="nav-sub active" data-type="pool"><span>Pool</span></button>
+        <button type="button" class="nav-sub" data-type="spa"><span>Spa</span></button>
+        <button type="button" class="nav-sub" data-type="fountain"><span>Extra</span></button>
+      </div>
       <button class="tab" data-view="productsservices">Products and Services</button>
       <button class="tab" data-view="workcenter">WorkCenter</button>
       <div class="nav-subs" id="wcNavSubs">
@@ -5895,6 +5910,43 @@ function resetScheduleDates(){
     if(el) el.value = taskTodayStr();
   });
 }
+
+// The sidebar's Technicians sections press the page's own (hidden) tabs, and
+// follow whichever is showing
+(function techNavSubs(){
+  const subs = document.querySelectorAll('#techNavSubs .nav-sub');
+  const pageBtn = key => document.querySelector('#techMainTabs .history-type-btn[data-techmain="' + key + '"]');
+  const mirror = ()=> subs.forEach(b=>{ const p = pageBtn(b.dataset.techmain); b.classList.toggle('active', !!p && p.classList.contains('active')); });
+  subs.forEach(b => b.addEventListener('click', ()=>{
+    const page = document.getElementById('view-technicians');
+    if(!page || !page.classList.contains('active')) switchView('technicians');
+    const p = pageBtn(b.dataset.techmain);
+    if(p) p.click();
+    mirror();
+  }));
+  document.querySelectorAll('#techMainTabs .history-type-btn').forEach(p =>
+    new MutationObserver(mirror).observe(p, {attributes: true, attributeFilter: ['class']}));
+  mirror();
+})();
+
+// The sidebar's Readings and Dosages sections press the page's own (hidden)
+// Pool / Spa / Extra, and follow whichever is showing
+(function chemNavSubs(){
+  const subs = document.querySelectorAll('#chemNavSubs .nav-sub');
+  const pageBtn = key => document.querySelector('#chemConfigTypeControl .history-type-btn[data-type="' + key + '"]');
+  const mirror = ()=> subs.forEach(b=>{ const p = pageBtn(b.dataset.type); b.classList.toggle('active', !!p && p.classList.contains('active')); });
+  subs.forEach(b => b.addEventListener('click', ()=>{
+    const page = document.getElementById('view-chemconfig');
+    const tab = document.querySelector('nav .tab[data-view="chemconfig"]');
+    if(!page || !page.classList.contains('active') || !(tab && tab.classList.contains('active'))) switchView('chemconfig');
+    const p = pageBtn(b.dataset.type);
+    if(p) p.click();
+    mirror();
+  }));
+  document.querySelectorAll('#chemConfigTypeControl .history-type-btn').forEach(p =>
+    new MutationObserver(mirror).observe(p, {attributes: true, attributeFilter: ['class']}));
+  mirror();
+})();
 
 // The sidebar's WorkCenter sections: to WorkCenter if not there, then that section
 document.querySelectorAll('#wcNavSubs .nav-sub').forEach(b => b.addEventListener('click', ()=>{
