@@ -1006,7 +1006,7 @@ select#customerSelect{font-weight:600;}
              keyboard closing, a bar resizing — which made picking a day a
              fight. The value still lives in a field called ncDay, so
              everything that reads or sets it is unchanged. -->
-        <input type="hidden" id="ncDay" value="Monday">
+        <input type="hidden" id="ncDay" value="">
         <div id="ncDayButtons" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
       </div>
       <div class="field">
@@ -7141,7 +7141,7 @@ function resetCustomerForm(){
   editingCustomerId = null;
   ['ncName','ncAddress','ncCity','ncState','ncZip','ncEmail','ncPhone','ncPoolGallons','ncNeighborhoodGateCode','ncGateCode','ncAccessNotes']
     .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
-  document.getElementById('ncDay').value = 'Monday';
+  document.getElementById('ncDay').value = '';
   ncExtraDays = [];
   renderNcDayButtons();
   document.getElementById('ncHasPool').checked = true;
@@ -7163,7 +7163,9 @@ function renderNcExtraDayButtons(){
   const wrap = document.getElementById('ncExtraDayButtons');
   const field = document.getElementById('ncDay');
   if(!wrap || !field) return;
-  const main = field.value || 'Monday';
+  const main = field.value || '';
+  // No extra days without a service day (Oct 2)
+  if(!main){ ncExtraDays = []; wrap.innerHTML = '<span style="font-size:12.5px;color:var(--muted);">Choose a service day first.</span>'; return; }
   ncExtraDays = ncExtraDays.filter(d => d !== main);
   wrap.innerHTML = '';
   DAYS_OF_WEEK.forEach(day=>{
@@ -7190,13 +7192,14 @@ function renderNcDayButtons(){
   const field = document.getElementById('ncDay');
   if(!wrap || !field) return;
   wrap.innerHTML = '';
-  DAYS_OF_WEEK.forEach(day=>{
+  // Unassigned first, and to start (Oct 2)
+  [''].concat(DAYS_OF_WEEK).forEach(day=>{
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'btn btn-ghost';
     btn.dataset.day = day;
-    btn.textContent = day.slice(0, 3);
-    const on = (field.value || 'Monday') === day;
+    btn.textContent = day ? day.slice(0, 3) : 'Unassigned';
+    const on = (field.value || '') === day;
     btn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;flex:0 0 auto;'
       + (on ? 'background:var(--teal-deep);color:#fff;border-color:var(--teal-deep);' : '');
     btn.addEventListener('click', ()=>{
@@ -10036,11 +10039,11 @@ function routeJobsFor(customerId, dayISO, techId){
     .filter(t => !t.done && t.date === dayISO && mine(t))
     .filter(t => (t.customerIds || []).indexOf(customerId) !== -1 || t.customerId === customerId)
     .map(t => ({key: 'task:' + t.id + ':' + customerId, kind: 'task', id: t.id,
-                title: t.title || 'Task', details: t.details || '', photoRequired: !!t.photoRequired}));
+                title: t.title || 'Task', details: t.details || '', photoRequired: !!t.photoRequired, videoRequired: !!t.videoRequired}));
   const orders = (lsGet('scheduledWorkOrders') || [])
     .filter(j => j.status === 'scheduled' && j.date === dayISO && j.customerId === customerId && mine(j))
     .map(j => ({key: 'work order:' + j.id, kind: 'work order', id: j.id,
-                title: j.title || 'Work order', details: j.notes || '', photoRequired: !!j.photoRequired}));
+                title: j.title || 'Work order', details: j.notes || '', photoRequired: !!j.photoRequired, videoRequired: !!j.videoRequired}));
   return orders.concat(tasks).filter(j => !jobSubmitted(j.key));
 }
 // Tasks with no customer that day, as jobs of their own
@@ -10049,7 +10052,7 @@ function routeLooseTasks(dayISO, techId){
   return (lsGet('tasks') || [])
     .filter(t => t && !t.done && t.date === dayISO && mine(t) && !(t.customerIds || []).length && !t.customerId)
     .map(t => ({key: 'task:' + t.id + ':none', kind: 'task', id: t.id, title: t.title || 'Task',
-                details: t.details || '', photoRequired: !!t.photoRequired}))
+                details: t.details || '', photoRequired: !!t.photoRequired, videoRequired: !!t.videoRequired}))
     .filter(j => !jobSubmitted(j.key));
 }
 
@@ -10189,7 +10192,7 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
       if(dogNames.length) line(dogNames.length === 1 ? '\ud83d\udc15 Dog' : '\ud83d\udc15 Dogs', dogNames.join(', '));
       line(job.kind === 'task' ? '\ud83d\udccb Task' : '\ud83d\udee0 Work order', job.title);
       if(job.details) line('Details', job.details);
-      if(job.photoRequired) line('\ud83d\udcf7 Photo', 'Required');
+      if(job.photoRequired) line('\ud83d\udcf7 Photo', 'Required'); if(job.videoRequired) line('\ud83c\udfa5 Video', 'Required');
 
       const btnRow = document.createElement('div');
       btnRow.className = 'btn-row';
@@ -10297,7 +10300,7 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
       if(dogNames.length) line(dogNames.length === 1 ? '\ud83d\udc15 Dog' : '\ud83d\udc15 Dogs', dogNames.join(', '));
       line(job.kind === 'task' ? '\ud83d\udccb Task' : '\ud83d\udee0 Work order', job.title);
       if(job.details) line('Details', job.details);
-      if(job.photoRequired) line('\ud83d\udcf7 Photo', 'Required');
+      if(job.photoRequired) line('\ud83d\udcf7 Photo', 'Required'); if(job.videoRequired) line('\ud83c\udfa5 Video', 'Required');
 
       const btnRow = document.createElement('div');
       btnRow.className = 'btn-row';
@@ -10410,6 +10413,45 @@ function openJobPage(customer, job){
   });
   remove.addEventListener('click', ()=> showPhoto(null));
 
+  // A video, when the office asks for one (Oct 2): recorded like a visit's,
+  // kept on the phone with the submission
+  let videoRef = null;
+  const videoHead = document.createElement('div');
+  videoHead.style.cssText = 'font-size:13.5px;font-weight:700;color:var(--teal-deep);margin-bottom:8px;';
+  videoHead.textContent = 'Video \u00b7 Required';
+  const videoRow = document.createElement('div');
+  videoRow.className = 'btn-row';
+  videoRow.style.cssText = 'justify-content:center;align-items:center;gap:10px;margin-bottom:16px;';
+  const recVideo = document.createElement('button');
+  recVideo.type = 'button';
+  recVideo.className = 'btn';
+  recVideo.style.cssText = 'width:auto;padding:11px 20px;font-size:14px;background:var(--rust);color:var(--card);border:1.5px solid var(--rust);';
+  recVideo.textContent = 'Record video';
+  const videoDone = document.createElement('span');
+  videoDone.style.cssText = 'display:none;font-size:13px;font-weight:600;color:var(--green);';
+  videoDone.textContent = '\u2713 Video recorded';
+  videoRow.appendChild(recVideo); videoRow.appendChild(videoDone);
+  if(job.videoRequired){ card.appendChild(videoHead); card.appendChild(videoRow); }
+  recVideo.addEventListener('click', async ()=>{
+    try{
+      const file = await recordClip({small: true});
+      if(!file) return;
+      if(file.size > VISIT_VIDEO_MAX_BYTES){ showToast('That video is too big to keep \u2014 try a shorter one'); return; }
+      const dataUrl = await new Promise(resolve=>{
+        const reader = new FileReader();
+        reader.onload = ()=> resolve(reader.result);
+        reader.onerror = ()=> resolve(null);
+        reader.readAsDataURL(file);
+      });
+      if(!dataUrl){ showToast('Could not keep that video'); return; }
+      const id = 'vid_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      await savePhotoData(id, dataUrl);
+      videoRef = PHOTO_REF + id;
+      recVideo.textContent = 'Record again';
+      videoDone.style.display = 'inline';
+    }catch(err){ showToast('Could not record a video'); }
+  });
+
   // Notes
   const notesLabel = document.createElement('label');
   notesLabel.style.cssText = 'display:block;font-size:13.5px;font-weight:700;color:var(--teal-deep);margin-bottom:6px;';
@@ -10429,8 +10471,8 @@ function openJobPage(customer, job){
 
   const close = ()=> page.remove();
   back.addEventListener('click', async ()=>{
-    if((photo || notes.value.trim())){
-      const ok = await confirmDialog('Leave this ' + job.kind + '? The photo and notes will be lost.', 'Leave');
+    if((photo || videoRef || notes.value.trim())){
+      const ok = await confirmDialog('Leave this ' + job.kind + '? The photo, video and notes will be lost.', 'Leave');
       if(!ok) return;
     }
     close();
@@ -10441,13 +10483,17 @@ function openJobPage(customer, job){
       showToast('Take the photo first \u2014 this task needs one');
       return;
     }
+    if(job.videoRequired && !videoRef){
+      showToast('Record the video first \u2014 this ' + job.kind + ' needs one');
+      return;
+    }
     submit.disabled = true;
     const stored = photo ? await storePhoto(photo, 'job') : null;
     const list = jobSubmissions();
     list.push({
       key: job.key, kind: job.kind, sourceId: job.id,
       customerId: customer ? customer.id : null, customerName: customer ? customer.name : '', title: job.title,
-      notes: notes.value.trim(), photo: stored, date: job.dayISO || todayDateStr(),
+      notes: notes.value.trim(), photo: stored, video: videoRef, date: job.dayISO || todayDateStr(),
       technicianId: currentUser ? currentUser.id : '',
       submittedAt: new Date().toISOString()
     });
@@ -12036,7 +12082,7 @@ function openCustomerEditor(customer){
   document.getElementById('ncZip').value = customer.zip || '';
   document.getElementById('ncEmail').value = customer.email || '';
   document.getElementById('ncPhone').value = customer.phone || '';
-  document.getElementById('ncDay').value = customer.day || 'Monday';
+  document.getElementById('ncDay').value = customer.day || '';
   ncExtraDays = (Array.isArray(customer.extraDays) ? customer.extraDays : []).filter(Boolean);
   renderNcDayButtons();
   document.getElementById('ncHasPool').checked = customer.hasPool !== false;
@@ -14056,7 +14102,9 @@ function appWorkOrderDates(startISO, repeat, customEvery, customUnit){
   + '#awc .awc-row{padding:11px 2px;border-bottom:1px solid var(--line);}'
   + '#awc .awc-row:last-child{border-bottom:none;}'
   + '#awc .awc-small{width:auto;padding:5px 10px;font-size:12px;}'
-  + '#awc .awc-num{display:inline-block;padding:4px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:14px;font-weight:700;letter-spacing:.05em;color:var(--teal-deep);white-space:nowrap;margin-left:auto;}'
+  // The number as on the website: large, with a light # (Oct 2, style E)
+  + '#awc .awc-num{display:inline-block;font-family:\'Space Grotesk\',\'Inter\',sans-serif;font-size:22px;font-weight:700;color:var(--teal-deep);letter-spacing:-0.01em;white-space:nowrap;line-height:1;margin-left:auto;}'
+  + '#awc .awc-num .num-hash{color:#A9BCB9;font-weight:500;}'
   + '.awc-pick-row{display:flex;align-items:center;gap:10px;padding:11px 8px;border-bottom:1px solid var(--line);font-size:14.5px;cursor:pointer;}'
   + '.awc-pick-row:last-child{border-bottom:none;}';
   document.head.appendChild(st);
@@ -14110,10 +14158,24 @@ function awcNextWorkOrderNumber(){
   return Math.max(used, Number(lsGet('workOrderCounter')) || 0) + 1;
 }
 
+// The work order number drawn with a light # (Oct 2): whatever sets "#0012" on it
+function awcBigNumber(){
+  const el = document.getElementById('awcWoNumber');
+  if(!el || el.dataset.bigNum) return;
+  el.dataset.bigNum = '1';
+  const draw = ()=>{
+    if(el.querySelector('.num-hash')) return;
+    const m = (el.textContent || '').trim().match(/^#(.+)$/);
+    if(m) el.innerHTML = '<span class="num-hash">#</span>' + m[1].replace(/[<>&]/g, '');
+  };
+  new MutationObserver(draw).observe(el, {childList: true, characterData: true, subtree: true});
+  draw();
+}
+
 function renderAppWorkCenter(){
   const pane = document.getElementById('custPaneWork');
   if(!pane) return;
-  if(!pane.dataset.built){ awcBuild(pane); pane.dataset.built = '1'; }
+  if(!pane.dataset.built){ awcBuild(pane); pane.dataset.built = '1'; awcBigNumber(); }
   awcApply();
 }
 
@@ -14140,6 +14202,7 @@ function awcBuild(pane){
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <input type="date" id="awcWoDate" style="width:auto;">
           <label class="inline-check"><input type="checkbox" id="awcWoPhoto" checked> Photo required</label>
+          <label class="inline-check"><input type="checkbox" id="awcWoVideo"> Video required</label>
         </div>
       </div>
       <div class="field" style="position:relative;">
@@ -14201,6 +14264,7 @@ function awcBuild(pane){
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <input type="date" id="awcTaskDate" style="width:auto;">
           <label class="inline-check"><input type="checkbox" id="awcTaskPhoto"> Photo required</label>
+          <label class="inline-check"><input type="checkbox" id="awcTaskVideo"> Video required</label>
         </div>
       </div>
       <button type="button" class="btn btn-primary" id="awcSavedTasks" style="width:100%;margin-bottom:12px;">Saved tasks</button>
@@ -14530,6 +14594,7 @@ function awcClearWo(){
   document.getElementById('awcWoNotes').value = '';
   document.getElementById('awcWoDate').value = todayDateStr();
   document.getElementById('awcWoPhoto').checked = true;
+  document.getElementById('awcWoVideo').checked = false;
   document.getElementById('awcWoRepeat').value = 'none';
   document.getElementById('awcWoUntil').value = '';
   document.getElementById('awcWoUnit').value = 'weeks';
@@ -14548,6 +14613,7 @@ function awcClearTask(){
   document.getElementById('awcTaskDetails').value = '';
   document.getElementById('awcTaskDate').value = todayDateStr();
   document.getElementById('awcTaskPhoto').checked = false;
+  document.getElementById('awcTaskVideo').checked = false;
   document.getElementById('awcTaskRepeat').value = 'none';
   document.getElementById('awcTaskUntil').value = '';
   document.getElementById('awcTaskUnit').value = 'weeks';
@@ -14568,6 +14634,7 @@ function awcFinalize(){
   if(!techIds.length){ showToast('Assign a technician'); return; }
   const notes = document.getElementById('awcWoNotes').value.trim();
   const photoRequired = document.getElementById('awcWoPhoto').checked;
+  const videoRequired = document.getElementById('awcWoVideo').checked;
   let dates = appWorkOrderDates(date, document.getElementById('awcWoRepeat').value,
     document.getElementById('awcWoEvery').value, document.getElementById('awcWoUnit').value);
   // Up to Until, when one is set (the first date always goes)
@@ -14602,6 +14669,7 @@ function awcFinalize(){
         lineItems: validItems,
         notes,
         photoRequired,
+        videoRequired,
         status: 'scheduled',
         // Made in the app: the website has no copy of the work order itself
         // (that comes with quotes), so it mustn't call it deleted
@@ -14658,6 +14726,7 @@ function awcAddTask(){
   const everyWeeks = everyDays && everyDays % 7 === 0 ? everyDays / 7 : 0;
   const until = document.getElementById('awcTaskUntil').value;
   const photoRequired = document.getElementById('awcTaskPhoto').checked;
+  const videoRequired = document.getElementById('awcTaskVideo').checked;
 
   // Stored as the dates it falls on, a year ahead unless told otherwise
   const dates = [date];
@@ -14701,6 +14770,7 @@ function awcAddTask(){
         seriesId: series,
         taskGroupId,
         photoRequired,
+        videoRequired,
         done: false,
         createdAt: new Date().toISOString()
       };
@@ -15226,6 +15296,7 @@ function awcOpenForEditing(isTask, r){
     document.getElementById('awcTaskDetails').value = first.details || '';
     document.getElementById('awcTaskDate').value = first.date || todayDateStr();
     document.getElementById('awcTaskPhoto').checked = !!first.photoRequired;
+    document.getElementById('awcTaskVideo').checked = !!first.videoRequired;
     awcTaskCustomers = (first.customerIds || []).slice();
     awcTaskTechs = first.technicianId ? [String(first.technicianId)] : [];
     const every = first.everyDays || (first.everyWeeks ? first.everyWeeks * 7 : 0);
@@ -15262,6 +15333,7 @@ function awcOpenForEditing(isTask, r){
   awcKind = 'Work Order'; awcView = 'main'; awcShown = 20; awcApply();
   document.getElementById('awcWoDate').value = first.date || todayDateStr();
   document.getElementById('awcWoPhoto').checked = !!first.photoRequired;
+  document.getElementById('awcWoVideo').checked = !!first.videoRequired;
   document.getElementById('awcWoNotes').value = first.notes || '';
   awcWoCustomers = first.customerId ? [first.customerId] : [];
   awcWoTechs = first.technicianId ? [String(first.technicianId)] : [];
@@ -19261,7 +19333,9 @@ attachAllPhoneFormatting();
         const cs = getComputedStyle(n);
         if(cs.position === 'fixed'){
           const r = n.getBoundingClientRect();
-          if(r.width >= window.innerWidth - 2 && r.height >= window.innerHeight - 2) return true;
+          const vw = Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth);
+          const vh = Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight);
+          if(r.width >= vw - 2 && r.height >= vh - 2) return true;
           // A window built into the page is hidden until opened, so it can't
           // be measured then: a fixed layer stacked over the page counts too
           if((parseInt(cs.zIndex, 10) || 0) >= 100) return true;
@@ -19343,8 +19417,13 @@ attachAllPhoneFormatting();
     const cs = getComputedStyle(el);
     if(cs.position !== 'fixed') return false;
     const r = el.getBoundingClientRect();
+    // Measured against the page's visible area, not the window: on a computer
+    // the scrollbar takes some width, so a full-screen layer is that much
+    // narrower than window.innerWidth (Oct 2: outside clicks did nothing)
+    const vw = Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth);
+    const vh = Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight);
     const coversScreen = r.left <= 1 && r.top <= 1
-      && r.right >= window.innerWidth - 1 && r.bottom >= window.innerHeight - 1;
+      && r.right >= vw - 1 && r.bottom >= vh - 1;
     return coversScreen && el.children.length > 0;
   };
   const wayOut = layer=>{
