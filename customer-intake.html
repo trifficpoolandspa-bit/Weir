@@ -674,6 +674,8 @@ input::placeholder{color:#A9BCB9;}
           <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Technician</span>
           <span id="profileTechName" style="font-size:15.5px;font-weight:700;color:var(--teal-deep);"></span>
         </span>
+        <!-- Delete this customer: the bin (Oct 2) -->
+        <button type="button" class="btn btn-ghost" id="btnDeleteProfileCustomer" title="Delete this customer" style="align-self:center;">Delete customer</button>
         </span>
       </div>
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Tap any field to edit it.</p>
@@ -749,8 +751,10 @@ input::placeholder{color:#A9BCB9;}
       <div class="field">
         <label>Service day</label>
         <select id="icDay">
+          <!-- Unassigned to start (Oct 2) -->
+          <option value="" selected>Unassigned</option>
           <option value="Sunday">Sunday</option>
-          <option value="Monday" selected>Monday</option>
+          <option value="Monday">Monday</option>
           <option value="Tuesday">Tuesday</option>
           <option value="Wednesday">Wednesday</option>
           <option value="Thursday">Thursday</option>
@@ -6528,7 +6532,11 @@ function openGroupCustomerPicker(g){
   overlay.className = 'confirm-overlay';
   overlay.innerHTML = `
     <div class="confirm-box" style="max-width:440px;max-height:80vh;display:flex;flex-direction:column;">
-      <h3 style="font-size:15px;margin:0 0 4px;">Add customers to ${g.name}</h3>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 4px;">
+        <h3 style="font-size:15px;margin:0;">Add customers to ${g.name}</h3>
+        <!-- How many are ticked, kept up to date (Oct 2) -->
+        <span id="gcpCount" style="flex:0 0 auto;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--teal-deep);white-space:nowrap;"></span>
+      </div>
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 12px;">Tick everyone who needs a filter clean in this batch.</p>
       <div style="position:relative;margin-bottom:10px;">
         <input id="gcpSearch" placeholder="Search by name, address, phone, or email" autocomplete="off">
@@ -6544,6 +6552,12 @@ function openGroupCustomerPicker(g){
 
   const listEl = overlay.querySelector('#gcpList');
   const searchEl = overlay.querySelector('#gcpSearch');
+  const countEl = overlay.querySelector('#gcpCount');
+  const activeIds = new Set(active.map(c => c.id));
+  const drawCount = ()=>{
+    const n = (g.customerIds || []).filter(id => activeIds.has(id)).length;
+    countEl.textContent = n + (n === 1 ? ' customer' : ' customers');
+  };
   const clearEl = overlay.querySelector('#gcpSearchClear');
 
   function applyGcpSearch(){
@@ -6616,6 +6630,7 @@ function openGroupCustomerPicker(g){
           g.customerIds = g.customerIds.filter(id => id !== cust.id);
         }
         saveFilterGroups();
+        drawCount();
       });
       lbl.appendChild(cb);
       const txt = document.createElement('span');
@@ -6624,6 +6639,7 @@ function openGroupCustomerPicker(g){
       listEl.appendChild(lbl);
     });
 
+  drawCount();
   const cleanup = ()=>{ document.body.removeChild(overlay); renderFilterGroups(); };
   overlay.querySelector('#gcpDone').addEventListener('click', cleanup);
   overlay.querySelector('#gcpCancel').addEventListener('click', cleanup);
@@ -19661,10 +19677,10 @@ function applyProfileTab(){
   // Keep the customer's name on screen whichever tab is open
   const nameEl = document.getElementById('profileCustomerName');
   if(nameEl){
-    const cust = customers.find(x => x.id === (profileCustomerId || editingId));
+    const cust = (profileCustomerId || editingId) ? customers.find(x => x.id === (profileCustomerId || editingId)) : null;
     // First name first here — lists stay "Last, First" for sorting, but the
-    // heading reads the way you would say it
-    nameEl.textContent = cust ? (cust.name || '').trim() : '';
+    // heading reads the way you would say it. Adding one: "New customer".
+    nameEl.textContent = cust ? (cust.name || '').trim() : (isEditingCustomerForm ? 'New customer' : '');
   }
 
   const activeBtn = document.querySelector('#profileTabControl .history-type-btn.active');
@@ -19681,6 +19697,20 @@ function applyProfileTab(){
 
 document.querySelectorAll('#profileTabControl .history-type-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
+    // Adding a customer and going to another tab: saved first, as if Save
+    // customer were pressed, then that tab of the new customer opens (Oct 2)
+    if(btn.dataset.tab !== 'profile' && isEditingCustomerForm && !editingId){
+      if(!document.getElementById('icName').value.trim()){ showToast('Enter a customer name first'); return; }
+      const before = customers.length;
+      document.getElementById('btnSave').click();
+      const added = customers.length > before ? customers[customers.length - 1] : null;
+      if(!added) return;
+      viewCustomer(added);
+      document.querySelectorAll('#profileTabControl .history-type-btn').forEach(b => b.classList.toggle('active', b === btn));
+      isEditingCustomerForm = false;
+      applyProfileTab();
+      return;
+    }
     if(btn.dataset.tab !== 'profile') isEditingCustomerForm = false;
     document.querySelectorAll('#profileTabControl .history-type-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
@@ -21162,6 +21192,8 @@ document.getElementById('icEquipmentPhotoInput').addEventListener('change', asyn
 
 function resetForm(){
   editingId = null;
+  // A new customer isn't anyone's profile: the last one opened doesn't show (Oct 2)
+  try{ profileCustomerId = null; }catch(e){}
   document.getElementById('icName').value = '';
   document.getElementById('icAddress').value = '';
   document.getElementById('icCity').value = '';
@@ -21171,7 +21203,7 @@ function resetForm(){
   hideAddressSuggestions();
   document.getElementById('icEmail').value = '';
   document.getElementById('icPhone').value = '';
-  document.getElementById('icDay').value = 'Monday';
+  document.getElementById('icDay').value = '';
   document.getElementById('icHasPool').checked = true;
   document.getElementById('icHasSpa').checked = false;
   document.getElementById('icPoolGallons').value = '';
@@ -22465,10 +22497,23 @@ function openServiceDaysWindow(c){
     + '<h3 style="font-size:16px;margin:0 0 4px;">Service days</h3>'
     + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Tick every day ' + escapeSyncText(displayName(c.name)) + ' is serviced.</p>'
     + '<div data-days style="border:1px solid var(--line);border-radius:10px;padding:0 10px;"></div>'
-    + '<p data-err style="display:none;font-size:12px;color:var(--rust);margin:8px 0 0;">Tick at least one day</p>'
     + '<div class="btn-row" style="margin-top:14px;"><button type="button" class="btn btn-ghost" data-cancel>Cancel</button>'
     + '<button type="button" class="btn btn-primary" data-save>Save</button></div></div>';
   const list = overlay.querySelector('[data-days]');
+  // Unassigned first: no service day (Oct 2). It and the days rule each other out.
+  const unRow = document.createElement('label');
+  unRow.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 2px;font-size:14px;cursor:pointer;border-bottom:1px solid var(--line);';
+  const unBox = document.createElement('input');
+  unBox.type = 'checkbox';
+  unBox.checked = had.size === 0;
+  unBox.style.cssText = 'margin:0;width:18px;height:18px;cursor:pointer;';
+  unBox.addEventListener('change', ()=>{
+    if(unBox.checked) list.querySelectorAll('input[data-day]').forEach(b => { b.checked = false; });
+    else if(!list.querySelector('input[data-day]:checked')) unBox.checked = true;
+  });
+  unRow.appendChild(unBox);
+  unRow.appendChild(document.createTextNode('Unassigned'));
+  list.appendChild(unRow);
   order.forEach((d, i)=>{
     const row = document.createElement('label');
     row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 2px;font-size:14px;cursor:pointer;'
@@ -22476,9 +22521,12 @@ function openServiceDaysWindow(c){
     const box = document.createElement('input');
     box.type = 'checkbox';
     box.value = d;
+    box.dataset.day = '1';
     box.checked = had.has(d);
     box.style.cssText = 'margin:0;width:18px;height:18px;cursor:pointer;';
-    box.addEventListener('change', ()=>{ overlay.querySelector('[data-err]').style.display = 'none'; });
+    box.addEventListener('change', ()=>{
+      unBox.checked = !list.querySelector('input[data-day]:checked');
+    });
     row.appendChild(box);
     row.appendChild(document.createTextNode(d));
     list.appendChild(row);
@@ -22486,9 +22534,9 @@ function openServiceDaysWindow(c){
   const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
   overlay.querySelector('[data-cancel]').addEventListener('click', close);
   overlay.querySelector('[data-save]').addEventListener('click', ()=>{
-    const ticked = Array.from(list.querySelectorAll('input:checked')).map(b => b.value);
-    if(!ticked.length){ overlay.querySelector('[data-err]').style.display = 'block'; return; }
-    const main = ticked.indexOf(c.day) !== -1 ? c.day : ticked[0];
+    const ticked = Array.from(list.querySelectorAll('input[data-day]:checked')).map(b => b.value);
+    // Nothing ticked is Unassigned: no service day
+    const main = !ticked.length ? '' : (ticked.indexOf(c.day) !== -1 ? c.day : ticked[0]);
     const extras = ticked.filter(d => d !== main);
     const changed = main !== c.day || JSON.stringify(extras) !== JSON.stringify((c.extraDays || []).filter(d => d !== c.day).slice().sort((a, b) => order.indexOf(a) - order.indexOf(b)));
     close();
@@ -22497,7 +22545,7 @@ function openServiceDaysWindow(c){
     c.extraDays = extras;
     saveCustomerField();
     viewCustomerInPlace(c);
-    showToast(displayName(c.name) + ' \u2014 ' + ticked.join(', '));
+    showToast(displayName(c.name) + ' \u2014 ' + (ticked.length ? ticked.join(', ') : 'no service day'));
   });
   document.body.appendChild(overlay);
 }
@@ -22603,7 +22651,7 @@ function viewCustomer(c){
   // bare menu behind
   const dayPill = document.getElementById('profileDayPill');
   dayPill.innerHTML = '<span class="pf-label">Day</span><span class="pf-value"></span>';
-  dayPill.querySelector('.pf-value').textContent = c.day || 'No day set';
+  dayPill.querySelector('.pf-value').textContent = c.day || 'Unassigned';
   dayPill.title = 'Tap to choose the service days';
   dayPill.style.cursor = 'pointer';
   // Every day is chosen in one window, with ticks (Oct 2)
@@ -22824,7 +22872,7 @@ function openEditForm(){
   hideAddressSuggestions();
   document.getElementById('icEmail').value = c.email || '';
   document.getElementById('icPhone').value = c.phone || '';
-  document.getElementById('icDay').value = c.day || 'Monday';
+  document.getElementById('icDay').value = c.day || '';
   document.getElementById('icHasPool').checked = c.hasPool !== false;
   document.getElementById('icHasSpa').checked = !!c.hasSpa;
   document.getElementById('icPoolGallons').value = c.poolGallons || '';
@@ -22842,13 +22890,25 @@ function openEditForm(){
 }
 
 
+// The bin on a customer's profile: asks, deletes, back to the list (Oct 2)
+document.getElementById('btnDeleteProfileCustomer').addEventListener('click', async ()=>{
+  const c = customers.find(x => x.id === (profileCustomerId || editingId));
+  if(!c) return;
+  const gone = await deleteCustomer(c);
+  if(gone){
+    const back = document.getElementById('btnBackToList');
+    if(back) back.click();
+  }
+});
+
 async function deleteCustomer(c){
   const confirmed = await confirmDialog(`Delete ${c.name}? This won't delete their past readings, but they'll disappear from customer lists.`);
-  if(!confirmed) return;
+  if(!confirmed) return false;
   customers = customers.filter(x => x.id !== c.id);
   saveCustomers();
   renderList();
   showToast('Customer deleted');
+  return true;
 }
 
 let customerSearchTerm = '';
