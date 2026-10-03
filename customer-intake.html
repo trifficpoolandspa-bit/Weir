@@ -6317,18 +6317,15 @@ function renderFilterGroups(){
     nameEl.textContent = g.name;
     const sub = document.createElement('div');
     sub.style.cssText = 'font-size:11.5px;color:var(--muted);margin-top:2px;';
-    // The date stands out from the rest of the line (Oct 3)
+    // The day and date in a column of their own on the right, just left of
+    // Photo required, the same width on every row so they line up (Oct 3)
+    const dateCol = document.createElement('div');
+    dateCol.style.cssText = 'flex:0 0 112px;width:112px;font-size:13px;font-weight:600;color:var(--teal-deep);white-space:nowrap;';
     const fillSub = ()=>{
-      const cnt = (g.customerIds || []).length;
-      const techName = technicianNameById(g.technicianId) || 'No technician';
-      const dateTxt = g.date ? new Date(g.date + 'T12:00:00').toLocaleDateString(undefined,{weekday:'short', month:'short', day:'numeric'}) : 'No date';
-      sub.textContent = '';
-      sub.appendChild(document.createTextNode(cnt + (cnt === 1 ? ' customer' : ' customers') + ' \u00b7 '));
-      const dateEl = document.createElement('span');
-      dateEl.style.cssText = 'font-size:13px;font-weight:600;color:var(--teal-deep);';
-      dateEl.textContent = dateTxt;
-      sub.appendChild(dateEl);
-      sub.appendChild(document.createTextNode(' \u00b7 ' + techName));
+      const n = (g.customerIds || []).length;
+      const tech = technicianNameById(g.technicianId) || 'No technician';
+      sub.textContent = n + (n === 1 ? ' customer' : ' customers') + ' \u00b7 ' + tech;
+      dateCol.textContent = g.date ? new Date(g.date + 'T12:00:00').toLocaleDateString(undefined,{weekday:'short', month:'short', day:'numeric'}) : 'No date';
     };
     fillSub();
     title.appendChild(nameEl);
@@ -6410,6 +6407,7 @@ function renderFilterGroups(){
       });
       if(changed) lsSet('scheduledFilterCleans', sched);
     });
+    headRight.appendChild(dateCol);
     headRight.appendChild(photoReq);
     // Rename sits just left of the bin (Oct 3)
     headRight.appendChild(renameBtn);
