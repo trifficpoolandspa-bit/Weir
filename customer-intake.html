@@ -1399,6 +1399,14 @@ input::placeholder{color:#A9BCB9;}
           <label id="wcVideoRequiredWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
             <input type="checkbox" id="wcVideoRequired" style="margin:0;"> Video required
           </label>
+          <!-- Email the customer when it's submitted, work orders only (Oct 3) -->
+          <label id="wcEmailCustomerWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0 0 0 auto;">
+            <input type="checkbox" id="wcEmailCustomer" checked style="margin:0;"> Email customer
+          </label>
+          <!-- Prices in that email, work orders only (Oct 3) -->
+          <label id="wcEmailPricesWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0 0 0 14px;">
+            <input type="checkbox" id="wcEmailPrices" checked style="margin:0;"> Include prices
+          </label>
           <span id="wcQuoteNumber" class="big-num" style="margin-left:auto;margin-right:12px;" title="The number this one will get"></span>
         </div>
       </div>
@@ -6128,7 +6136,9 @@ function applyWorkCenterMode(mode){
   // decided by the Quote / Work Order / Task toggle rather than here
   if(mode === 'quotes') applyWorkOrderType();
   else {
-    ['wcTaskSection','wcTaskListCard'].forEach(id=>{
+    // Current and History belong to Quote / Work Order / Task too: left
+    // showing, they sat above Filter cleans (Oct 3)
+    ['wcTaskSection','wcTaskListCard','wcCurrentCard','wcSubmittedCard'].forEach(id=>{
       const el = document.getElementById(id);
       if(el) el.style.display = 'none';
     });
@@ -6307,10 +6317,20 @@ function renderFilterGroups(){
     nameEl.textContent = g.name;
     const sub = document.createElement('div');
     sub.style.cssText = 'font-size:11.5px;color:var(--muted);margin-top:2px;';
-    const cnt = (g.customerIds || []).length;
-    const techName = technicianNameById(g.technicianId) || 'No technician';
-    const dateTxt = g.date ? new Date(g.date + 'T12:00:00').toLocaleDateString(undefined,{weekday:'short', month:'short', day:'numeric'}) : 'No date';
-    sub.textContent = cnt + (cnt === 1 ? ' customer' : ' customers') + ' · ' + dateTxt + ' · ' + techName;
+    // The date stands out from the rest of the line (Oct 3)
+    const fillSub = ()=>{
+      const cnt = (g.customerIds || []).length;
+      const techName = technicianNameById(g.technicianId) || 'No technician';
+      const dateTxt = g.date ? new Date(g.date + 'T12:00:00').toLocaleDateString(undefined,{weekday:'short', month:'short', day:'numeric'}) : 'No date';
+      sub.textContent = '';
+      sub.appendChild(document.createTextNode(cnt + (cnt === 1 ? ' customer' : ' customers') + ' \u00b7 '));
+      const dateEl = document.createElement('span');
+      dateEl.style.cssText = 'font-size:13px;font-weight:600;color:var(--teal-deep);';
+      dateEl.textContent = dateTxt;
+      sub.appendChild(dateEl);
+      sub.appendChild(document.createTextNode(' \u00b7 ' + techName));
+    };
+    fillSub();
     title.appendChild(nameEl);
     title.appendChild(sub);
 
@@ -6354,7 +6374,6 @@ function renderFilterGroups(){
       saveFilterGroups();
       renderFilterGroups();
     });
-    leftWrap.appendChild(renameBtn);
 
     head.appendChild(leftWrap);
 
@@ -6367,6 +6386,33 @@ function renderFilterGroups(){
       badge.textContent = 'SCHEDULED';
       headRight.appendChild(badge);
     }
+    // Photo required, per group, on unless unticked (Oct 3). Just left of Rename.
+    const photoReq = document.createElement('label');
+    photoReq.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer;flex-shrink:0;';
+    photoReq.title = 'The technician must take a photo before submitting each filter clean';
+    const photoBox = document.createElement('input');
+    photoBox.type = 'checkbox';
+    photoBox.checked = g.photoRequired !== false;
+    photoBox.style.cssText = 'margin:0;';
+    photoReq.appendChild(photoBox);
+    photoReq.appendChild(document.createTextNode('Photo required'));
+    photoReq.addEventListener('click', e => e.stopPropagation());     // not a press on the row
+    photoBox.addEventListener('change', ()=>{
+      g.photoRequired = photoBox.checked;
+      saveFilterGroups();
+      // Filter cleans already sent to the route follow it, until they're done
+      const sched = lsGet('scheduledFilterCleans') || [];
+      let changed = false;
+      sched.forEach(sc=>{
+        if(sc && sc.groupId === g.id && sc.status !== 'done' && (sc.photoRequired !== false) !== photoBox.checked){
+          sc.photoRequired = photoBox.checked; changed = true;
+        }
+      });
+      if(changed) lsSet('scheduledFilterCleans', sched);
+    });
+    headRight.appendChild(photoReq);
+    // Rename sits just left of the bin (Oct 3)
+    headRight.appendChild(renameBtn);
 
     const headDelBtn = document.createElement('button');
     headDelBtn.type = 'button';
@@ -6378,7 +6424,7 @@ function renderFilterGroups(){
       const ok = await confirmDialog('Delete "' + g.name + '"? Any filter cleans already sent to a route will be removed too.');
       if(!ok) return;
       let sched = lsGet('scheduledFilterCleans') || [];
-      sched = sched.filter(s => s.groupId !== g.id);
+      sched = sched.filter(s => s.groupId !== g.id || s.status === 'done');
       lsSet('scheduledFilterCleans', sched);
       filterGroups = filterGroups.filter(x => x.id !== g.id);
       saveFilterGroups();
@@ -6408,9 +6454,7 @@ function renderFilterGroups(){
     dateInput.addEventListener('change', ()=>{
       g.date = dateInput.value;
       saveFilterGroups();
-      const cntNow = (g.customerIds || []).length;
-      const dateNow = g.date ? new Date(g.date + 'T12:00:00').toLocaleDateString(undefined,{weekday:'short', month:'short', day:'numeric'}) : 'No date';
-      sub.textContent = cntNow + (cntNow === 1 ? ' customer' : ' customers') + ' \u00b7 ' + dateNow + ' \u00b7 ' + (technicianNameById(g.technicianId) || 'No technician');
+      fillSub();
     });
     controls.appendChild(dateInput);
 
@@ -6505,9 +6549,9 @@ async function finalizeFilterGroup(g){
   if(!ok) return;
 
   let sched = lsGet('scheduledFilterCleans') || [];
-  sched = sched.filter(s => s.groupId !== g.id);
+  sched = sched.filter(s => s.groupId !== g.id || s.status === 'done');
   // Re-finalizing replaces this group's previous schedule rather than stacking
-  sched = sched.filter(s => s.groupId !== g.id);
+  sched = sched.filter(s => s.groupId !== g.id || s.status === 'done');
   g.customerIds.forEach((cid, i)=>{
     sched.push({
       id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
@@ -6517,6 +6561,7 @@ async function finalizeFilterGroup(g){
       technicianId: g.technicianId,
       date: g.date,
       order: i,            // the group's order, kept on the technician's phone
+      photoRequired: g.photoRequired !== false,   // the group's Photo required (Oct 3)
       status: 'scheduled'
     });
   });
@@ -9940,6 +9985,31 @@ function renderTaskForm(){
   }
 }
 
+// ---- The ticks remembered on this computer (Oct 3) ----
+// Photo required, Video required and Email customer stay as last chosen for
+// every new work order or task, until changed again
+function wcTicks(){
+  const t = lsGet('workCenterTicks') || {};
+  return {woPhoto: t.woPhoto !== false, woVideo: !!t.woVideo, woEmail: t.woEmail !== false, woPrices: t.woPrices !== false,
+          taskPhoto: !!t.taskPhoto, taskVideo: !!t.taskVideo};
+}
+function applyWcTicks(which){
+  const t = wcTicks();
+  const set = (id, v)=>{ const el = document.getElementById(id); if(el) el.checked = v; };
+  if(which !== 'task'){ set('wcPhotoRequired', t.woPhoto); set('wcVideoRequired', t.woVideo); set('wcEmailCustomer', t.woEmail); set('wcEmailPrices', t.woPrices); }
+  if(which !== 'wo'){ set('taskPhotoRequired', t.taskPhoto); set('taskVideoRequired', t.taskVideo); }
+}
+[['wcPhotoRequired', 'woPhoto'], ['wcVideoRequired', 'woVideo'], ['wcEmailCustomer', 'woEmail'], ['wcEmailPrices', 'woPrices'],
+ ['taskPhotoRequired', 'taskPhoto'], ['taskVideoRequired', 'taskVideo']].forEach(([id, key])=>{
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.addEventListener('change', ()=>{
+    const t = lsGet('workCenterTicks') || {};
+    t[key] = el.checked;
+    lsSet('workCenterTicks', t);
+  });
+});
+
 function clearTaskForm(){
   editingTaskId = null;
   if(typeof wcEditSeries !== 'undefined' && wcEditSeries && wcEditSeries.kind === 'task') wcEditSeries = null;
@@ -9948,8 +10018,7 @@ function clearTaskForm(){
   document.getElementById('taskTitle').value = '';
   document.getElementById('taskDetails').value = '';
   document.getElementById('taskDate').value = taskTodayStr();
-  document.getElementById('taskPhotoRequired').checked = false;
-  document.getElementById('taskVideoRequired').checked = false;
+  applyWcTicks('task');      // as last chosen (Oct 3)
   document.getElementById('taskRepeat').value = 'none';
   document.getElementById('taskRepeatUntil').value = '';
   const unitBox = document.getElementById('taskRepeatUnit');
@@ -10315,7 +10384,7 @@ function filterGroupBlockers(g){
 function scheduleFilterGroup(g){
   let sched = lsGet('scheduledFilterCleans') || [];
   // Re-scheduling replaces this group's previous entries rather than stacking
-  sched = sched.filter(s => s.groupId !== g.id);
+  sched = sched.filter(s => s.groupId !== g.id || s.status === 'done');
   (g.customerIds || []).forEach((cid, i)=>{
     sched.push({
       id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
@@ -10325,6 +10394,7 @@ function scheduleFilterGroup(g){
       technicianId: g.technicianId,
       date: g.date,
       order: i,            // the group's order, kept on the technician's phone
+      photoRequired: g.photoRequired !== false,   // the group's Photo required (Oct 3)
       status: 'scheduled'
     });
   });
@@ -10333,7 +10403,7 @@ function scheduleFilterGroup(g){
 }
 
 function unscheduleFilterGroup(g){
-  const sched = (lsGet('scheduledFilterCleans') || []).filter(s => s.groupId !== g.id);
+  const sched = (lsGet('scheduledFilterCleans') || []).filter(s => s.groupId !== g.id || s.status === 'done');
   lsSet('scheduledFilterCleans', sched);
   g.finalized = false;
 }
@@ -10730,11 +10800,8 @@ function resetWorkOrderForm(backToQuote){
   if(qn) qn.value = '';
   const qx = document.getElementById('wcExpiresDays');
   if(qx) qx.value = String(QUOTE_ANSWER_DAYS || 30);
-  // A new work order starts with Photo required on
-  const photoReq = document.getElementById('wcPhotoRequired');
-  if(photoReq) photoReq.checked = true;
-  const videoReq = document.getElementById('wcVideoRequired');
-  if(videoReq) videoReq.checked = false;
+  // A new work order starts with the ticks as last chosen (Oct 3)
+  applyWcTicks('wo');
   const heading = document.getElementById('wcFormHeading');
   if(heading){
     heading.textContent = '';
@@ -11511,7 +11578,7 @@ function openCurrentForEditing(kind, r){
       : repeatFromGap(Math.round((new Date(left[1].date + 'T12:00:00') - new Date(first.date + 'T12:00:00')) / 86400000));
   }
   loadWorkOrderIntoForm({type: 'Work Order', customerId: first.customerId, date: first.date,
-    photoRequired: !!first.photoRequired, videoRequired: !!first.videoRequired, lineItems: first.lineItems || [], notes: first.notes || '',
+    photoRequired: !!first.photoRequired, videoRequired: !!first.videoRequired, emailCustomer: first.emailCustomer !== false, emailPrices: first.emailPrices !== false, lineItems: first.lineItems || [], notes: first.notes || '',
     technicianIds: [String(first.technicianId || '')], repeat: rep.repeat});
   setTimeout(()=>{
     if(rep.repeat === 'custom'){
@@ -12119,6 +12186,12 @@ function applyWorkOrderType(){
   if(photoWrap) photoWrap.style.display = isWO ? 'inline-flex' : 'none';
   const videoWrap = document.getElementById('wcVideoRequiredWrap');
   if(videoWrap) videoWrap.style.display = isWO ? 'inline-flex' : 'none';
+  const emailWrap = document.getElementById('wcEmailCustomerWrap');
+  if(emailWrap) emailWrap.style.display = isWO ? 'inline-flex' : 'none';
+  const pricesWrap = document.getElementById('wcEmailPricesWrap');
+  if(pricesWrap) pricesWrap.style.display = isWO ? 'inline-flex' : 'none';
+  const numEl = document.getElementById('wcQuoteNumber');
+  if(numEl) numEl.style.marginLeft = isWO ? '12px' : 'auto';
   // (A quote never carries it: saved only when the kind is Work Order)
 
   document.querySelectorAll('#wcTypeToggle [data-wctype]').forEach(btn=>{
@@ -12240,6 +12313,8 @@ function captureWcDraft(type){
       notes: document.getElementById('wcNotes').value,
       date: document.getElementById('wcDate').value,
       photoRequired: document.getElementById('wcPhotoRequired').checked, videoRequired: document.getElementById('wcVideoRequired').checked,
+      emailCustomer: document.getElementById('wcEmailCustomer').checked,
+      emailPrices: document.getElementById('wcEmailPrices').checked,
       quoteName: document.getElementById('wcQuoteName').value,
       expiresDays: document.getElementById('wcExpiresDays').value,
       techs: pickedTechIds(document.getElementById('wcTechnician')),
@@ -12293,6 +12368,8 @@ function restoreWcDraft(type){
     document.getElementById('wcDate').value = st.date;
     document.getElementById('wcPhotoRequired').checked = !!st.photoRequired;
     document.getElementById('wcVideoRequired').checked = !!st.videoRequired;
+    document.getElementById('wcEmailCustomer').checked = st.emailCustomer !== false;
+    document.getElementById('wcEmailPrices').checked = st.emailPrices !== false;
     document.getElementById('wcQuoteName').value = st.quoteName || '';
     document.getElementById('wcExpiresDays').value = st.expiresDays || String(QUOTE_ANSWER_DAYS || 30);
     setPickedTechIds(document.getElementById('wcTechnician'), st.techs);
@@ -12549,6 +12626,8 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
           lineItems: validItems,
           notes,
           photoRequired: document.getElementById('wcPhotoRequired').checked, videoRequired: document.getElementById('wcVideoRequired').checked,
+          emailCustomer: document.getElementById('wcEmailCustomer').checked,
+          emailPrices: document.getElementById('wcEmailPrices').checked,
           status: 'scheduled'
         });
       }));
@@ -12556,6 +12635,8 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
         number: woNumber,
         photoRequired: type === 'Work Order' && document.getElementById('wcPhotoRequired').checked,
         videoRequired: type === 'Work Order' && document.getElementById('wcVideoRequired').checked,
+        emailCustomer: document.getElementById('wcEmailCustomer').checked,
+        emailPrices: document.getElementById('wcEmailPrices').checked,
         id: woId, customerId: customer.id, type, lineItems: validItems, notes, total,
         technicianId: techIds[0], technicianIds: techIds, date, repeat, repeatUntil,
         createdAt: new Date().toISOString(),
@@ -12905,8 +12986,7 @@ function convertQuoteToWorkOrder(q){
     currentLineItems = (q.lineItems || []).map(li => Object.assign({}, li));
     renderLineItems();
     recalcWorkOrderTotal();
-    document.getElementById('wcPhotoRequired').checked = true;
-    document.getElementById('wcVideoRequired').checked = false;
+    applyWcTicks('wo');
     showToast('Quote copied to a new work order');
   }, 0);
 }
@@ -13071,7 +13151,8 @@ async function takeQuoteAnswers(){
     // Expired ones first, then any answers
     if(expireOldQuotes()){
       const page = document.getElementById('view-workcenter');
-      if(page && page.classList.contains('active')) applyWorkOrderType();
+      // Only while Quote / Work Order / Task is the WorkCenter tab showing (Oct 3)
+      if(page && page.classList.contains('active') && workCenterMode === 'quotes') applyWorkOrderType();
     }
     if(typeof siteUser === 'undefined' || !siteUser || !siteUser.companyId) return;
     const res = await sbFetch('/rest/v1/quote_responses?select=quote_id,outcome,responded_at&outcome=not.is.null', {method: 'GET'});
@@ -13093,7 +13174,7 @@ async function takeQuoteAnswers(){
     if(changed){
       saveWorkOrders();
       const wcPage = document.getElementById('view-workcenter');
-      if(wcPage && wcPage.classList.contains('active')) applyWorkOrderType();
+      if(wcPage && wcPage.classList.contains('active') && workCenterMode === 'quotes') applyWorkOrderType();
     }
   }catch(e){}
 }
@@ -13130,6 +13211,8 @@ function loadWorkOrderIntoForm(w){
     if(dateEl) dateEl.value = w.date || '';
     document.getElementById('wcPhotoRequired').checked = !!w.photoRequired;
     document.getElementById('wcVideoRequired').checked = !!w.videoRequired;
+    document.getElementById('wcEmailCustomer').checked = w.emailCustomer !== false;
+    document.getElementById('wcEmailPrices').checked = w.emailPrices !== false;
     document.getElementById('wcQuoteName').value = w.name || '';
     document.getElementById('wcExpiresDays').value = String(w.expiresDays || QUOTE_ANSWER_DAYS || 30);
 
@@ -19437,6 +19520,168 @@ function buildReportDoc(customerId, name, customer, type, r, onDelete){
   return doc;
 }
 
+// ---------- Work orders in Service reports (Oct 3) ----------
+// A work order visit submitted from the field: its row is labelled with the
+// work order number, and opens to what the office asked for, each line item's
+// price, the technician's notes, the photo and the video.
+function workOrderVisitsFor(customerId){
+  return (lsGet('scheduledWorkOrders') || [])
+    .filter(j => j && j.status === 'done' && String(j.customerId) === String(customerId));
+}
+function localDayOfStamp(stamp){
+  const d = new Date(stamp);
+  if(isNaN(d)) return String(stamp || '').slice(0, 10);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+function workOrderMoney(n){ return '$' + (Number(n) || 0).toFixed(2); }
+
+// Gone everywhere: Service reports, WorkCenter History, and (with the next
+// sync) the server and every phone
+function removeWorkOrderVisits(ids){
+  const set = new Set(ids.map(String));
+  lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !(j && set.has(String(j.id)))));
+  lsSet('jobSubmissions', (lsGet('jobSubmissions') || []).filter(x => !(x && x.kind === 'work order' && set.has(String(x.sourceId)))));
+  set.forEach(id => { if(historyOpenId === 'wo:' + id) historyOpenId = null; });
+  try{ if(document.getElementById('wcSubmittedList')) renderSubmittedHistory('work order'); }catch(e){}
+}
+// A finished filter clean, gone everywhere (Oct 3)
+function removeFilterCleanVisits(ids){
+  const set = new Set(ids.map(String));
+  lsSet('scheduledFilterCleans', (lsGet('scheduledFilterCleans') || []).filter(f => !(f && set.has(String(f.id)))));
+  set.forEach(id => { if(historyOpenId === 'fc:' + id) historyOpenId = null; });
+}
+async function deleteWorkOrderVisit(customerId, j){
+  const num = j.workOrderNumber ? ' #' + quoteNumberText(j.workOrderNumber) : '';
+  const sure = await confirmDialog(
+    'Delete ' + (j._clean ? 'this filter clean' : 'work order' + num) + ' from ' + fmtDate((j.date || '') + 'T12:00:00') + '?\n\n'
+    + 'It is removed for good from Service reports' + (j._clean ? '' : ' and WorkCenter History') + ', on every device, and cannot be brought back.',
+    'Delete for good');
+  if(!sure) return;
+  if(j._clean) removeFilterCleanVisits([j.id]); else removeWorkOrderVisits([j.id]);
+  const cust = customers.find(c => c.id === customerId);
+  showHistory(customerId, cust ? cust.name : '');
+  showToast(j._clean ? 'Filter clean deleted' : 'Work order deleted');
+}
+
+function renderWorkOrderReportRow(histList, customerId, customer, name, v, repKey, redrawRep){
+  const j = v.wo;
+  const isOpen = historyOpenId === v.id;
+  const repTick = selectionTick(repKey, v.id, redrawRep);
+  const bar = document.createElement('div');
+  bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;'
+    + 'padding:11px 12px;border:1px solid var(--line);border-radius:10px;margin-top:8px;'
+    + 'cursor:pointer;user-select:none;background:' + (isOpen ? 'var(--teal-pale)' : 'var(--card)') + ';';
+  const when = document.createElement('div');
+  when.style.cssText = 'font-size:13.5px;font-weight:600;color:var(--ink);min-width:0;';
+  when.textContent = fmtDate(v.date);
+  const tag = document.createElement('span');
+  tag.style.cssText = 'margin-left:10px;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;font-weight:600;'
+    + 'letter-spacing:0.07em;text-transform:uppercase;color:var(--teal-deep);padding:3px 7px;border-radius:6px;'
+    + 'background:' + (isOpen ? 'var(--card)' : 'var(--teal-pale)') + ';';
+  tag.textContent = j._clean ? 'Filter clean' : 'Work order' + (j.workOrderNumber ? ' #' + quoteNumberText(j.workOrderNumber) : '');
+  when.appendChild(tag);
+  const what = document.createElement('span');
+  what.style.cssText = 'font-weight:500;color:var(--muted);margin-left:8px;font-size:12.5px;';
+  what.textContent = j._clean ? (j.groupName || '') : (j.title || '');
+  when.appendChild(what);
+  const right = document.createElement('div');
+  right.style.cssText = 'display:flex;align-items:center;gap:10px;flex-shrink:0;';
+  const ago = document.createElement('div');
+  ago.style.cssText = 'font-size:12px;color:var(--muted);';
+  ago.textContent = howLongAgo(v.date) + (isOpen ? '  \u25b4' : '  \u25be');
+  right.appendChild(ago);
+  const del = document.createElement('button');
+  del.className = 'btn btn-ghost';
+  del.type = 'button';
+  del.textContent = 'Delete';
+  del.title = j._clean ? 'Delete this filter clean for good' : 'Delete this work order for good';
+  del.style.cssText = 'width:auto;padding:4px 10px;font-size:11.5px;color:var(--rust);border-color:#EFC0B4;';
+  del.addEventListener('click', e=>{ e.stopPropagation(); deleteWorkOrderVisit(customerId, j); });
+  right.appendChild(del);
+  if(repTick){
+    const lead = document.createElement('div');
+    lead.style.cssText = 'display:flex;align-items:center;min-width:0;';
+    lead.appendChild(repTick); lead.appendChild(when);
+    bar.appendChild(lead);
+  } else bar.appendChild(when);
+  bar.appendChild(right);
+  bar.addEventListener('click', ()=>{
+    if(listSel(repKey).on){ toggleSelected(repKey, v.id, redrawRep); return; }
+    historyOpenId = isOpen ? null : v.id;
+    historyOpenBody = null;
+    showHistory(selectedHistoryCustomerId, name);
+  });
+  histList.appendChild(bar);
+  if(isOpen) histList.appendChild(buildWorkOrderDoc(customerId, j));
+}
+
+function buildWorkOrderDoc(customerId, j){
+  const esc = escapeSyncText;
+  const doc = document.createElement('div');
+  doc.className = 'report-doc';
+  doc.style.marginTop = '8px';
+  const num = j.workOrderNumber ? ' #' + quoteNumberText(j.workOrderNumber) : '';
+  const by = j.doneBy === 'office' ? 'the office' : (technicianNameById(j.doneBy || j.technicianId) || 'a technician');
+  const items = (j.lineItems || []).filter(li => li && String(li.description || '').trim());
+  let total = 0, rows = '';
+  items.forEach(li=>{
+    const qty = Number(li.qty) || 1, price = Number(li.price) || 0;
+    total += qty * price;
+    rows += '<tr><td>' + esc(li.description) + '</td>'
+      + '<td style="text-align:right;color:var(--muted);font-family:\'Inter\',sans-serif;font-weight:500;white-space:nowrap;">'
+      + qty + ' \u00d7 ' + workOrderMoney(price) + '</td>'
+      + '<td style="width:90px;">' + workOrderMoney(qty * price) + '</td></tr>';
+  });
+  if(items.length){
+    rows += '<tr><td style="color:var(--ink);font-weight:600;border-bottom:none;">Total</td><td style="border-bottom:none;"></td>'
+      + '<td style="color:var(--gold);border-bottom:none;">' + workOrderMoney(total) + '</td></tr>';
+  }
+  doc.innerHTML = '<div class="report-head"><div>'
+    + '<h3>' + (j._clean ? 'Filter clean' : 'Work order' + esc(num)) + '</h3>'
+    + '<div class="rdate">Scheduled for ' + esc(fmtDate((j.date || '') + 'T12:00:00'))
+    + (j.doneAt ? ' \u00b7 Submitted ' + esc(fmtDate(j.doneAt)) + ' at '
+       + esc(new Date(j.doneAt).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'})) : '') + '</div>'
+    + '<div class="rdate">Submitted by ' + esc(by) + '</div>'
+    + '</div><div class="report-badge">Completed</div></div>'
+    + (items.length ? '<div class="report-sec">Line items</div><table class="report-table">' + rows + '</table>' : '')
+    + (j.notes ? '<div class="report-sec">Work order notes</div><div class="report-notes">' + esc(j.notes) + '</div>' : '')
+    + (j.doneNotes ? '<div class="report-sec">Technician\u2019s notes</div><div class="report-notes">' + esc(j.doneNotes) + '</div>' : '')
+    + (j.donePhoto ? '<div class="report-sec">Photo</div><div class="report-photos" data-wo-photo>'
+       + '<span style="font-size:12.5px;color:var(--muted);">Loading the photo\u2026</span></div>' : '');
+
+  // The photo, full size when pressed
+  if(j.donePhoto){
+    const wrap = doc.querySelector('[data-wo-photo]');
+    resolvePhoto(j.donePhoto).then(src=>{
+      if(!src){ wrap.firstChild.textContent = 'The photo hasn\u2019t reached the office yet. It comes with the technician\u2019s next sync.'; return; }
+      wrap.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = src;
+      img.alt = 'Work order photo';
+      img.addEventListener('click', ()=> openPhotoWindow([['Photo', src]], fmtDate(j.doneAt || ((j.date || '') + 'T12:00:00'))));
+      wrap.appendChild(img);
+    });
+  }
+  // The video, beside the heading as on a visit (office only, kept 7 days)
+  if(j.doneVideo){
+    const headText = doc.querySelector('.report-head > div');
+    headText.appendChild(visitVideoButton([j.doneVideo]));
+    headText.appendChild(downloadAllVideosButton([j.doneVideo]));
+  }
+  // Delete at the foot, as on a visit
+  const footer = document.createElement('div');
+  footer.style.cssText = 'display:flex;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);';
+  const delOpen = document.createElement('button');
+  delOpen.className = 'btn btn-ghost';
+  delOpen.type = 'button';
+  delOpen.textContent = j._clean ? 'Delete this filter clean' : 'Delete this work order';
+  delOpen.style.cssText = 'width:auto;color:var(--rust);border-color:#EFC0B4;';
+  delOpen.addEventListener('click', ()=> deleteWorkOrderVisit(customerId, j));
+  footer.appendChild(delOpen);
+  doc.appendChild(footer);
+  return doc;
+}
+
 function showHistory(customerId, name){
   selectedHistoryCustomerId = customerId;
   const customer = customers.find(c => c.id === customerId);
@@ -19450,8 +19695,20 @@ function showHistory(customerId, name){
   if(seg) seg.style.display = 'none';
 
   let list = reportVisitsFor(customer);
+  // Work orders submitted from the field sit among the visits, by when they
+  // were done (Oct 3)
+  const woDay = j => j.doneAt ? localDayOfStamp(j.doneAt) : (j.date || '');
+  list = list.concat(workOrderVisitsFor(customerId).map(j => ({id: 'wo:' + j.id, wo: j,
+      date: j.doneAt || ((j.date || '') + 'T12:00:00'), parts: []})))
+    // Filter cleans submitted on the job screen, the same way (Oct 3)
+    .concat((lsGet('scheduledFilterCleans') || [])
+      .filter(f => f && f.status === 'done' && String(f.customerId) === String(customerId))
+      .map(f => ({id: 'fc:' + f.id, wo: Object.assign({}, f, {_clean: true}),
+        date: f.doneAt || ((f.date || '') + 'T12:00:00'), parts: []})))
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
   if(historyDateFilter){
-    list = list.filter(v => v.parts.some(p => (p.r.date || '').slice(0, 10) === historyDateFilter));
+    list = list.filter(v => v.wo ? (woDay(v.wo) === historyDateFilter || v.wo.date === historyDateFilter)
+      : v.parts.some(p => (p.r.date || '').slice(0, 10) === historyDateFilter));
   }
 
   const histList = document.getElementById('historyList');
@@ -19481,9 +19738,15 @@ function showHistory(customerId, name){
   list.forEach(v => { byId[v.id] = v; });
   histList.appendChild(selectionBar(repKey, list.map(v => v.id), 'service report', ids=>{
     ids.forEach(id => { const v = byId[id]; if(v) v.parts.forEach(pt => removeHistoryReport(customerId, pt.type, pt.r.id, true)); });
+    // A work order selected goes everywhere, as its own Delete does
+    const woIds = ids.filter(id => byId[id] && byId[id].wo && !byId[id].wo._clean).map(id => String(byId[id].wo.id));
+    if(woIds.length) removeWorkOrderVisits(woIds);
+    const fcIds = ids.filter(id => byId[id] && byId[id].wo && byId[id].wo._clean).map(id => String(byId[id].wo.id));
+    if(fcIds.length) removeFilterCleanVisits(fcIds);
   }, redrawRep));
 
   list.forEach(v=>{
+    if(v.wo){ renderWorkOrderReportRow(histList, customerId, customer, name, v, repKey, redrawRep); return; }
     const bar = document.createElement('div');
     const isOpen = historyOpenId === v.id;
     const repTick = selectionTick(repKey, v.id, redrawRep);

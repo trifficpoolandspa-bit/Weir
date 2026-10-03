@@ -2824,7 +2824,7 @@ function switchView(view, opts){
     // ...and the page back as it starts: no dates, no report, no buttons
     const dates = document.getElementById('reportReadingSelect');
     if(dates) dates.innerHTML = '';
-    try{ availableReportDates = []; }catch(e){}
+    try{ availableReportDates = []; reportDateDays = []; }catch(e){}
     const out = document.getElementById('reportOutput');
     if(out) out.innerHTML = '';
     ['reportActions', 'btnDownloadPhoto', 'btnSharePhoto', 'reportDateHint'].forEach(id=>{
@@ -4319,10 +4319,29 @@ const SYNC_WORK_LISTS = [
   ['rescheduledVisits', 'reschedule']
 ];
 // Finishing a task or a work order visit goes back too: done, when, by whom
-// and the notes (snippet 16 lets a technician change exactly these on their own)
-const SYNC_WORK_SENDABLE = ['task', 'reschedule', 'work_order'];
+// and the notes (snippet 16 lets a technician change exactly these on their own),
+// and a work order's photo and video (snippet 25, Oct 3)
+const SYNC_WORK_SENDABLE = ['task', 'reschedule', 'work_order', 'filter_clean'];
+const SYNC_FILTER_CLEAN_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo'];
 const SYNC_TASK_FIELDS = ['done', 'doneAt', 'doneBy', 'doneNotes'];
-const SYNC_WORK_ORDER_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes'];
+const SYNC_WORK_ORDER_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo'];
+
+// A work order submitted before its photo and video went to the office (Oct 3)
+// kept them only in this phone's submissions: hang them on the visit now, so
+// they go with the next sync
+function workOrderMediaFromSubmissions(){
+  const subs = (lsGet('jobSubmissions') || []).filter(x => x && x.kind === 'work order' && x.sourceId && (isPhotoRef(x.photo) || isPhotoRef(x.video)));
+  if(!subs.length) return;
+  const jobs = lsGet('scheduledWorkOrders') || [];
+  let changed = false;
+  subs.forEach(sub=>{
+    const j = jobs.find(x => x && String(x.id) === String(sub.sourceId));
+    if(!j || j.status !== 'done') return;
+    if(isPhotoRef(sub.photo) && !j.donePhoto){ j.donePhoto = sub.photo; changed = true; }
+    if(isPhotoRef(sub.video) && !j.doneVideo){ j.doneVideo = sub.video; changed = true; }
+  });
+  if(changed) lsSet('scheduledWorkOrders', jobs);
+}
 
 function syncWorkLocal(){
   const out = {};
@@ -4337,6 +4356,8 @@ function syncWorkLocal(){
 
 // Notice what was ticked off or moved on this phone
 function syncScanWork(state, now){
+  try{ workOrderMediaFromSubmissions(); }catch(e){}
+  try{ sendJobEmails(); }catch(e){}
   const wk = state.work;
   const stamp = now || new Date().toISOString();
   const local = syncWorkLocal();
@@ -4357,6 +4378,7 @@ function syncScanWork(state, now){
       // Only the fields the server will accept are ever sent
       if(key.indexOf('task\u0002') === 0 && SYNC_TASK_FIELDS.indexOf(field) === -1) return;
       if(key.indexOf('work_order\u0002') === 0 && SYNC_WORK_ORDER_FIELDS.indexOf(field) === -1) return;
+      if(key.indexOf('filter_clean\u0002') === 0 && SYNC_FILTER_CLEAN_FIELDS.indexOf(field) === -1) return;
       const noticed = prev && prev[field] === f[field];
       if(!noticed || !e[field]) e[field] = stamp;
     });
@@ -4792,6 +4814,15 @@ function syncPhotosHere(){
       (lsGet(fountainReadingsStorageKey(customerId, f.id)) || []).forEach(r => fromVisit(r, 'fountain:' + f.id));
     });
     (lsGet(skippedVisitsStorageKey(customerId)) || []).forEach(sk => fromVisit(sk, 'pool'));
+  });
+  // A work order's photo and video, taken on this phone (Oct 3). Filed under
+  // the work order visit, so the office shows them in Service reports; the
+  // video is office only and kept 7 days, like a visit's.
+  (lsGet('jobSubmissions') || []).forEach(sub=>{
+    if(!sub || (sub.kind !== 'work order' && sub.kind !== 'filter clean') || !sub.customerId || !sub.sourceId) return;
+    const when = sub.submittedAt || new Date().toISOString();
+    add(sub.photo, {customerId: String(sub.customerId), kind: 'custom', visitId: String(sub.sourceId), takenAt: when});
+    add(sub.video, {customerId: String(sub.customerId), kind: 'video', visitId: String(sub.sourceId), takenAt: when});
   });
   return out;
 }
@@ -10044,7 +10075,15 @@ function routeJobsFor(customerId, dayISO, techId){
     .filter(j => j.status === 'scheduled' && j.date === dayISO && j.customerId === customerId && mine(j))
     .map(j => ({key: 'work order:' + j.id, kind: 'work order', id: j.id,
                 title: j.title || 'Work order', details: j.notes || '', photoRequired: !!j.photoRequired, videoRequired: !!j.videoRequired}));
-  return orders.concat(tasks).filter(j => !jobSubmitted(j.key));
+  // Filter cleans are jobs too, done on the job screen (Oct 3)
+  const cleans = (lsGet('scheduledFilterCleans') || [])
+    .filter(s => s && s.status === 'scheduled' && s.date === dayISO && s.customerId === customerId && mine(s))
+    .map(s => ({key: 'filter clean:' + s.id, kind: 'filter clean', id: s.id,
+                title: 'Filter clean', details: '', photoRequired: s.photoRequired !== false, videoRequired: false}));
+  return orders.concat(cleans).concat(tasks).filter(j => !jobSubmitted(j.key));
+}
+function jobKindLabel(kind){
+  return kind === 'task' ? 'Task' : (kind === 'filter clean' ? 'Filter clean' : 'Work order');
 }
 // Tasks with no customer that day, as jobs of their own
 function routeLooseTasks(dayISO, techId){
@@ -10067,6 +10106,8 @@ function routeJobCustomerIds(dayISO, techId){
     });
   (lsGet('scheduledWorkOrders') || []).filter(j => j.status === 'scheduled' && j.date === dayISO && mine(j))
     .forEach(j => { if(!jobSubmitted('work order:' + j.id)) ids.add(j.customerId); });
+  (lsGet('scheduledFilterCleans') || []).filter(s => s && s.status === 'scheduled' && s.date === dayISO && mine(s))
+    .forEach(s => { if(!jobSubmitted('filter clean:' + s.id)) ids.add(s.customerId); });
   return ids;
 }
 // How many jobs a day holds: every work order and every task counts as one,
@@ -10190,7 +10231,7 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
       if(customer && customer.gateCode) line('\ud83d\udd11 Yard gate', customer.gateCode);
       const dogNames = ((customer && customer.dogs) || []).map(d => d.name).filter(Boolean);
       if(dogNames.length) line(dogNames.length === 1 ? '\ud83d\udc15 Dog' : '\ud83d\udc15 Dogs', dogNames.join(', '));
-      line(job.kind === 'task' ? '\ud83d\udccb Task' : '\ud83d\udee0 Work order', job.title);
+      line(job.kind === 'task' ? '\ud83d\udccb Task' : '\ud83d\udee0 ' + jobKindLabel(job.kind), job.title);
       if(job.details) line('Details', job.details);
       if(job.photoRequired) line('\ud83d\udcf7 Photo', 'Required'); if(job.videoRequired) line('\ud83c\udfa5 Video', 'Required');
 
@@ -10298,7 +10339,7 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
       if(customer && customer.gateCode) line('\ud83d\udd11 Yard gate', customer.gateCode);
       const dogNames = ((customer && customer.dogs) || []).map(d => d.name).filter(Boolean);
       if(dogNames.length) line(dogNames.length === 1 ? '\ud83d\udc15 Dog' : '\ud83d\udc15 Dogs', dogNames.join(', '));
-      line(job.kind === 'task' ? '\ud83d\udccb Task' : '\ud83d\udee0 Work order', job.title);
+      line(job.kind === 'task' ? '\ud83d\udccb Task' : '\ud83d\udee0 ' + jobKindLabel(job.kind), job.title);
       if(job.details) line('Details', job.details);
       if(job.photoRequired) line('\ud83d\udcf7 Photo', 'Required'); if(job.videoRequired) line('\ud83c\udfa5 Video', 'Required');
 
@@ -10350,7 +10391,7 @@ function openJobPage(customer, job){
   head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;';
   const h = document.createElement('h2');
   h.style.cssText = 'margin:0;min-width:0;';
-  h.textContent = job.kind === 'task' ? 'Task' : 'Work order';
+  h.textContent = jobKindLabel(job.kind);
   const back = document.createElement('button');
   back.className = 'btn btn-ghost';
   back.style.cssText = 'width:auto;flex-shrink:0;padding:6px 12px;font-size:12.5px;';
@@ -10480,7 +10521,7 @@ function openJobPage(customer, job){
   submit.addEventListener('click', async ()=>{
     // A task marked "Photo required" can't go without one
     if(job.photoRequired && !photo){
-      showToast('Take the photo first \u2014 this task needs one');
+      showToast('Take the photo first \u2014 this ' + job.kind + ' needs one');
       return;
     }
     if(job.videoRequired && !videoRef){
@@ -10522,6 +10563,20 @@ function openJobPage(customer, job){
           lsSet('tasks', all);
         }
       }
+    } else if(job.kind === 'filter clean'){
+      // Done, with the photo and video, back to the office (Oct 3)
+      const cleans = lsGet('scheduledFilterCleans') || [];
+      const fc = cleans.find(x => x.id === job.id);
+      if(fc){
+        fc.status = 'done';
+        fc.doneAt = stamp;
+        fc.doneBy = currentUser ? currentUser.id : '';
+        fc.doneNotes = noteText;
+        if(isPhotoRef(stored)) fc.donePhoto = stored;
+        if(isPhotoRef(videoRef)) fc.doneVideo = videoRef;
+        lsSet('scheduledFilterCleans', cleans);
+        if(customer) queueJobEmail(customer, Object.assign({kind: 'filter clean'}, fc));
+      }
     } else {
       const jobs = lsGet('scheduledWorkOrders') || [];
       const j = jobs.find(x => x.id === job.id);
@@ -10530,7 +10585,12 @@ function openJobPage(customer, job){
         j.doneAt = stamp;
         j.doneBy = currentUser ? currentUser.id : '';
         j.doneNotes = noteText;
+        // The photo and video go to the office with it (Oct 3)
+        if(isPhotoRef(stored)) j.donePhoto = stored;
+        if(isPhotoRef(videoRef)) j.doneVideo = videoRef;
         lsSet('scheduledWorkOrders', jobs);
+        // Unless the office unticked Email customer on it (Oct 3)
+        if(customer && j.emailCustomer !== false) queueJobEmail(customer, Object.assign({kind: 'work order'}, j));
       }
     }
     close();
@@ -10739,10 +10799,9 @@ function adminVersion_renderHomeList(){
     .filter(s => s.status === 'scheduled' && s.date === selectedDayISO)
     .forEach(s => cleanIds.add(s.customerId));
   const jobTally = routeJobCounts(selectedDayISO, adminViewTechId);
-  const cleansLeft = todaysCustomers.filter(cust => cleanIds.has(cust.id)).length;
-  // Filter cleans finished that day still count toward the total
-  const cleansDone = customers.filter(cust =>
-    cust.active !== false && cleanIds.has(cust.id) && servicedOnDate(cust, selectedDayISO)).length;
+  // Filter cleans are jobs now (Oct 3), counted in routeJobCounts
+  const cleansLeft = 0;
+  const cleansDone = 0;
   const jobCount = jobTally.open + cleansLeft;
   const jobsDone = jobTally.done + cleansDone;
   const jobsTotal = jobCount + jobsDone;
@@ -11005,12 +11064,8 @@ function techVersion_renderHomeList(){
     .map(r => r.customerId));
 
   // Scheduled filter cleans land on their specific date, for the assigned tech
+  // Filter cleans are jobs now (Oct 3): they no longer add the customer's service
   const filterCleanIds = new Set();
-  (lsGet('scheduledFilterCleans') || [])
-    .filter(s => s.status === 'scheduled')
-    .filter(s => s.date === selectedDayISO)
-    .filter(s => currentUser && s.technicianId === currentUser.id)
-    .forEach(s => filterCleanIds.add(s.customerId));
 
 
   const extraFilterCustomers = customers.filter(c =>
@@ -12208,9 +12263,163 @@ async function getCustomerServiceDates(customerId){
     if(!dateMap.has(r.date)) dateMap.set(r.date, r.timestamp || r.date);
   });
 
-  return Array.from(dateMap.entries())
-    .map(([key, ts]) => ({dateStr: key, ts, isRedo: key.indexOf('|redo') !== -1}))
-    .sort((a,b) => b.ts.localeCompare(a.ts));
+  const out = Array.from(dateMap.entries())
+    .map(([key, ts]) => ({dateStr: key, ts, isRedo: key.indexOf('|redo') !== -1, day: key.slice(0, 10)}));
+  // Work orders submitted for this customer, each a report of its own (Oct 3)
+  workOrderVisitsFor(customerId).forEach(j=>{
+    out.push({dateStr: 'wo:' + j.id, ts: j.doneAt || (j.date + 'T12:00:00'), isRedo: false,
+              day: j.doneAt ? localDateOfStamp(j.doneAt) : j.date, wo: j});
+  });
+  filterCleanVisitsFor(customerId).forEach(f=>{
+    out.push({dateStr: 'fc:' + f.id, ts: f.doneAt || (f.date + 'T12:00:00'), isRedo: false,
+              day: f.doneAt ? localDateOfStamp(f.doneAt) : f.date, fc: f});
+  });
+  return out.sort((a,b) => String(b.ts).localeCompare(String(a.ts)));
+}
+
+// ---- Work orders in Service reports (Oct 3) ----
+// A work order visit submitted from the field, with what the office asked for,
+// the technician's notes, the photo and the video
+function workOrderVisitsFor(customerId){
+  return (lsGet('scheduledWorkOrders') || [])
+    .filter(j => j && j.status === 'done' && String(j.customerId) === String(customerId));
+}
+// Filter cleans submitted on the job screen (Oct 3), shown the same way
+function filterCleanVisitsFor(customerId){
+  return (lsGet('scheduledFilterCleans') || [])
+    .filter(s => s && s.status === 'done' && String(s.customerId) === String(customerId));
+}
+function workOrderNumberText(n){ return n ? '#' + String(n).padStart(4, '0') : ''; }
+function workOrderMoney(n){ return '$' + (Number(n) || 0).toFixed(2); }
+
+// The video: from this phone if it was taken here, otherwise from the office
+async function workOrderVideoSource(ref){
+  if(!isPhotoRef(ref)) return null;
+  const id = ref.slice(PHOTO_REF.length);
+  const here = await loadPhotoData(id);
+  if(here) return {data: here};
+  if(!deviceGet('session')) return {gone: true};
+  try{
+    const s = deviceGet('session');
+    const r = await fetch(FIELD_SUPABASE_URL + '/rest/v1/photos?select=id,path&kind=eq.video&deleted=eq.false&id=eq.'
+      + encodeURIComponent(id) + '&limit=1', {
+      headers: {'apikey': FIELD_SUPABASE_KEY, 'Authorization': 'Bearer ' + (s && s.access_token)}
+    });
+    if(r.ok){
+      const rows = await r.json();
+      if(Array.isArray(rows) && rows[0] && rows[0].path) return {path: rows[0].path};
+    }
+  }catch(e){}
+  return {gone: true};
+}
+
+async function renderWorkOrderReport(customerId, jobId, isClean){
+  const out = document.getElementById('reportOutput');
+  document.getElementById('reportActions').style.display = 'none';
+  document.getElementById('btnDownloadPhoto').style.display = 'none';
+  document.getElementById('btnSharePhoto').style.display = 'none';
+  const customer = customers.find(c => c.id === customerId);
+  const j = (isClean ? filterCleanVisitsFor(customerId) : workOrderVisitsFor(customerId)).find(x => String(x.id) === String(jobId));
+  if(!customer || !j){
+    out.innerHTML = '<div class="empty">This ' + (isClean ? 'filter clean' : 'work order') + ' is no longer here.</div>';
+    return;
+  }
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const sec = t => '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);'
+    + 'text-transform:uppercase;letter-spacing:0.07em;margin:16px 0 6px;">' + t + '</div>';
+  const num = workOrderNumberText(j.workOrderNumber);
+  const by = j.doneBy === 'office' ? 'the office' : techNameFor(j.doneBy || j.technicianId);
+  const items = (j.lineItems || []).filter(li => li && String(li.description || '').trim());
+  let total = 0;
+  let rows = '';
+  items.forEach(li=>{
+    const qty = Number(li.qty) || 1, price = Number(li.price) || 0;
+    total += qty * price;
+    rows += '<tr><td>' + esc(li.description) + '</td>'
+      + '<td style="text-align:right;color:var(--muted);font-family:\'Inter\',sans-serif;font-weight:500;white-space:nowrap;">' + qty + ' \u00d7 ' + workOrderMoney(price) + '</td>'
+      + '<td style="width:90px;">' + workOrderMoney(qty * price) + '</td></tr>';
+  });
+  if(items.length){
+    rows += '<tr><td style="color:var(--ink);font-weight:600;border-bottom:none;">Total</td><td style="border-bottom:none;"></td>'
+      + '<td style="color:var(--gold);border-bottom:none;">' + workOrderMoney(total) + '</td></tr>';
+  }
+  out.innerHTML = '<div class="report-doc">'
+    + '<div class="report-head"><div>'
+    + '<h2>' + (isClean ? 'Filter clean' : 'Work order ' + esc(num)) + '</h2>'
+    + '<div class="rdate">' + esc(customer.name) + (customer.address ? ' \u2014 ' + esc(customer.address) : '') + '</div>'
+    + '<div class="rdate">Scheduled for ' + esc(fmtDate(j.date + 'T12:00:00'))
+    + (j.doneAt ? ' \u00b7 Submitted ' + esc(fmtDateTime(j.doneAt)) : '') + '</div>'
+    + '<div class="rdate">Submitted by ' + esc(by) + '</div>'
+    + '</div><div class="report-badge">Completed</div></div>'
+    + (items.length ? sec('Line items') + '<table class="report-table">' + rows + '</table>' : '')
+    + (j.notes ? sec('Work order notes') + '<div class="report-notes" style="white-space:pre-wrap;">' + esc(j.notes) + '</div>' : '')
+    + (j.doneNotes ? sec('Technician\u2019s notes') + '<div class="report-notes" style="white-space:pre-wrap;">' + esc(j.doneNotes) + '</div>' : '')
+    + (j.donePhoto ? sec('Photo') + '<div data-wo-photo style="font-size:12.5px;color:var(--muted);">Loading the photo\u2026</div>' : '')
+    + '</div>';
+  const doc = out.querySelector('.report-doc');
+
+  // The photo, full size when pressed
+  if(j.donePhoto){
+    const holder = doc.querySelector('[data-wo-photo]');
+    resolvePhoto(j.donePhoto).then(src=>{
+      if(!holder.isConnected) return;
+      if(!src){ holder.textContent = 'The photo couldn\u2019t be loaded (no signal, or it hasn\u2019t reached the office yet).'; return; }
+      holder.textContent = '';
+      const img = document.createElement('img');
+      img.src = src;
+      img.alt = 'Work order photo';
+      img.style.cssText = 'width:130px;border-radius:9px;border:1px solid var(--line);display:block;cursor:zoom-in;';
+      img.addEventListener('click', ()=> openPhotoFullSize(src));
+      holder.appendChild(img);
+    });
+  }
+
+  // The video, for owners and admins (office only, kept 7 days)
+  if(j.doneVideo && isAdminUser()){
+    const headText = doc.querySelector('.report-head > div');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-ghost';
+    btn.style.cssText = 'width:auto;padding:6px 12px;font-size:12.5px;margin:8px 0 0 0;';
+    btn.textContent = '\u25b6 Watch video';
+    btn.title = 'The technician\u2019s video \u2014 office only';
+    btn.addEventListener('click', async e=>{
+      e.stopPropagation();
+      const src = await workOrderVideoSource(j.doneVideo);
+      if(!src || src.gone){ showToast('This video couldn\u2019t be loaded (no signal, or past its 7 days)'); return; }
+      openVisitVideos([src]);
+    });
+    headText.appendChild(btn);
+  }
+
+  // Deleted everywhere, by the office only (a technician's phone can't)
+  if(isAdminUser()){
+    const footer = document.createElement('div');
+    footer.style.cssText = 'display:flex;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);';
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'btn btn-ghost';
+    del.style.cssText = 'width:auto;color:var(--rust);border-color:#EFC9BC;';
+    del.textContent = isClean ? 'Delete this filter clean' : 'Delete this work order';
+    del.addEventListener('click', async ()=>{
+      const ok = await confirmDialog('Delete ' + (isClean ? 'this filter clean' : 'work order ' + num) + ' from ' + fmtDate(j.date + 'T12:00:00') + '?\n\n'
+        + 'It is removed for good from Service reports' + (isClean ? '' : ' and WorkCenter History') + ', on every device, and cannot be brought back.',
+        'Delete for good');
+      if(!ok) return;
+      const listKey = isClean ? 'scheduledFilterCleans' : 'scheduledWorkOrders';
+      const jobs = lsGet(listKey) || [];
+      if(jobs.some(x => x && String(x.id) === String(j.id))) queueOfficeWork(isClean ? 'filter_clean' : 'work_order', j.id, true);
+      lsSet(listKey, jobs.filter(x => !(x && String(x.id) === String(j.id))));
+      lsSet('jobSubmissions', (lsGet('jobSubmissions') || []).filter(x => !(x && x.kind === (isClean ? 'filter clean' : 'work order')
+        && String(x.sourceId) === String(j.id))));
+      fieldNoteLocalChange();
+      try{ if(typeof awcRenderHistory === 'function' && document.getElementById('awcHistList')) awcRenderHistory(); }catch(e){}
+      await refreshDateSelector(customerId);
+      showToast(isClean ? 'Filter clean deleted' : 'Work order deleted');
+    });
+    footer.appendChild(del);
+    doc.appendChild(footer);
+  }
 }
 
 async function renderDateReport(customerId, dateStr){
@@ -12218,6 +12427,9 @@ async function renderDateReport(customerId, dateStr){
 
   // The key may carry a "|redo" suffix, marking which of the day's two
   // reports is wanted
+  // A work order (Oct 3)
+  if(dateStr.indexOf('wo:') === 0){ await renderWorkOrderReport(customerId, dateStr.slice(3)); return; }
+  if(dateStr.indexOf('fc:') === 0){ await renderWorkOrderReport(customerId, dateStr.slice(3), true); return; }
   const wantRedo = dateStr.indexOf('|redo') !== -1;
   const plainDate = dateStr.replace('|redo', '');
   const matches = r => r.date.slice(0,10) === plainDate && !!r.isRedo === wantRedo;
@@ -12264,6 +12476,7 @@ async function refreshDateSelector(customerId){
     opt.value = '';
     sel.appendChild(opt);
     availableReportDates = [];
+    reportDateDays = [];
     document.getElementById('reportOutput').innerHTML = '';
     document.getElementById('reportActions').style.display = 'none';
     document.getElementById('btnDownloadPhoto').style.display = 'none';
@@ -12271,10 +12484,14 @@ async function refreshDateSelector(customerId){
     return;
   }
   availableReportDates = dates.map(d => d.dateStr);
+  reportDateDays = dates.map(d => ({key: d.dateStr, day: d.day || String(d.dateStr).slice(0, 10)}));
   dates.forEach(d=>{
     const opt = document.createElement('option');
     opt.value = d.dateStr;
-    opt.textContent = fmtDate(d.ts) + (d.isRedo ? '  \u2014 redone' : '');
+    opt.textContent = d.wo
+      ? fmtDate(d.ts) + '  \u2014 Work order ' + workOrderNumberText(d.wo.workOrderNumber)
+      : d.fc ? fmtDate(d.ts) + '  \u2014 Filter clean'
+      : fmtDate(d.ts) + (d.isRedo ? '  \u2014 redone' : '');
     sel.appendChild(opt);
   });
   document.getElementById('reportDateHint').style.display = 'none';
@@ -12410,15 +12627,19 @@ function syncReportCustomerSearchField(){
   document.getElementById('btnClearReportCustomer').style.display = input.value ? 'block' : 'none';
 }
 let availableReportDates = [];
+// Each report's calendar day, for the date picker (a work order's key isn't a date)
+let reportDateDays = [];
 
 document.getElementById('btnReportDatePicker').addEventListener('click', ()=>{
   const custId = document.getElementById('reportCustomerSelect').value;
   if(!custId){ showToast('Pick a customer first'); return; }
   if(availableReportDates.length === 0){ showToast('No reports for this customer yet'); return; }
   const input = document.getElementById('reportDateInput');
-  input.min = availableReportDates[availableReportDates.length - 1];
-  input.max = availableReportDates[0];
-  input.value = document.getElementById('reportReadingSelect').value || availableReportDates[0];
+  const days = reportDateDays.map(x => x.day).filter(Boolean).sort();
+  input.min = days[0];
+  input.max = days[days.length - 1];
+  const on = reportDateDays.find(x => x.key === document.getElementById('reportReadingSelect').value);
+  input.value = on ? on.day : days[days.length - 1];
   if(typeof input.showPicker === 'function'){
     input.showPicker();
   } else {
@@ -12435,10 +12656,11 @@ document.getElementById('reportDateInput').addEventListener('change', (e)=>{
   const picked = e.target.value;
   const custId = document.getElementById('reportCustomerSelect').value;
   const hint = document.getElementById('reportDateHint');
-  if(availableReportDates.includes(picked)){
-    document.getElementById('reportReadingSelect').value = picked;
+  const hit = reportDateDays.find(x => x.day === picked);
+  if(hit){
+    document.getElementById('reportReadingSelect').value = hit.key;
     hint.style.display = 'none';
-    renderDateReport(custId, picked);
+    renderDateReport(custId, hit.key);
   } else {
     hint.textContent = 'No report on that date — the list above shows every date with a report.';
     hint.style.display = 'block';
@@ -12647,8 +12869,9 @@ function detectFilterCleanVisit(customerId){
   const iso = selDate
     ? new Date(selDate.getTime() - selDate.getTimezoneOffset() * 60000).toISOString().slice(0,10)
     : '';
-  return (lsGet('scheduledFilterCleans') || [])
-    .some(s => s.status === 'scheduled' && s.customerId === customerId && s.date === iso);
+  // A filter clean is a job on its own (Oct 3), never a service visit
+  void iso;
+  return false;
 }
 
 
@@ -18468,6 +18691,128 @@ function buildReportEmailHtml(customer, whenText, sections, opts){
     + '</td></tr>'
 
     + '</table></td></tr></table></body></html>';
+}
+
+// ---- Work order and filter clean emails (Oct 3) ----
+// Submitting one emails the customer: what was done, each item's price and
+// the total (work orders), and the photo. The technician's notes, the office's
+// own notes and the video stay with the office. Sent by the office as
+// "<the company> via Weir"; held here and tried again with each sync while
+// there's no signal.
+function buildJobEmailHtml(customer, job, techName){
+  const b = emailBrand();
+  const company = (lsGet('companyName') || '').trim() || 'Your pool service';
+  const isWO = job.kind === 'work order';
+  const num = isWO && job.workOrderNumber ? ' #' + String(job.workOrderNumber).padStart(4, '0') : '';
+  const heading = (isWO ? 'Work order' + num : 'Filter clean') + ' completed';
+  const when = job.doneAt ? new Date(job.doneAt) : new Date((job.date || '') + 'T12:00:00');
+  const whenText = when.toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
+  const cell = 'padding:7px 0;border-bottom:1px solid #E6E9E8;';
+  let rows = '';
+  // Prices unless the office unticked Include prices on it (Oct 3)
+  const withPrices = job.emailPrices !== false;
+  if(isWO){
+    let total = 0;
+    (job.lineItems || []).filter(li => li && String(li.description || '').trim()).forEach(li=>{
+      const qty = Number(li.qty) || 1, price = Number(li.price) || 0;
+      total += qty * price;
+      rows += '<tr><td style="' + cell + '">' + esc(li.description) + (qty !== 1 ? ' \u00d7 ' + qty : '') + '</td>'
+        + '<td style="' + cell + 'text-align:right;">' + (withPrices ? '$' + (qty * price).toFixed(2) : '') + '</td></tr>';
+    });
+    if(rows && withPrices) rows += '<tr><td style="padding:7px 0;font-weight:700;color:#16302E;">Total</td>'
+      + '<td style="padding:7px 0;text-align:right;font-weight:700;color:#16302E;">$' + total.toFixed(2) + '</td></tr>';
+  } else {
+    rows = '<tr><td style="' + cell + '">Filter clean</td><td style="' + cell + '"></td></tr>';
+  }
+  const contact = b.showContact ? emailContactLine() : '';
+  return '<!DOCTYPE html><html><head><meta charset="utf-8">'
+    + '<meta name="format-detection" content="telephone=no,address=no,email=no,date=no">'
+    + '<style>a[href^="tel"],a[href^="mailto"],a[href^="http"],a[x-apple-data-detectors]{'
+    + 'color:inherit !important;text-decoration:none !important;font-size:inherit !important;'
+    + 'font-family:inherit !important;font-weight:inherit !important;}</style>'
+    + '</head><body style="margin:0;padding:0;background:#F4F6F5;">'
+    + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F4F6F5;padding:24px 12px;">'
+    + '<tr><td align="center">'
+    + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+    + 'style="max-width:580px;background:#FFFFFF;border-radius:12px;overflow:hidden;'
+    + 'font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Arial,sans-serif;">'
+    + '<tr><td style="background:' + esc(b.colour) + ';padding:22px 26px;">'
+    + '<div style="font-size:19px;font-weight:700;color:#FFFFFF;">' + esc(company) + '</div></td></tr>'
+    + '<tr><td style="padding:24px 26px 0;">'
+    + (b.greeting ? '<div style="font-size:14.5px;color:#4A5A58;margin-bottom:16px;">' + esc(b.greeting) + '</div>' : '')
+    + (techName ? '<div style="font-size:12px;font-weight:700;color:#0F766E;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">'
+        + 'Technician: ' + esc(techName) + '</div>' : '')
+    + '<div style="font-size:17px;font-weight:700;color:#16302E;">' + esc(customer.name) + '</div>'
+    + (customer.address ? '<div style="font-size:13.5px;color:#6B7B79;margin-top:3px;">' + esc(customer.address) + '</div>' : '')
+    + '<div style="font-size:13.5px;color:#6B7B79;margin-top:3px;">' + esc(whenText) + '</div>'
+    + '</td></tr>'
+    + '<tr><td style="padding:22px 26px 0;">'
+    + '<div style="font-size:16px;font-weight:700;color:#16302E;">' + esc(heading) + '</div>'
+    + '<div style="font-size:12px;font-weight:700;color:#1F8A8C;text-transform:uppercase;letter-spacing:0.06em;margin:14px 0 4px;">Work done</div>'
+    + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:14px;color:#334444;">'
+    + rows + '</table></td></tr>'
+    // The office adds the photo above this footer
+    + '<tr><td style="padding:26px;">'
+    + (b.signoff ? '<div style="font-size:14px;color:#4A5A58;padding-top:18px;border-top:1px solid #E6E9E8;">' + esc(b.signoff) + '</div>' : '')
+    + '<div style="font-size:13.5px;font-weight:600;color:#16302E;margin-top:10px;">' + esc(company) + '</div>'
+    + (contact ? '<div style="font-size:12.5px;color:#4A5A58;margin-top:4px;">' + contact + '</div>' : '')
+    + (lsGet('licenseNumber') ? '<div style="font-size:11.5px;color:#8A9997;margin-top:3px;">License ' + esc(lsGet('licenseNumber')) + '</div>' : '')
+    + '</td></tr></table></td></tr></table></body></html>';
+}
+
+function queueJobEmail(customer, job){
+  const to = String(customer.email || '').trim();
+  if(!to || to.indexOf('@') === -1) return;          // nobody to send it to
+  const techName = job.doneBy && job.doneBy !== 'office' ? techNameFor(job.doneBy) : '';
+  const isWO = job.kind === 'work order';
+  const num = isWO && job.workOrderNumber ? ' #' + String(job.workOrderNumber).padStart(4, '0') : '';
+  const q = lsGet('jobEmailsToSend') || [];
+  q.push({key: job.kind + ':' + job.id, to: to, customerId: customer.id,
+          subject: (isWO ? 'Work order' + num : 'Filter clean') + ' completed \u2014 ' + customer.name,
+          html: buildJobEmailHtml(customer, job, techName),
+          photo: isPhotoRef(job.donePhoto) ? job.donePhoto : null});
+  lsSet('jobEmailsToSend', q);
+  sendJobEmails();
+}
+
+let jobEmailsSending = false;
+async function sendJobEmails(){
+  if(jobEmailsSending) return;
+  const q = lsGet('jobEmailsToSend') || [];
+  if(!q.length) return;
+  const session = deviceGet('session');
+  if(!session || !session.access_token) return;
+  jobEmailsSending = true;
+  try{
+    for(const item of q){
+      const photos = [];
+      if(item.photo){
+        const src = await resolvePhoto(item.photo);
+        if(src){
+          let content = '';
+          try{ content = String(await webpToJpegDataUrl(src) || '').split(',')[1] || ''; }catch(e){}
+          if(!content){ try{ content = String(src).split(',')[1] || ''; }catch(e){} }
+          if(content) photos.push({filename: 'photo.jpg', content: content, caption: ''});
+        }
+      }
+      let res;
+      try{
+        res = await fetch(FIELD_SUPABASE_URL + '/functions/v1/send-report', {
+          method: 'POST',
+          headers: {'apikey': FIELD_SUPABASE_KEY, 'Authorization': 'Bearer ' + session.access_token,
+                    'Content-Type': 'application/json'},
+          body: JSON.stringify({to: item.to, subject: item.subject, html: item.html,
+                                customerId: item.customerId, photos: photos})
+        });
+      }catch(e){ break; }                              // no signal: next sync
+      if(res.status === 401){ await fieldRefresh(); break; }
+      // Sent, or refused for good (a bad address): either way off the list
+      if(res.ok || res.status === 400 || res.status === 403){
+        lsSet('jobEmailsToSend', (lsGet('jobEmailsToSend') || []).filter(x => x.key !== item.key));
+        if(res.ok) showToast(item.subject.split(' \u2014 ')[0] + ' emailed to the customer');
+      } else break;
+    }
+  }finally{ jobEmailsSending = false; }
 }
 
 // ---- Sending a report from the office ----
