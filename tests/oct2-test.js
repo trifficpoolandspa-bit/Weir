@@ -95,7 +95,7 @@ const ROOT = 'file://' + path.resolve('.') + '/';
     const rows = Array.from(document.querySelectorAll('#awcCurList .awc-row'));
     const repRow = rows.find(r => /left/.test(r.textContent));
     out.push(['a repeating task is one row in Current', rows.length === 1 && !!repRow, rows.length]);
-    out.push(['a repeat\u2019s row has one bin and no Mark completed', repRow && Array.from(repRow.querySelectorAll('button')).map(label).join() === 'Remove all 4']);
+    out.push(['a repeat\u2019s row has Edit and one bin, and no Mark completed', repRow && Array.from(repRow.querySelectorAll('button')).map(label).join() === 'Edit,Remove all 4']);
     repRow.click(); await wait(100);
     const win = topWin();
     out.push(['pressing it opens its window of dates', !!win && win.querySelectorAll('[data-dates] > div').length === 4]);
@@ -210,20 +210,23 @@ const ROOT = 'file://' + path.resolve('.') + '/';
     // 1gf / 1gy / 1gx: Current
     wcView = 'current'; applyWorkOrderType(); await wait(80);
     const rows = Array.from(document.querySelectorAll('#wcCurrentList .wc-row'));
-    out.push(['each technician\u2019s repeat is one row', rows.length === 2, rows.length]);
-    const binOf = r => Array.from(r.querySelectorAll('button')).find(b => b.dataset.xDrawn === 'bin');
+    out.push(['two technicians\u2019 repeats are one row', rows.length === 1 && /2 technicians/.test(rows[0].textContent), rows.length]);
     await wait(400);   // buttons fade their colour in
-    const bins = rows.map(binOf).filter(Boolean).map(b => getComputedStyle(b).width);
-    out.push(['the rows\u2019 bins are full size', bins.length === 2 && bins.every(w => w === '33px'), bins.join()]);
-    rows[0].click(); await wait(100);
-    const win = topWin();
-    out.push(['a repeat opens its own window, not the form', !!win && win.querySelectorAll('[data-dates] > div').length === 4 && wcView === 'current']);
-    clickOutside(win); await wait(60);
+    const rowBin = rows[0].querySelector('button svg.weir-bin');
+    out.push(['the row\u2019s bin is full size', !!rowBin && getComputedStyle(rowBin.closest('button')).width === '33px']);
+    rows[0].click(); await wait(120);
+    const tw = topWin();
+    out.push(['it opens a window of the technicians, not the form', !!tw && tw.querySelectorAll('[data-list] > div').length === 2 && wcView === 'current']);
+    tw.querySelector('[data-list] > div').click(); await wait(120);
+    const dw = topWin();
+    out.push(['a technician opens their own dates on top', !!dw && dw !== tw && dw.querySelectorAll('[data-dates] > div').length === 4]);
+    clickOutside(dw); await wait(60);
     // the bin on one technician's leaves the other's
     const realConfirm = window.confirmDialog;
     window.confirmDialog = ()=> Promise.resolve(true);
-    binOf(Array.from(document.querySelectorAll('#wcCurrentList .wc-row'))[0]).click(); await wait(120);
+    topWin().querySelector('[data-list] > div button svg.weir-bin').closest('button').click(); await wait(150);
     window.confirmDialog = realConfirm;
+    clickOutside(topWin()); await wait(60);
     out.push(['Remove all on one technician leaves the other\u2019s', (lsGet('scheduledWorkOrders') || []).length === 4]);
     // 1hd: History groups
     tasks = [1, 2, 3].map(i => ({id:'h' + i, title:'Latch', technicianId:'t1', date:day(-i * 7), customerIds:[], seriesId:'S9', done:true, doneAt:new Date(Date.now() - i * 864e5).toISOString(), doneBy:'t1'}));
@@ -317,6 +320,91 @@ const ROOT = 'file://' + path.resolve('.') + '/';
     out.push(['Dosage rules buttons are all one width', rulesW.every(x => x === rulesW[0]), rulesW.join()]);
     return out;
   });
+
+  await run('customer-intake.html', 'Website Edit from Current', async ()=>{
+    const out = [];
+    technicians.push({id:'t1', name:'Mike'}, {id:'t2', name:'Ana'}); saveTechnicians();
+    customers.push({id:'c1', name:'Jordan', active:true}); saveCustomers();
+    switchView('workcenter'); document.getElementById('wcType').value = 'Work Order'; wcView = 'main'; applyWorkOrderType(); await wait(80);
+    wcSelectedCustomerIds = ['c1']; currentLineItems = [{description:'Gauge', qty:1, price:50}];
+    document.getElementById('wcDate').value = day(0); setPickedTechIds(document.getElementById('wcTechnician'), ['t1', 't2']);
+    const rep = document.getElementById('wcRepeat'); rep.value = 'weekly'; rep.dispatchEvent(new Event('change'));
+    document.getElementById('wcRepeatUntil').value = day(14);
+    document.getElementById('btnSendWorkOrder').click(); await wait(150);
+    wcView = 'current'; applyWorkOrderType(); await wait(80);
+    document.querySelector('#wcCurrentList .wc-row').click(); await wait(150);
+    const mike = Array.from(topWin().querySelectorAll('[data-list] > div')).find(r => /Mike/.test(r.textContent));
+    Array.from(mike.querySelectorAll('button')).find(b => b.textContent.trim() === 'Edit').click(); await wait(300);
+    out.push(['Edit opens it for that technician only', pickedTechIds(document.getElementById('wcTechnician')).join() === 't1']);
+    currentLineItems[0].price = 80;
+    document.getElementById('btnSendWorkOrder').click(); await wait(200);
+    const jobs = lsGet('scheduledWorkOrders');
+    out.push(['saving changes it in place: no new work order, same number', jobs.length === 6 && new Set(jobs.map(j => j.workOrderId)).size === 1 && new Set(jobs.map(j => j.workOrderNumber)).size === 1]);
+    out.push(['only that technician\u2019s visits change', jobs.filter(j => j.technicianId === 't1').every(j => j.lineItems[0].price === 80) && jobs.filter(j => j.technicianId === 't2').every(j => j.lineItems[0].price === 50)]);
+    out.push(['the other technician stays on the work order', (workOrders.find(w => w.type === 'Work Order').technicianIds || []).join() === 't1,t2']);
+    out.push(['saving goes back to Current', wcView === 'current']);
+    tasks = [0, 7].map((n, i) => ({id:'k' + i, title:'Latch', technicianId:'t1', date:day(n), customerIds:[], everyDays:7, seriesId:'S1', done:false})); saveTasks();
+    document.getElementById('wcType').value = 'Task'; wcView = 'current'; applyWorkOrderType(); await wait(80);
+    const trow = document.querySelector('#wcCurrentList .wc-row');
+    const tedit = Array.from(trow.querySelectorAll('button')).find(b => b.textContent.trim() === 'Edit');
+    out.push(['tasks in Current have Edit too', !!tedit]);
+    tedit.click(); await wait(200);
+    document.getElementById('taskTitle').value = 'Check latch';
+    document.getElementById('btnSaveTask').click(); await wait(200);
+    out.push(['editing a task changes its dates in place', tasks.filter(t => !t.done).map(t => t.title).join() === 'Check latch,Check latch']);
+    return out;
+  });
+
+  for(const file of ['customer-intake.html', 'app.html']){
+    await run(file, (file === 'app.html' ? 'App' : 'Website') + ' several technicians on one', async ()=>{
+      const out = [];
+      const app = typeof awcApply === 'function';
+      const wins = () => Array.from(document.querySelectorAll('.confirm-overlay')).filter(o => getComputedStyle(o).display !== 'none');
+      const P = app ? 'App: ' : 'Website: ';
+      customers.push({id:'c1', name:'Jordan', active:true});
+      if(app){
+        lsSet('technicians', [{id:'t1', name:'Mike'}, {id:'t2', name:'Ana'}]);
+        document.getElementById('view-customers').classList.add('active'); showCustomerPane('work');
+        awcKind = 'Work Order'; awcView = 'main'; awcApply();
+        awcWoCustomers = ['c1']; awcWoTechs = ['t1', 't2']; awcLineItems = [{description:'Gauge', qty:1, price:50}];
+        document.getElementById('awcWoDate').value = day(0);
+        const rep = document.getElementById('awcWoRepeat'); rep.value = 'weekly'; rep.dispatchEvent(new Event('change'));
+        document.getElementById('awcWoUntil').value = day(14);
+        document.getElementById('awcFinalize').click(); await wait(150);
+        awcView = 'current'; awcApply(); await wait(80);
+      } else {
+        technicians.push({id:'t1', name:'Mike'}, {id:'t2', name:'Ana'}); saveTechnicians(); saveCustomers();
+        switchView('workcenter'); document.getElementById('wcType').value = 'Work Order'; wcView = 'main'; applyWorkOrderType(); await wait(80);
+        wcSelectedCustomerIds = ['c1']; currentLineItems = [{description:'Gauge', qty:1, price:50}];
+        document.getElementById('wcDate').value = day(0); setPickedTechIds(document.getElementById('wcTechnician'), ['t1', 't2']);
+        const rep = document.getElementById('wcRepeat'); rep.value = 'weekly'; rep.dispatchEvent(new Event('change'));
+        document.getElementById('wcRepeatUntil').value = day(14);
+        document.getElementById('btnSendWorkOrder').click(); await wait(150);
+        wcView = 'current'; applyWorkOrderType(); await wait(80);
+      }
+      const listSel = app ? '#awcCurList .awc-row' : '#wcCurrentList .wc-row';
+      const rows = Array.from(document.querySelectorAll(listSel));
+      out.push([P + 'a work order for two technicians is one row', rows.length === 1 && /2 technicians/.test(rows[0].textContent)]);
+      out.push([P + 'with Edit all', Array.from(rows[0].querySelectorAll('button')).some(b => b.textContent.trim() === 'Edit all')]);
+      rows[0].click(); await wait(150);
+      const techRows = wins()[0] ? wins()[0].querySelectorAll('[data-list] > div') : [];
+      out.push([P + 'pressing it opens a row per technician', techRows.length === 2]);
+      out.push([P + 'each technician has Edit', Array.from(techRows).every(r => Array.from(r.querySelectorAll('button')).some(b => b.textContent.trim() === 'Edit'))]);
+      techRows[0].click(); await wait(150);
+      out.push([P + 'a technician\u2019s repeat opens a window within the window', wins().length === 2 && wins()[1].querySelectorAll('[data-dates] > div').length === 3]);
+      wins()[1].querySelector('[data-close]').click(); await wait(60);
+      wins()[0].querySelector('[data-close]').click(); await wait(60);
+      Array.from(document.querySelector(listSel).querySelectorAll('button')).find(b => b.textContent.trim() === 'Edit all').click(); await wait(400);
+      if(app){ awcLineItems[0].price = 90; document.getElementById('awcFinalize').click(); }
+      else { currentLineItems[0].price = 90; document.getElementById('btnSendWorkOrder').click(); }
+      await wait(250);
+      const jobs = lsGet('scheduledWorkOrders');
+      out.push([P + 'Edit all changes both in place: one work order, one number, the new price', jobs.length === 6
+        && new Set(jobs.map(j => j.workOrderId)).size === 1 && new Set(jobs.map(j => j.workOrderNumber)).size === 1
+        && jobs.every(j => j.lineItems[0].price === 90)]);
+      return out;
+    });
+  }
 
   await browser.close();
   console.log('\n' + pass + ' passed, ' + fail + ' failed\n');
