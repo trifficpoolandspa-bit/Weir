@@ -4322,7 +4322,7 @@ const SYNC_WORK_LISTS = [
 // and the notes (snippet 16 lets a technician change exactly these on their own),
 // and a work order's photo and video (snippet 25, Oct 3)
 const SYNC_WORK_SENDABLE = ['task', 'reschedule', 'work_order', 'filter_clean'];
-const SYNC_FILTER_CLEAN_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore'];
+const SYNC_FILTER_CLEAN_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore', 'doneReplacements'];
 const SYNC_TASK_FIELDS = ['done', 'doneAt', 'doneBy', 'doneNotes'];
 const SYNC_WORK_ORDER_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore'];
 
@@ -10084,6 +10084,60 @@ function routeJobsFor(customerId, dayISO, techId){
                 title: 'Filter clean', details: '', photoRequired: s.photoRequired !== false, videoRequired: false}));
   return orders.concat(cleans).concat(tasks).filter(j => !jobSubmitted(j.key));
 }
+// The Replacements window on a filter clean (Oct 3): the usual parts to tick,
+// any number of them, and a box for anything else. Done (or a tap outside)
+// keeps what's ticked.
+const REPLACEMENT_ITEMS = ['Cartridges', 'O-ring', 'Air relief valve', 'Drain plug', 'Clamp band', 'Spring barrel nut assembly'];
+function openReplacementsPicker(current, onDone){
+  const picked = new Set(current || []);
+  const extra = (current || []).filter(x => REPLACEMENT_ITEMS.indexOf(x) === -1);
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:420px;width:100%;max-height:86vh;display:flex;flex-direction:column;">'
+    + '<h3 style="font-size:17px;margin:0 0 4px;">Replacements</h3>'
+    + '<p style="font-size:13px;color:var(--muted);margin:0 0 10px;">Tick everything this filter needs replaced.</p>'
+    + '<div data-list style="flex:1;overflow-y:auto;"></div>'
+    + '<div style="display:flex;gap:8px;margin-top:10px;">'
+    + '<input data-own placeholder="Something else" style="flex:1;min-width:0;">'
+    + '<button type="button" class="btn btn-ghost" data-add style="width:auto;flex-shrink:0;">Add</button></div>'
+    + '<button type="button" class="btn btn-primary" data-done style="width:100%;margin-top:12px;">Done</button></div>';
+  const list = overlay.querySelector('[data-list]');
+  const row = name=>{
+    const l = document.createElement('label');
+    l.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px 2px;border-bottom:1px solid var(--line);font-size:15px;cursor:pointer;';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = picked.has(name);
+    cb.style.cssText = 'width:22px;height:22px;margin:0;flex-shrink:0;';
+    cb.addEventListener('change', ()=>{ if(cb.checked) picked.add(name); else picked.delete(name); });
+    l.appendChild(cb);
+    l.appendChild(document.createTextNode(name));
+    list.appendChild(l);
+  };
+  REPLACEMENT_ITEMS.concat(extra).forEach(row);
+  const own = overlay.querySelector('[data-own]');
+  const add = ()=>{
+    const name = own.value.trim();
+    if(!name) return;
+    const known = Array.from(list.querySelectorAll('label')).map(l => l.textContent.trim().toLowerCase());
+    if(known.indexOf(name.toLowerCase()) === -1) row(name);
+    // Ticked as it's added
+    const hit = Array.from(list.querySelectorAll('label')).find(l => l.textContent.trim().toLowerCase() === name.toLowerCase());
+    if(hit){ const cb = hit.querySelector('input'); cb.checked = true; picked.add(hit.textContent.trim()); }
+    own.value = '';
+  };
+  overlay.querySelector('[data-add]').addEventListener('click', add);
+  own.addEventListener('keydown', e=>{ if(e.key === 'Enter'){ e.preventDefault(); add(); } });
+  overlay.querySelector('[data-done]').addEventListener('click', ()=>{
+    if(own.value.trim()) add();
+    // In the list's order, so it reads the same each time
+    const order = Array.from(list.querySelectorAll('label')).map(l => l.textContent.trim());
+    onDone(order.filter(n => picked.has(n)));
+    if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
+  });
+  document.body.appendChild(overlay);
+}
+
 function jobKindLabel(kind){
   return kind === 'task' ? 'Task' : (kind === 'filter clean' ? 'Filter clean' : 'Work order');
 }
@@ -10508,6 +10562,33 @@ function openJobPage(customer, job){
   });
   let photos = null;          // the photo controller, made once the page is on screen
 
+  // Replacements, on a filter clean (Oct 3): what the filter needs, ticked
+  // from a list or typed in, sent to the office with the filter clean
+  let replacements = [];
+  if(job.kind === 'filter clean'){
+    const repRow = document.createElement('div');
+    repRow.style.cssText = 'margin:4px 0 18px;';
+    const repBtn = document.createElement('button');
+    repBtn.type = 'button';
+    repBtn.className = 'btn btn-ghost';
+    repBtn.style.cssText = 'width:100%;padding:12px 16px;font-size:15px;';
+    repBtn.textContent = 'Replacements';
+    const repSaid = document.createElement('div');
+    repSaid.style.cssText = 'display:none;font-size:13.5px;color:var(--ink);margin-top:8px;';
+    const showReps = ()=>{
+      repSaid.style.display = replacements.length ? 'block' : 'none';
+      repSaid.innerHTML = '';
+      const b = document.createElement('strong');
+      b.textContent = 'Needs replacing: ';
+      repSaid.appendChild(b);
+      repSaid.appendChild(document.createTextNode(replacements.join(', ')));
+      repBtn.textContent = replacements.length ? 'Replacements (' + replacements.length + ')' : 'Replacements';
+    };
+    repBtn.addEventListener('click', ()=> openReplacementsPicker(replacements, chosen=>{ replacements = chosen; showReps(); }));
+    repRow.appendChild(repBtn); repRow.appendChild(repSaid);
+    card.appendChild(repRow);
+  }
+
   // Notes
   const notesLabel = document.createElement('label');
   notesLabel.style.cssText = 'display:block;font-size:13.5px;font-weight:700;color:var(--teal-deep);margin-bottom:6px;';
@@ -10597,6 +10678,7 @@ function openJobPage(customer, job){
         if(storedMore.length) fc.donePhotoMore = storedMore;
         if(isPhotoRef(videoRef)) fc.doneVideo = videoRef;
         if(videoMore.length) fc.doneVideoMore = videoMore;
+        if(replacements.length) fc.doneReplacements = replacements.slice();
         lsSet('scheduledFilterCleans', cleans);
         if(customer) queueJobEmail(customer, Object.assign({kind: 'filter clean'}, fc));
       }

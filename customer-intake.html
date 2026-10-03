@@ -289,6 +289,7 @@ input::placeholder{color:#A9BCB9;}
 .alert-tag{flex:0 0 64px;text-align:center;font-size:11.5px;font-weight:700;padding:4px 0;border-radius:999px;margin-top:2px;}
 .alert-tag.video{background:var(--teal-pale);color:var(--teal-deep);}
 .alert-tag.note{background:var(--surface-alt);color:var(--ink);border:1px solid var(--line);}
+.alert-tag.repair{background:var(--gold-pale);color:var(--gold);}
 
 
 .reorder-placeholder{pointer-events:none;}
@@ -1853,6 +1854,7 @@ input::placeholder{color:#A9BCB9;}
         <button type="button" class="history-type-btn active" data-kind="all">All</button>
         <button type="button" class="history-type-btn" data-kind="video">Videos</button>
         <button type="button" class="history-type-btn" data-kind="note">Notes</button>
+        <button type="button" class="history-type-btn" data-kind="repair">Repairs</button>
       </div>
       <div id="alertsList"></div>
     </div>
@@ -6260,6 +6262,44 @@ document.addEventListener('visibilitychange', ()=>{
   if(wasAway) renderFilterGroups();
 });
 
+// A filter clean group's Replacements: each customer whose filter clean came
+// back needing parts, what they need, and when (Oct 3)
+function openGroupReplacements(g){
+  const done = (lsGet('scheduledFilterCleans') || []).filter(f => f && f.groupId === g.id && f.status === 'done'
+      && Array.isArray(f.doneReplacements) && f.doneReplacements.length)
+    .sort((a, b) => String(b.doneAt || '').localeCompare(String(a.doneAt || '')));
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:480px;width:100%;max-height:82vh;display:flex;flex-direction:column;">'
+    + '<h3 style="font-size:16px;margin:0 0 2px;">Replacements</h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;" data-sub></p>'
+    + '<div data-list style="flex:1;overflow-y:auto;"></div>'
+    + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-ghost" data-close style="flex:1;">Close</button></div></div>';
+  overlay.querySelector('[data-sub]').textContent = g.name + ' \u00b7 ' + (done.length
+    ? done.length + (done.length === 1 ? ' customer needs' : ' customers need') + ' parts replaced'
+    : 'Nobody needs anything replaced yet');
+  const box = overlay.querySelector('[data-list]');
+  done.forEach((f, i)=>{
+    const c = customers.find(x => String(x.id) === String(f.customerId));
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:10px 0;' + (i === done.length - 1 ? '' : 'border-bottom:1px solid var(--line);');
+    const l1 = document.createElement('div');
+    l1.style.cssText = 'font-size:14px;font-weight:600;';
+    l1.textContent = c ? displayName(c.name) : 'A customer no longer on file';
+    const l2 = document.createElement('div');
+    l2.style.cssText = 'font-size:13.5px;margin-top:3px;';
+    l2.textContent = f.doneReplacements.join(', ');
+    const l3 = document.createElement('div');
+    l3.style.cssText = 'font-size:12px;color:var(--muted);margin-top:2px;';
+    l3.textContent = [f.doneAt ? new Date(f.doneAt).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : '',
+      f.doneBy ? 'by ' + (f.doneBy === 'office' ? 'the office' : (technicianNameById(f.doneBy) || 'a technician')) : ''].filter(Boolean).join(' \u00b7 ');
+    row.appendChild(l1); row.appendChild(l2); row.appendChild(l3);
+    box.appendChild(row);
+  });
+  overlay.querySelector('[data-close]').addEventListener('click', ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); });
+  document.body.appendChild(overlay);
+}
+
 function renderFilterGroups(){
   // Back after more than a minute away: every group starts closed
   if(onFilterGroupsPage()) closeGroupsIfAway();
@@ -6407,6 +6447,17 @@ function renderFilterGroups(){
       });
       if(changed) lsSet('scheduledFilterCleans', sched);
     });
+    // Replacements (Oct 3): who in this group needs parts, from their filter
+    // cleans submitted in the field
+    const repBtn = document.createElement('button');
+    repBtn.type = 'button';
+    repBtn.className = 'btn btn-ghost';
+    repBtn.style.cssText = 'width:auto;padding:5px 10px;font-size:11.5px;flex-shrink:0;';
+    const repCount = (lsGet('scheduledFilterCleans') || []).filter(f => f && f.groupId === g.id && f.status === 'done'
+      && Array.isArray(f.doneReplacements) && f.doneReplacements.length).length;
+    repBtn.textContent = 'Replacements' + (repCount ? ' (' + repCount + ')' : '');
+    repBtn.addEventListener('click', e=>{ e.stopPropagation(); openGroupReplacements(g); });
+    headRight.appendChild(repBtn);
     headRight.appendChild(dateCol);
     headRight.appendChild(photoReq);
     // Rename sits just left of the bin (Oct 3)
@@ -19720,7 +19771,8 @@ function historyEntriesFor(customer){
 
 // From WorkCenter → Work Order → History: the customer's Service reports, with
 // that work order opened and in view (Oct 3)
-function openWorkOrderReport(customerId, jobId){
+function openWorkOrderReport(customerId, jobId){ return openJobReport(customerId, 'wo:' + jobId); }
+function openJobReport(customerId, key){
   const c = (customers || []).find(x => x && String(x.id) === String(customerId));
   if(!c){ showToast('This customer is no longer on file'); return; }
   switchView('customers');
@@ -19730,7 +19782,6 @@ function openWorkOrderReport(customerId, jobId){
   historyDateFilter = '';
   const box = document.getElementById('historyDateFilter');
   if(box) box.value = '';
-  const key = 'wo:' + jobId;
   const all = historyEntriesFor(c);
   const at = all.findIndex(v => v.id === key);
   historyOpenId = at >= 0 ? key : null;
@@ -19738,7 +19789,7 @@ function openWorkOrderReport(customerId, jobId){
   historyPageKey = c.id + '|visits|';
   historyPage = at >= 0 ? Math.floor(at / HISTORY_PER_PAGE) + 1 : 1;
   try{ showHistory(c.id, c.name); }catch(e){}
-  if(at < 0){ showToast('That work order is no longer here \u2014 showing all their reports'); return; }
+  if(at < 0){ showToast('That report is no longer here \u2014 showing all their reports'); return; }
   // Its row at the top of the screen, the report open under it
   setTimeout(()=>{
     const bar = document.querySelector('#historyList [data-hist-id="' + key + '"]');
@@ -21598,6 +21649,25 @@ function collectAlerts(){
       });
     });
   });
+  // Filter cleans finished in the field (Oct 3): their notes, and anything the
+  // technician said needs replacing (Repairs)
+  (lsGet('scheduledFilterCleans') || []).forEach(f=>{
+    if(!f || f.status !== 'done' || !f.id) return;
+    const c = (customers || []).find(x => x && String(x.id) === String(f.customerId));
+    if(!c || c.deleted) return;
+    const t = new Date(f.doneAt || ((f.date || '') + 'T12:00:00')).getTime();
+    if(!t || isNaN(t)) return;
+    const base = {customerId: c.id, name: displayName(c.name), body: 'Filter clean', t: t,
+      jobKey: 'fc:' + f.id, tech: f.doneBy === 'office' ? 'the office' : techName(f.doneBy || f.technicianId)};
+    const notes = String(f.doneNotes || '').trim();
+    if(notes && now - t <= ALERT_NOTE_DAYS * 86400000){
+      out.push(Object.assign({id: 'fcnote:' + f.id, kind: 'note', notes: notes}, base));
+    }
+    const items = Array.isArray(f.doneReplacements) ? f.doneReplacements.filter(Boolean) : [];
+    if(items.length){
+      out.push(Object.assign({id: 'repair:' + f.id, kind: 'repair', notes: 'Needs replacing: ' + items.join(', ')}, base));
+    }
+  });
   out.sort((a, b) => b.t - a.t);
   return out;
 }
@@ -21656,7 +21726,7 @@ function renderAlerts(){
     row.className = 'alert-row';
     const tag = document.createElement('span');
     tag.className = 'alert-tag ' + a.kind;
-    tag.textContent = a.kind === 'video' ? 'Video' : 'Note';
+    tag.textContent = a.kind === 'video' ? 'Video' : (a.kind === 'repair' ? 'Repair' : 'Note');
     const body = document.createElement('div');
     body.style.cssText = 'flex:1;min-width:0;';
     const t1 = document.createElement('div');
@@ -21692,7 +21762,8 @@ function renderAlerts(){
       acts.appendChild(watch);
     }
     const open = small('Open report');
-    open.addEventListener('click', ()=> openAlertReport(a));
+    // A filter clean opens its own report in Service reports (Oct 3)
+    open.addEventListener('click', ()=> a.jobKey ? openJobReport(a.customerId, a.jobKey) : openAlertReport(a));
     acts.appendChild(open);
     if(!seen[a.id]){
       const mark = small('Mark seen');
