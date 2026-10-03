@@ -850,12 +850,12 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     kind('Task'); tab('current');
     Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => b.textContent === 'Select').click(); await wait(20);
     Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => b.textContent === 'Select all').click(); await wait(20);
-    Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => /selected/.test(b.textContent)).click(); await wait(80);
+    Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => /selected/.test(b.textContent || b.title)).click(); await wait(80);   // a bin now (Oct 2)
     check('Select all and delete clears the list', !w.eval("tasks.some(t => !t.done)"));
     // Deleting a work order always takes its visits off the routes
     // (from the customer's profile, where saved work orders are listed)
     w.eval("switchView('customers'); viewCustomer(customers[0]); renderCustomerWorkOrders('a');"); await wait(100);
-    Array.from(d.querySelectorAll('#custWorkOrderList button')).filter(b => /Delete/.test(b.textContent))
+    Array.from(d.querySelectorAll('#custWorkOrderList button')).filter(b => /Delete/.test(b.textContent || b.title))
       .find(b => /Fix light|Work Order/.test((b.closest('.cust-row') || b.parentElement.parentElement).textContent)).click(); await wait(120);
     w.eval("switchView('workcenter');");
     check('deleting a work order takes all its visits off the routes', !w.eval("(lsGet('scheduledWorkOrders')||[]).some(j => j.workOrderId === 'wo1')"));

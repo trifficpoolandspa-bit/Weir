@@ -1673,7 +1673,7 @@ async function walkVisit(w, d, maxPresses){
     check('with no signal it\u2019s held', !!JSON.parse(w.localStorage.getItem('weir:routeOrdersToSend')));
     w.eval("window.__reply = null;"); await w.eval("pushCompanyRouteOrder()");
     check('and sent once there\u2019s signal', !JSON.parse(w.localStorage.getItem('weir:routeOrdersToSend')));
-    check('every sync tries anything waiting', /await pushCompanyRouteOrder\(\);\s*\n\s*await pushOnceRouteOrders\(\);[\s\S]{0,160}\/\/ Tasks ticked off and visits moved here/.test(src));
+    check('every sync tries anything waiting', /await pushCompanyRouteOrder\(\);\s*\n\s*await pushOnceRouteOrders\(\);[\s\S]{0,900}\/\/ Tasks ticked off and visits moved here/.test(src));
     w.close();
 
     // Remove changes

@@ -1146,7 +1146,7 @@ console.log('\n=== Sept 30 – Oct 1: phone app ===');
     check('The first photo stays the main one (1eq)', w.eval("poolPhotoController.getData()") === 'data:image/png;base64,QQ==');
     check('Take photo hides at three (1eq)', d.getElementById('btnTakePhoto').style.display === 'none');
     w.eval("poolPhotoController.setAll(['data:image/png;base64,QQ==']);");
-    check('Take another reads "(2 of 3)" after one (1eq)', /2 of 3/.test(d.getElementById('btnTakePhoto').textContent));
+    check('Take another reads "(Max 3)" after one (1eq; Max 3 since Oct 2, 1fm)', /Take another \(Max 3\)/.test(d.getElementById('btnTakePhoto').textContent), d.getElementById('btnTakePhoto').textContent);
     check('No Remove photo button or × on thumbnails (1es)',
       d.getElementById('btnRemovePhoto').style.display === 'none'
       && !d.querySelector('#photoPreviewWrap [data-shot] button'));

@@ -532,8 +532,9 @@ console.log('\n=== New technicians require an after photo ===');
       const sam = techs.find(t => t.name === 'Sam Rivera');
       check('  the technician is created', !!sam, techs.length + ' saved');
       if(sam){
+        // Oct 2 (1fq): the After photo row's Pool tick, which Photo requirements and the phones read
         check('  and requires an after photo by default',
-              sam.requireAfterPhoto === true, String(sam.requireAfterPhoto));
+              !!(sam.photoRules && sam.photoRules.after && sam.photoRules.after.pool === true), JSON.stringify(sam.photoRules));
       }
     });
   }catch(e){ check('  new technician defaults', false, e.message); }

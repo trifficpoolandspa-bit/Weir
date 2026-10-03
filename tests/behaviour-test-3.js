@@ -376,7 +376,7 @@ console.log('\n=== The email screen stays compact ===');
     const shown = ()=> ['wcBroadcastOpen','wcBroadcastSave','wcBroadcastUpdate','wcBroadcastDelete']
       .map(id => d.getElementById(id))
       .filter(b => b && b.style.display !== 'none')
-      .map(b => b.textContent.trim());
+      .map(b => b.textContent.trim() || b.title);   // Delete is a bin now; its words are its tooltip
 
     const row = d.getElementById('wcBroadcastOpen').parentElement;
     check('  every action sits in one row',
@@ -1741,7 +1741,7 @@ setTimeout(()=>{
 }
 
 {
-  console.log('\n=== Website: windows close only from their buttons ===');
+  console.log('\n=== Website: windows close on a click outside them (Oct 2, 1hf) ===');
   const site = fs.readFileSync('customer-intake.html', 'utf8');
   // Tyrus asked for two exceptions: a picture (1ep) and a video (1em.10)
   const outside = [];
@@ -1753,13 +1753,15 @@ setTimeout(()=>{
     const lastFn = before.lastIndexOf('\nfunction ') > before.lastIndexOf('\nasync function ') ? before.lastIndexOf('\nfunction ') : before.lastIndexOf('\nasync function ');
     outside.push(fnAt !== -1 && fnAt >= lastFn - 1 ? 'allowed' : 'other');
   }
-  check('the page-wide guard lets those two through, and only them',
-        /if\(el\.dataset && el\.dataset\.closesOutside === '1'\) return false;/.test(site)
-        && (site.match(/overlay\.dataset\.closesOutside = '1';/g) || []).length === 2);
+  check('pictures, videos and Edit customers still close themselves',
+        /if\(layer\.dataset && layer\.dataset\.closesOutside === '1'\) return;/.test(site)
+        && (site.match(/overlay\.dataset\.closesOutside = '1';/g) || []).length === 2
+        && /id="techAssignOverlay" data-closes-outside="1"/.test(site));
   check('no window closes on a click outside it, except a picture and a video',
         outside.length === 2 && outside.every(x => x === 'allowed') && !/target\.id === 'techAssignOverlay'/.test(site), outside.join(','));
-  check('and a page-wide guard ignores clicks on any backdrop, for windows added later',
-        /windowsCloseOnlyFromButtons/.test(site) && /document\.addEventListener\('click', e=>\{\s*if\(isBackdrop\(e\.target\)\)\{ e\.stopPropagation\(\); e\.preventDefault\(\); \}\s*\}, true\);/.test(site));
+  check('and every other window closes on a click outside it, by its own Cancel / Close / Not now / Back / Done',
+        /windowsCloseOnOutsideClick/.test(site) && !/windowsCloseOnlyFromButtons/.test(site)
+        && /\/\^cancel\$\/, \/\^close\$\/, \/\^not now\$\/, \/\^back\$\/, \/\^done\$\//.test(site));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed\n');

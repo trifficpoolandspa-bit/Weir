@@ -1252,9 +1252,10 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
       const firstCards = x => Array.from(x.getElementById('view-options').children).slice(0, 3);
       const [one, two, three] = firstCards(d);
       check('Signed in is first', !!one.querySelector('#signedInAs') && !!one.querySelector('#btnLogout'));
-      check('Office sync is second', two.id === 'syncCard');
-      check('Backup & restore is third, for an admin', three.id === 'backupRestoreCard' && three.style.display !== 'none');
-      check('with both of its buttons', !!three.querySelector('#btnExportBackup') && !!three.querySelector('#btnImportBackup'));
+      // Oct 2 (1fv): Backup & restore above Office sync
+      check('Backup & restore is second, for an admin', two.id === 'backupRestoreCard' && two.style.display !== 'none');
+      check('with both of its buttons', !!two.querySelector('#btnExportBackup') && !!two.querySelector('#btnImportBackup'));
+      check('Office sync is third', three.id === 'syncCard');
       check('and it is gone from the Customer tab', !d.getElementById('view-customers').querySelector('#btnExportBackup'));
       check('a technician doesn\u2019t see it', td.getElementById('backupRestoreCard').style.display === 'none');
     });
@@ -1536,7 +1537,7 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
     deferred.push(async ()=>{
       const tabs = Array.from(d.querySelectorAll('nav .tab')).map(t => t.dataset.view);
       check('the menu runs Customers, Technicians, Customer Customization, Route Scheduling, then the rest',
-            tabs.join() === 'customers,technicians,customerconfig,map,chemconfig,productsservices,workcenter,history,settings', tabs.join());
+            tabs.join() === 'customers,technicians,customerconfig,map,chemconfig,productsservices,workcenter,history,alerts,settings', tabs.join());   // Alerts one above Settings (Oct 2, 1fn)
       w.eval("switchView('customers')");
       key('ArrowDown');
       check('\u2193 goes to the next tab', w.eval("document.querySelector('nav .tab.active').dataset.view") === 'technicians');
