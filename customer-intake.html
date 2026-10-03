@@ -7562,8 +7562,46 @@ function syncSomethingIsOpen(){
   return false;
 }
 
+// A customer's equipment that arrived from another device shows on their open
+// profile (Oct 2). The profile keeps its own copy of the equipment from when
+// it opened: before, it never saw the new piece, and its next equipment
+// change wrote the old list back over it. Waits while equipment is being
+// edited (a box in it, or a window open).
+let equipmentRefreshWanted = false;
+function refreshOpenEquipment(){
+  try{
+    if(!editingId) return;
+    const c = customers.find(x => x && x.id === editingId);
+    if(!c) return;
+    const card = document.getElementById('equipmentPhotosCard');
+    const el = document.activeElement;
+    if(document.querySelector('.confirm-overlay') || (card && el && card.contains(el) && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))){
+      equipmentRefreshWanted = true;
+      return;
+    }
+    equipmentRefreshWanted = false;
+    const types = (Array.isArray(c.equipmentTypeOptions) ? [...c.equipmentTypeOptions] : [...DEFAULT_EQUIPMENT_TYPES])
+      .map(t => t === 'Chlorinator' ? 'Chlorination' : t);
+    const items = Array.isArray(c.equipment) ? c.equipment.map(item => ({...item,
+      type: item.type === 'Chlorinator' ? 'Chlorination' : item.type,
+      photos: (item.photos || []).map(p => ({...p}))})) : currentEquipmentItems;
+    if(syncStableString(types) === syncStableString(currentEquipmentTypeOptions)
+       && syncStableString(items) === syncStableString(currentEquipmentItems)) return;
+    currentEquipmentTypeOptions = types;
+    currentEquipmentItems = items;
+    if(typeof renderEquipmentTypeList === 'function') renderEquipmentTypeList();
+  }catch(e){}
+}
+['focusout', 'click'].forEach(evt=>{
+  document.addEventListener(evt, ()=>{
+    if(!equipmentRefreshWanted) return;
+    setTimeout(refreshOpenEquipment, 0);
+  }, true);
+});
+
 function syncShowList(list){
   customers = list;
+  refreshOpenEquipment();
   if(syncSomethingIsOpen()){
     syncRedrawWanted = true;
     return;
@@ -10850,6 +10888,92 @@ function renderEditDates(){
   });
 }
 
+// A repeating task or work order's own window: every date still to come,
+// each with Mark completed and a ×. Closes from Close only. (Oct 2)
+function openRepeatWindow(kind, r){
+  const isTask = kind === 'Task';
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:460px;width:100%;max-height:82vh;display:flex;flex-direction:column;">'
+    + '<h3 style="font-size:16px;margin:0 0 2px;" data-title></h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;" data-sub></p>'
+    + '<div data-dates style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:0 10px;"></div>'
+    + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-ghost" data-close style="flex:1;">Close</button></div>'
+    + '</div>';
+  document.body.appendChild(overlay);
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); renderCurrentList(kind); };
+  overlay.querySelector('[data-close]').addEventListener('click', close);
+  const left = ()=>{
+    if(isTask) return tasks.filter(t => t && !t.done && t.seriesId === r.group)
+      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+    return (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'scheduled' && j.workOrderId === r.group
+      && String(j.technicianId || '') === String(r.techId || ''))
+      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  };
+  const draw = ()=>{
+    const list = left();
+    if(!list.length){ close(); return; }
+    const first = list[0];
+    overlay.querySelector('[data-title]').textContent = r.what;
+    const bits = [r.who, r.techName];
+    if(r.every) bits.push('Every ' + repeatWords(r.every));
+    else if(!isTask && first.workOrderNumber) bits.push('#' + quoteNumberText(first.workOrderNumber));
+    bits.push(list.length + ' left');
+    overlay.querySelector('[data-sub]').textContent = bits.filter(Boolean).join(' \u00b7 ');
+    const box = overlay.querySelector('[data-dates]');
+    box.innerHTML = '';
+    list.forEach((item, i)=>{
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 0;font-size:13.5px;'
+        + (i === list.length - 1 ? '' : 'border-bottom:1px solid var(--line);');
+      const when = document.createElement('span');
+      when.style.flex = '1';
+      when.textContent = wcShortDate(item.date);
+      if(i === 0){
+        const nx = document.createElement('span');
+        nx.style.cssText = 'font-size:11px;color:var(--muted);margin-left:6px;';
+        nx.textContent = '\u00b7 next';
+        when.appendChild(nx);
+      }
+      const done = document.createElement('button');
+      done.type = 'button';
+      done.className = 'btn btn-ghost';
+      done.style.cssText = 'width:auto;flex:0 0 auto;padding:5px 10px;font-size:12px;';
+      done.textContent = 'Mark completed';
+      done.addEventListener('click', ()=>{
+        const stamp = new Date().toISOString();
+        if(isTask){
+          const t = tasks.find(x => x.id === item.id);
+          if(t){ Object.assign(t, {done: true, doneAt: stamp, doneBy: 'office'}); saveTasks(); }
+        } else {
+          const jobs = lsGet('scheduledWorkOrders') || [];
+          const j = jobs.find(x => x.id === item.id);
+          if(j){ Object.assign(j, {status: 'done', doneAt: stamp, doneBy: 'office'}); lsSet('scheduledWorkOrders', jobs); }
+        }
+        showToast(wcShortDate(item.date) + ' completed \u2014 moved to History');
+        draw();
+      });
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.textContent = '\u00d7';
+      x.title = 'Take ' + wcShortDate(item.date) + ' off the route';
+      x.style.cssText = 'flex:0 0 30px;width:30px;height:30px;padding:0;border:1px solid #EFC9BC;'
+        + 'border-radius:8px;background:#fff;color:var(--rust);font-size:16px;cursor:pointer;';
+      x.addEventListener('click', async ()=>{
+        const ok = await confirmDialog('Take ' + wcShortDate(item.date) + ' off the route?', 'Remove');
+        if(!ok) return;
+        if(isTask){ tasks = tasks.filter(t => t.id !== item.id); saveTasks(); }
+        else lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => j.id !== item.id));
+        showToast(wcShortDate(item.date) + ' removed');
+        draw();
+      });
+      row.appendChild(when); row.appendChild(done); row.appendChild(x);
+      box.appendChild(row);
+    });
+  };
+  draw();
+}
+
 function repeatFromGap(days){
   const near = (a, b) => Math.abs(days - a) <= b;
   if(days === 7) return {repeat: 'weekly'};
@@ -11048,13 +11172,13 @@ function renderCurrentList(kind){
       + (i === shown.length - 1 ? '' : 'border-bottom:1px solid var(--line);');
     const tick = selectionTick(selKey, r.id, redrawCur);
     if(tick){ row.appendChild(tick); row.style.cursor = 'pointer'; row.addEventListener('click', e=>{ if(e.target.closest('button')) return; toggleSelected(selKey, r.id, redrawCur); }); }
-    else if(kind !== 'Quote'){
-      // The whole row opens it to edit (Oct 2)
+    else if(kind !== 'Quote' && r.groupLeft > 1){
+      // A repeat opens its own window of dates (Oct 2); a single one doesn't open
       row.style.cursor = 'pointer';
-      row.title = r.groupLeft > 1 ? 'Open to edit every date still to come' : 'Open to edit';
+      row.title = 'See every date';
       row.addEventListener('click', e=>{
         if(e.target.closest('button, input, a, select')) return;
-        openCurrentForEditing(kind, r);
+        openRepeatWindow(kind, r);
       });
     }
     else if(kind === 'Quote'){
@@ -11197,7 +11321,8 @@ function renderCurrentList(kind){
         renderCurrentList(kind);
         showToast('Completed \u2014 moved to History');
       });
-      // Mark completed lives inside now, beside each date (Oct 2)
+      // Mark completed on a single one; a repeat's is in its window (Oct 2)
+      if(!(r.groupLeft > 1)) acts.appendChild(complete);
       if(r.groupLeft > 1){
         const all = document.createElement('button');
         all.type = 'button';
@@ -11222,7 +11347,7 @@ function renderCurrentList(kind){
       const x = document.createElement('button');
       x.type = 'button';
       x.className = 'btn btn-ghost fountain-remove';
-      x.style.cssText = 'width:24px;height:26px;font-size:13px;border-radius:7px;';
+      // The full-size bin, the same as History and the repeats' (Oct 2)
       x.textContent = '\u00d7';
       x.title = 'Take this one off the route';
       x.addEventListener('click', async ()=>{
@@ -11234,6 +11359,13 @@ function renderCurrentList(kind){
         showToast('Removed');
       });
       acts.appendChild(x);
+      }
+      if(r.groupLeft > 1){
+        const chev = document.createElement('span');
+        chev.textContent = '\u203a';
+        chev.setAttribute('aria-hidden', 'true');
+        chev.style.cssText = 'color:var(--muted);font-size:20px;line-height:1;padding:0 2px;';
+        acts.appendChild(chev);
       }
     }
     row.appendChild(acts);
@@ -16768,6 +16900,7 @@ document.getElementById('btnAssignSelectNone').addEventListener('click', async (
 document.getElementById('btnDoneAssigning').addEventListener('click', closeAssignOverlay);
 
 function openTechDetail(t, opts){
+  try{ saveOpenProfileEdits(); }catch(e){}
   opts = opts || {};
   currentTechDetailId = t.id;
   // Today's Route opens on today for a technician opened from the list;
@@ -19968,9 +20101,11 @@ function openAddToCustomersModal(typeName){
         </div>
 
         <div id="addEqPickArea" style="display:none;margin-top:12px;flex:1;overflow-y:auto;">
-          <div style="display:flex;gap:8px;margin-bottom:8px;">
-            <input id="addEqSearch" autocomplete="off" placeholder="Search customers" style="flex:1;font-size:13px;padding:7px 9px;">
-            <button class="btn btn-ghost" id="addEqAll" style="width:auto;padding:6px 11px;font-size:12px;">Select all</button>
+          <!-- Search half the row, then Select all and Back a quarter each (Oct 2) -->
+          <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);gap:8px;margin-bottom:8px;align-items:center;">
+            <input id="addEqSearch" autocomplete="off" placeholder="Search customers" style="width:100%;min-width:0;box-sizing:border-box;font-size:13px;padding:7px 9px;">
+            <button type="button" class="btn btn-ghost" id="addEqAll" style="width:100%;flex:none;min-width:0;padding:7px 6px;font-size:12px;white-space:nowrap;">Select all</button>
+            <button type="button" class="btn btn-ghost" id="addEqBack" style="width:100%;flex:none;min-width:0;padding:7px 6px;font-size:12px;white-space:nowrap;">Back</button>
           </div>
           <div id="addEqList" style="border:1px solid var(--line);border-radius:10px;padding:4px 10px;max-height:230px;overflow-y:auto;"></div>
         </div>
@@ -20123,6 +20258,13 @@ function openAddToCustomersModal(typeName){
       });
     }
 
+    // Back out of choosing customers, to Just this customer / Add to multiple
+    overlay.querySelector('#addEqBack').addEventListener('click', ()=>{
+      pickArea.style.display = 'none';
+      if(pickBtn) pickBtn.style.display = '';
+      overlay.querySelector('#addEqOne').style.display = '';
+      goBtn.style.display = 'none';
+    });
     searchEl.addEventListener('input', draw);
     overlay.querySelector('#addEqAll').addEventListener('click', ()=>{
       const q = searchEl.value.trim().toLowerCase();
@@ -20622,6 +20764,8 @@ function alertsNoteSave(key){
 }
 
 function switchView(view){
+  // Anything being typed on a profile is kept on the way out
+  try{ if(typeof saveOpenProfileEdits === 'function') saveOpenProfileEdits(); }catch(e){}
   const keep = false;
   // Readings and dosages always opens on year-round; a season stays chosen
   // only while the page is open
@@ -21697,7 +21841,44 @@ function viewCustomerInPlace(c){
   if(window.scrollY !== y) window.scrollTo(0, y);
 }
 
+
+// ---------- Profile fields save when they're left (Oct 2) ----------
+// Every field on a customer's or technician's profile keeps what was typed
+// when it's left any way at all: a click elsewhere, Back, another tab,
+// another customer or technician, or the browser put away. Fields that
+// waited for Done get their Done pressed; a box being typed in is let go of
+// first so its own save runs. Escape still cancels.
+function saveOpenProfileEdits(keepRow){
+  try{
+    const active = document.activeElement;
+    if(active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)
+       && active.closest('#view-customers, #view-tech-detail, #view-technicians')
+       && !(keepRow && keepRow.contains(active))
+       && !active.closest('.confirm-overlay')){
+      active.blur();
+    }
+    document.querySelectorAll('.profile-meta-row[data-editing="true"]').forEach(row=>{
+      if(keepRow && (row === keepRow || row.contains(keepRow))) return;
+      const done = Array.from(row.querySelectorAll('button'))
+        .find(b => (b.textContent || '').trim() === 'Done');
+      if(done) done.click();
+    });
+  }catch(e){}
+}
+['mousedown', 'touchstart'].forEach(evt=>{
+  document.addEventListener(evt, e=>{
+    if(!e.target || !e.target.closest) return;
+    // A window opened from the field (a question, a picker) belongs to it
+    if(e.target.closest('.confirm-overlay')) return;
+    if(!document.querySelector('.profile-meta-row[data-editing="true"]')) return;
+    saveOpenProfileEdits(e.target.closest('.profile-meta-row[data-editing="true"]'));
+  }, {capture: true, passive: true});
+});
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden) saveOpenProfileEdits(); });
+window.addEventListener('pagehide', ()=> saveOpenProfileEdits());
+
 function viewCustomer(c){
+  saveOpenProfileEdits();
   profileCustomerId = c.id;
   editingId = c.id;
 
@@ -23037,9 +23218,10 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
   };
   // Small bins go inside tags (a chosen customer) and very tight spots
   const markBinSize = btn=>{
-    const h = parseFloat(btn.style.height || '0');
+    // Only inside a tag (a chosen customer); everywhere else the full size,
+    // whatever the button's own size was (Oct 2)
     const inTag = btn.parentElement && btn.parentElement.tagName === 'SPAN';
-    if(inTag || (h && h <= 26)) btn.dataset.binSize = 's';
+    if(inTag) btn.dataset.binSize = 's';
     else delete btn.dataset.binSize;
   };
   const convertWord = btn=>{

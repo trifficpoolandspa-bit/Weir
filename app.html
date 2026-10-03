@@ -4070,6 +4070,7 @@ async function syncPullCustomers(state){
     if(!saved) return {ok: false, storage: true};
   }
   try{ if(typeof customers !== 'undefined') customers = list; }catch(e){}
+  try{ if(beforeSave !== afterSave && typeof refreshOpenEquipment === 'function') refreshOpenEquipment(); }catch(e){}
   return {ok: true, count: list.length, changed: beforeSave !== afterSave};
 }
 
@@ -6798,6 +6799,42 @@ function renderEquipmentTypeOrderList(){
 }
 
 let currentEquipmentItems = [];
+
+// Equipment that arrived from another device shows on the customer that's
+// open here (Oct 2). This phone keeps its own copy of their equipment from when
+// they were opened: before, it never saw the new piece, and its next equipment
+// change wrote the old list back over it. Waits while equipment is being edited.
+let equipmentRefreshWanted = false;
+function refreshOpenEquipment(){
+  try{
+    if(!currentVisitCustomerId) return;
+    const c = customers.find(x => x && x.id === currentVisitCustomerId);
+    if(!c) return;
+    const el = document.activeElement;
+    if(document.querySelector('.confirm-overlay')
+       || (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && el.closest('#equipmentTypeList, #equipmentPhotosCard, [id^="equipment"]'))){
+      equipmentRefreshWanted = true;
+      return;
+    }
+    equipmentRefreshWanted = false;
+    const types = (Array.isArray(c.equipmentTypeOptions) ? [...c.equipmentTypeOptions] : [...DEFAULT_EQUIPMENT_TYPES])
+      .map(t => t === 'Chlorinator' ? 'Chlorination' : t);
+    const items = Array.isArray(c.equipment) ? c.equipment.map(item => ({...item,
+      type: item.type === 'Chlorinator' ? 'Chlorination' : item.type,
+      photos: (item.photos || []).map(p => ({...p}))})) : currentEquipmentItems;
+    if(syncStableString(types) === syncStableString(currentEquipmentTypeOptions)
+       && syncStableString(items) === syncStableString(currentEquipmentItems)) return;
+    currentEquipmentTypeOptions = types;
+    currentEquipmentItems = items;
+    if(typeof renderEquipmentTypeList === 'function') renderEquipmentTypeList();
+  }catch(e){}
+}
+['focusout', 'click'].forEach(evt=>{
+  document.addEventListener(evt, ()=>{
+    if(!equipmentRefreshWanted) return;
+    setTimeout(refreshOpenEquipment, 0);
+  }, true);
+});
 
 function persistCurrentEquipmentTypeOptions(){
   if(!currentVisitCustomerId) return;
@@ -14880,6 +14917,79 @@ function awcRenderEditDates(){
   });
 }
 
+// A repeat's own window: every date still to come, each with Mark completed
+// and a ×. Closes from Close only. (Oct 2)
+function awcOpenRepeatWindow(isTask, r){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:420px;width:100%;max-height:82vh;display:flex;flex-direction:column;">'
+    + '<h3 style="font-size:16px;margin:0 0 2px;" data-title></h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;" data-sub></p>'
+    + '<div data-dates style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:0 10px;"></div>'
+    + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-ghost" data-close>Close</button></div>'
+    + '</div>';
+  document.body.appendChild(overlay);
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); awcRenderCurrent(); };
+  overlay.querySelector('[data-close]').addEventListener('click', close);
+  const key = isTask ? 'tasks' : 'scheduledWorkOrders';
+  const left = ()=> (lsGet(key) || []).filter(x => x && (isTask
+      ? (!x.done && x.seriesId === r.group)
+      : (x.status === 'scheduled' && x.workOrderId === r.group && String(x.technicianId || '') === String(r.techId || ''))))
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  const draw = ()=>{
+    const list = left();
+    if(!list.length){ close(); return; }
+    overlay.querySelector('[data-title]').textContent = r.what;
+    const bits = [r.who, r.techName];
+    if(r.every) bits.push('Every ' + awcRepeatWords(r.every));
+    else if(!isTask && list[0].workOrderNumber) bits.push('#' + String(list[0].workOrderNumber).padStart(4, '0'));
+    bits.push(list.length + ' left');
+    overlay.querySelector('[data-sub]').textContent = bits.filter(Boolean).join(' \u00b7 ');
+    const box = overlay.querySelector('[data-dates]');
+    box.innerHTML = '';
+    list.forEach((item, i)=>{
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;font-size:14px;'
+        + (i === list.length - 1 ? '' : 'border-bottom:1px solid var(--line);');
+      const when = document.createElement('span');
+      when.style.cssText = 'flex:1;min-width:0;';
+      when.textContent = awcShortDate(item.date) + (i === 0 ? ' \u00b7 next' : '');
+      const done = awcSmallBtn('Mark completed');
+      done.style.flex = '0 0 auto';
+      done.addEventListener('click', ()=>{
+        const stamp = new Date().toISOString();
+        const all = lsGet(key) || [];
+        const it = all.find(x => x.id === item.id);
+        if(it){
+          Object.assign(it, isTask ? {done: true, doneAt: stamp, doneBy: 'office'} : {status: 'done', doneAt: stamp, doneBy: 'office'});
+          lsSet(key, all);
+          if(isTask){ try{ if(typeof tasks !== 'undefined') tasks = all; }catch(e){} }
+          fieldNoteLocalChange();
+        }
+        try{ if(typeof renderHomeList === 'function') renderHomeList(); }catch(e){}
+        showToast(awcShortDate(item.date) + ' completed \u2014 moved to History');
+        draw();
+      });
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.textContent = '\u00d7';
+      x.title = 'Take ' + awcShortDate(item.date) + ' off the route';
+      x.style.cssText = 'flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid #EFC9BC;'
+        + 'border-radius:8px;background:#fff;color:var(--rust);font-size:16px;cursor:pointer;';
+      x.addEventListener('click', async ()=>{
+        const ok = await confirmDialog('Take ' + awcShortDate(item.date) + ' off the route?', 'Remove');
+        if(!ok) return;
+        awcRemove(isTask, it => it.id === item.id);
+        showToast(awcShortDate(item.date) + ' removed');
+        draw();
+      });
+      row.appendChild(when); row.appendChild(done); row.appendChild(x);
+      box.appendChild(row);
+    });
+  };
+  draw();
+}
+
 // Opening a row from Current into its form (Oct 2)
 function awcGapRepeat(days){
   const near = (a, b) => Math.abs(days - a) <= b;
@@ -15031,12 +15141,14 @@ function awcRenderCurrent(){
       + '<div style="font-size:12px;color:var(--muted);margin-top:2px;">' + awcEsc(r.techName
         + (r.group && r.groupLeft > 1 ? ' \u00b7 ' + (r.every ? 'Every ' + awcRepeatWords(r.every) : 'Repeats') + ' \u00b7 ' + r.groupLeft + ' left' : '')) + '</div>';
     top.appendChild(when); top.appendChild(mid);
-    // The whole row opens it to edit (Oct 2)
-    row.style.cursor = 'pointer';
-    row.addEventListener('click', e=>{
-      if(e.target.closest('button, input, a, select')) return;
-      awcOpenForEditing(isTask, r);
-    });
+    // A repeat opens its own window of dates; a single one doesn't open (Oct 2)
+    if(r.groupLeft > 1){
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', e=>{
+        if(e.target.closest('button, input, a, select')) return;
+        awcOpenRepeatWindow(isTask, r);
+      });
+    }
     const acts = document.createElement('div');
     acts.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:8px;';
     const complete = awcSmallBtn('Mark completed');
@@ -15061,7 +15173,8 @@ function awcRenderCurrent(){
       try{ if(typeof renderHomeList === 'function') renderHomeList(); }catch(e){}
       showToast('Completed \u2014 moved to History');
     });
-    // Mark completed lives inside now, beside each date (Oct 2)
+    // Mark completed on a single one; a repeat's is in its window (Oct 2)
+    if(!(r.groupLeft > 1)) acts.appendChild(complete);
     if(r.groupLeft > 1){
       const all = awcSmallBtn('Remove all ' + r.groupLeft, true);
       all.addEventListener('click', async ()=>{
@@ -15072,6 +15185,11 @@ function awcRenderCurrent(){
         showToast('Removed ' + r.groupLeft);
       });
       acts.appendChild(all);
+      const chev = document.createElement('span');
+      chev.textContent = '\u203a';
+      chev.setAttribute('aria-hidden', 'true');
+      chev.style.cssText = 'color:var(--muted);font-size:22px;line-height:1;align-self:center;padding:0 2px;';
+      acts.appendChild(chev);
     }
     // One bin per row (Oct 2): a repeat's Remove all is it; single dates come
     // off from inside the repeat
@@ -18873,9 +18991,10 @@ attachAllPhoneFormatting();
   };
   // Small bins go inside tags (a chosen customer) and very tight spots
   const markBinSize = btn=>{
-    const h = parseFloat(btn.style.height || '0');
+    // Only inside a tag (a chosen customer); everywhere else the full size,
+    // whatever the button's own size was (Oct 2)
     const inTag = btn.parentElement && btn.parentElement.tagName === 'SPAN';
-    if(inTag || (h && h <= 26)) btn.dataset.binSize = 's';
+    if(inTag) btn.dataset.binSize = 's';
     else delete btn.dataset.binSize;
   };
   const convertWord = btn=>{
