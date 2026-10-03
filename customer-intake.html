@@ -269,6 +269,11 @@ input::placeholder{color:#A9BCB9;}
 }
 .section-head h2{margin-bottom:0;}
 .section-count{font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;white-space:nowrap;}
+.profile-field-col{display:inline-flex;flex-direction:column;align-items:flex-start;align-self:flex-start;margin-top:-1px;cursor:pointer;white-space:nowrap;position:relative;}
+.profile-field-col .pf-label{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;}
+.profile-field-col .pf-value{font-size:15.5px;font-weight:700;color:var(--teal-deep);display:inline-flex;align-items:center;gap:4px;}
+.big-num{display:inline-block;font-family:'Space Grotesk','Inter',sans-serif;font-size:22px;font-weight:700;color:var(--teal-deep);letter-spacing:-0.01em;white-space:nowrap;line-height:1;}
+.big-num .num-hash{color:#A9BCB9;font-weight:500;}
 .ps-tick:hover{border-color:var(--line) !important;background:var(--surface);}
 .ps-col{font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;white-space:nowrap;}
 /* Alerts (Oct 2): the count beside the tab, and the rows */
@@ -570,7 +575,7 @@ input::placeholder{color:#A9BCB9;}
       <div class="nav-subs" id="chemNavSubs">
         <button type="button" class="nav-sub active" data-type="pool"><span>Pool</span></button>
         <button type="button" class="nav-sub" data-type="spa"><span>Spa</span></button>
-        <button type="button" class="nav-sub" data-type="fountain"><span>Extra</span></button>
+        <button type="button" class="nav-sub" data-type="fountain"><span>Fountains, ponds, etc.</span></button>
       </div>
       <button class="tab" data-view="productsservices">Products and Services</button>
       <button class="tab" data-view="workcenter">WorkCenter</button>
@@ -656,11 +661,19 @@ input::placeholder{color:#A9BCB9;}
     <div class="card primary" id="customerProfileCard" style="display:none;">
       <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:2px;">
         <h2 id="profileName">Customer</h2>
-        <span class="pill" id="profileDayPill" style="font-size:12.5px;padding:3px 10px;margin-left:4px;"></span>
-        <span id="profileExtraDays" style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;"></span>
-        <span id="profileTechWrap" style="margin-left:auto;margin-right:9%;display:inline-flex;flex-direction:column;align-items:flex-start;align-self:flex-start;margin-top:-1px;cursor:pointer;white-space:nowrap;">
+        <!-- Day, and any added days, in the same style as Technician (Oct 2) -->
+        <span id="profileDayPill" class="profile-field-col" style="margin-left:14px;"></span>
+        <span id="profileExtraDays" style="display:inline-flex;align-items:flex-start;gap:22px;flex-wrap:wrap;align-self:flex-start;margin-left:8px;"></span>
+        <!-- Property, then Technician, at the right of the name line (Oct 2) -->
+        <span style="margin-left:auto;margin-right:9%;display:inline-flex;align-items:flex-start;gap:28px;align-self:flex-start;">
+        <span id="profilePropertyWrap" style="display:inline-flex;flex-direction:column;align-items:flex-start;margin-top:-1px;cursor:pointer;white-space:nowrap;">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Property</span>
+          <span id="profilePropertyName" style="font-size:15.5px;font-weight:700;color:var(--teal-deep);"></span>
+        </span>
+        <span id="profileTechWrap" style="display:inline-flex;flex-direction:column;align-items:flex-start;margin-top:-1px;cursor:pointer;white-space:nowrap;">
           <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Technician</span>
           <span id="profileTechName" style="font-size:15.5px;font-weight:700;color:var(--teal-deep);"></span>
+        </span>
         </span>
       </div>
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Tap any field to edit it.</p>
@@ -1157,7 +1170,7 @@ input::placeholder{color:#A9BCB9;}
       <div class="seg-control" id="chemConfigTypeControl">
         <button class="history-type-btn active" data-type="pool">Pool</button>
         <button class="history-type-btn" data-type="spa">Spa</button>
-        <button class="history-type-btn" data-type="fountain">Extra</button>
+        <button class="history-type-btn" data-type="fountain">Fountains, ponds, etc.</button>
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap;">
         <button class="btn btn-ghost" id="btnRestoreChemDefaults" style="width:auto;color:var(--rust);border-color:#EFC9BC;">Restore default labels</button>
@@ -1179,8 +1192,10 @@ input::placeholder{color:#A9BCB9;}
       </div>
     </div>
     <div class="card" id="customConfigPicker" style="display:none;position:relative;z-index:60;overflow:visible;">
-      <h2>Custom setup for one customer</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Find a customer, pick one of their bodies of water, and set exactly what gets recorded there. This affects only that customer.</p>
+      <!-- The page's heading and description, in this one card (Oct 2): the
+           card above isn't shown on Customer Customization -->
+      <h2>Customer Customization</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Set up one customer differently from your defaults &mdash; their own readings, dosages, dosage rules and photo requirements, per body of water. Everyone else keeps the standard lists.</p>
 
       <div class="btn-row" style="margin:0 0 14px;">
         <button class="btn btn-primary" id="btnNewCustomerGroup" style="width:auto;">+ New group</button>
@@ -1326,7 +1341,7 @@ input::placeholder{color:#A9BCB9;}
 
       <div id="wcBroadcastCount" style="font-size:12.5px;color:var(--muted);margin-bottom:12px;"></div>
 
-      <div class="btn-row" style="flex-wrap:wrap;gap:8px;">
+      <div class="btn-row" style="flex-wrap:wrap;gap:8px;align-items:center;">
         <button class="btn btn-primary" id="wcBroadcastOpen" style="width:auto;">Open in your email app</button>
         <button class="btn btn-ghost" id="wcBroadcastGmail" style="width:auto;">Open in Gmail</button>
         <button class="btn btn-ghost" id="wcBroadcastOutlook" style="width:auto;">Open in Outlook</button>
@@ -1372,7 +1387,11 @@ input::placeholder{color:#A9BCB9;}
           <label id="wcPhotoRequiredWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
             <input type="checkbox" id="wcPhotoRequired" checked style="margin:0;"> Photo required
           </label>
-          <span id="wcQuoteNumber" style="margin-left:auto;margin-right:12px;display:inline-block;padding:4px 13px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:14px;font-weight:700;letter-spacing:.05em;color:var(--teal-deep);white-space:nowrap;" title="The number this one will get"></span>
+          <!-- Video required, beside Photo required (Oct 2) -->
+          <label id="wcVideoRequiredWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
+            <input type="checkbox" id="wcVideoRequired" style="margin:0;"> Video required
+          </label>
+          <span id="wcQuoteNumber" class="big-num" style="margin-left:auto;margin-right:12px;" title="The number this one will get"></span>
         </div>
       </div>
       <!-- Quotes only -->
@@ -1443,6 +1462,9 @@ input::placeholder{color:#A9BCB9;}
           <input type="date" id="taskDate" style="width:auto;min-width:0;padding-right:12px;">
           <label style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
             <input type="checkbox" id="taskPhotoRequired" style="margin:0;"> Photo required
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
+            <input type="checkbox" id="taskVideoRequired" style="margin:0;"> Video required
           </label>
           <button class="btn btn-primary" id="btnTaskTemplates" style="width:auto;margin-left:auto;flex:0 0 auto;">Saved tasks</button>
         </div>
@@ -4056,6 +4078,22 @@ function saveProductsServices(){
 let psCategory = 'all';
 let psSearchTerm = '';
 let psPage = 1;
+let psTotalPagesNow = 1;
+// The keyboard's left and right arrows turn the Products and Services pages
+// (Oct 2), unless a box is being typed in or a window is open
+document.addEventListener('keydown', e=>{
+  if(e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  const page = document.getElementById('view-productsservices');
+  if(!page || !page.classList.contains('active') || psTotalPagesNow < 2) return;
+  const el = document.activeElement;
+  if(el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable)) return;
+  if(document.querySelector('.confirm-overlay')) return;
+  const next = psPage + (e.key === 'ArrowRight' ? 1 : -1);
+  if(next < 1 || next > psTotalPagesNow) return;
+  e.preventDefault();
+  psPage = next;
+  renderProductsServicesList();
+});
 
 document.getElementById('psSearch').addEventListener('input', (e)=>{
   psSearchTerm = e.target.value;
@@ -4120,8 +4158,9 @@ function renderProductsServicesList(){
     return;
   }
 
-  // 20 per page
-  const PS_PER_PAGE = 20;
+  // 15 per page (Oct 2)
+  const PS_PER_PAGE = 15;
+  psTotalPagesNow = Math.max(1, Math.ceil(visible.length / PS_PER_PAGE));
   const psTotalPages = Math.max(1, Math.ceil(visible.length / PS_PER_PAGE));
   if(psPage > psTotalPages) psPage = psTotalPages;
   if(psPage < 1) psPage = 1;
@@ -5567,11 +5606,14 @@ function attachHoverDelete(el, title, onDelete){
   el.style.paddingRight = '26px';
   el.title = title;
 
+  // A drawn ×, centred in its own 16px square, so it sits exactly in the
+  // middle of the button's height (Oct 2: the typed × sat low)
   const x = document.createElement('span');
-  x.textContent = '\u00D7';
-  x.style.cssText = 'position:absolute;right:7px;top:50%;transform:translateY(-50%);'
-    + 'font-size:16px;line-height:1;opacity:0;transition:opacity .12s ease;'
-    + 'color:var(--rust);font-weight:700;cursor:pointer;padding:0 2px;';
+  x.innerHTML = '<svg viewBox="0 0 10 10" aria-hidden="true" style="width:9px;height:9px;display:block;">'
+    + '<path d="M1.5 1.5 8.5 8.5M8.5 1.5 1.5 8.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg>';
+  x.style.cssText = 'position:absolute;right:6px;top:50%;transform:translateY(-50%);'
+    + 'width:16px;height:16px;display:flex;align-items:center;justify-content:center;'
+    + 'opacity:0;transition:opacity .12s ease;color:var(--rust);cursor:pointer;';
   el.appendChild(x);
 
   el.addEventListener('mouseenter', ()=>{ x.style.opacity = '1'; });
@@ -5634,7 +5676,7 @@ function renderBroadcast(){
     shown.forEach(t=>{
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = t.id === broadcastSelectedId ? 'btn btn-secondary' : 'btn btn-ghost';
+      b.className = t.id === broadcastSelectedId ? 'btn btn-primary' : 'btn btn-ghost';
       b.style.cssText = 'width:auto;padding:7px 13px;font-size:12.5px;';
       b.textContent = t.name;
       b.addEventListener('click', ()=>{
@@ -5667,7 +5709,15 @@ function renderBroadcast(){
   if(!box || !box.dataset.started){
     if(box) box.dataset.started = 'true';
     const first = list.find(t => t.id === 'bt_storm') || list[0];
-    if(first) loadBroadcastIntoForm(first);
+    if(first){
+      loadBroadcastIntoForm(first);
+      // Drawn again so the storm warning's button shows chosen (Oct 2)
+      box.querySelectorAll('button').forEach(b=>{
+        if(b.firstChild && b.firstChild.nodeType === 3 && b.firstChild.textContent === first.name){
+          b.className = 'btn btn-primary';
+        }
+      });
+    }
   }
 
   applyBroadcastAudience();
@@ -6089,6 +6139,7 @@ function openTaskForEditing(t){
   setPickedTechIds(document.getElementById('taskTechnician'), t.technicianId ? [String(t.technicianId)] : []);
   document.getElementById('taskDate').value = t.date || '';
   document.getElementById('taskPhotoRequired').checked = !!t.photoRequired;
+  document.getElementById('taskVideoRequired').checked = !!t.videoRequired;
   taskPicked.clear();
   (t.customerIds || (t.customerId ? [t.customerId] : [])).forEach(id => taskPicked.add(id));
   renderTaskChips();
@@ -9878,6 +9929,7 @@ function clearTaskForm(){
   document.getElementById('taskDetails').value = '';
   document.getElementById('taskDate').value = taskTodayStr();
   document.getElementById('taskPhotoRequired').checked = false;
+  document.getElementById('taskVideoRequired').checked = false;
   document.getElementById('taskRepeat').value = 'none';
   document.getElementById('taskRepeatUntil').value = '';
   const unitBox = document.getElementById('taskRepeatUnit');
@@ -9957,6 +10009,7 @@ function renderTaskList(){
       setPickedTechIds(document.getElementById('taskTechnician'), t.technicianId ? [String(t.technicianId)] : []);
       document.getElementById('taskDate').value = t.date || '';
       document.getElementById('taskPhotoRequired').checked = !!t.photoRequired;
+      document.getElementById('taskVideoRequired').checked = !!t.videoRequired;
       taskPicked.clear();
       (t.customerIds || (t.customerId ? [t.customerId] : [])).forEach(id => taskPicked.add(id));
       renderTaskChips();
@@ -10033,13 +10086,13 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
     if(t){
       Object.assign(t, {title, details, technicianId: techIds[0], date,
                         customerIds, everyWeeks, everyDays, until, done: false,
-                        photoRequired: document.getElementById('taskPhotoRequired').checked});
+                        photoRequired: document.getElementById('taskPhotoRequired').checked, videoRequired: document.getElementById('taskVideoRequired').checked});
       techIds.slice(1).forEach(techId=>{
         tasks.push({
           id: 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2,9),
           title, details, technicianId: techId, date, customerIds,
           everyWeeks: 0, seriesId: '', done: false,
-          photoRequired: document.getElementById('taskPhotoRequired').checked,
+          photoRequired: document.getElementById('taskPhotoRequired').checked, videoRequired: document.getElementById('taskVideoRequired').checked,
           createdAt: new Date().toISOString()
         });
       });
@@ -10104,7 +10157,7 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
         everyDays,
         seriesId: series,
         taskGroupId,
-        photoRequired: document.getElementById('taskPhotoRequired').checked,
+        photoRequired: document.getElementById('taskPhotoRequired').checked, videoRequired: document.getElementById('taskVideoRequired').checked,
         done: false,
         createdAt: new Date().toISOString()
       });
@@ -10660,6 +10713,8 @@ function resetWorkOrderForm(backToQuote){
   // A new work order starts with Photo required on
   const photoReq = document.getElementById('wcPhotoRequired');
   if(photoReq) photoReq.checked = true;
+  const videoReq = document.getElementById('wcVideoRequired');
+  if(videoReq) videoReq.checked = false;
   const heading = document.getElementById('wcFormHeading');
   if(heading){
     heading.textContent = '';
@@ -11436,7 +11491,7 @@ function openCurrentForEditing(kind, r){
       : repeatFromGap(Math.round((new Date(left[1].date + 'T12:00:00') - new Date(first.date + 'T12:00:00')) / 86400000));
   }
   loadWorkOrderIntoForm({type: 'Work Order', customerId: first.customerId, date: first.date,
-    photoRequired: !!first.photoRequired, lineItems: first.lineItems || [], notes: first.notes || '',
+    photoRequired: !!first.photoRequired, videoRequired: !!first.videoRequired, lineItems: first.lineItems || [], notes: first.notes || '',
     technicianIds: [String(first.technicianId || '')], repeat: rep.repeat});
   setTimeout(()=>{
     if(rep.repeat === 'custom'){
@@ -12042,6 +12097,8 @@ function applyWorkOrderType(){
   // Photo required is for work orders only, never a quote
   const photoWrap = document.getElementById('wcPhotoRequiredWrap');
   if(photoWrap) photoWrap.style.display = isWO ? 'inline-flex' : 'none';
+  const videoWrap = document.getElementById('wcVideoRequiredWrap');
+  if(videoWrap) videoWrap.style.display = isWO ? 'inline-flex' : 'none';
   // (A quote never carries it: saved only when the kind is Work Order)
 
   document.querySelectorAll('#wcTypeToggle [data-wctype]').forEach(btn=>{
@@ -12144,7 +12201,7 @@ function captureWcDraft(type){
       title: document.getElementById('taskTitle').value,
       details: document.getElementById('taskDetails').value,
       date: document.getElementById('taskDate').value,
-      photoRequired: document.getElementById('taskPhotoRequired').checked,
+      photoRequired: document.getElementById('taskPhotoRequired').checked, videoRequired: document.getElementById('taskVideoRequired').checked,
       repeat: document.getElementById('taskRepeat').value,
       until: document.getElementById('taskRepeatUntil').value,
       search: document.getElementById('taskCustomerSearch').value,
@@ -12162,7 +12219,7 @@ function captureWcDraft(type){
       lineItems: currentLineItems.map(li => Object.assign({}, li)),
       notes: document.getElementById('wcNotes').value,
       date: document.getElementById('wcDate').value,
-      photoRequired: document.getElementById('wcPhotoRequired').checked,
+      photoRequired: document.getElementById('wcPhotoRequired').checked, videoRequired: document.getElementById('wcVideoRequired').checked,
       quoteName: document.getElementById('wcQuoteName').value,
       expiresDays: document.getElementById('wcExpiresDays').value,
       techs: pickedTechIds(document.getElementById('wcTechnician')),
@@ -12194,6 +12251,7 @@ function restoreWcDraft(type){
     document.getElementById('taskDetails').value = st.details;
     document.getElementById('taskDate').value = st.date;
     document.getElementById('taskPhotoRequired').checked = !!st.photoRequired;
+    document.getElementById('taskVideoRequired').checked = !!st.videoRequired;
     document.getElementById('taskRepeat').value = st.repeat;
     document.getElementById('taskRepeatUntil').value = st.until;
     document.getElementById('taskCustomerSearch').value = st.search;
@@ -12214,6 +12272,7 @@ function restoreWcDraft(type){
     document.getElementById('wcNotes').value = st.notes;
     document.getElementById('wcDate').value = st.date;
     document.getElementById('wcPhotoRequired').checked = !!st.photoRequired;
+    document.getElementById('wcVideoRequired').checked = !!st.videoRequired;
     document.getElementById('wcQuoteName').value = st.quoteName || '';
     document.getElementById('wcExpiresDays').value = st.expiresDays || String(QUOTE_ANSWER_DAYS || 30);
     setPickedTechIds(document.getElementById('wcTechnician'), st.techs);
@@ -12469,13 +12528,14 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
           title: validItems.map(i => i.description).join(', '),
           lineItems: validItems,
           notes,
-          photoRequired: document.getElementById('wcPhotoRequired').checked,
+          photoRequired: document.getElementById('wcPhotoRequired').checked, videoRequired: document.getElementById('wcVideoRequired').checked,
           status: 'scheduled'
         });
       }));
       const header = {
         number: woNumber,
         photoRequired: type === 'Work Order' && document.getElementById('wcPhotoRequired').checked,
+        videoRequired: type === 'Work Order' && document.getElementById('wcVideoRequired').checked,
         id: woId, customerId: customer.id, type, lineItems: validItems, notes, total,
         technicianId: techIds[0], technicianIds: techIds, date, repeat, repeatUntil,
         createdAt: new Date().toISOString(),
@@ -12646,8 +12706,10 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
     // The top line: QUOTE, with the quote's number just to its right
     + '<div style="font-size:12px;font-weight:700;color:#0F766E;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">'
     + esc(type)
-    + (quoteNumber ? '<span style="display:inline-block;vertical-align:middle;margin-left:10px;padding:2px 10px;border:1px solid #D6E2E0;border-radius:999px;background:#F6F9F8;'
-        + 'font-size:12.5px;font-weight:700;letter-spacing:.05em;color:#16302E;text-transform:none;">#' + esc(quoteNumberText(quoteNumber)) + '</span>' : '')
+    // The number as on the form: large, with a light # (Oct 2)
+    + (quoteNumber ? '<span style="display:inline-block;vertical-align:middle;margin-left:10px;'
+        + 'font-family:\'Space Grotesk\',Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;letter-spacing:-0.01em;color:#0E4A4D;text-transform:none;line-height:1;">'
+        + '<span style="color:#A9BCB9;font-weight:500;">#</span>' + esc(quoteNumberText(quoteNumber)) + '</span>' : '')
     + '</div>'
     + '<div style="font-size:17px;font-weight:700;color:#16302E;">' + esc(customer.name) + '</div>'
     + (customer.address ? '<div style="font-size:13.5px;color:#6B7B79;margin-top:3px;">' + esc(customer.address) + '</div>' : '')
@@ -12787,6 +12849,21 @@ function nextWorkOrderNumber(){
 })();
 // Shown with four digits: #0007
 function quoteNumberText(n){ return String(n).padStart(4, '0'); }
+// A quote's or work order's number at the top of the form: a large number with
+// a light # (Oct 2, style E). Whatever sets "#0012" here is drawn that way.
+(function bigNumber(){
+  const el = document.getElementById('wcQuoteNumber');
+  if(!el) return;
+  const draw = ()=>{
+    if(el.querySelector('.num-hash')) return;
+    const t = (el.textContent || '').trim();
+    const m = t.match(/^#(.+)$/);
+    if(!m) return;
+    el.innerHTML = '<span class="num-hash">#</span>' + m[1].replace(/[<>&]/g, '');
+  };
+  new MutationObserver(draw).observe(el, {childList: true, characterData: true, subtree: true});
+  draw();
+})();
 function showNextQuoteNumber(){
   const el = document.getElementById('wcQuoteNumber');
   const isWO = (document.getElementById('wcType') || {}).value === 'Work Order';
@@ -12809,6 +12886,7 @@ function convertQuoteToWorkOrder(q){
     renderLineItems();
     recalcWorkOrderTotal();
     document.getElementById('wcPhotoRequired').checked = true;
+    document.getElementById('wcVideoRequired').checked = false;
     showToast('Quote copied to a new work order');
   }, 0);
 }
@@ -13031,6 +13109,7 @@ function loadWorkOrderIntoForm(w){
     const dateEl = document.getElementById('wcDate');
     if(dateEl) dateEl.value = w.date || '';
     document.getElementById('wcPhotoRequired').checked = !!w.photoRequired;
+    document.getElementById('wcVideoRequired').checked = !!w.videoRequired;
     document.getElementById('wcQuoteName').value = w.name || '';
     document.getElementById('wcExpiresDays').value = String(w.expiresDays || QUOTE_ANSWER_DAYS || 30);
 
@@ -15894,6 +15973,10 @@ function applyChemConfigMode(customerMode){
   const restore = document.getElementById('btnRestoreChemDefaults');
 
   if(heading) heading.textContent = customerMode ? 'Customer Customization' : 'Readings and Dosages';
+  // On Customer Customization the heading and description are in the customer
+  // card below, so this card isn't shown there (Oct 2)
+  const topCard = heading ? heading.closest('.card') : null;
+  if(topCard) topCard.style.display = customerMode ? 'none' : '';
   if(seg) seg.style.display = customerMode ? 'none' : '';
   // The chosen customer's bodies of water belong to Customer Customization.
   // The two pages share these lists, so it has to be put away here or it turns
@@ -17102,11 +17185,12 @@ function renderTechProfile(techId){
           refresh();
         });
       };
-      const want = ()=>{ if(el.dataset.editing !== 'true') profileRowWanted = opts.label; };
+      const want = ()=>{ if(el.dataset.editing !== 'true'){ profileRowWanted = opts.label; profileRowWantedAt = Date.now(); } };
       el.addEventListener('mousedown', want);
       el.addEventListener('touchstart', want, {passive: true});
       el.addEventListener('click', open);
       meta.appendChild(el);
+      if(profileRowWanted === opts.label && Date.now() - profileRowWantedAt > 1500) profileRowWanted = null;
       if(profileRowWanted === opts.label){
         profileRowWanted = null;
         setTimeout(()=>{ try{ el.click(); }catch(e){} }, 0);
@@ -19667,7 +19751,17 @@ function showCustomerProfileView(){
   hideCustomerSearchSuggestions();
   // Opening a customer brings their profile into view; stepping to the
   // previous or next one leaves the page where it was scrolled to
-  if(!keepProfileTab) profileTabsCard.scrollIntoView({behavior:'smooth'});
+  if(!keepProfileTab) scrollProfileIntoView();
+}
+
+// Opening a profile scrolls down past the green banner, but stops with the
+// Back to Customer List / Previous / Next card still at the top of the screen
+// (Oct 2; it used to scroll that card out of sight)
+function scrollProfileIntoView(){
+  const card = document.getElementById('backToListCard');
+  if(!card || card.style.display === 'none') return;
+  const top = card.getBoundingClientRect().top + window.scrollY - 12;
+  window.scrollTo({top: Math.max(0, top), behavior: 'smooth'});
 }
 
 function showCustomerForm(){
@@ -19688,7 +19782,7 @@ function showCustomerForm(){
   hideCustomerSearchSuggestions();
   // Opening a customer brings their profile into view; stepping to the
   // previous or next one leaves the page where it was scrolled to
-  if(!keepProfileTab) profileTabsCard.scrollIntoView({behavior:'smooth'});
+  if(!keepProfileTab) scrollProfileIntoView();
 }
 
 function hideCustomerForm(){
@@ -21597,6 +21691,7 @@ function saveCustomerField(){
 // longer exists and nothing happens until it is pressed again. The label is
 // noted as the press starts, and the rebuilt row opens itself.
 let profileRowWanted = null;
+let profileRowWantedAt = 0;   // when it was noted: honoured only straight after (Oct 2)
 
 // Noted at the very start of the press, before anything else on the page
 // reacts to it. The helper that makes one click leave a field closes the open
@@ -21608,7 +21703,7 @@ document.addEventListener('pointerdown', e=>{
   const row = t && t.closest && t.closest('#profileMeta .profile-meta-row.editable, #techProfileMeta .profile-meta-row.editable');
   if(!row || row.dataset.editing === 'true') return;
   const lbl = row.querySelector('.profile-meta-label');
-  if(lbl) profileRowWanted = lbl.textContent;
+  if(lbl){ profileRowWanted = lbl.textContent; profileRowWantedAt = Date.now(); }
 }, true);
 
 // Renders one labelled row that turns into an editor when tapped
@@ -21667,14 +21762,17 @@ function profileRow(container, opts){
       editor(row, done);
     };
     // Noted before the open row saves and the profile is rebuilt
-    const want = ()=>{ if(row.dataset.editing !== 'true') profileRowWanted = label; };
+    const want = ()=>{ if(row.dataset.editing !== 'true'){ profileRowWanted = label; profileRowWantedAt = Date.now(); } };
     row.addEventListener('mousedown', want);
     row.addEventListener('touchstart', want, {passive: true});
     row.addEventListener('click', open);
   }
   container.appendChild(row);
 
-  // The row that was pressed a moment ago, now rebuilt: open it
+  // The row that was pressed a moment ago, now rebuilt: open it. Only straight
+  // after the press — a press that never opened its row (pressed, then Back)
+  // used to open it by itself on the next profile (Oct 2)
+  if(editor && profileRowWanted === label && Date.now() - profileRowWantedAt > 1500) profileRowWanted = null;
   if(editor && profileRowWanted === label){
     profileRowWanted = null;
     setTimeout(()=>{ try{ row.click(); }catch(e){} }, 0);
@@ -22341,55 +22439,67 @@ function renderProfileExtraDays(c){
   const order = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
   const extras = (Array.isArray(c.extraDays) ? c.extraDays : []).filter(d => d && d !== c.day)
     .sort((a, b) => order.indexOf(a) - order.indexOf(b));
-  extras.forEach(d=>{
+  // Each added day in the same style as the service day; pressing one opens
+  // the days window, where it can be unticked (Oct 2)
+  extras.forEach((d, i)=>{
     const pill = document.createElement('span');
-    pill.className = 'pill';
-    pill.style.cssText = 'font-size:12.5px;padding:3px 4px 3px 10px;display:inline-flex;align-items:center;gap:4px;';
-    const t = document.createElement('span');
-    t.textContent = d;
-    const x = document.createElement('button');
-    x.type = 'button';
-    x.className = 'btn btn-ghost';
-    x.style.cssText = 'width:18px;height:18px;min-width:18px;padding:0;font-size:11px;border:none;background:transparent;color:inherit;';
-    x.textContent = '\u00d7';
-    x.title = 'Take ' + d + ' off';
-    x.addEventListener('click', ()=>{
-      c.extraDays = extras.filter(e => e !== d);
-      saveCustomerField();
-      renderProfileExtraDays(c);
-      showToast(d + ' taken off');
-    });
-    pill.appendChild(t); pill.appendChild(x);
+    pill.className = 'profile-field-col';
+    pill.title = 'Tap to change the service days';
+    pill.innerHTML = '<span class="pf-label"></span><span class="pf-value"></span>';
+    pill.children[0].textContent = 'Day ' + (i + 2);
+    pill.children[1].textContent = d;
+    pill.addEventListener('click', ()=> openServiceDaysWindow(c));
     box.appendChild(pill);
   });
-  const free = order.filter(d => d !== c.day && extras.indexOf(d) === -1);
-  if(!c.day || !free.length) return;
-  // The button opens the list of days straight away
-  const add = document.createElement('span');
-  add.className = 'btn btn-ghost';
-  add.style.cssText = 'position:relative;width:auto;padding:3px 10px;font-size:12px;cursor:pointer;';
-  add.textContent = '+ Add a day';
-  add.title = 'For a customer serviced more than once a week';
-  const pick = document.createElement('select');
-  pick.setAttribute('aria-label', 'Add a service day');
-  pick.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;margin:0;padding:0;border:0;';
-  const first = document.createElement('option');
-  first.value = ''; first.textContent = 'Add a day\u2026';
-  pick.appendChild(first);
-  free.forEach(d=>{
-    const o = document.createElement('option');
-    o.value = d; o.textContent = d;
-    pick.appendChild(o);
+}
+
+// The service days, ticked in one window: any number, at least one. The day it
+// already had stays the main one while it's still ticked; otherwise the first
+// ticked in the week is. The rest are its added days. (Oct 2)
+function openServiceDaysWindow(c){
+  const order = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  const had = new Set([c.day].concat(Array.isArray(c.extraDays) ? c.extraDays : []).filter(Boolean));
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:340px;width:100%;">'
+    + '<h3 style="font-size:16px;margin:0 0 4px;">Service days</h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Tick every day ' + escapeSyncText(displayName(c.name)) + ' is serviced.</p>'
+    + '<div data-days style="border:1px solid var(--line);border-radius:10px;padding:0 10px;"></div>'
+    + '<p data-err style="display:none;font-size:12px;color:var(--rust);margin:8px 0 0;">Tick at least one day</p>'
+    + '<div class="btn-row" style="margin-top:14px;"><button type="button" class="btn btn-ghost" data-cancel>Cancel</button>'
+    + '<button type="button" class="btn btn-primary" data-save>Save</button></div></div>';
+  const list = overlay.querySelector('[data-days]');
+  order.forEach((d, i)=>{
+    const row = document.createElement('label');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 2px;font-size:14px;cursor:pointer;'
+      + (i === order.length - 1 ? '' : 'border-bottom:1px solid var(--line);');
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.value = d;
+    box.checked = had.has(d);
+    box.style.cssText = 'margin:0;width:18px;height:18px;cursor:pointer;';
+    box.addEventListener('change', ()=>{ overlay.querySelector('[data-err]').style.display = 'none'; });
+    row.appendChild(box);
+    row.appendChild(document.createTextNode(d));
+    list.appendChild(row);
   });
-  pick.addEventListener('change', ()=>{
-    if(!pick.value) return;
-    c.extraDays = extras.concat(pick.value);
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+  overlay.querySelector('[data-cancel]').addEventListener('click', close);
+  overlay.querySelector('[data-save]').addEventListener('click', ()=>{
+    const ticked = Array.from(list.querySelectorAll('input:checked')).map(b => b.value);
+    if(!ticked.length){ overlay.querySelector('[data-err]').style.display = 'block'; return; }
+    const main = ticked.indexOf(c.day) !== -1 ? c.day : ticked[0];
+    const extras = ticked.filter(d => d !== main);
+    const changed = main !== c.day || JSON.stringify(extras) !== JSON.stringify((c.extraDays || []).filter(d => d !== c.day).slice().sort((a, b) => order.indexOf(a) - order.indexOf(b)));
+    close();
+    if(!changed) return;
+    c.day = main;
+    c.extraDays = extras;
     saveCustomerField();
-    renderProfileExtraDays(c);
-    showToast(displayName(c.name) + ' also on ' + pick.value);
+    viewCustomerInPlace(c);
+    showToast(displayName(c.name) + ' \u2014 ' + ticked.join(', '));
   });
-  add.appendChild(pick);
-  box.appendChild(add);
+  document.body.appendChild(overlay);
 }
 
 // Redrawing the open profile after a field is saved or another one opened:
@@ -22442,6 +22552,9 @@ window.addEventListener('pagehide', ()=> saveOpenProfileEdits());
 
 function viewCustomer(c){
   saveOpenProfileEdits();
+  // A profile opened afresh (from the list, Previous / Next) never opens a
+  // field by itself
+  if(!keepProfileTab) profileRowWanted = null;
   profileCustomerId = c.id;
   editingId = c.id;
 
@@ -22489,29 +22602,12 @@ function viewCustomer(c){
   // says (or nothing) simply leaves the pill as it was, instead of leaving a
   // bare menu behind
   const dayPill = document.getElementById('profileDayPill');
-  dayPill.textContent = c.day || 'No day set';
-  dayPill.title = 'Tap to change service day';
-  dayPill.onclick = null;
-  dayPill.style.position = 'relative';
+  dayPill.innerHTML = '<span class="pf-label">Day</span><span class="pf-value"></span>';
+  dayPill.querySelector('.pf-value').textContent = c.day || 'No day set';
+  dayPill.title = 'Tap to choose the service days';
   dayPill.style.cursor = 'pointer';
-  const dayPick = document.createElement('select');
-  dayPick.setAttribute('aria-label', 'Service day');
-  dayPick.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;margin:0;padding:0;border:0;';
-  const extrasNow = Array.isArray(c.extraDays) ? c.extraDays : [];
-  DAYS_OF_WEEK.filter(d => d === c.day || extrasNow.indexOf(d) === -1).forEach(d=>{
-    const o = document.createElement('option');
-    o.value = d; o.textContent = d;
-    dayPick.appendChild(o);
-  });
-  dayPick.value = c.day || 'Monday';
-  dayPick.addEventListener('change', ()=>{
-    if(dayPick.value === c.day) return;
-    c.day = dayPick.value;
-    if(Array.isArray(c.extraDays)) c.extraDays = c.extraDays.filter(d => d !== c.day);
-    saveCustomerField();
-    viewCustomerInPlace(c);
-  });
-  dayPill.appendChild(dayPick);
+  // Every day is chosen in one window, with ticks (Oct 2)
+  dayPill.onclick = ()=> openServiceDaysWindow(c);
   renderProfileExtraDays(c);
 
   // Technician — sits on the name line, tap to reassign
@@ -22524,7 +22620,7 @@ function viewCustomer(c){
     techWrap.dataset.editing = 'true';
     const sel = document.createElement('select');
     sel.className = 'profile-inline-input';
-    sel.style.cssText = 'width:auto;font-size:13px;padding:4px 8px;margin-left:auto;margin-right:9%;';
+    sel.style.cssText = 'width:auto;font-size:13px;padding:4px 8px;';
     [{value:'', label:'Unassigned'}].concat(technicians.map(t => ({value:t.id, label:t.name})))
       .forEach(o=>{
         const opt = document.createElement('option');
@@ -22561,6 +22657,49 @@ function viewCustomer(c){
     sel.addEventListener('change', commit);
     sel.addEventListener('blur', commit);
   };
+
+  // Property: Unassigned to start, or Residential, Commercial, Rental (Oct 2).
+  // The same tap-to-choose as Technician.
+  const PROPERTY_TYPES = [{value:'', label:'Unassigned'}, {value:'residential', label:'Residential'},
+    {value:'commercial', label:'Commercial'}, {value:'rental', label:'Rental'}];
+  const propEl = document.getElementById('profilePropertyName');
+  const propWrap = document.getElementById('profilePropertyWrap');
+  if(propEl && propWrap){
+    propEl.textContent = (PROPERTY_TYPES.find(o => o.value === (c.propertyType || '')) || PROPERTY_TYPES[0]).label;
+    propWrap.title = 'Tap to change the kind of property';
+    propWrap.dataset.editing = 'false';
+    propWrap.onclick = ()=>{
+      if(propWrap.dataset.editing === 'true') return;
+      propWrap.dataset.editing = 'true';
+      const sel = document.createElement('select');
+      sel.className = 'profile-inline-input';
+      sel.style.cssText = 'width:auto;font-size:13px;padding:4px 8px;';
+      PROPERTY_TYPES.forEach(o=>{
+        const opt = document.createElement('option');
+        opt.value = o.value; opt.textContent = o.label;
+        if((c.propertyType || '') === o.value) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      propWrap.style.display = 'none';
+      propWrap.after(sel);
+      sel.focus();
+      if(typeof sel.showPicker === 'function'){ try{ sel.showPicker(); }catch(e){} }
+      else { try{ sel.dispatchEvent(new MouseEvent('mousedown', {bubbles:true})); }catch(e){} }
+      let committed = false;
+      const commit = ()=>{
+        if(committed) return;
+        committed = true;
+        c.propertyType = sel.value;
+        saveCustomerField();
+        sel.remove();
+        propWrap.style.display = 'inline-flex';
+        propWrap.dataset.editing = 'false';
+        viewCustomerInPlace(c);
+      };
+      sel.addEventListener('change', commit);
+      sel.addEventListener('blur', commit);
+    };
+  }
 
   const meta = document.getElementById('profileMeta');
   meta.innerHTML = '';
