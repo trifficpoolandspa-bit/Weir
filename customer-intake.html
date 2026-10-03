@@ -272,6 +272,10 @@ input::placeholder{color:#A9BCB9;}
 .profile-field-col{display:inline-flex;flex-direction:column;align-items:flex-start;align-self:flex-start;margin-top:-1px;cursor:pointer;white-space:nowrap;position:relative;}
 .profile-field-col .pf-label{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;}
 .profile-field-col .pf-value{font-size:15.5px;font-weight:700;color:var(--teal-deep);display:inline-flex;align-items:center;gap:4px;}
+/* The profile's delete bin: the height of a label and its value, its bottom
+   on the line the letters stand on (placed by placeProfileBin, Oct 2) */
+#btnDeleteProfileCustomer[data-x-drawn="bin"]{width:29px !important;height:29px !important;min-width:29px !important;max-width:29px !important;flex:0 0 29px !important;border-radius:8px !important;position:relative;}
+#btnDeleteProfileCustomer[data-x-drawn="bin"] > svg{width:17px !important;height:17px !important;}
 .big-num{display:inline-block;font-family:'Space Grotesk','Inter',sans-serif;font-size:22px;font-weight:700;color:var(--teal-deep);letter-spacing:-0.01em;white-space:nowrap;line-height:1;}
 .big-num .num-hash{color:#A9BCB9;font-weight:500;}
 .ps-tick:hover{border-color:var(--line) !important;background:var(--surface);}
@@ -665,7 +669,7 @@ input::placeholder{color:#A9BCB9;}
         <span id="profileDayPill" class="profile-field-col" style="margin-left:14px;"></span>
         <span id="profileExtraDays" style="display:inline-flex;align-items:flex-start;gap:22px;flex-wrap:wrap;align-self:flex-start;margin-left:8px;"></span>
         <!-- Property, then Technician, at the right of the name line (Oct 2) -->
-        <span style="margin-left:auto;margin-right:9%;display:inline-flex;align-items:flex-start;gap:28px;align-self:flex-start;">
+        <span style="margin-left:auto;display:inline-flex;align-items:flex-start;gap:28px;align-self:flex-start;">
         <span id="profilePropertyWrap" style="display:inline-flex;flex-direction:column;align-items:flex-start;margin-top:-1px;cursor:pointer;white-space:nowrap;">
           <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Property</span>
           <span id="profilePropertyName" style="font-size:15.5px;font-weight:700;color:var(--teal-deep);"></span>
@@ -674,9 +678,9 @@ input::placeholder{color:#A9BCB9;}
           <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Technician</span>
           <span id="profileTechName" style="font-size:15.5px;font-weight:700;color:var(--teal-deep);"></span>
         </span>
-        <!-- Delete this customer: the bin (Oct 2) -->
-        <button type="button" class="btn btn-ghost" id="btnDeleteProfileCustomer" title="Delete this customer" style="align-self:center;">Delete customer</button>
         </span>
+        <!-- Delete this customer: a larger bin at the far right (Oct 2) -->
+        <button type="button" class="btn btn-ghost" id="btnDeleteProfileCustomer" title="Delete this customer" style="align-self:flex-start;margin-left:20px;">Delete customer</button>
       </div>
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Tap any field to edit it.</p>
       <div id="profileMeta"></div>
@@ -22661,6 +22665,12 @@ function viewCustomer(c){
   // Technician — sits on the name line, tap to reassign
   const techEl = document.getElementById('profileTechName');
   techEl.textContent = technicianNameById(c.technicianId) || 'Unassigned';
+  // A marker on the line the letters stand on, for the bin to sit on
+  const baseMark = document.createElement('span');
+  baseMark.className = 'base-mark';
+  baseMark.style.cssText = 'display:inline-block;width:0;height:0;';
+  techEl.appendChild(baseMark);
+  requestAnimationFrame(()=> requestAnimationFrame(placeProfileBin));
   const techWrap = document.getElementById('profileTechWrap');
   techWrap.title = 'Tap to change technician';
   techWrap.onclick = ()=>{
@@ -22889,6 +22899,51 @@ function openEditForm(){
   showCustomerForm();
 }
 
+
+// Leaving a customer that's being added and not yet saved: asked first (Oct 2).
+// "Leave" throws away what was typed; "Cancel" stays on the form. Covers Back
+// to Customer List, Previous / Next, every sidebar tab and closing the page.
+// Once saved (Save customer, or going to another of its tabs, which saves),
+// it's a customer like any other and nothing is asked.
+function newCustomerUnsaved(){
+  if(!isEditingCustomerForm || editingId) return false;
+  const form = document.getElementById('formCard');
+  if(!form || form.style.display === 'none') return false;
+  return ['icName','icAddress','icCity','icZip','icEmail','icPhone','icGateCode','icAccessNotes']
+    .some(id => { const el = document.getElementById(id); return el && el.value.trim(); });
+}
+let leavingNewCustomerOk = false;
+document.addEventListener('click', async e=>{
+  if(leavingNewCustomerOk || !newCustomerUnsaved()) return;
+  const t = e.target && e.target.closest && e.target.closest('nav .tab, nav .nav-sub, #btnBackToList, #btnPrevCustomer, #btnNextCustomer');
+  if(!t) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  const ok = await confirmDialog('Leave this page? The new customer you\u2019re adding hasn\u2019t been saved and will be deleted.', 'Leave');
+  if(!ok) return;
+  resetForm();
+  isEditingCustomerForm = false;
+  leavingNewCustomerOk = true;
+  try{ t.click(); } finally { leavingNewCustomerOk = false; }
+}, true);
+window.addEventListener('beforeunload', e=>{
+  if(!newCustomerUnsaved()) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
+// The profile's bin sits with its bottom on the line the technician's name
+// stands on (where letters without a tail end), measured, not guessed (Oct 2)
+function placeProfileBin(){
+  const bin = document.getElementById('btnDeleteProfileCustomer');
+  const mark = document.querySelector('#profileTechName .base-mark');
+  if(!bin || !mark || !bin.offsetParent) return;
+  bin.style.top = '0px';
+  const base = mark.getBoundingClientRect().bottom;
+  const bottom = bin.getBoundingClientRect().bottom;
+  bin.style.top = Math.round(base - bottom) + 'px';
+}
+window.addEventListener('resize', ()=>{ try{ placeProfileBin(); }catch(e){} });
 
 // The bin on a customer's profile: asks, deletes, back to the list (Oct 2)
 document.getElementById('btnDeleteProfileCustomer').addEventListener('click', async ()=>{
