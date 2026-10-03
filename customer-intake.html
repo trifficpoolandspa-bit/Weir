@@ -6473,7 +6473,7 @@ function renderFilterGroups(){
     card.appendChild(controls);
 
     // Member list
-    if(cnt){
+    if((g.customerIds || []).length){
       const members = document.createElement('div');
       members.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;';
       (g.customerIds || []).forEach(cid=>{
