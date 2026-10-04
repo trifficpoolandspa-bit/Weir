@@ -6314,9 +6314,14 @@ document.addEventListener('visibilitychange', ()=>{
 // Replacements, at the top of Filter cleans (Oct 3): every customer whose
 // filter clean came back needing parts, under the group it was in, with what
 // they need, when, and who said so
+// The parts still to replace on a filter clean: what the technician said it
+// needs, less what the office has ticked off as replaced (Oct 3)
+function partsStillNeeded(f){
+  const done = new Set((f && f.replacedItems) || []);
+  return ((f && f.doneReplacements) || []).filter(x => x && !done.has(x));
+}
 function filterReplacementsList(){
-  return (lsGet('scheduledFilterCleans') || []).filter(f => f && f.status === 'done'
-      && Array.isArray(f.doneReplacements) && f.doneReplacements.length)
+  return (lsGet('scheduledFilterCleans') || []).filter(f => f && f.status === 'done' && partsStillNeeded(f).length)
     .sort((a, b) => String(b.doneAt || '').localeCompare(String(a.doneAt || '')));
 }
 function updateFilterReplacementsButton(){
@@ -6335,8 +6340,8 @@ function openFilterReplacements(){
     + '<div data-list style="flex:1;overflow-y:auto;"></div>'
     + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-ghost" data-close style="flex:1;">Close</button></div></div>';
   overlay.querySelector('[data-sub]').textContent = done.length
-    ? done.length + (done.length === 1 ? ' customer needs' : ' customers need') + ' parts replaced'
-    : 'Nobody needs anything replaced yet.';
+    ? done.length + (done.length === 1 ? ' customer needs' : ' customers need') + ' parts replaced. Tick a part once it\u2019s replaced.'
+    : 'Nobody needs anything replaced.';
   const box = overlay.querySelector('[data-list]');
   // Under each group, in the order the groups are listed
   const order = filterGroups.map(g => g.id);
@@ -6357,9 +6362,33 @@ function openFilterReplacements(){
         const l1 = document.createElement('div');
         l1.style.cssText = 'font-size:14px;font-weight:600;';
         l1.textContent = c ? displayName(c.name) : 'A customer no longer on file';
+        // Each part with a tick: ticked means replaced, and it leaves the list
         const l2 = document.createElement('div');
-        l2.style.cssText = 'font-size:13.5px;margin-top:3px;';
-        l2.textContent = f.doneReplacements.join(', ');
+        l2.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:5px;';
+        partsStillNeeded(f).forEach(part=>{
+          const lab = document.createElement('label');
+          lab.style.cssText = 'display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;margin:0;';
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.style.cssText = 'margin:0;';
+          cb.title = 'Replaced';
+          cb.addEventListener('change', ()=>{
+            if(!cb.checked) return;
+            const list = lsGet('scheduledFilterCleans') || [];
+            const rec = list.find(x => x && x.id === f.id);
+            if(!rec) return;
+            rec.replacedItems = Array.from(new Set((rec.replacedItems || []).concat([part])));
+            lsSet('scheduledFilterCleans', list);
+            showToast(part + ' replaced');
+            if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
+            openFilterReplacements();
+            updateFilterReplacementsButton();
+            try{ if(qoCustomerId) renderCustomerWorkOrders(qoCustomerId); }catch(e){}
+          });
+          lab.appendChild(cb);
+          lab.appendChild(document.createTextNode(part));
+          l2.appendChild(lab);
+        });
         const l3 = document.createElement('div');
         l3.style.cssText = 'font-size:12px;color:var(--muted);margin-top:2px;';
         l3.textContent = [f.doneAt ? new Date(f.doneAt).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : '',
@@ -13414,7 +13443,17 @@ function qoEntriesFor(customerId){
     });
   });
   (lsGet('scheduledFilterCleans') || []).filter(f => f && String(f.customerId) === cid).forEach(f=>{
-    out.push({key: 'fc:' + f.id, kind: 'clean', f: f, tag: 'Filter clean', title: f.groupName || '',
+    // What the row says: whether it needs parts replaced (Oct 3)
+    const parts = Array.isArray(f.doneReplacements) ? f.doneReplacements.filter(Boolean) : [];
+    const said = f.status !== 'done' ? 'Not done yet'
+      : parts.length ? 'Needs replacing: ' + parts.join(', ') : 'No replacements needed';
+    // Parts the office has ticked as replaced show crossed through
+    const replaced = new Set(f.replacedItems || []);
+    const html = parts.length && f.status === 'done'
+      ? 'Needs replacing: ' + parts.map(x => replaced.has(x)
+          ? '<s title="Replaced">' + escapeSyncText(x) + '</s>' : escapeSyncText(x)).join(', ')
+      : '';
+    out.push({key: 'fc:' + f.id, kind: 'clean', f: f, tag: 'Filter clean', title: said, titleHtml: html,
       done: f.status === 'done', date: f.status === 'done' && f.doneAt ? f.doneAt : (f.date || '') + 'T12:00:00'});
   });
   (tasks || []).filter(t => t && (t.customerIds || []).map(String).indexOf(cid) !== -1).forEach(t=>{
@@ -13875,7 +13914,7 @@ function renderCustomerWorkOrders(customerId){
     const what = document.createElement('span');
     what.style.cssText = 'flex:1 1 auto;min-width:0;font-weight:500;color:var(--muted);font-size:12.5px;'
       + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:10px;';
-    what.textContent = item.title || '';
+    if(item.titleHtml) what.innerHTML = item.titleHtml; else what.textContent = item.title || '';
     what.title = item.title || '';
     when.appendChild(what);
     const right = document.createElement('div');
@@ -22213,7 +22252,7 @@ function collectAlerts(){
     if(notes && now - t <= ALERT_NOTE_DAYS * 86400000){
       out.push(Object.assign({id: 'fcnote:' + f.id, kind: 'note', notes: notes}, base));
     }
-    const items = Array.isArray(f.doneReplacements) ? f.doneReplacements.filter(Boolean) : [];
+    const items = partsStillNeeded(f);
     if(items.length){
       out.push(Object.assign({id: 'repair:' + f.id, kind: 'repair', notes: 'Needs replacing: ' + items.join(', ')}, base));
     }

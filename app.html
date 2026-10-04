@@ -1093,6 +1093,14 @@ select#customerSelect{font-weight:600;}
             </svg>
           </button>
           <input type="date" id="reportDateInput" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;">
+          <!-- Which kind of report to list, All records to start (Oct 3) -->
+          <select id="reportKindFilter" style="flex:0 0 auto;width:auto;padding-right:16px;">
+            <option value="">All records</option>
+            <option value="report">Reports</option>
+            <option value="wo">Work orders</option>
+            <option value="fc">Filter cleans</option>
+            <option value="task">Tasks</option>
+          </select>
         </div>
         <p id="reportDateHint" style="font-size:11px;color:var(--muted);margin:6px 0 0;display:none;"></p>
       </div>
@@ -2837,6 +2845,8 @@ function switchView(view, opts){
     ['reportActions', 'btnDownloadPhoto', 'btnSharePhoto', 'reportDateHint'].forEach(id=>{
       const el = document.getElementById(id); if(el) el.style.display = 'none';
     });
+    // ...and no rows: they belonged to the customer just cleared (Oct 3)
+    try{ reportRowsCustomer = null; reportRowsList = []; reportOpenKey = null; putReportBackHome(); drawReportRows(); }catch(e){}
     refreshReportSelectors();
   }
   if(view === 'report' && !isAdminUser()) document.getElementById('reportModeReports').style.display = 'block';
@@ -8740,6 +8750,15 @@ function renderTechRoute(){
   }
 
   container.innerHTML = '';
+  // Dragging a stop or a job: shown straight away, then the question — just
+  // today, every week, or put it back (the same bar as on Today)
+  const onReorderTech = (keys)=>{
+    techOrderPending = {techId: selectedTechId, day: techRouteDay, iso: techRouteDateISO(),
+      ids: keys.slice(), before: (techOrderPending && techOrderPending.techId === selectedTechId
+        && techOrderPending.iso === techRouteDateISO()) ? techOrderPending.before : techOrderShown.slice()};
+    renderTechRoute();
+    showTechOrderBanner();
+  };
   list.forEach(cst=>{
     const row = document.createElement('div');
     row.className = 'cust-row';
@@ -8750,15 +8769,7 @@ function renderTechRoute(){
     grip.textContent = '\u2261';
     grip.title = 'Drag to reorder';
     grip.style.cssText = 'flex-shrink:0;font-size:19px;color:var(--muted);padding:0 8px 0 2px;';
-    attachTouchReorder(grip, row, container, '[data-reorder-key]', (keys)=>{
-      // Shown straight away, then the question: just today, every week, or
-      // put it back (the same bar as on Today)
-      techOrderPending = {techId: selectedTechId, day: techRouteDay, iso: techRouteDateISO(),
-        ids: keys.slice(), before: (techOrderPending && techOrderPending.techId === selectedTechId
-          && techOrderPending.iso === techRouteDateISO()) ? techOrderPending.before : techOrderShown.slice()};
-      renderTechRoute();
-      showTechOrderBanner();
-    });
+    attachTouchReorder(grip, row, container, '[data-reorder-key]', onReorderTech);
     row.appendChild(grip);
 
     const left = document.createElement('div');
@@ -8842,11 +8853,25 @@ function renderTechRoute(){
 
     container.appendChild(row);
     // Their jobs that day, just under them
-    jobs.filter(j => String(j.customerId) === String(cst.id)).forEach(j => container.appendChild(techRouteJobRow(j, iso)));
+    jobs.filter(j => String(j.customerId) === String(cst.id)).forEach(j => container.appendChild(techRouteJobRow(j, iso, onReorderTech)));
   });
   // Jobs at customers who aren't on the route that day, and tasks with no customer
   const onRoute = new Set(list.map(x => String(x.id)));
-  jobs.filter(j => !onRoute.has(String(j.customerId))).forEach(j => container.appendChild(techRouteJobRow(j, iso)));
+  jobs.filter(j => !onRoute.has(String(j.customerId))).forEach(j => container.appendChild(techRouteJobRow(j, iso, onReorderTech)));
+  // A job that was dragged sits where it was left, as on Today (Oct 3)
+  const rawSaved = pendingHere ? techOrderPending.ids : (Array.isArray(onceHere) && onceHere.length ? onceHere
+    : (Array.isArray(dayOrder) ? dayOrder : (dayOrder && typeof dayOrder === 'object' ? dayOrder[selectedTechId] : null)));
+  if(Array.isArray(rawSaved) && rawSaved.some(k => String(k).indexOf('job:') === 0)){
+    const rowFor = key => container.querySelector('[data-reorder-key="' + String(key).replace(/"/g, '\\"') + '"]');
+    rawSaved.forEach((key, i)=>{
+      if(String(key).indexOf('job:') !== 0) return;
+      const row = rowFor(key);
+      if(!row) return;
+      let before = null;
+      for(let j = i - 1; j >= 0 && !before; j--) before = rowFor(rawSaved[j]);
+      if(before) before.after(row); else container.insertBefore(row, container.firstChild);
+    });
+  }
 }
 
 // A technician's work orders, filter cleans and tasks on a date, done ones too
@@ -8855,36 +8880,43 @@ function techRouteJobsFor(techId, iso){
     || (Array.isArray(x.technicianIds) && x.technicianIds.map(String).indexOf(String(techId)) !== -1);
   const out = [];
   (lsGet('scheduledWorkOrders') || []).filter(j => j && j.date === iso && mine(j)).forEach(j=>{
-    out.push({kind: 'work order', report: 'wo:' + j.id, title: j.title || 'Work order', customerId: j.customerId,
-      done: j.status === 'done', doneAt: j.doneAt});
+    out.push({kind: 'work order', id: j.id, key: 'work order:' + j.id, report: 'wo:' + j.id, title: j.title || 'Work order', customerId: j.customerId,
+      done: j.status === 'done', doneAt: j.doneAt, date: j.date, technicianId: j.technicianId});
   });
   (lsGet('scheduledFilterCleans') || []).filter(f => f && f.date === iso && mine(f)).forEach(f=>{
-    out.push({kind: 'filter clean', report: 'fc:' + f.id, title: 'Filter clean', customerId: f.customerId,
-      done: f.status === 'done', doneAt: f.doneAt});
+    out.push({kind: 'filter clean', id: f.id, key: 'filter clean:' + f.id, report: 'fc:' + f.id, title: 'Filter clean', customerId: f.customerId,
+      done: f.status === 'done', doneAt: f.doneAt, date: f.date, technicianId: f.technicianId});
   });
   (lsGet('tasks') || []).filter(t => t && t.date === iso && mine(t)).forEach(t=>{
     const ids = (t.customerIds || []).length ? t.customerIds : [''];
-    ids.forEach(cid => out.push({kind: 'task', report: '', title: t.title || 'Task', customerId: cid,
-      done: !!t.done, doneAt: t.doneAt}));
+    ids.forEach(cid => out.push({kind: 'task', id: t.id, key: 'task:' + t.id + ':' + cid, report: '', title: t.title || 'Task', customerId: cid,
+      done: !!t.done, doneAt: t.doneAt, date: t.date, technicianId: t.technicianId}));
   });
   return out;
 }
 // A job's row: gold, "Customer – title" as on Today, a DONE tag once finished.
 // A finished work order or filter clean opens its report, as a finished stop does.
-function techRouteJobRow(job, iso){
+function techRouteJobRow(job, iso, onReorder){
   const customer = job.customerId ? customers.find(c => String(c.id) === String(job.customerId)) : null;
   const row = document.createElement('div');
   row.className = 'cust-row';
   row.style.gap = '8px';
-  if(job.done){ row.style.background = 'var(--surface-alt)'; row.style.opacity = '0.85'; }
-  const spacer = document.createElement('div');
-  spacer.style.cssText = 'flex-shrink:0;width:27px;';
-  row.appendChild(spacer);
+  row.style.background = jobKindColours(job.kind)[0];
+  if(job.done) row.style.opacity = '0.85';
+  // Its own place in the route, dragged like a stop (Oct 3)
+  row.dataset.reorderKey = 'job:' + job.key;
+  const grip = document.createElement('div');
+  grip.textContent = '\u2261';
+  grip.title = 'Drag to reorder';
+  grip.style.cssText = 'flex-shrink:0;font-size:19px;color:var(--muted);padding:0 8px 0 2px;';
+  const list = document.getElementById('techRouteList');
+  if(list && onReorder) attachTouchReorder(grip, row, list, '[data-reorder-key]', onReorder);
+  row.appendChild(grip);
   const left = document.createElement('div');
   left.style.cssText = 'min-width:0;flex:1 1 auto;';
   const name = document.createElement('div');
   name.className = 'cust-name';
-  name.style.cssText = "font-family:'Space Grotesk',sans-serif;font-weight:700;color:var(--gold);"
+  name.style.cssText = "font-family:'Space Grotesk',sans-serif;font-weight:700;color:" + jobKindColours(job.kind)[1] + ';'
     + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
   name.textContent = (job.kind === 'task' ? '\ud83d\udccb ' : '\ud83d\udee0 ')
     + (customer ? customer.name + ' \u2013 ' : '') + job.title;
@@ -8903,6 +8935,20 @@ function techRouteJobRow(job, iso){
     : (jobKindLabel(job.kind) + (customer ? ' \u00b7 ' + (customer.address || 'No address on file') : ''));
   left.appendChild(meta);
   row.appendChild(left);
+  // Reschedule, as a stop has: another date, another technician, or both
+  if(!job.done){
+    const moveBtn = document.createElement('button');
+    moveBtn.className = 'btn btn-ghost';
+    moveBtn.style.cssText = 'flex:0 0 auto;width:auto;padding:7px 11px;font-size:12px;';
+    moveBtn.textContent = 'Reschedule';
+    moveBtn.addEventListener('click', e=>{ e.stopPropagation(); openJobRescheduleModal(job); });
+    const moveCell = document.createElement('div');
+    moveCell.style.cssText = 'flex:0 0 auto;align-self:stretch;display:flex;align-items:center;'
+      + 'margin:-15px -4px -15px 0;padding:0 4px 0 10px;cursor:pointer;';
+    moveCell.addEventListener('click', e=>{ e.stopPropagation(); if(e.target === moveBtn) return; openJobRescheduleModal(job); });
+    moveCell.appendChild(moveBtn);
+    row.appendChild(moveCell);
+  }
   if(job.done && job.report && customer){
     row.style.cursor = 'pointer';
     row.title = 'Open this report';
@@ -8922,6 +8968,60 @@ function techRouteJobRow(job, iso){
     });
   }
   return row;
+}
+
+// Reschedule a work order visit, filter clean or task (Oct 3): the same window
+// as a stop's, a new date and/or another technician. The change goes to the
+// office's record, so the website and the technician's phone follow it.
+function openJobRescheduleModal(job){
+  const label = jobKindLabel(job.kind).toLowerCase();
+  const customer = job.customerId ? customers.find(c => String(c.id) === String(job.customerId)) : null;
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:420px;">'
+    + '<h3 style="font-size:15px;margin:0 0 4px;"></h3>'
+    + '<p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;"></p>'
+    + '<div class="field"><label>New date</label><input type="date" data-date></div>'
+    + '<div class="field"><label>Technician</label><select data-tech></select></div>'
+    + '<div class="btn-row" style="flex-direction:column;gap:8px;">'
+    + '<button class="btn btn-primary" data-save style="width:100%;">Reschedule</button>'
+    + '<button class="btn btn-ghost" data-cancel style="width:100%;">Cancel</button></div></div>';
+  overlay.querySelector('h3').textContent = 'Reschedule ' + (customer ? customer.name + ' \u2013 ' : '') + job.title;
+  overlay.querySelector('p').textContent = 'Currently on ' + (job.date ? fmtDate(job.date + 'T12:00:00') : 'no date')
+    + ' with ' + techNameFor(job.technicianId) + '. Pick a new date, another technician, or both.';
+  const dateEl = overlay.querySelector('[data-date]');
+  const techEl = overlay.querySelector('[data-tech]');
+  const techs = (adminTechnicians && adminTechnicians.length ? adminTechnicians : techniciansInOrder()).filter(t => t && t.id);
+  const ownId = String(job.technicianId || '');
+  const addOpt = (id, text)=>{ const o = document.createElement('option'); o.value = id; o.textContent = text; techEl.appendChild(o); };
+  addOpt(ownId, ownId ? techNameFor(ownId) + ' (assigned)' : 'Unassigned');
+  techs.forEach(t => { if(String(t.id) !== ownId) addOpt(String(t.id), t.name || 'Technician'); });
+  dateEl.value = '';
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+  overlay.querySelector('[data-cancel]').addEventListener('click', close);
+  overlay.querySelector('[data-save]').addEventListener('click', ()=>{
+    const toISO = dateEl.value;
+    const tech = techEl.value !== ownId ? techEl.value : null;
+    if(!toISO && !tech){ showToast('Pick a date or another technician first'); return; }
+    const listKey = job.kind === 'task' ? 'tasks' : job.kind === 'filter clean' ? 'scheduledFilterCleans' : 'scheduledWorkOrders';
+    const syncKind = job.kind === 'task' ? 'task' : job.kind === 'filter clean' ? 'filter_clean' : 'work_order';
+    const list = lsGet(listKey) || [];
+    const rec = list.find(x => x && String(x.id) === String(job.id));
+    if(!rec){ close(); showToast('This ' + label + ' is no longer here'); return; }
+    if(toISO) rec.date = toISO;
+    if(tech){
+      rec.technicianId = tech;
+      if(Array.isArray(rec.technicianIds)) rec.technicianIds = [tech];
+    }
+    lsSet(listKey, list);
+    queueOfficeWork(syncKind, rec.id, false);
+    try{ fieldNoteLocalChange(); }catch(e){}
+    close();
+    renderTechRoute();
+    const when = toISO ? new Date(toISO + 'T12:00:00').toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'}) : '';
+    showToast(jobKindLabel(job.kind) + ' moved' + (when ? ' to ' + when : '') + (tech ? ' with ' + techNameFor(tech) : ''));
+  });
+  document.body.appendChild(overlay);
 }
 
 // A technician's name from their id, for the Move window
@@ -10227,6 +10327,13 @@ function openReplacementsPicker(current, onDone){
   document.body.appendChild(overlay);
 }
 
+// Each kind's colour, as the website's Quotes & Orders tags (Oct 3):
+// work order slate, filter clean gold, task sage. [pale background, text]
+function jobKindColours(kind){
+  return kind === 'task' ? ['#E8F1E4', '#4D6B3C']
+    : kind === 'filter clean' ? ['#FBF1DD', '#8A5E0B']
+    : ['#E9EEF0', '#3E5560'];
+}
 function jobKindLabel(kind){
   return kind === 'task' ? 'Task' : (kind === 'filter clean' ? 'Filter clean' : 'Work order');
 }
@@ -10306,8 +10413,10 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
     row.dataset.reorderKey = 'job:' + job.key;
     // No gap between the parts, the same as a customer row, so the names start
     // at the same place whether or not there's a grip
+    // The row in its kind's pale badge colour (Oct 3)
     row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:0;'
-      + 'padding:12px 4px 12px 12px;border-bottom:1px solid var(--line);cursor:pointer;';
+      + 'padding:12px 4px 12px 12px;border-bottom:1px solid var(--line);cursor:pointer;'
+      + 'background:' + jobKindColours(job.kind)[0] + ';';
     // The same grip as a customer, so names line up down the list
     if(canReorder){
       const handle = document.createElement('div');
@@ -10321,9 +10430,20 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
       row.appendChild(handle);
     }
     const text = document.createElement('div');
-    text.style.cssText = 'min-width:0;flex:1 1 auto;font-family:\'Space Grotesk\',sans-serif;font-weight:700;'
-      + 'font-size:14.5px;color:var(--gold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-    text.textContent = customer ? customer.name + ' \u2013 ' + job.title : job.title;
+    // Two lines like a stop's (Oct 3): the name line in the customer's size,
+    // the kind and address under it
+    text.style.cssText = 'min-width:0;flex:1 1 auto;';
+    const nameLine = document.createElement('div');
+    nameLine.className = 'cust-name';
+    nameLine.style.cssText = 'color:' + jobKindColours(job.kind)[1] + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    nameLine.textContent = (job.kind === 'task' ? '\ud83d\udccb ' : '\ud83d\udee0 ')
+      + (customer ? customer.name + ' \u2013 ' + job.title : job.title);
+    const metaLine = document.createElement('div');
+    metaLine.className = 'cust-meta';
+    metaLine.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    metaLine.textContent = jobKindLabel(job.kind) + (customer ? ' \u00b7 ' + (customer.address || 'No address on file') : '');
+    text.appendChild(nameLine);
+    text.appendChild(metaLine);
     row.appendChild(text);
     const right = document.createElement('div');
     right.style.cssText = 'display:flex;align-items:center;gap:10px;flex-shrink:0;';
@@ -10343,7 +10463,7 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
     chev.className = 'chev';
     // The same arrow as a service row, only gold, so On my way and the arrow
     // stand in the same column down the list
-    chev.style.color = 'var(--gold)';
+    chev.style.color = jobKindColours(job.kind)[1];
     chev.textContent = '\u203A';
     right.appendChild(chev);
     row.appendChild(right);
@@ -10378,7 +10498,7 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
       if(dogNames.length) line(dogNames.length === 1 ? '\ud83d\udc15 Dog' : '\ud83d\udc15 Dogs', dogNames.join(', '));
       line(job.kind === 'task' ? '\ud83d\udccb Task' : '\ud83d\udee0 ' + jobKindLabel(job.kind), job.title);
       if(job.details) line('Details', job.details);
-      if(job.photoRequired) line('\ud83d\udcf7 Photo', 'Required'); if(job.videoRequired) line('\ud83c\udfa5 Video', 'Required');
+      // Photo and video requirements are shown on the job screen itself (Oct 3)
 
       const btnRow = document.createElement('div');
       btnRow.className = 'btn-row';
@@ -10414,8 +10534,10 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
     row.dataset.reorderKey = 'job:' + job.key;
     // No gap between the parts, the same as a customer row, so the names start
     // at the same place whether or not there's a grip
+    // The row in its kind's pale badge colour (Oct 3)
     row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:0;'
-      + 'padding:12px 4px 12px 12px;border-bottom:1px solid var(--line);cursor:pointer;';
+      + 'padding:12px 4px 12px 12px;border-bottom:1px solid var(--line);cursor:pointer;'
+      + 'background:' + jobKindColours(job.kind)[0] + ';';
     // The same grip as a customer, so names line up down the list
     if(canReorder){
       const handle = document.createElement('div');
@@ -10429,9 +10551,20 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
       row.appendChild(handle);
     }
     const text = document.createElement('div');
-    text.style.cssText = 'min-width:0;flex:1 1 auto;font-family:\'Space Grotesk\',sans-serif;font-weight:700;'
-      + 'font-size:14.5px;color:var(--gold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-    text.textContent = customer ? customer.name + ' \u2013 ' + job.title : job.title;
+    // Two lines like a stop's (Oct 3): the name line in the customer's size,
+    // the kind and address under it
+    text.style.cssText = 'min-width:0;flex:1 1 auto;';
+    const nameLine = document.createElement('div');
+    nameLine.className = 'cust-name';
+    nameLine.style.cssText = 'color:' + jobKindColours(job.kind)[1] + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    nameLine.textContent = (job.kind === 'task' ? '\ud83d\udccb ' : '\ud83d\udee0 ')
+      + (customer ? customer.name + ' \u2013 ' + job.title : job.title);
+    const metaLine = document.createElement('div');
+    metaLine.className = 'cust-meta';
+    metaLine.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    metaLine.textContent = jobKindLabel(job.kind) + (customer ? ' \u00b7 ' + (customer.address || 'No address on file') : '');
+    text.appendChild(nameLine);
+    text.appendChild(metaLine);
     row.appendChild(text);
     const right = document.createElement('div');
     right.style.cssText = 'display:flex;align-items:center;gap:10px;flex-shrink:0;';
@@ -10451,7 +10584,7 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
     chev.className = 'chev';
     // The same arrow as a service row, only gold, so On my way and the arrow
     // stand in the same column down the list
-    chev.style.color = 'var(--gold)';
+    chev.style.color = jobKindColours(job.kind)[1];
     chev.textContent = '\u203A';
     right.appendChild(chev);
     row.appendChild(right);
@@ -10486,7 +10619,7 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
       if(dogNames.length) line(dogNames.length === 1 ? '\ud83d\udc15 Dog' : '\ud83d\udc15 Dogs', dogNames.join(', '));
       line(job.kind === 'task' ? '\ud83d\udccb Task' : '\ud83d\udee0 ' + jobKindLabel(job.kind), job.title);
       if(job.details) line('Details', job.details);
-      if(job.photoRequired) line('\ud83d\udcf7 Photo', 'Required'); if(job.videoRequired) line('\ud83c\udfa5 Video', 'Required');
+      // Photo and video requirements are shown on the job screen itself (Oct 3)
 
       const btnRow = document.createElement('div');
       btnRow.className = 'btn-row';
@@ -12483,6 +12616,11 @@ async function getCustomerServiceDates(customerId){
     out.push({dateStr: 'fc:' + f.id, ts: f.doneAt || (f.date + 'T12:00:00'), isRedo: false,
               day: f.doneAt ? localDateOfStamp(f.doneAt) : f.date, fc: f});
   });
+  // Finished tasks for this customer (Oct 3)
+  finishedTasksFor(customerId).forEach(t=>{
+    out.push({dateStr: 'tk:' + t.id, ts: t.doneAt || ((t.date || '') + 'T12:00:00'), isRedo: false,
+              day: t.doneAt ? localDateOfStamp(t.doneAt) : t.date, task: t});
+  });
   return out.sort((a,b) => String(b.ts).localeCompare(String(a.ts)));
 }
 
@@ -12493,6 +12631,38 @@ function workOrderVisitsFor(customerId){
   return (lsGet('scheduledWorkOrders') || [])
     .filter(j => j && j.status === 'done' && String(j.customerId) === String(customerId));
 }
+// Tasks finished for a customer (Oct 3)
+function finishedTasksFor(customerId){
+  return (lsGet('tasks') || []).filter(t => t && t.done
+    && ((t.customerIds || []).map(String).indexOf(String(customerId)) !== -1 || String(t.customerId) === String(customerId)));
+}
+// A finished task's report: what it was, the details, and the technician's notes
+async function renderTaskReport(customerId, taskId){
+  const out = document.getElementById('reportOutput');
+  document.getElementById('reportActions').style.display = 'none';
+  document.getElementById('btnDownloadPhoto').style.display = 'none';
+  document.getElementById('btnSharePhoto').style.display = 'none';
+  const customer = customers.find(c => c.id === customerId);
+  const t = finishedTasksFor(customerId).find(x => String(x.id) === String(taskId));
+  if(!customer || !t){ out.innerHTML = '<div class="empty">This task is no longer here.</div>'; return; }
+  const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const sec = l => '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);'
+    + 'text-transform:uppercase;letter-spacing:0.07em;margin:16px 0 6px;">' + l + '</div>';
+  const by = t.doneBy === 'office' ? 'the office' : techNameFor(t.doneBy || t.technicianId);
+  out.innerHTML = '<div class="report-doc">'
+    + '<div class="report-head"><div>'
+    + '<h2>Task</h2>'
+    + '<div class="rdate">' + esc(customer.name) + (customer.address ? ' \u2014 ' + esc(customer.address) : '') + '</div>'
+    + (t.date ? '<div class="rdate">Scheduled for ' + esc(fmtDate(t.date + 'T12:00:00'))
+        + (t.doneAt ? ' \u00b7 Completed ' + esc(fmtDateTime(t.doneAt)) : '') + '</div>' : '')
+    + (t.doneBy ? '<div class="rdate">Completed by ' + esc(by) + '</div>' : '')
+    + '</div><div class="report-badge">Completed</div></div>'
+    + sec('Task') + '<div class="report-notes" style="white-space:pre-wrap;">' + esc(t.title || 'Task') + '</div>'
+    + (t.details ? sec('Details') + '<div class="report-notes" style="white-space:pre-wrap;">' + esc(t.details) + '</div>' : '')
+    + (t.doneNotes ? sec('Technician\u2019s notes') + '<div class="report-notes" style="white-space:pre-wrap;">' + esc(t.doneNotes) + '</div>' : '')
+    + '</div>';
+}
+
 // Filter cleans submitted on the job screen (Oct 3), shown the same way
 function filterCleanVisitsFor(customerId){
   return (lsGet('scheduledFilterCleans') || [])
@@ -12648,6 +12818,7 @@ async function renderDateReport(customerId, dateStr){
   // A work order (Oct 3)
   if(dateStr.indexOf('wo:') === 0){ await renderWorkOrderReport(customerId, dateStr.slice(3)); return; }
   if(dateStr.indexOf('fc:') === 0){ await renderWorkOrderReport(customerId, dateStr.slice(3), true); return; }
+  if(dateStr.indexOf('tk:') === 0){ await renderTaskReport(customerId, dateStr.slice(3)); return; }
   const wantRedo = dateStr.indexOf('|redo') !== -1;
   const plainDate = dateStr.replace('|redo', '');
   const matches = r => r.date.slice(0,10) === plainDate && !!r.isRedo === wantRedo;
@@ -12716,11 +12887,13 @@ async function refreshDateSelector(customerId){
     opt.textContent = d.wo
       ? fmtDate(d.ts) + '  \u2014 Work order ' + workOrderNumberText(d.wo.workOrderNumber)
       : d.fc ? fmtDate(d.ts) + '  \u2014 Filter clean'
+      : d.task ? fmtDate(d.ts) + '  \u2014 Task'
       : fmtDate(d.ts) + (d.isRedo ? '  \u2014 redone' : '');
     sel.appendChild(opt);
   });
   document.getElementById('reportDateHint').style.display = 'none';
   // Rows, newest at the top, none opened until pressed (Oct 3)
+  if(reportRowsCustomer !== customerId){ const k = document.getElementById('reportKindFilter'); if(k) k.value = ''; }
   reportRowsCustomer = customerId;
   reportRowsList = dates;
   reportRowsShown = REPORT_ROWS_PAGE;
@@ -12736,6 +12909,7 @@ async function refreshDateSelector(customerId){
 // as before); pressing it again closes it.
 const REPORT_ROWS_PAGE = 20;
 let reportRowsCustomer = null, reportRowsList = [], reportRowsShown = REPORT_ROWS_PAGE, reportOpenKey = null;
+let reportOpenSeq = 0, reportOpenedAt = 0;
 function reportAgo(ts){
   const t = new Date(ts).getTime();
   if(!t || isNaN(t)) return '';
@@ -12768,11 +12942,27 @@ function drawReportRows(){
   const actsEl = document.getElementById('reportActions');
   if(home && outEl && box.contains(outEl)){ home.after(outEl); if(actsEl) outEl.after(actsEl); }
   box.innerHTML = '';
+  // No customer in the box, no rows (Oct 3)
+  const custSel = document.getElementById('reportCustomerSelect');
+  if(!custSel || !custSel.value || String(custSel.value) !== String(reportRowsCustomer)){
+    reportRowsList = []; reportOpenKey = null;
+    return;
+  }
   if(!reportRowsList.length){
     box.innerHTML = '<div class="empty" style="margin-top:8px;">No reports yet.</div>';
     return;
   }
-  reportRowsList.slice(0, reportRowsShown).forEach(d=>{
+  // Only the kind chosen beside the date bar (Oct 3)
+  const kindSel = document.getElementById('reportKindFilter');
+  const kind = kindSel ? kindSel.value : '';
+  const kindOf = d => d.wo ? 'wo' : d.fc ? 'fc' : d.task ? 'task' : 'report';
+  const shownList = kind ? reportRowsList.filter(d => kindOf(d) === kind) : reportRowsList;
+  if(!shownList.length){
+    const name = {report: 'reports', wo: 'work orders', fc: 'filter cleans', task: 'tasks'}[kind] || 'reports';
+    box.innerHTML = '<div class="empty" style="margin-top:8px;">No ' + name + ' yet.</div>';
+    return;
+  }
+  shownList.slice(0, reportRowsShown).forEach(d=>{
     const isOpen = reportOpenKey === d.dateStr;
     const bar = document.createElement('div');
     bar.dataset.reportKey = d.dateStr;
@@ -12783,12 +12973,14 @@ function drawReportRows(){
     when.style.cssText = 'font-size:14px;font-weight:600;color:var(--ink);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
     when.textContent = fmtDate(d.ts);
     const tag = document.createElement('span');
+    const tc = d.wo ? jobKindColours('work order') : d.fc ? jobKindColours('filter clean') : d.task ? jobKindColours('task')
+      : ['var(--teal-pale)', 'var(--teal-deep)'];
     tag.style.cssText = "margin-left:8px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;"
-      + 'letter-spacing:0.07em;text-transform:uppercase;color:var(--teal-deep);padding:3px 6px;border-radius:6px;'
-      + 'background:' + (isOpen ? 'var(--card)' : 'var(--teal-pale)') + ';';
-    tag.textContent = d.wo ? 'Work order ' + workOrderNumberText(d.wo.workOrderNumber) : (d.fc ? 'Filter clean' : 'Service report');
+      + 'letter-spacing:0.07em;text-transform:uppercase;padding:3px 6px;border-radius:6px;'
+      + 'color:' + tc[1] + ';background:' + (isOpen && !d.wo && !d.fc && !d.task ? 'var(--card)' : tc[0]) + ';';
+    tag.textContent = d.wo ? 'Work order ' + workOrderNumberText(d.wo.workOrderNumber) : d.fc ? 'Filter clean' : d.task ? 'Task' : 'Service report';
     when.appendChild(tag);
-    const extra = d.wo ? (d.wo.title || '') : (d.isRedo ? 'Redone' : '');
+    const extra = d.wo ? (d.wo.title || '') : d.task ? (d.task.title || '') : (d.isRedo ? 'Redone' : '');
     if(extra){
       const what = document.createElement('span');
       what.style.cssText = 'font-weight:500;color:var(--muted);margin-left:6px;font-size:12.5px;';
@@ -12804,26 +12996,38 @@ function drawReportRows(){
     bar.appendChild(when);
     bar.appendChild(right);
     bar.addEventListener('click', async ()=>{
+      // A second tap straight after opening is the same tap counted twice:
+      // leave it open (Oct 3)
+      if(reportOpenKey === d.dateStr && Date.now() - reportOpenedAt < 300) return;
       if(reportOpenKey === d.dateStr){
         reportOpenKey = null;
+        reportOpenSeq++;
         const s0 = document.getElementById('reportReadingSelect');
         if(s0) s0.value = '';
         putReportBackHome();
         drawReportRows();
         return;
       }
+      const seq = ++reportOpenSeq;
+      reportOpenedAt = Date.now();
       const sel = document.getElementById('reportReadingSelect');
       if(sel) sel.value = d.dateStr;
       await renderDateReport(reportRowsCustomer, d.dateStr);
+      // Closed, or another opened, while this one was still loading: it
+      // mustn't turn up on its own, or over the other one
+      if(seq !== reportOpenSeq || reportOpenKey !== d.dateStr){
+        if(reportOpenKey && reportRowsCustomer) await renderDateReport(reportRowsCustomer, reportOpenKey);
+        else putReportBackHome();
+      }
     });
     box.appendChild(bar);
   });
-  if(reportRowsList.length > reportRowsShown){
+  if(shownList.length > reportRowsShown){
     const more = document.createElement('button');
     more.type = 'button';
     more.className = 'btn btn-ghost';
     more.style.cssText = 'width:100%;margin-top:10px;';
-    more.textContent = 'Show more (' + (reportRowsList.length - reportRowsShown) + ' more)';
+    more.textContent = 'Show more (' + (shownList.length - reportRowsShown) + ' more)';
     more.addEventListener('click', ()=>{ reportRowsShown += REPORT_ROWS_PAGE; drawReportRows(); });
     box.appendChild(more);
   }
@@ -13024,6 +13228,11 @@ document.getElementById('reportDateInput').addEventListener('change', (e)=>{
   }
 });
 
+document.getElementById('reportKindFilter').addEventListener('change', ()=>{
+  reportOpenKey = null; reportRowsShown = REPORT_ROWS_PAGE;
+  const s0 = document.getElementById('reportReadingSelect'); if(s0) s0.value = '';
+  putReportBackHome(); drawReportRows();
+});
 document.getElementById('reportReadingSelect').addEventListener('change', (e)=>{
   const custId = document.getElementById('reportCustomerSelect').value;
   // Back to "Pick a date": the open report closes (Oct 3)
