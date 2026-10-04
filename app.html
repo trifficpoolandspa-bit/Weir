@@ -8709,19 +8709,12 @@ function renderTechRoute(){
   const doneCount = list.filter(x => x.lastServicedDate === iso).length;
   const leftCount = list.length - doneCount;
 
-  // Jobs = work orders and filter cleans scheduled on this date, as opposed to
-  // routine service stops. Counted separately so they can't be overlooked.
-  const jobIds = new Set();
-  (lsGet('scheduledFilterCleans') || [])
-    .filter(s => s.status === 'scheduled' && s.date === iso)
-    .forEach(s => jobIds.add(s.customerId));
-  (lsGet('scheduledWorkOrders') || [])
-    .filter(j => j.status === 'scheduled' && j.date === iso)
-    .forEach(j => jobIds.add(j.customerId));
-
-  const jobList = list.filter(x => jobIds.has(x.id));
-  const jobsDone = jobList.filter(x => x.lastServicedDate === iso).length;
-  const jobsLeft = jobList.length - jobsDone;
+  // Jobs = this technician's work orders, filter cleans and tasks on this date
+  // (Oct 3), listed under their customers and counted on their own
+  const jobs = techRouteJobsFor(selectedTechId, iso);
+  const jobList = jobs;
+  const jobsDone = jobs.filter(j => j.done).length;
+  const jobsLeft = jobs.length - jobsDone;
 
   // Both counts always show, even at zero
   const leftEl = document.getElementById('techRouteLeft');
@@ -8733,10 +8726,10 @@ function renderTechRoute(){
   if(jobsEl){
     jobsEl.textContent = jobsLeft + '/' + jobList.length;
     jobsEl.title = jobsLeft + ' of ' + jobList.length
-      + ' work orders and filter cleans left';
+      + ' work orders, filter cleans and tasks left';
   }
 
-  if(list.length === 0){
+  if(list.length === 0 && jobs.length === 0){
     container.innerHTML = '<div class="empty">No customers on this day.</div>';
     return;
   }
@@ -8843,7 +8836,87 @@ function renderTechRoute(){
     row.appendChild(moveCell);
 
     container.appendChild(row);
+    // Their jobs that day, just under them
+    jobs.filter(j => String(j.customerId) === String(cst.id)).forEach(j => container.appendChild(techRouteJobRow(j, iso)));
   });
+  // Jobs at customers who aren't on the route that day, and tasks with no customer
+  const onRoute = new Set(list.map(x => String(x.id)));
+  jobs.filter(j => !onRoute.has(String(j.customerId))).forEach(j => container.appendChild(techRouteJobRow(j, iso)));
+}
+
+// A technician's work orders, filter cleans and tasks on a date, done ones too
+function techRouteJobsFor(techId, iso){
+  const mine = x => String(x.technicianId || '') === String(techId)
+    || (Array.isArray(x.technicianIds) && x.technicianIds.map(String).indexOf(String(techId)) !== -1);
+  const out = [];
+  (lsGet('scheduledWorkOrders') || []).filter(j => j && j.date === iso && mine(j)).forEach(j=>{
+    out.push({kind: 'work order', report: 'wo:' + j.id, title: j.title || 'Work order', customerId: j.customerId,
+      done: j.status === 'done', doneAt: j.doneAt});
+  });
+  (lsGet('scheduledFilterCleans') || []).filter(f => f && f.date === iso && mine(f)).forEach(f=>{
+    out.push({kind: 'filter clean', report: 'fc:' + f.id, title: 'Filter clean', customerId: f.customerId,
+      done: f.status === 'done', doneAt: f.doneAt});
+  });
+  (lsGet('tasks') || []).filter(t => t && t.date === iso && mine(t)).forEach(t=>{
+    const ids = (t.customerIds || []).length ? t.customerIds : [''];
+    ids.forEach(cid => out.push({kind: 'task', report: '', title: t.title || 'Task', customerId: cid,
+      done: !!t.done, doneAt: t.doneAt}));
+  });
+  return out;
+}
+// A job's row: gold, "Customer – title" as on Today, a DONE tag once finished.
+// A finished work order or filter clean opens its report, as a finished stop does.
+function techRouteJobRow(job, iso){
+  const customer = job.customerId ? customers.find(c => String(c.id) === String(job.customerId)) : null;
+  const row = document.createElement('div');
+  row.className = 'cust-row';
+  row.style.gap = '8px';
+  if(job.done){ row.style.background = 'var(--surface-alt)'; row.style.opacity = '0.85'; }
+  const spacer = document.createElement('div');
+  spacer.style.cssText = 'flex-shrink:0;width:27px;';
+  row.appendChild(spacer);
+  const left = document.createElement('div');
+  left.style.cssText = 'min-width:0;flex:1 1 auto;';
+  const name = document.createElement('div');
+  name.className = 'cust-name';
+  name.style.cssText = "font-family:'Space Grotesk',sans-serif;font-weight:700;color:var(--gold);"
+    + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  name.textContent = (job.kind === 'task' ? '\ud83d\udccb ' : '\ud83d\udee0 ')
+    + (customer ? customer.name + ' \u2013 ' : '') + job.title;
+  if(job.done){
+    const tag = document.createElement('span');
+    tag.style.cssText = 'background:var(--green);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:5px;vertical-align:middle;margin-left:6px;';
+    tag.textContent = job.report ? 'DONE \u203a' : 'DONE';
+    name.appendChild(tag);
+  }
+  left.appendChild(name);
+  const meta = document.createElement('div');
+  meta.className = 'cust-meta';
+  meta.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  meta.textContent = job.done && job.doneAt
+    ? 'Completed ' + new Date(job.doneAt).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'})
+    : (jobKindLabel(job.kind) + (customer ? ' \u00b7 ' + (customer.address || 'No address on file') : ''));
+  left.appendChild(meta);
+  row.appendChild(left);
+  if(job.done && job.report && customer){
+    row.style.cursor = 'pointer';
+    row.title = 'Open this report';
+    row.addEventListener('click', async ()=>{
+      if(viewJustChanged()) return;
+      reportOpenedFrom = {view: 'technicians', techId: selectedTechId, day: techRouteDay, weekOffset: techRouteWeekOffset};
+      const sel = document.getElementById('reportCustomerSelect');
+      if(sel){ populateCustomerSelect(sel, 'Add a customer first'); sel.value = customer.id; }
+      if(typeof syncReportCustomerSearchField === 'function') syncReportCustomerSearchField();
+      await refreshDateSelector(customer.id);
+      const dateSel = document.getElementById('reportReadingSelect');
+      if(dateSel && Array.from(dateSel.options).some(o => o.value === job.report)){
+        dateSel.value = job.report;
+        await renderDateReport(customer.id, job.report);
+      }
+      switchView('report', {skipRefresh: true});
+    });
+  }
+  return row;
 }
 
 // A technician's name from their id, for the Move window
