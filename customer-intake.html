@@ -709,7 +709,10 @@ input::placeholder{color:#A9BCB9;}
       <div class="field">
         <label>Jump to a date</label>
         <input type="date" id="qoDateFilter">
-        <p style="font-size:11px;color:var(--muted);margin:6px 0 0;">Pick a date to pull up what's on it.</p>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;min-height:28px;">
+          <p style="font-size:11px;color:var(--muted);margin:0;">Pick a date to pull up what's on it.</p>
+          <div id="qoSelectSlot"></div>
+        </div>
       </div>
       <div id="custWorkOrderList"></div>
       <div class="btn-row" style="margin-top:14px;">
@@ -718,11 +721,19 @@ input::placeholder{color:#A9BCB9;}
     </div>
 
     <div class="card" id="historyCard" style="display:none;">
-      <h2 id="historyTitle">Service reports</h2>
+      <!-- The count at the top right, as on Quotes & Orders (Oct 3) -->
+      <div class="section-head">
+        <h2 id="historyTitle">Service reports</h2>
+        <span class="section-count" id="historyCount"></span>
+      </div>
       <div class="field">
         <label>Jump to a date</label>
         <input type="date" id="historyDateFilter">
-        <p style="font-size:11px;color:var(--muted);margin:6px 0 0;">Pick a date to pull up that visit's report.</p>
+        <!-- Select on the same line as the hint, so the reports start higher -->
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;min-height:28px;">
+          <p style="font-size:11px;color:var(--muted);margin:0;">Pick a date to pull up that visit's report.</p>
+          <div id="historySelectSlot"></div>
+        </div>
       </div>
       <div class="seg-control" id="historySegControl"></div>
       <div class="hist-row head" id="historyHead"></div>
@@ -11163,7 +11174,7 @@ function selectionBar(key, visibleIds, noun, onDelete, redraw, pager, onLeft){
     return x;
   };
   if(!st.on){
-    const sel = b('Select');
+    const sel = b('Select multiple');
     sel.title = 'Choose several to delete at once';
     sel.addEventListener('click', ()=>{ st.on = true; redraw(); });
     bar.appendChild(sel);
@@ -13577,6 +13588,27 @@ function qoDay(item){
 }
 
 // The bin on a row: gone from here and from WorkCenter, after asking (Oct 3)
+// Removes one item with no question asked (Select's Delete asks once for all)
+function qoRemove(item, customerId){
+  if(item.done && item.kind === 'workorder' && item.j){ removeWorkOrderVisits([item.j.id]); return; }
+  if(item.done && item.kind === 'clean'){ removeFilterCleanVisits([item.f.id]); return; }
+  if(item.kind === 'quote' || (item.kind === 'workorder' && !item.j)){
+    workOrders = workOrders.filter(x => x.id !== item.w.id);
+    saveWorkOrders();
+    lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => j.workOrderId !== item.w.id));
+  } else if(item.kind === 'workorder'){
+    lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => j.id !== item.j.id));
+  } else if(item.kind === 'clean'){
+    lsSet('scheduledFilterCleans', (lsGet('scheduledFilterCleans') || []).filter(f => f.id !== item.f.id));
+  } else {
+    const t = tasks.find(x => x.id === item.t.id);
+    if(t){
+      const left = (t.customerIds || []).filter(id => String(id) !== String(customerId));
+      if(left.length) t.customerIds = left; else tasks = tasks.filter(x => x.id !== t.id);
+      saveTasks();
+    }
+  }
+}
 async function qoDelete(item, customerId){
   const what = item.kind === 'quote' ? 'quote' : item.kind === 'workorder' ? 'work order'
     : item.kind === 'clean' ? 'filter clean' : 'task';
@@ -13763,6 +13795,8 @@ function renderCustomerWorkOrders(customerId){
   if(!container) return;
   qoCustomerId = customerId;
   const all = qoEntriesFor(customerId);
+  const qoSlot = document.getElementById('qoSelectSlot');
+  if(qoSlot) qoSlot.innerHTML = '';
   if(countEl) countEl.textContent = all.length ? all.length + (all.length === 1 ? ' record' : ' records') : '';
   const box = document.getElementById('qoDateFilter');
   if(box && box.value !== qoDateFilter) box.value = qoDateFilter;
@@ -13774,8 +13808,22 @@ function renderCustomerWorkOrders(customerId){
   }
   if(qoOpenId && !list.some(x => x.key === qoOpenId)) qoOpenId = null;
   container.innerHTML = '';
+  // Select, on the hint's line, as on Service Reports (Oct 3)
+  const qoKey = 'qo:' + customerId;
+  const redrawQo = () => renderCustomerWorkOrders(customerId);
+  const byKey = {};
+  list.forEach(x => { byKey[x.key] = x; });
+  const qoSel = selectionBar(qoKey, list.map(x => x.key), 'item', keys=>{
+    keys.forEach(k => { if(byKey[k]) qoRemove(byKey[k], customerId); });
+    qoOpenId = null;
+    try{ renderWorkOrderHistory(); }catch(e){}
+    try{ if(typeof renderTaskList === 'function') renderTaskList(); }catch(e){}
+  }, redrawQo);
+  qoSel.style.margin = '0';
+  if(qoSlot) qoSlot.appendChild(qoSel);
   list.forEach(item=>{
     const isOpen = qoOpenId === item.key;
+    const qoTick = selectionTick(qoKey, item.key, redrawQo);
     const bar = document.createElement('div');
     bar.dataset.qoId = item.key;
     bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;'
@@ -13818,9 +13866,15 @@ function renderCustomerWorkOrders(customerId){
     del.style.cssText = 'width:auto;padding:4px 10px;font-size:11.5px;color:var(--rust);border-color:#EFC0B4;';
     del.addEventListener('click', e=>{ e.stopPropagation(); qoDelete(item, customerId); });
     right.appendChild(del);
-    bar.appendChild(when);
+    if(qoTick){
+      const lead = document.createElement('div');
+      lead.style.cssText = 'display:flex;align-items:center;min-width:0;';
+      lead.appendChild(qoTick); lead.appendChild(when);
+      bar.appendChild(lead);
+    } else bar.appendChild(when);
     bar.appendChild(right);
     bar.addEventListener('click', ()=>{
+      if(listSel(qoKey).on){ toggleSelected(qoKey, item.key, redrawQo); return; }
       qoOpenId = isOpen ? null : item.key;
       renderCustomerWorkOrders(customerId);
     });
@@ -20247,6 +20301,10 @@ function showHistory(customerId, name){
   if(seg) seg.style.display = 'none';
 
   let list = historyEntriesFor(customer);
+  const countEl = document.getElementById('historyCount');
+  if(countEl) countEl.textContent = list.length ? list.length + (list.length === 1 ? ' report' : ' reports') : '';
+  const selSlot = document.getElementById('historySelectSlot');
+  if(selSlot) selSlot.innerHTML = '';
   const woDay = j => j.doneAt ? localDayOfStamp(j.doneAt) : (j.date || '');
   if(historyDateFilter){
     list = list.filter(v => v.wo ? (woDay(v.wo) === historyDateFilter || v.wo.date === historyDateFilter)
@@ -20278,14 +20336,16 @@ function showHistory(customerId, name){
   const redrawRep = () => showHistory(selectedHistoryCustomerId, name);
   const byId = {};
   list.forEach(v => { byId[v.id] = v; });
-  histList.appendChild(selectionBar(repKey, list.map(v => v.id), 'service report', ids=>{
+  const selRow = selectionBar(repKey, list.map(v => v.id), 'service report', ids=>{
     ids.forEach(id => { const v = byId[id]; if(v) v.parts.forEach(pt => removeHistoryReport(customerId, pt.type, pt.r.id, true)); });
     // A work order selected goes everywhere, as its own Delete does
     const woIds = ids.filter(id => byId[id] && byId[id].wo && !byId[id].wo._clean).map(id => String(byId[id].wo.id));
     if(woIds.length) removeWorkOrderVisits(woIds);
     const fcIds = ids.filter(id => byId[id] && byId[id].wo && byId[id].wo._clean).map(id => String(byId[id].wo.id));
     if(fcIds.length) removeFilterCleanVisits(fcIds);
-  }, redrawRep));
+  }, redrawRep);
+  selRow.style.margin = '0';
+  if(selSlot) selSlot.appendChild(selRow); else histList.appendChild(selRow);
 
   list.forEach(v=>{
     if(v.wo){ renderWorkOrderReportRow(histList, customerId, customer, name, v, repKey, redrawRep); return; }

@@ -12761,6 +12761,12 @@ function putReportBackHome(){
 function drawReportRows(){
   const box = document.getElementById('reportRows');
   if(!box) return;
+  // The open report sits among the rows: lift it out (content and all) before
+  // the rows are redrawn, or redrawing wipes it out with them (Oct 3)
+  const home = document.getElementById('reportOutputHome');
+  const outEl = document.getElementById('reportOutput');
+  const actsEl = document.getElementById('reportActions');
+  if(home && outEl && box.contains(outEl)){ home.after(outEl); if(actsEl) outEl.after(actsEl); }
   box.innerHTML = '';
   if(!reportRowsList.length){
     box.innerHTML = '<div class="empty" style="margin-top:8px;">No reports yet.</div>';
@@ -20200,6 +20206,23 @@ function reportLeftOpen(){
     && customers.some(c => c && c.id === visitLeftOpenFor));
 }
 
+
+// ---- Picking a suggestion puts the keyboard away (Oct 3) ----
+// Anywhere a box offers suggestions as you type: once one is picked, the
+// keyboard closes. Covers the drop-down lists (customer, address, WorkCenter
+// customers) and the phone's own suggestion list on a box.
+(function keyboardAwayOnPick(){
+  const isList = el => el && el.closest && el.closest('[id*="uggest"], .awc-suggest');
+  // After the list's own handler has run (some put the cursor back in the box)
+  const away = ()=> setTimeout(()=>{
+    const a = document.activeElement;
+    if(a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) a.blur();
+  }, 60);
+  // Some lists pick on press, some on release
+  document.addEventListener('mousedown', e=>{ if(isList(e.target)) away(); }, true);
+  document.addEventListener('click', e=>{ if(isList(e.target)) away(); }, true);
+  document.addEventListener('input', e=>{ if(e.inputType === 'insertReplacementText') away(); }, true);
+})();
 </script>
 </body>
 </html>
