@@ -1071,7 +1071,7 @@ select#customerSelect{font-weight:600;}
 
     <div id="reportModeReports">
     <div class="card">
-      <h2>Choose reading to send</h2>
+      <h2>Service reports</h2>
       <div class="field" style="position:relative;">
         <label>Customer</label>
         <input id="reportCustomerSearch" placeholder="Search customers by name, address, phone, or email" autocomplete="off" style="padding-right:38px;">
@@ -1079,7 +1079,9 @@ select#customerSelect{font-weight:600;}
         <div id="reportCustomerSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:30;background:#fff;border:1px solid var(--line);border-radius:10px;margin-top:4px;box-shadow:0 4px 14px rgba(15,46,46,0.14);max-height:260px;overflow-y:auto;"></div>
         <select id="reportCustomerSelect" style="display:none;"></select>
       </div>
-      <div class="field">
+      <!-- The reports as rows instead (Oct 3); kept, hidden, for the buttons
+           that read which report is open -->
+      <div class="field" id="reportDateField" style="display:none;">
         <label>Reading date</label>
         <div style="display:flex;align-items:center;gap:8px;">
           <select id="reportReadingSelect" style="flex:1;padding-right:16px;"></select>
@@ -1094,7 +1096,10 @@ select#customerSelect{font-weight:600;}
         </div>
         <p id="reportDateHint" style="font-size:11px;color:var(--muted);margin:6px 0 0;display:none;"></p>
       </div>
+      <!-- Every report for the customer, newest first; press one to open it -->
+      <div id="reportRows"></div>
     </div>
+    <div id="reportOutputHome" style="display:none;"></div>
     <div id="reportOutput"></div>
     <div class="btn-row" id="reportActions" style="display:none;">
       <button class="btn btn-primary" id="btnSharePhoto" style="width:auto;display:none;">Share report + photo</button>
@@ -12434,17 +12439,22 @@ async function getCustomerServiceDates(customerId){
   // same day are two separate reports rather than one hiding the other.
   const dateMap = new Map();
   const keyFor = r => r.date.slice(0,10) + (r.isRedo ? '|redo' : '');
+  // Keys with any body actually serviced; the rest were skipped (Oct 3)
+  const servicedKeys = new Set();
+  const note = r => { if(r && !r.skipped) servicedKeys.add(keyFor(r)); };
 
   const poolList = await loadReadings(customerId, 'pool');
   poolList.forEach(r=>{
     const k = keyFor(r);
     if(!dateMap.has(k)) dateMap.set(k, r.date);
+    note(r);
   });
 
   const spaList = await loadReadings(customerId, 'spa');
   spaList.forEach(r=>{
     const k = keyFor(r);
     if(!dateMap.has(k)) dateMap.set(k, r.date);
+    note(r);
   });
 
   for(const f of getValidFountains(customer)){
@@ -12452,6 +12462,7 @@ async function getCustomerServiceDates(customerId){
     fList.forEach(r=>{
       const k = keyFor(r);
       if(!dateMap.has(k)) dateMap.set(k, r.date);
+      note(r);
     });
   }
 
@@ -12461,7 +12472,8 @@ async function getCustomerServiceDates(customerId){
   });
 
   const out = Array.from(dateMap.entries())
-    .map(([key, ts]) => ({dateStr: key, ts, isRedo: key.indexOf('|redo') !== -1, day: key.slice(0, 10)}));
+    .map(([key, ts]) => ({dateStr: key, ts, isRedo: key.indexOf('|redo') !== -1, day: key.slice(0, 10),
+                          skipped: !servicedKeys.has(key)}));
   // Work orders submitted for this customer, each a report of its own (Oct 3)
   workOrderVisitsFor(customerId).forEach(j=>{
     out.push({dateStr: 'wo:' + j.id, ts: j.doneAt || (j.date + 'T12:00:00'), isRedo: false,
@@ -12629,6 +12641,7 @@ async function renderWorkOrderReport(customerId, jobId, isClean){
 
 async function renderDateReport(customerId, dateStr){
   if(!customerId || !dateStr) return;
+  try{ placeReportUnderRow(dateStr); }catch(e){}
 
   // The key may carry a "|redo" suffix, marking which of the day's two
   // reports is wanted
@@ -12682,6 +12695,8 @@ async function refreshDateSelector(customerId){
     sel.appendChild(opt);
     availableReportDates = [];
     reportDateDays = [];
+    reportRowsCustomer = customerId; reportRowsList = []; reportOpenKey = null;
+    putReportBackHome(); drawReportRows();
     document.getElementById('reportOutput').innerHTML = '';
     document.getElementById('reportActions').style.display = 'none';
     document.getElementById('btnDownloadPhoto').style.display = 'none';
@@ -12700,7 +12715,127 @@ async function refreshDateSelector(customerId){
     sel.appendChild(opt);
   });
   document.getElementById('reportDateHint').style.display = 'none';
-  await renderDateReport(customerId, dates[0].dateStr);
+  // Rows, newest at the top, none opened until pressed (Oct 3)
+  reportRowsCustomer = customerId;
+  reportRowsList = dates;
+  reportRowsShown = REPORT_ROWS_PAGE;
+  reportOpenKey = null;
+  putReportBackHome();
+  drawReportRows();
+}
+
+// ---- The reports as rows (Oct 3) ----
+// Like Service Reports on the website: the date, what it is, how long ago.
+// Pressing a row opens the report right under it (the same report and buttons
+// as before); pressing it again closes it.
+const REPORT_ROWS_PAGE = 20;
+let reportRowsCustomer = null, reportRowsList = [], reportRowsShown = REPORT_ROWS_PAGE, reportOpenKey = null;
+function reportAgo(ts){
+  const t = new Date(ts).getTime();
+  if(!t || isNaN(t)) return '';
+  const days = Math.floor((Date.now() - t) / 86400000);
+  if(days <= 0) return 'Today';
+  if(days === 1) return 'Yesterday';
+  if(days < 7) return days + ' days ago';
+  if(days < 60) return Math.floor(days / 7) + (Math.floor(days / 7) === 1 ? ' week ago' : ' weeks ago');
+  if(days < 730) return Math.floor(days / 30) + ' months ago';
+  return Math.floor(days / 365) + ' years ago';
+}
+function putReportBackHome(){
+  const home = document.getElementById('reportOutputHome');
+  const out = document.getElementById('reportOutput');
+  const acts = document.getElementById('reportActions');
+  if(!home || !out) return;
+  out.innerHTML = '';
+  if(acts) acts.style.display = 'none';
+  ['btnDownloadPhoto', 'btnSharePhoto'].forEach(id => { const b = document.getElementById(id); if(b) b.style.display = 'none'; });
+  home.after(out);
+  if(acts) out.after(acts);
+}
+function drawReportRows(){
+  const box = document.getElementById('reportRows');
+  if(!box) return;
+  box.innerHTML = '';
+  if(!reportRowsList.length){
+    box.innerHTML = '<div class="empty" style="margin-top:8px;">No reports yet.</div>';
+    return;
+  }
+  reportRowsList.slice(0, reportRowsShown).forEach(d=>{
+    const isOpen = reportOpenKey === d.dateStr;
+    const bar = document.createElement('div');
+    bar.dataset.reportKey = d.dateStr;
+    bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;'
+      + 'padding:11px 12px;border:1px solid var(--line);border-radius:10px;margin-top:8px;'
+      + 'cursor:pointer;user-select:none;-webkit-user-select:none;background:' + (isOpen ? 'var(--teal-pale)' : 'var(--card)') + ';';
+    const when = document.createElement('div');
+    when.style.cssText = 'font-size:14px;font-weight:600;color:var(--ink);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    when.textContent = fmtDate(d.ts);
+    const tag = document.createElement('span');
+    tag.style.cssText = "margin-left:8px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;"
+      + 'letter-spacing:0.07em;text-transform:uppercase;color:var(--teal-deep);padding:3px 6px;border-radius:6px;'
+      + 'background:' + (isOpen ? 'var(--card)' : 'var(--teal-pale)') + ';';
+    tag.textContent = d.wo ? 'Work order ' + workOrderNumberText(d.wo.workOrderNumber) : (d.fc ? 'Filter clean' : 'Service report');
+    when.appendChild(tag);
+    const extra = d.wo ? (d.wo.title || '') : (d.isRedo ? 'Redone' : '');
+    if(extra){
+      const what = document.createElement('span');
+      what.style.cssText = 'font-weight:500;color:var(--muted);margin-left:6px;font-size:12.5px;';
+      what.textContent = extra;
+      when.appendChild(what);
+    }
+    const right = document.createElement('div');
+    right.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
+    // Completed or Skipped, in the badge Quotes & Orders uses on the website
+    if(!d.wo && !d.fc){
+      const mark = document.createElement('span');
+      mark.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:84px;padding:4px 0;border-radius:7px;'
+        + 'font-size:10px;font-weight:700;letter-spacing:.04em;color:#fff;background:' + (d.skipped ? 'var(--rust)' : 'var(--green)') + ';';
+      mark.textContent = d.skipped ? 'SKIPPED' : 'COMPLETED';
+      right.appendChild(mark);
+    }
+    const ago = document.createElement('div');
+    ago.style.cssText = 'font-size:12px;color:var(--muted);flex-shrink:0;white-space:nowrap;';
+    ago.textContent = reportAgo(d.ts) + (isOpen ? '  \u25b4' : '  \u25be');
+    right.appendChild(ago);
+    bar.appendChild(when);
+    bar.appendChild(right);
+    bar.addEventListener('click', async ()=>{
+      if(reportOpenKey === d.dateStr){
+        reportOpenKey = null;
+        putReportBackHome();
+        drawReportRows();
+        return;
+      }
+      const sel = document.getElementById('reportReadingSelect');
+      if(sel) sel.value = d.dateStr;
+      await renderDateReport(reportRowsCustomer, d.dateStr);
+    });
+    box.appendChild(bar);
+  });
+  if(reportRowsList.length > reportRowsShown){
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'btn btn-ghost';
+    more.style.cssText = 'width:100%;margin-top:10px;';
+    more.textContent = 'Show more (' + (reportRowsList.length - reportRowsShown) + ' more)';
+    more.addEventListener('click', ()=>{ reportRowsShown += REPORT_ROWS_PAGE; drawReportRows(); });
+    box.appendChild(more);
+  }
+  // An open report sits under its row
+  if(reportOpenKey){
+    const bar = box.querySelector('[data-report-key="' + CSS.escape(reportOpenKey) + '"]');
+    const out = document.getElementById('reportOutput');
+    const acts = document.getElementById('reportActions');
+    if(bar && out){ bar.after(out); if(acts) out.after(acts); }
+  }
+}
+// Called as any report opens, from a row or from elsewhere (a finished stop)
+function placeReportUnderRow(key){
+  if(!reportRowsList.some(d => d.dateStr === key)) return;
+  const at = reportRowsList.findIndex(d => d.dateStr === key);
+  if(at >= reportRowsShown) reportRowsShown = Math.ceil((at + 1) / REPORT_ROWS_PAGE) * REPORT_ROWS_PAGE;
+  reportOpenKey = key;
+  drawReportRows();
 }
 
 function refreshReportSelectors(...args){

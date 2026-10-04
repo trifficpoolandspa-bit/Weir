@@ -289,6 +289,7 @@ input::placeholder{color:#A9BCB9;}
 .alert-tag{flex:0 0 64px;text-align:center;font-size:11.5px;font-weight:700;padding:4px 0;border-radius:999px;margin-top:2px;}
 .alert-tag.video{background:var(--teal-pale);color:var(--teal-deep);}
 .alert-tag.note{background:var(--surface-alt);color:var(--ink);border:1px solid var(--line);}
+.wc-tick-col{display:flex;flex-direction:column;gap:10px;padding-bottom:10px;}
 .alert-tag.repair{background:var(--gold-pale);color:var(--gold);}
 
 
@@ -704,7 +705,16 @@ input::placeholder{color:#A9BCB9;}
         <h2>Quotes &amp; work orders</h2>
         <span class="section-count" id="custWorkOrderCount"></span>
       </div>
+      <!-- As on Service Reports (Oct 3) -->
+      <div class="field">
+        <label>Jump to a date</label>
+        <input type="date" id="qoDateFilter">
+        <p style="font-size:11px;color:var(--muted);margin:6px 0 0;">Pick a date to pull up what's on it.</p>
+      </div>
       <div id="custWorkOrderList"></div>
+      <div class="btn-row" style="margin-top:14px;">
+        <button class="btn btn-secondary" id="btnMultiQo" style="width:auto;">Download multiple items</button>
+      </div>
     </div>
 
     <div class="card" id="historyCard" style="display:none;">
@@ -1381,36 +1391,45 @@ input::placeholder{color:#A9BCB9;}
         <option value="Work Order">Work Order</option>
         <option value="Task">Task</option>
       </select>
-      <!-- Two lines, in columns (Oct 3): the "Scheduled date" label, Photo required
-           and Email customer on the top line; the date, Video required and
-           Include prices under them; the number at the far right -->
-      <div class="field" id="wcDateField" style="display:grid;grid-template-columns:auto auto auto minmax(0,1fr);column-gap:28px;row-gap:6px;align-items:center;">
-        <label style="grid-column:1;grid-row:1;margin:0;">Scheduled date</label>
-        <div style="grid-column:1;grid-row:2;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-          <input type="date" id="wcDate" style="width:auto;min-width:0;padding-right:12px;">
-          <!-- Quotes only: how long the customer has to answer -->
-          <label id="wcExpiresWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;white-space:nowrap;margin:0;">
-            Expires in
-            <input type="number" id="wcExpiresDays" min="1" max="365" step="1" value="30" inputmode="numeric" style="width:72px;padding:8px 10px;text-align:center;">
-            days
-          </label>
+      <!-- Laid out as on the Task form (Oct 3): the date under its label; Photo
+           and Video required stacked beside it, Video level with the date box;
+           Email customer and Include prices stacked to their right; the number
+           at the far right. The grid is on an inner box, because the page shows
+           and hides this field by its own display. -->
+      <div class="field" id="wcDateField">
+        <div style="display:grid;grid-template-columns:auto auto auto minmax(0,1fr);column-gap:28px;align-items:end;">
+          <div style="grid-column:1;">
+            <label>Scheduled date</label>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+              <input type="date" id="wcDate" style="width:auto;min-width:0;padding-right:12px;">
+              <!-- Quotes only: how long the customer has to answer -->
+              <label id="wcExpiresWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;white-space:nowrap;margin:0;">
+                Expires in
+                <input type="number" id="wcExpiresDays" min="1" max="365" step="1" value="30" inputmode="numeric" style="width:72px;padding:8px 10px;text-align:center;">
+                days
+              </label>
+            </div>
+          </div>
+          <div class="wc-tick-col" style="grid-column:2;">
+            <label id="wcPhotoRequiredWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
+              <input type="checkbox" id="wcPhotoRequired" checked style="margin:0;"> Photo required
+            </label>
+            <label id="wcVideoRequiredWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
+              <input type="checkbox" id="wcVideoRequired" style="margin:0;"> Video required
+            </label>
+          </div>
+          <div class="wc-tick-col" style="grid-column:3;">
+            <!-- Email the customer when it's submitted, work orders only -->
+            <label id="wcEmailCustomerWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
+              <input type="checkbox" id="wcEmailCustomer" checked style="margin:0;"> Email customer
+            </label>
+            <!-- Prices in that email -->
+            <label id="wcEmailPricesWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
+              <input type="checkbox" id="wcEmailPrices" checked style="margin:0;"> Include prices
+            </label>
+          </div>
+          <span id="wcQuoteNumber" class="big-num" style="grid-column:4;justify-self:end;align-self:end;margin:0 12px 6px 0;" title="The number this one will get"></span>
         </div>
-        <label id="wcPhotoRequiredWrap" style="grid-column:2;grid-row:1;display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
-          <input type="checkbox" id="wcPhotoRequired" checked style="margin:0;"> Photo required
-        </label>
-        <!-- Video required, under Photo required -->
-        <label id="wcVideoRequiredWrap" style="grid-column:2;grid-row:2;display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
-          <input type="checkbox" id="wcVideoRequired" style="margin:0;"> Video required
-        </label>
-        <!-- Email the customer when it's submitted, work orders only -->
-        <label id="wcEmailCustomerWrap" style="grid-column:3;grid-row:1;display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
-          <input type="checkbox" id="wcEmailCustomer" checked style="margin:0;"> Email customer
-        </label>
-        <!-- Prices in that email, under Email customer -->
-        <label id="wcEmailPricesWrap" style="grid-column:3;grid-row:2;display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
-          <input type="checkbox" id="wcEmailPrices" checked style="margin:0;"> Include prices
-        </label>
-        <span id="wcQuoteNumber" class="big-num" style="grid-column:4;grid-row:2;justify-self:end;margin-right:12px;" title="The number this one will get"></span>
       </div>
       <!-- Quotes only -->
       <div class="field" id="wcQuoteNameField">
@@ -1474,20 +1493,27 @@ input::placeholder{color:#A9BCB9;}
         <div id="wcTaskSection" style="display:none;">
       <h2 id="wcTaskHeading" style="display:none;margin-bottom:12px;"></h2>
 
-      <!-- As on Work Order (Oct 3): Photo required beside the label, Video
-           required under it beside the date; Saved tasks at the far right -->
-      <div class="field" style="display:grid;grid-template-columns:auto auto minmax(0,1fr);column-gap:28px;row-gap:6px;align-items:center;">
-        <label style="grid-column:1;grid-row:1;margin:0;">Scheduled date</label>
-        <div style="grid-column:1;grid-row:2;display:flex;align-items:center;">
-          <input type="date" id="taskDate" style="width:auto;min-width:0;padding-right:12px;">
+      <!-- Task (Oct 3): the date under its label; Photo and Video required
+           stacked beside it, Video level with the date box; Saved tasks at the
+           far right -->
+      <div class="field">
+        <div style="display:grid;grid-template-columns:auto auto minmax(0,1fr);column-gap:28px;align-items:end;">
+          <div style="grid-column:1;">
+            <label>Scheduled date</label>
+            <div style="display:flex;align-items:center;">
+              <input type="date" id="taskDate" style="width:auto;min-width:0;padding-right:12px;">
+            </div>
+          </div>
+          <div class="wc-tick-col" style="grid-column:2;">
+            <label style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
+              <input type="checkbox" id="taskPhotoRequired" style="margin:0;"> Photo required
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
+              <input type="checkbox" id="taskVideoRequired" style="margin:0;"> Video required
+            </label>
+          </div>
+          <button class="btn btn-primary" id="btnTaskTemplates" style="grid-column:3;justify-self:end;align-self:end;width:auto;">Saved tasks</button>
         </div>
-        <label style="grid-column:2;grid-row:1;display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
-          <input type="checkbox" id="taskPhotoRequired" style="margin:0;"> Photo required
-        </label>
-        <label style="grid-column:2;grid-row:2;display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
-          <input type="checkbox" id="taskVideoRequired" style="margin:0;"> Video required
-        </label>
-        <button class="btn btn-primary" id="btnTaskTemplates" style="grid-column:3;grid-row:2;justify-self:end;width:auto;">Saved tasks</button>
       </div>
 
       <div class="field" style="position:relative;">
@@ -13538,14 +13564,212 @@ function qoBody(item, customerId){
   return doc;
 }
 
+let qoDateFilter = '';
+let qoCustomerId = null;
+// The calendar day an item is on, in this computer's time
+function qoDay(item){
+  const d = String(item.date || '');
+  if(!d) return '';
+  if(/T12:00:00$/.test(d)) return d.slice(0, 10);
+  const t = new Date(d);
+  if(isNaN(t)) return d.slice(0, 10);
+  return new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+// The bin on a row: gone from here and from WorkCenter, after asking (Oct 3)
+async function qoDelete(item, customerId){
+  const what = item.kind === 'quote' ? 'quote' : item.kind === 'workorder' ? 'work order'
+    : item.kind === 'clean' ? 'filter clean' : 'task';
+  if(item.done && (item.kind === 'workorder' && item.j || item.kind === 'clean')){
+    // A finished one goes everywhere, as its report's own Delete does
+    return deleteWorkOrderVisit(customerId, item.kind === 'clean' ? Object.assign({}, item.f, {_clean: true}) : item.j);
+  }
+  const when = item.date ? ' from ' + fmtDate(item.date) : '';
+  const ok = await confirmDialog('Delete this ' + what + when + '? It is removed from WorkCenter too, and this cannot be undone.', 'Delete');
+  if(!ok) return;
+  if(item.kind === 'quote' || (item.kind === 'workorder' && !item.j)){
+    workOrders = workOrders.filter(x => x.id !== item.w.id);
+    saveWorkOrders();
+    lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => j.workOrderId !== item.w.id));
+  } else if(item.kind === 'workorder'){
+    // Just this visit, as Current's bin does
+    lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => j.id !== item.j.id));
+  } else if(item.kind === 'clean'){
+    lsSet('scheduledFilterCleans', (lsGet('scheduledFilterCleans') || []).filter(f => f.id !== item.f.id));
+  } else {
+    // A task for several customers loses just this one; the last one, the task
+    const t = tasks.find(x => x.id === item.t.id);
+    if(t){
+      const left = (t.customerIds || []).filter(id => String(id) !== String(customerId));
+      if(left.length) t.customerIds = left; else tasks = tasks.filter(x => x.id !== t.id);
+      saveTasks();
+    }
+  }
+  if(qoOpenId === item.key) qoOpenId = null;
+  renderCustomerWorkOrders(customerId);
+  try{ renderWorkOrderHistory(); }catch(e){}
+  try{ if(typeof renderTaskList === 'function') renderTaskList(); }catch(e){}
+  showToast(what.charAt(0).toUpperCase() + what.slice(1) + ' deleted');
+}
+
+// Download multiple items, as Download multiple reports: add each date, then
+// one text file of everything on those dates, oldest first (Oct 3)
+function qoItemText(item){
+  const lines = [];
+  const tech = id => id === 'office' ? 'the office' : (technicianNameById(id) || '');
+  const items = arr => {
+    let total = 0;
+    (arr || []).filter(li => li && String(li.description || '').trim()).forEach(li=>{
+      const qty = Number(li.qty) || 1, price = Number(li.price) || 0;
+      total += qty * price;
+      lines.push('  ' + li.description + '  ' + qty + ' x ' + qoMoney(price) + ' = ' + qoMoney(qty * price));
+    });
+    if(total) lines.push('  Total: ' + qoMoney(total));
+  };
+  lines.push(item.tag.toUpperCase() + ' \u2014 ' + (item.done ? 'COMPLETED' : 'CURRENT'));
+  if(item.kind === 'quote'){
+    const w = item.w;
+    if(w.createdAt) lines.push('Written ' + fmtDate(w.createdAt));
+    lines.push('Status: ' + item.title);
+    if((w.lineItems || []).length){ lines.push('Line items:'); items(w.lineItems); }
+    if(w.notes) lines.push('Notes: ' + w.notes);
+  } else if(item.kind === 'workorder'){
+    const w = item.w, j = item.j || w;
+    if(j.date) lines.push('Scheduled for ' + fmtDate(j.date + 'T12:00:00'));
+    if(tech(j.technicianId)) lines.push('Technician: ' + tech(j.technicianId));
+    if((j.lineItems || w.lineItems || []).length){ lines.push('Line items:'); items(j.lineItems || w.lineItems); }
+    if(j.notes || w.notes) lines.push('Work order notes: ' + (j.notes || w.notes));
+    if(item.j && item.j.doneAt) lines.push('Submitted ' + fmtDate(item.j.doneAt) + (item.j.doneBy ? ' by ' + (tech(item.j.doneBy) || 'a technician') : ''));
+    if(item.j && item.j.doneNotes) lines.push('Technician\u2019s notes: ' + item.j.doneNotes);
+  } else if(item.kind === 'clean'){
+    const f = item.f;
+    if(f.date) lines.push('Scheduled for ' + fmtDate(f.date + 'T12:00:00'));
+    if(f.groupName) lines.push('Group: ' + f.groupName);
+    if(f.doneAt) lines.push('Completed ' + fmtDate(f.doneAt) + (f.doneBy ? ' by ' + (tech(f.doneBy) || 'a technician') : ''));
+    if((f.doneReplacements || []).length) lines.push('Needs replacing: ' + f.doneReplacements.join(', '));
+    if(f.doneNotes) lines.push('Technician\u2019s notes: ' + f.doneNotes);
+  } else {
+    const t = item.t;
+    if(t.title) lines.push('Task: ' + t.title);
+    if(t.date) lines.push('Scheduled for ' + fmtDate(t.date + 'T12:00:00'));
+    if(t.details) lines.push('Details: ' + t.details);
+    if(t.done && t.doneAt) lines.push('Completed ' + fmtDate(t.doneAt) + (t.doneBy ? ' by ' + (tech(t.doneBy) || 'a technician') : ''));
+    if(t.doneNotes) lines.push('Technician\u2019s notes: ' + t.doneNotes);
+  }
+  return lines.join('\n');
+}
+function openMultiQoPicker(){
+  const customer = customers.find(c => c.id === qoCustomerId);
+  if(!customer){ showToast('Open a customer first'); return; }
+  const all = qoEntriesFor(customer.id);
+  if(!all.length){ showToast('Nothing for this customer yet'); return; }
+  const days = new Set(all.map(qoDay).filter(Boolean));
+  let picked = [];
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-box" style="max-width:440px;max-height:86vh;display:flex;flex-direction:column;">
+      <h3 style="font-size:15px;margin:0 0 4px;">Download multiple items</h3>
+      <p style="font-size:11.5px;color:var(--muted);margin:0 0 12px;">Add each date you want by picking it. Everything on those dates is compiled oldest to newest into one document.</p>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <input type="date" data-pick autocomplete="off" style="flex:1;" title="Pick a date to add">
+        <button type="button" class="btn btn-ghost" data-reset style="width:auto;padding:9px 12px;">Reset</button>
+      </div>
+      <div data-list style="flex:1;overflow-y:auto;margin-bottom:14px;"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" data-go style="flex:1;">Download</button>
+        <button class="btn btn-ghost" data-cancel style="width:auto;">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const listEl = overlay.querySelector('[data-list]');
+  const pickEl = overlay.querySelector('[data-pick]');
+  const draw = ()=>{
+    listEl.innerHTML = '';
+    if(!picked.length){
+      listEl.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:10px 2px;">No dates added yet \u2014 pick a date above.</div>';
+      return;
+    }
+    picked.slice().sort().forEach(day=>{
+      const n = all.filter(x => qoDay(x) === day).length;
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);font-size:13.5px;';
+      const label = document.createElement('span');
+      label.textContent = fmtDate(day + 'T12:00:00') + ' \u00b7 ' + n + (n === 1 ? ' item' : ' items');
+      const rm = document.createElement('button');
+      rm.type = 'button';
+      rm.innerHTML = WEIR_BIN_SVG;
+      rm.setAttribute('aria-label', 'Remove this date');
+      rm.style.cssText = 'border:none;background:none;color:var(--rust);font-size:16px;line-height:1;cursor:pointer;padding:0 4px;flex-shrink:0;';
+      rm.addEventListener('click', ()=>{ picked = picked.filter(d => d !== day); draw(); });
+      row.appendChild(label); row.appendChild(rm);
+      listEl.appendChild(row);
+    });
+  };
+  pickEl.addEventListener('change', ()=>{
+    const want = pickEl.value;
+    if(!want) return;
+    if(!days.has(want)) showToast('Nothing on that date');
+    else if(picked.includes(want)) showToast('That date is already added');
+    else { picked.push(want); draw(); }
+    pickEl.value = '';
+  });
+  overlay.querySelector('[data-reset]').addEventListener('click', async ()=>{
+    const sure = await confirmDialog('Are you sure you want to reset? This removes every date you have added.');
+    if(!sure) return;
+    picked = []; draw();
+  });
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+  overlay.querySelector('[data-cancel]').addEventListener('click', close);
+  overlay.querySelector('[data-go]').addEventListener('click', ()=>{
+    if(!picked.length){ showToast('Add at least one date'); return; }
+    const order = picked.slice().sort();
+    const chosen = all.filter(x => order.includes(qoDay(x))).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const addr = [customer.address, customer.city, customer.state, customer.zip].filter(Boolean).join(', ');
+    let doc = '========================================\n';
+    doc += 'QUOTES & ORDERS\n' + customer.name + '\n';
+    if(addr) doc += addr + '\n';
+    doc += chosen.length + (chosen.length === 1 ? ' item' : ' items') + '\n';
+    doc += 'Generated ' + new Date().toLocaleString() + '\n';
+    doc += '========================================\n';
+    chosen.forEach((it, i)=>{
+      doc += '\n\n----------------------------------------\n';
+      doc += 'ITEM ' + (i + 1) + ' OF ' + chosen.length + ' \u2014 ' + (it.date ? fmtDate(it.date) : 'No date') + '\n';
+      doc += '----------------------------------------\n';
+      doc += qoItemText(it) + '\n';
+    });
+    const blob = new Blob([doc], {type: 'text/plain'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const safe = customer.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    a.download = 'weir-quotes-orders-' + safe + '-' + order[0] + '-to-' + order[order.length - 1] + '.txt';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    close();
+    showToast(chosen.length + (chosen.length === 1 ? ' item' : ' items') + ' downloaded');
+  });
+  draw();
+}
+document.getElementById('btnMultiQo').addEventListener('click', openMultiQoPicker);
+document.getElementById('qoDateFilter').addEventListener('change', e=>{
+  qoDateFilter = e.target.value || '';
+  qoOpenId = null;
+  if(qoCustomerId) renderCustomerWorkOrders(qoCustomerId);
+});
+
 function renderCustomerWorkOrders(customerId){
   const container = document.getElementById('custWorkOrderList');
   const countEl = document.getElementById('custWorkOrderCount');
   if(!container) return;
-  const list = qoEntriesFor(customerId);
-  if(countEl) countEl.textContent = list.length ? list.length + (list.length === 1 ? ' record' : ' records') : '';
+  qoCustomerId = customerId;
+  const all = qoEntriesFor(customerId);
+  if(countEl) countEl.textContent = all.length ? all.length + (all.length === 1 ? ' record' : ' records') : '';
+  const box = document.getElementById('qoDateFilter');
+  if(box && box.value !== qoDateFilter) box.value = qoDateFilter;
+  const list = qoDateFilter ? all.filter(x => qoDay(x) === qoDateFilter) : all;
   if(!list.length){
-    container.innerHTML = emptyState('No quotes, work orders, filter cleans or tasks for this customer yet.');
+    container.innerHTML = emptyState(qoDateFilter ? 'Nothing on that date.'
+      : 'No quotes, work orders, filter cleans or tasks for this customer yet.');
     return;
   }
   if(qoOpenId && !list.some(x => x.key === qoOpenId)) qoOpenId = null;
@@ -13584,6 +13808,15 @@ function renderCustomerWorkOrders(customerId){
     ago.style.cssText = 'font-size:12px;color:var(--muted);';
     ago.textContent = (item.date ? howLongAgo(item.date) : '') + (isOpen ? '  \u25b4' : '  \u25be');
     right.appendChild(ago);
+    // The bin at the far right, as on Service Reports' rows
+    const del = document.createElement('button');
+    del.className = 'btn btn-ghost';
+    del.type = 'button';
+    del.textContent = 'Delete';
+    del.title = 'Delete this ' + item.tag.replace(/ #.*/, '').toLowerCase();
+    del.style.cssText = 'width:auto;padding:4px 10px;font-size:11.5px;color:var(--rust);border-color:#EFC0B4;';
+    del.addEventListener('click', e=>{ e.stopPropagation(); qoDelete(item, customerId); });
+    right.appendChild(del);
     bar.appendChild(when);
     bar.appendChild(right);
     bar.addEventListener('click', ()=>{
@@ -20070,6 +20303,14 @@ function showHistory(customerId, name){
     when.appendChild(which);
     const right = document.createElement('div');
     right.style.cssText = 'display:flex;align-items:center;gap:10px;flex-shrink:0;';
+    // Completed or Skipped, in the badge Quotes & Orders uses (Oct 3)
+    const skippedVisit = v.parts.length && v.parts.every(p => p.type === 'skip' || (p.r && p.r.skipped));
+    const mark = document.createElement('span');
+    mark.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:92px;padding:4px 0;border-radius:7px;'
+      + 'font-size:10.5px;font-weight:700;letter-spacing:.04em;color:#fff;flex-shrink:0;'
+      + 'background:' + (skippedVisit ? 'var(--rust)' : 'var(--green)') + ';';
+    mark.textContent = skippedVisit ? 'SKIPPED' : 'COMPLETED';
+    right.appendChild(mark);
     const ago = document.createElement('div');
     ago.style.cssText = 'font-size:12px;color:var(--muted);';
     ago.textContent = howLongAgo(v.date) + (isOpen ? '  \u25b4' : '  \u25be');
@@ -24908,83 +25149,38 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
 })();
 
 
-// ---- Clear date (Oct 3) ----
-// Every date box on the website with a date in it gets a "Clear date" button
-// just left of its calendar icon. Clearing it empties the box and tells the
-// page, exactly as if the date had been deleted by hand. Boxes made later
-// (in windows, filter groups) get it too.
-(function clearDateButtons(){
-  const proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
-  const ICON_ROOM = 34;                         // the calendar icon's space at the right
-  function attach(input){
-    if(!input || input.type !== 'date' || input.dataset.clearDate) return;
-    if(input.style.opacity === '0' || input.style.pointerEvents === 'none') return;
-    input.dataset.clearDate = '1';
-    const wrap = document.createElement('span');
-    wrap.className = 'date-clear-wrap';
-    const st = input.style;
-    const hasWidth = !!st.width && st.width !== '100%';
-    wrap.style.cssText = 'position:relative;display:inline-flex;align-items:center;vertical-align:middle;max-width:100%;'
-      + 'width:' + (hasWidth ? 'auto' : '100%') + ';'
-      + (st.flex ? 'flex:' + st.flex + ';' : '')
-      + (st.flexShrink ? 'flex-shrink:' + st.flexShrink + ';' : '')
-      + (st.minWidth ? 'min-width:' + st.minWidth + ';' : '')
-      + (st.marginBottom ? 'margin-bottom:' + st.marginBottom + ';' : '');
-    if(st.marginBottom) st.marginBottom = '0';
-    input.parentNode.insertBefore(wrap, input);
-    wrap.appendChild(input);
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'date-clear-btn';
-    btn.textContent = 'Clear date';
-    btn.title = 'Clear this date';
-    btn.style.cssText = 'position:absolute;right:' + ICON_ROOM + 'px;top:50%;transform:translateY(-50%);display:none;'
-      + 'padding:3px 8px;font-size:11.5px;font-weight:600;line-height:1.3;border-radius:7px;cursor:pointer;'
-      + 'border:1px solid var(--line);background:var(--card);color:var(--teal-deep);white-space:nowrap;'
-      + "font-family:'Inter',sans-serif;";
-    wrap.appendChild(btn);
-    const basePad = input.style.paddingRight || '';
-    const baseWidth = input.style.width || '';
-    const refresh = ()=>{
-      const on = !!proto.get.call(input);
-      btn.style.display = on ? 'block' : 'none';
-      if(on){
-        const w = btn.offsetWidth || 72;
-        input.style.paddingRight = (w + ICON_ROOM + 6) + 'px';
-        // A narrow box grows by the button's width so the date still shows
-        if(/px$/.test(baseWidth)) input.style.width = (parseFloat(baseWidth) + w + 6) + 'px';
-      } else {
-        input.style.paddingRight = basePad;
-        if(/px$/.test(baseWidth)) input.style.width = baseWidth;
-      }
-    };
-    // A date put in by the page itself (a form reset, an edit) shows it too
-    Object.defineProperty(input, 'value', {
-      configurable: true,
-      get(){ return proto.get.call(this); },
-      set(v){ proto.set.call(this, v); refresh(); }
-    });
-    input.addEventListener('input', refresh);
-    input.addEventListener('change', refresh);
-    btn.addEventListener('mousedown', e => e.preventDefault());   // the box keeps its place
-    btn.addEventListener('click', e=>{
-      e.preventDefault();
-      e.stopPropagation();
-      proto.set.call(input, '');
-      input.dispatchEvent(new Event('input', {bubbles: true}));
-      input.dispatchEvent(new Event('change', {bubbles: true}));
-      refresh();
-    });
-    refresh();
-  }
-  const sweep = root => { if(root && root.querySelectorAll) root.querySelectorAll('input[type="date"]').forEach(attach); };
-  sweep(document);
-  new MutationObserver(list=>{
-    list.forEach(m => m.addedNodes.forEach(n=>{
-      if(n.nodeType !== 1) return;
-      if(n.tagName === 'INPUT') attach(n); else sweep(n);
-    }));
-  }).observe(document.body, {childList: true, subtree: true});
+
+// ---- Date boxes: click to type a new date (Oct 3) ----
+// Clicking into a date box that has a date empties it, ready to type. Clicking
+// away without finishing a new date puts the old one back, quietly; only a new
+// date typed (or picked from the calendar) replaces it. Every date box on the
+// website, windows included.
+(function dateBoxesClearOnClick(){
+  const isDateBox = el => el && el.tagName === 'INPUT' && el.type === 'date'
+    && !el.readOnly && !el.disabled && el.style.opacity !== '0' && el.style.pointerEvents !== 'none';
+  // A click anywhere on the box starts at the month, the first part, and
+  // typing fills month, day, then year (Oct 3). A click on the calendar icon
+  // at the right still opens the calendar.
+  document.addEventListener('mousedown', e=>{
+    const el = e.target;
+    if(!isDateBox(el) || e.button !== 0 || document.activeElement === el) return;
+    const r = el.getBoundingClientRect();
+    if(e.clientX > r.right - 34) return;           // the calendar icon
+    e.preventDefault();
+    el.focus();                                     // lands on the month
+  }, true);
+  document.addEventListener('focusin', e=>{
+    const el = e.target;
+    if(!isDateBox(el) || !el.value) return;
+    el.dataset.heldDate = el.value;
+    el.value = '';
+  });
+  document.addEventListener('focusout', e=>{
+    const el = e.target;
+    if(!isDateBox(el) || el.dataset.heldDate === undefined) return;
+    if(!el.value) el.value = el.dataset.heldDate;      // nothing new: back as it was
+    delete el.dataset.heldDate;
+  });
 })();
 </script>
 
