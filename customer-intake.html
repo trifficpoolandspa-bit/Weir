@@ -13804,8 +13804,9 @@ function renderCustomerWorkOrders(customerId){
       + 'background:' + (item.done ? 'var(--green)' : 'var(--teal-deep)') + ';';
     mark.textContent = item.done ? 'COMPLETED' : 'CURRENT';
     right.appendChild(mark);
+    // One width for "how long ago", so the badges stand in one column (Oct 3)
     const ago = document.createElement('div');
-    ago.style.cssText = 'font-size:12px;color:var(--muted);';
+    ago.style.cssText = 'font-size:12px;color:var(--muted);width:104px;text-align:right;white-space:nowrap;flex-shrink:0;';
     ago.textContent = (item.date ? howLongAgo(item.date) : '') + (isOpen ? '  \u25b4' : '  \u25be');
     right.appendChild(ago);
     // The bin at the far right, as on Service Reports' rows
@@ -20311,8 +20312,9 @@ function showHistory(customerId, name){
       + 'background:' + (skippedVisit ? 'var(--rust)' : 'var(--green)') + ';';
     mark.textContent = skippedVisit ? 'SKIPPED' : 'COMPLETED';
     right.appendChild(mark);
+    // One width for "how long ago", so the badges stand in one column (Oct 3)
     const ago = document.createElement('div');
-    ago.style.cssText = 'font-size:12px;color:var(--muted);';
+    ago.style.cssText = 'font-size:12px;color:var(--muted);width:104px;text-align:right;white-space:nowrap;flex-shrink:0;';
     ago.textContent = howLongAgo(v.date) + (isOpen ? '  \u25b4' : '  \u25be');
     right.appendChild(ago);
     const del = document.createElement('button');
@@ -20326,7 +20328,9 @@ function showHistory(customerId, name){
       deleteHistoryVisit(customerId, v);
     });
     // A skipped visit is undone with Reservice on the phone, not deleted here
-    if(!v.parts.every(p => p.type === 'skip')) right.appendChild(del);
+    // A skipped visit has no bin, but keeps its space so the row lines up
+    if(v.parts.every(p => p.type === 'skip')) del.style.visibility = 'hidden';
+    right.appendChild(del);
     if(repTick){
       const lead = document.createElement('div');
       lead.style.cssText = 'display:flex;align-items:center;min-width:0;';
