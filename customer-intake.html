@@ -1897,9 +1897,13 @@ input::placeholder{color:#A9BCB9;}
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;">
         <h2 style="margin:0;">Alerts</h2>
-        <button type="button" class="btn btn-ghost" id="btnAlertsAllSeen" style="width:auto;padding:5px 10px;font-size:12px;display:none;">Mark all seen</button>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button type="button" class="btn btn-ghost" id="btnAlertsAllSeen" style="width:auto;padding:5px 10px;font-size:12px;display:none;">Mark all seen</button>
+          <!-- Select multiple (Oct 3): tick alerts, then Mark seen or Delete -->
+          <div id="alertsSelectSlot"></div>
+        </div>
       </div>
-      <p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">Videos technicians sent and notes they left, newest first. New ones say NEW until you open, watch or mark them seen (on this computer only).</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">Videos technicians sent and notes they left, newest first. Press one to open its report. New ones say NEW until opened, watched or marked seen. Deleting one only takes it off this list, on this computer; the report itself stays.</p>
       <!-- New / Seen hidden (Oct 3): every alert in one list, new ones badged -->
       <div class="seg-control" id="alertsSeenControl" style="display:none;">
         <button type="button" class="history-type-btn active" data-alerts="new">New</button>
@@ -10424,7 +10428,8 @@ document.getElementById('btnClearTask').addEventListener('click', clearTaskForm)
 document.getElementById('btnSaveTaskTemplate').addEventListener('click', async ()=>{
   const title = document.getElementById('taskTitle').value.trim();
   if(!title){ showToast('Write the task first'); return; }
-  const name = await promptDialog('Name this saved task', title);
+  // The task's name is already in the box: Save keeps it, typing replaces it
+  const name = await promptDialog('Name this saved task', title, title, 'Save');
   if(!name || !name.trim()) return;
 
   const list = loadTaskTemplates();
@@ -11191,8 +11196,9 @@ document.getElementById('wcHistorySearchClear').addEventListener('click', ()=>{
 // buttons on each row keep working as before.
 const listSelections = {};
 function listSel(key){ return listSelections[key] || (listSelections[key] = {on: false, ids: new Set()}); }
-function selectionBar(key, visibleIds, noun, onDelete, redraw, pager, onLeft){
+function selectionBar(key, visibleIds, noun, onDelete, redraw, pager, onLeft, extras){
   const st = listSel(key);
+  st.order = visibleIds.slice();     // the rows in order, for Shift-click ranges
   // Anything no longer on the list isn't selected any more
   st.ids.forEach(id => { if(visibleIds.indexOf(id) === -1) st.ids.delete(id); });
   // Three parts on one row: nothing on the left, the page arrows in the middle
@@ -11243,7 +11249,22 @@ function selectionBar(key, visibleIds, noun, onDelete, redraw, pager, onLeft){
   });
   const done = b('Done');
   done.addEventListener('click', ()=>{ st.on = false; st.ids.clear(); redraw(); });
-  bar.appendChild(all); bar.appendChild(del); bar.appendChild(done);
+  bar.appendChild(all);
+  // Anything else a list does with what's ticked, before Delete (Oct 3)
+  (extras || []).forEach(x=>{
+    const e = b(x.label + (st.ids.size ? ' (' + st.ids.size + ')' : ''));
+    e.disabled = !st.ids.size;
+    if(!st.ids.size) e.style.opacity = '0.5';
+    e.addEventListener('click', async ()=>{
+      const ids = Array.from(st.ids);
+      if(!ids.length) return;
+      await x.run(ids);
+      st.ids.clear(); st.on = false;
+      redraw();
+    });
+    bar.appendChild(e);
+  });
+  bar.appendChild(del); bar.appendChild(done);
   return row;
 }
 // The tick at the start of a row while selecting (null when not selecting)
@@ -11256,15 +11277,36 @@ function selectionTick(key, id, redraw){
   tick.style.cssText = 'margin:0 10px 0 0;flex-shrink:0;width:18px;height:18px;cursor:pointer;';
   tick.addEventListener('click', e=>{
     e.stopPropagation();
-    if(tick.checked) st.ids.add(id); else st.ids.delete(id);
+    if(!pickRange(st, id)){ if(tick.checked) st.ids.add(id); else st.ids.delete(id); }
+    st.anchor = id;
     redraw();
   });
   return tick;
 }
 function toggleSelected(key, id, redraw){
   const st = listSel(key);
-  if(st.ids.has(id)) st.ids.delete(id); else st.ids.add(id);
+  if(!pickRange(st, id)){
+    if(st.ids.has(id)) st.ids.delete(id); else st.ids.add(id);
+  }
+  st.anchor = id;
   redraw();
+}
+
+// Shift-click (Oct 3): with Shift held, a click ticks every row from the last
+// one clicked to this one, as in a file list
+let selShiftHeld = false;
+document.addEventListener('mousedown', e=>{
+  selShiftHeld = !!e.shiftKey;
+  // No text highlighted by the Shift-click while ticking rows
+  if(e.shiftKey && Object.keys(listSelections || {}).some(k => listSelections[k] && listSelections[k].on)) e.preventDefault();
+}, true);
+document.addEventListener('click', e=>{ selShiftHeld = !!e.shiftKey; }, true);
+function pickRange(st, id){
+  if(!selShiftHeld || st.anchor == null || !Array.isArray(st.order)) return false;
+  const a = st.order.indexOf(st.anchor), b = st.order.indexOf(id);
+  if(a === -1 || b === -1) return false;
+  st.order.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(x => st.ids.add(x));
+  return true;
 }
 
 // ---------- Current: what's still to be done, and removing what isn't needed ----------
@@ -17322,7 +17364,9 @@ function confirmDialog(message, confirmLabel){
   });
 }
 
-function promptDialog(message, placeholder){
+// value (Oct 3): text already in the box, selected, e.g. a name to keep or
+// type over; okLabel: the button's word (Add unless given)
+function promptDialog(message, placeholder, value, okLabel){
   return new Promise((resolve)=>{
     const overlay = document.createElement('div');
     overlay.className = 'confirm-overlay';
@@ -17338,6 +17382,8 @@ function promptDialog(message, placeholder){
     `;
     document.body.appendChild(overlay);
     const input = overlay.querySelector('#promptInput');
+    if(okLabel) overlay.querySelector('#promptOk').textContent = okLabel;
+    if(value){ input.value = value; setTimeout(()=>{ try{ input.focus(); input.select(); }catch(e){} }, 0); }
     const cleanup = (result)=>{
       document.body.removeChild(overlay);
       resolve(result);
@@ -22210,6 +22256,19 @@ const ALERT_NOTE_DAYS = 30;
 let alertsView = 'new';      // new | seen
 let alertsKind = 'all';      // all | video | note
 
+// Alerts taken off the list on this computer (Oct 3); the reports stay
+function alertsGone(){
+  const g = lsGet('alertsDismissed');
+  return g && typeof g === 'object' ? g : {};
+}
+function dismissAlerts(ids){
+  const g = alertsGone();
+  ids.forEach(id => { g[id] = Date.now(); });
+  // Older than any alert can be: let go
+  const cut = Date.now() - 60 * 86400000;
+  Object.keys(g).forEach(k => { if(g[k] < cut) delete g[k]; });
+  lsSet('alertsDismissed', g);
+}
 function alertsSeen(){
   const seen = lsGet('alertsSeen');
   return seen && typeof seen === 'object' ? seen : {};
@@ -22280,8 +22339,10 @@ function collectAlerts(){
     const vids = [t.doneVideo].concat(t.doneVideoMore || []).filter(Boolean);
     if(vids.length && now - tm <= ALERT_VIDEO_DAYS * 86400000) out.push(Object.assign({id: 'tkvideo:' + t.id, kind: 'video', refs: vids}, base));
   });
-  out.sort((a, b) => b.t - a.t);
-  return out;
+  const gone = alertsGone();
+  const kept = out.filter(a => !gone[a.id]);
+  kept.sort((a, b) => b.t - a.t);
+  return kept;
 }
 
 function alertWhen(t){
@@ -22324,7 +22385,27 @@ function renderAlerts(){
   // customers often, and rebuilding the same list each time flashed the row
   // under the pointer white (Oct 2).
   // (today's date is part of it, so "Today" turns to "Yesterday" overnight)
-  const shape = new Date().toDateString() + '|' + alertsKind + '|' + rows.map(a => a.id + ':' + (seen[a.id] ? 's' : 'n') + ':' + (a.tech || '') + ':'
+  // Select multiple, at the top right (Oct 3)
+  const selKey = 'alerts';
+  const selSt = listSel(selKey);
+  const redrawSel = ()=>{ box.dataset.shape = ''; renderAlerts(); };
+  const slot = document.getElementById('alertsSelectSlot');
+  if(slot){
+    slot.innerHTML = '';
+    if(rows.length){
+      const bar = selectionBar(selKey, rows.map(a => a.id), 'alert', ids=>{ dismissAlerts(ids); }, redrawSel, null, false,
+        [{label: 'Mark seen', run: ids=>{
+          const s0 = alertsSeen(); ids.forEach(id => { s0[id] = Date.now(); }); saveAlertsSeen(s0);
+          showToast('Marked ' + ids.length + ' seen');
+        }}]);
+      bar.style.margin = '0';
+      bar.style.display = 'flex';            // just the buttons, beside Mark all seen
+      bar.style.gap = '8px';
+      slot.appendChild(bar);
+    }
+  }
+  if(allSeen && selSt.on) allSeen.style.display = 'none';
+  const shape = new Date().toDateString() + '|' + alertsKind + '|' + (selSt.on ? 'sel:' + Array.from(selSt.ids).join(',') : '') + '|' + rows.map(a => a.id + ':' + (seen[a.id] ? 's' : 'n') + ':' + (a.tech || '') + ':'
     + (a.kind === 'video' ? a.refs.length : a.notes) + ':' + a.name + ':' + a.body).join('|');
   if(box.dataset.shape === shape && box.childNodes.length) return;
   box.dataset.shape = shape;
@@ -22336,6 +22417,8 @@ function renderAlerts(){
   rows.forEach(a=>{
     const row = document.createElement('div');
     row.className = 'alert-row';
+    const tick = selectionTick(selKey, a.id, redrawSel);
+    if(tick){ tick.style.marginTop = '4px'; row.appendChild(tick); }
     const tag = document.createElement('span');
     tag.className = 'alert-tag ' + a.kind;
     tag.textContent = a.kind === 'video' ? 'Video' : (a.kind === 'repair' ? 'Repair' : 'Note');
@@ -22403,27 +22486,30 @@ function renderAlerts(){
       if(a.jobKey) openJobReport(a.customerId, a.jobKey); else openAlertReport(a);
       try{ renderAlerts(); }catch(e){}
     };
-    const open = small('Open report', 104);
-    open.addEventListener('click', e=>{ e.stopPropagation(); openAndSee(); });
-    acts.appendChild(open);
-    // The whole row opens it too; its other buttons do only their own job
+    // Pressing the row opens the report (Open report and Mark seen buttons
+    // gone, Oct 3); while selecting, it ticks the row instead
     row.style.cursor = 'pointer';
-    row.title = 'Open the report';
+    row.title = selSt.on ? 'Tick this alert' : 'Open the report';
     row.addEventListener('click', e=>{
       if(e.target.closest('button, a, input')) return;
+      if(selSt.on){ toggleSelected(selKey, a.id, redrawSel); return; }
       openAndSee();
     });
-    if(!seen[a.id]){
-      const mark = small('Mark seen', 92);
-      mark.addEventListener('click', e=>{
-        e.stopPropagation();
-        const s = alertsSeen();
-        s[a.id] = Date.now();
-        saveAlertsSeen(s);
-        renderAlerts();
-      });
-      acts.appendChild(mark);
-    } else acts.appendChild(spacer(92));
+    // The bin at the far right: off the list, after asking
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'btn btn-ghost';
+    del.textContent = 'Delete';
+    del.title = 'Take this alert off the list';
+    del.style.cssText = 'width:auto;padding:4px 10px;font-size:11.5px;color:var(--rust);border-color:#EFC0B4;';
+    del.addEventListener('click', async e=>{
+      e.stopPropagation();
+      const ok = await confirmDialog('Delete this alert? It comes off this list on this computer; the report itself stays.', 'Delete');
+      if(!ok) return;
+      dismissAlerts([a.id]);
+      redrawSel();
+    });
+    acts.appendChild(del);
     row.appendChild(tag); row.appendChild(body); row.appendChild(acts);
     box.appendChild(row);
   });

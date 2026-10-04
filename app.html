@@ -7853,6 +7853,9 @@ let closePhotoViewer = null;
 // what everything older reads; the others travel alongside it.
 const PHOTOS_PER_STEP = 3;
 function makePhotoController(ids){
+  // How many photos: three, unless the screen says otherwise (Oct 3: a work
+  // order with several line items takes more)
+  const MAX_SHOTS = ids.max || PHOTOS_PER_STEP;
   let shots = [];                                 // data URLs, in the order taken
   const takeBtn = document.getElementById(ids.takeBtn);
   const fileInput = document.getElementById(ids.fileInput);
@@ -7897,13 +7900,13 @@ function makePhotoController(ids){
       previewWrap.appendChild(cell);
     });
     if(takeBtn){
-      takeBtn.style.display = shots.length >= PHOTOS_PER_STEP ? 'none' : '';
+      takeBtn.style.display = shots.length >= MAX_SHOTS ? 'none' : '';
       // The most it takes, rather than a count (Oct 2)
-      takeBtn.textContent = (shots.length ? 'Take another' : takeWords) + ' (Max ' + PHOTOS_PER_STEP + ')';
+      takeBtn.textContent = (shots.length ? 'Take another' : takeWords) + ' (Max ' + MAX_SHOTS + ')';
     }
   }
   function add(data){
-    if(!data || shots.length >= PHOTOS_PER_STEP) return;
+    if(!data || shots.length >= MAX_SHOTS) return;
     shots.push(data);
     draw();
     if(ids.onChange) ids.onChange();
@@ -7916,7 +7919,7 @@ function makePhotoController(ids){
   }
 
   takeBtn.addEventListener('click', async ()=>{
-    if(shots.length >= PHOTOS_PER_STEP) return;
+    if(shots.length >= MAX_SHOTS) return;
     try{
       const data = await captureFromCamera(900, 0.5);
       if(data) add(data);              // null means they cancelled
@@ -7944,7 +7947,7 @@ function makePhotoController(ids){
     getData: ()=> shots[0] || null,
     getAll: ()=> shots.slice(),
     setData: (dataUrl)=>{ shots = dataUrl ? [dataUrl] : []; draw(); if(ids.onChange) ids.onChange(); },
-    setAll: (list)=>{ shots = (list || []).filter(Boolean).slice(0, PHOTOS_PER_STEP); draw(); if(ids.onChange) ids.onChange(); },
+    setAll: (list)=>{ shots = (list || []).filter(Boolean).slice(0, MAX_SHOTS); draw(); if(ids.onChange) ids.onChange(); },
     clear
   };
 }
@@ -10265,7 +10268,7 @@ function routeJobsFor(customerId, dayISO, techId){
                 title: t.title || 'Task', details: t.details || '', photoRequired: !!t.photoRequired, videoRequired: !!t.videoRequired}));
   const orders = (lsGet('scheduledWorkOrders') || [])
     .filter(j => j.status === 'scheduled' && j.date === dayISO && j.customerId === customerId && mine(j))
-    .map(j => ({key: 'work order:' + j.id, kind: 'work order', id: j.id,
+    .map(j => ({key: 'work order:' + j.id, kind: 'work order', id: j.id, lineItems: j.lineItems || [],
                 title: j.title || 'Work order', details: j.notes || '', photoRequired: !!j.photoRequired, videoRequired: !!j.videoRequired}));
   // Filter cleans are jobs too, done on the job screen (Oct 3)
   const cleans = (lsGet('scheduledFilterCleans') || [])
@@ -10704,6 +10707,36 @@ function openJobPage(customer, job){
   // A filter clean starts straight at its photos: no customer name or address
   // under "Filter clean" (Oct 3)
   if(job.kind === 'filter clean'){ who.style.display = 'none'; where.style.display = 'none'; }
+  // A work order shows its line items and a task its name, in black, with no
+  // customer name or address (Oct 3)
+  const lineChecks = [];       // a work order's line items, all ticked before Submit
+  if(job.kind === 'work order' || job.kind === 'task'){
+    where.style.display = 'none';
+    who.style.color = 'var(--ink)';
+    who.style.margin = '2px 0 14px';
+    const items = job.kind === 'work order'
+      ? (job.lineItems || []).map(li => String((li && li.description) || '').trim()).filter(Boolean) : [];
+    if(items.length){
+      // Each line item with a tick box, lines between them (Oct 3)
+      who.textContent = '';
+      who.style.margin = '6px 0 14px';
+      items.forEach((t, i)=>{
+        const line = document.createElement('label');
+        line.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px 2px;cursor:pointer;'
+          + (i < items.length - 1 ? 'border-bottom:1px solid var(--line);' : '');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.style.cssText = 'width:22px;height:22px;margin:0;flex-shrink:0;';
+        lineChecks.push(cb);
+        const span = document.createElement('span');
+        span.textContent = t;
+        line.appendChild(cb); line.appendChild(span);
+        who.appendChild(line);
+      });
+    } else {
+      who.textContent = job.title || jobKindLabel(job.kind);
+    }
+  }
   if(job.details){
     const said = document.createElement('div');
     said.style.cssText = 'background:var(--teal-pale);border-radius:10px;padding:12px 14px;font-size:14px;margin-bottom:16px;';
@@ -10727,6 +10760,9 @@ function openJobPage(customer, job){
     + '</div>'
     + '<input type="file" accept="image/*" capture="environment" id="' + pid('File') + '" style="display:none;">';
   photoBlock.querySelector('h2').textContent = job.photoRequired ? 'Photos \u00b7 Required' : 'Photos';
+  // More room above Photos on every job screen (Oct 3: filter cleans first,
+  // then work orders and tasks too)
+  photoBlock.style.marginTop = '34px';
   card.appendChild(photoBlock);
 
   let videoRefs = [];
@@ -10806,13 +10842,16 @@ function openJobPage(customer, job){
   // Replacements, on a filter clean (Oct 3): what the filter needs, ticked
   // from a list or typed in, sent to the office with the filter clean
   let replacements = [];
+  let repRow = null;
   if(job.kind === 'filter clean'){
-    const repRow = document.createElement('div');
-    repRow.style.cssText = 'margin:4px 0 18px;';
+    // Under the notes, above Submit with more room before it (Oct 3)
+    repRow = document.createElement('div');
+    repRow.style.cssText = 'margin:0 0 30px;';
     const repBtn = document.createElement('button');
     repBtn.type = 'button';
-    repBtn.className = 'btn btn-ghost';
-    repBtn.style.cssText = 'width:100%;padding:12px 16px;font-size:15px;';
+    repBtn.className = 'btn btn-primary';
+    // Filter clean gold (Tyrus, Oct 3)
+    repBtn.style.cssText = 'width:100%;padding:12px 16px;font-size:15px;background:#8A5E0B;border:1.5px solid #8A5E0B;color:#fff;';
     repBtn.textContent = 'Replacements';
     const repSaid = document.createElement('div');
     repSaid.style.cssText = 'display:none;font-size:13.5px;color:var(--ink);margin-top:8px;';
@@ -10827,7 +10866,6 @@ function openJobPage(customer, job){
     };
     repBtn.addEventListener('click', ()=> openReplacementsPicker(replacements, chosen=>{ replacements = chosen; showReps(); }));
     repRow.appendChild(repBtn); repRow.appendChild(repSaid);
-    card.appendChild(repRow);
   }
 
   // Notes
@@ -10840,6 +10878,7 @@ function openJobPage(customer, job){
   notes.placeholder = 'What was done, anything the office should know';
   notes.style.cssText = 'width:100%;margin-bottom:16px;';
   card.appendChild(notes);
+  if(repRow) card.appendChild(repRow);
 
   const submit = document.createElement('button');
   submit.className = 'btn btn-primary';
@@ -10858,6 +10897,12 @@ function openJobPage(customer, job){
   submit.addEventListener('click', async ()=>{
     // A task marked "Photo required" can't go without one
     const shots = photos ? photos.getAll() : [];
+    // Every line item ticked first (Oct 3)
+    const unticked = lineChecks.filter(cb => !cb.checked).length;
+    if(unticked){
+      showToast('Tick every item first \u2014 ' + unticked + (unticked === 1 ? ' isn\u2019t' : ' aren\u2019t') + ' ticked yet');
+      return;
+    }
     if(job.photoRequired && !shots.length){
       showToast('Take the photo first \u2014 this ' + job.kind + ' needs one');
       return;
@@ -10957,8 +11002,12 @@ function openJobPage(customer, job){
   document.body.appendChild(page);
   openJobPage.open = page;
   // The visit's own photo controller, now its buttons are on the page
+  // A work order with 2 or more line items takes 2 photos per item; otherwise 3
+  const woItems = job.kind === 'work order'
+    ? (job.lineItems || []).filter(li => li && String(li.description || '').trim()).length : 0;
+  const maxPhotos = woItems >= 2 ? woItems * 2 : 3;
   photos = makePhotoController({takeBtn: pid('Take'), fileInput: pid('File'),
-    previewWrap: pid('Wrap'), previewImg: pid('Img'), removeBtn: pid('Remove')});
+    previewWrap: pid('Wrap'), previewImg: pid('Img'), removeBtn: pid('Remove'), max: maxPhotos});
   page.scrollTop = 0;
 }
 
