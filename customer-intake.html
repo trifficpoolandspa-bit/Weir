@@ -288,7 +288,8 @@ input::placeholder{color:#A9BCB9;}
 .alert-row:hover{background:var(--teal-pale);}
 .alert-tag{flex:0 0 64px;text-align:center;font-size:11.5px;font-weight:700;padding:4px 0;border-radius:999px;margin-top:2px;}
 .alert-tag.video{background:var(--teal-pale);color:var(--teal-deep);}
-.alert-tag.note{background:var(--surface-alt);color:var(--ink);border:1px solid var(--line);}
+/* Notes in the task badge's green (Oct 3) */
+.alert-tag.note{background:#E8F1E4;color:#4D6B3C;}
 .wc-tick-col{display:flex;flex-direction:column;gap:10px;padding-bottom:10px;}
 .alert-tag.repair{background:var(--gold-pale);color:var(--gold);}
 
@@ -1898,8 +1899,9 @@ input::placeholder{color:#A9BCB9;}
         <h2 style="margin:0;">Alerts</h2>
         <button type="button" class="btn btn-ghost" id="btnAlertsAllSeen" style="width:auto;padding:5px 10px;font-size:12px;display:none;">Mark all seen</button>
       </div>
-      <p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">Videos technicians sent and notes they left on service reports, newest first. Marking one seen clears it on this computer only.</p>
-      <div class="seg-control" id="alertsSeenControl">
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">Videos technicians sent and notes they left, newest first. New ones say NEW until you open, watch or mark them seen (on this computer only).</p>
+      <!-- New / Seen hidden (Oct 3): every alert in one list, new ones badged -->
+      <div class="seg-control" id="alertsSeenControl" style="display:none;">
         <button type="button" class="history-type-btn active" data-alerts="new">New</button>
         <button type="button" class="history-type-btn" data-alerts="seen">Seen</button>
       </div>
@@ -7634,7 +7636,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
 // restoring one never rewinds it.
 const SYNC_PREFIX = 'weirsync:' + WEIR_STORE;
 const SYNC_MASS_DELETE = 5;
-const SYNC_INTERVAL_MS = 60000;
+// Every 20 seconds while the website is on screen (Oct 3; was a minute), so
+// work finished in the field shows up sooner. Nothing runs while it's hidden.
+const SYNC_INTERVAL_MS = 20000;
 const SYNC_PAGE = 500;
 // Pulls look a little before the last change seen, so a save that committed a
 // moment late is never skipped. Applying the same row twice changes nothing.
@@ -22261,6 +22265,21 @@ function collectAlerts(){
       out.push(Object.assign({id: 'repair:' + f.id, kind: 'repair', notes: 'Needs replacing: ' + items.join(', ')}, base));
     }
   });
+  // Tasks finished in the field (Oct 3): their notes and videos
+  (lsGet('tasks') || []).forEach(t=>{
+    if(!t || !t.done || !t.id) return;
+    const tm = new Date(t.doneAt || ((t.date || '') + 'T12:00:00')).getTime();
+    if(!tm || isNaN(tm)) return;
+    const cid = (t.customerIds || [])[0] || '';
+    const c = cid ? (customers || []).find(x => x && String(x.id) === String(cid)) : null;
+    const base = {customerId: c ? c.id : '', name: c ? displayName(c.name) : (t.title || 'Task'),
+      body: 'Task' + (c && t.title ? ': ' + t.title : ''), t: tm, jobKey: c ? 'tk:' + t.id : '',
+      tech: t.doneBy === 'office' ? 'the office' : techName(t.doneBy || t.technicianId)};
+    const notes = String(t.doneNotes || '').trim();
+    if(notes && now - tm <= ALERT_NOTE_DAYS * 86400000) out.push(Object.assign({id: 'tknote:' + t.id, kind: 'note', notes: notes}, base));
+    const vids = [t.doneVideo].concat(t.doneVideoMore || []).filter(Boolean);
+    if(vids.length && now - tm <= ALERT_VIDEO_DAYS * 86400000) out.push(Object.assign({id: 'tkvideo:' + t.id, kind: 'video', refs: vids}, base));
+  });
   out.sort((a, b) => b.t - a.t);
   return out;
 }
@@ -22297,21 +22316,21 @@ function renderAlerts(){
   document.querySelectorAll('#alertsSeenControl [data-alerts]').forEach(b => b.classList.toggle('active', b.dataset.alerts === alertsView));
   document.querySelectorAll('#alertsKindControl [data-kind]').forEach(b => b.classList.toggle('active', b.dataset.kind === alertsKind));
   const allSeen = document.getElementById('btnAlertsAllSeen');
-  if(allSeen) allSeen.style.display = (alertsView === 'new' && n) ? '' : 'none';
+  if(allSeen) allSeen.style.display = n ? '' : 'none';
 
-  const rows = all.filter(a => (alertsView === 'new') === !seen[a.id])
-    .filter(a => alertsKind === 'all' || a.kind === alertsKind);
+  // One list, new and seen together; new ones carry a NEW badge (Oct 3)
+  const rows = all.filter(a => alertsKind === 'all' || a.kind === alertsKind);
   // Only redrawn when what it shows has changed. A sync saves visits and
   // customers often, and rebuilding the same list each time flashed the row
   // under the pointer white (Oct 2).
   // (today's date is part of it, so "Today" turns to "Yesterday" overnight)
-  const shape = new Date().toDateString() + '|' + alertsView + '|' + alertsKind + '|' + rows.map(a => a.id + ':' + (a.tech || '') + ':'
+  const shape = new Date().toDateString() + '|' + alertsKind + '|' + rows.map(a => a.id + ':' + (seen[a.id] ? 's' : 'n') + ':' + (a.tech || '') + ':'
     + (a.kind === 'video' ? a.refs.length : a.notes) + ':' + a.name + ':' + a.body).join('|');
   if(box.dataset.shape === shape && box.childNodes.length) return;
   box.dataset.shape = shape;
   box.innerHTML = '';
   if(!rows.length){
-    box.innerHTML = emptyState(alertsView === 'new' ? 'Nothing new.' : 'Nothing seen yet.');
+    box.innerHTML = emptyState('No alerts yet.');
     return;
   }
   rows.forEach(a=>{
@@ -22325,6 +22344,14 @@ function renderAlerts(){
     const t1 = document.createElement('div');
     t1.style.cssText = 'font-size:14px;font-weight:600;';
     t1.textContent = a.name + ' \u2013 ' + a.body;
+    // NEW until it's opened, watched or marked seen
+    if(!seen[a.id]){
+      const isNew = document.createElement('span');
+      isNew.textContent = 'NEW';
+      isNew.style.cssText = 'background:var(--gold);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;'
+        + 'border-radius:6px;vertical-align:middle;margin-left:8px;letter-spacing:.04em;';
+      t1.appendChild(isNew);
+    }
     const t2 = document.createElement('div');
     t2.style.cssText = 'font-size:12.5px;color:var(--muted);margin-top:2px;';
     const bits = [alertWhen(a.t)];
@@ -22341,17 +22368,27 @@ function renderAlerts(){
 
     const acts = document.createElement('div');
     acts.style.cssText = 'display:flex;gap:8px;flex-shrink:0;align-items:center;';
-    const small = text => {
+    // Each button has its own column of one width, kept even when a row has no
+    // such button, so Watch video, Open report and Mark seen line up (Oct 3)
+    const small = (text, w) => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'btn btn-ghost';
-      b.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;';
+      b.style.cssText = 'width:' + w + 'px;flex:0 0 ' + w + 'px;padding:5px 0;font-size:12px;text-align:center;justify-content:center;';
       b.textContent = text;
       return b;
     };
+    const spacer = w => { const d = document.createElement('span'); d.style.cssText = 'flex:0 0 ' + w + 'px;'; return d; };
+    if(a.kind !== 'video') acts.appendChild(spacer(128));
     if(a.kind === 'video'){
-      const watch = small('\u25b6 Watch video' + (a.refs.length > 1 ? 's' : ''));
-      watch.addEventListener('click', ()=> openVisitVideos(a.refs));
+      const watch = small('\u25b6 Watch video' + (a.refs.length > 1 ? 's' : ''), 128);
+      watch.addEventListener('click', e=>{
+        e.stopPropagation();
+        // Watched: no longer new
+        if(!seen[a.id]){ const s = alertsSeen(); s[a.id] = Date.now(); saveAlertsSeen(s); }
+        openVisitVideos(a.refs);
+        try{ renderAlerts(); }catch(err){}
+      });
       acts.appendChild(watch);
     }
     // Opening the report marks the alert seen (Oct 3). A filter clean opens in
@@ -22362,10 +22399,11 @@ function renderAlerts(){
         s[a.id] = Date.now();
         saveAlertsSeen(s);
       }
+      if(!a.customerId){ try{ renderAlerts(); }catch(e){} return; }   // a task with no customer
       if(a.jobKey) openJobReport(a.customerId, a.jobKey); else openAlertReport(a);
       try{ renderAlerts(); }catch(e){}
     };
-    const open = small('Open report');
+    const open = small('Open report', 104);
     open.addEventListener('click', e=>{ e.stopPropagation(); openAndSee(); });
     acts.appendChild(open);
     // The whole row opens it too; its other buttons do only their own job
@@ -22376,15 +22414,16 @@ function renderAlerts(){
       openAndSee();
     });
     if(!seen[a.id]){
-      const mark = small('Mark seen');
-      mark.addEventListener('click', ()=>{
+      const mark = small('Mark seen', 92);
+      mark.addEventListener('click', e=>{
+        e.stopPropagation();
         const s = alertsSeen();
         s[a.id] = Date.now();
         saveAlertsSeen(s);
         renderAlerts();
       });
       acts.appendChild(mark);
-    }
+    } else acts.appendChild(spacer(92));
     row.appendChild(tag); row.appendChild(body); row.appendChild(acts);
     box.appendChild(row);
   });

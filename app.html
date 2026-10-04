@@ -3017,7 +3017,10 @@ function lsSet(key, value){
   try{
     localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value));
     // Never let telling sync about a change get in the way of the save itself
+    // Finishing a work order or filter clean is sent straight away too (Oct 3;
+    // it used to wait for the once-a-minute sync)
     if(key === 'customers' || key === 'tasks' || key === 'rescheduledVisits'
+     || key === 'scheduledWorkOrders' || key === 'scheduledFilterCleans' || key === 'jobSubmissions'
      || key.indexOf('readings:') === 0 || key.indexOf('spaReadings:') === 0
      || key.indexOf('fountainReadings:') === 0 || key.indexOf('skippedVisits:') === 0){
       try{ if(typeof fieldNoteLocalChange === 'function') fieldNoteLocalChange(); }catch(e){}
@@ -4340,7 +4343,7 @@ const SYNC_WORK_LISTS = [
 // and a work order's photo and video (snippet 25, Oct 3)
 const SYNC_WORK_SENDABLE = ['task', 'reschedule', 'work_order', 'filter_clean'];
 const SYNC_FILTER_CLEAN_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore', 'doneReplacements'];
-const SYNC_TASK_FIELDS = ['done', 'doneAt', 'doneBy', 'doneNotes'];
+const SYNC_TASK_FIELDS = ['done', 'doneAt', 'doneBy', 'doneNotes', 'doneVideo', 'doneVideoMore'];
 const SYNC_WORK_ORDER_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore'];
 
 // A work order submitted before its photo and video went to the office (Oct 3)
@@ -4387,7 +4390,12 @@ function syncScanWork(state, now){
       if(syncStableString(wk.refused[key]) === syncStableString(f)) return;
       delete wk.refused[key];
     }
-    const k = wk.known[key], prev = wk.seen[key];
+    // What the server last agreed: from this phone's own push, or else from
+    // the pull (Oct 3). Comparing only with this phone's pushes made every job
+    // the office sent look changed here, so each was sent back — and refused —
+    // one request at a time, holding up the real changes behind them.
+    const pulledK = state.records && state.records.known && state.records.known[key];
+    const k = wk.known[key] || (pulledK && !pulledK.d ? pulledK : null), prev = wk.seen[key];
     const e = Object.assign({}, wk.edits[key] || {});
     const fields = new Set(Object.keys(f).concat(k ? Object.keys(k.f || {}) : []));
     fields.forEach(field=>{
@@ -4458,7 +4466,7 @@ async function syncPushWork(state){
       changes[field] = {t: pending[field], v: mine[field]};
     });
     if(!Object.keys(changes).length){ delete wk.edits[key]; continue; }
-    const k = wk.known[key];
+    const k = wk.known[key] || (state.records && state.records.known && state.records.known[key]);
     const res = await fieldAuthed('/rest/v1/rpc/push_record_fields', {
       method: 'POST',
       body: JSON.stringify({p_kind: kind, p_id: id, p_changes: changes, p_base: k && k.u ? k.u : null})
@@ -4836,7 +4844,7 @@ function syncPhotosHere(){
   // the work order visit, so the office shows them in Service reports; the
   // video is office only and kept 7 days, like a visit's.
   (lsGet('jobSubmissions') || []).forEach(sub=>{
-    if(!sub || (sub.kind !== 'work order' && sub.kind !== 'filter clean') || !sub.customerId || !sub.sourceId) return;
+    if(!sub || (sub.kind !== 'work order' && sub.kind !== 'filter clean' && sub.kind !== 'task') || !sub.customerId || !sub.sourceId) return;
     const when = sub.submittedAt || new Date().toISOString();
     add(sub.photo, {customerId: String(sub.customerId), kind: 'custom', visitId: String(sub.sourceId), takenAt: when});
     add(sub.video, {customerId: String(sub.customerId), kind: 'video', visitId: String(sub.sourceId), takenAt: when});
@@ -10895,6 +10903,13 @@ function openJobPage(customer, job){
             if(!x || !x.notes) return '';
             return (x.customerName && who.length > 1 ? x.customerName + ': ' : '') + x.notes;
           }).filter(Boolean).join('\n');
+          // Its videos go to the office too, for Alerts (Oct 3)
+          const vids = [];
+          who.forEach(k=>{
+            const x = subs.find(y => y.key === k);
+            if(x) [x.video].concat(x.videoMore || []).forEach(v => { if(isPhotoRef(v)) vids.push(v); });
+          });
+          if(vids.length){ t.doneVideo = vids[0]; if(vids.length > 1) t.doneVideoMore = vids.slice(1); }
           lsSet('tasks', all);
         }
       }
