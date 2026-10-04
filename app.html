@@ -1081,8 +1081,8 @@ select#customerSelect{font-weight:600;}
       </div>
       <!-- The reports as rows instead (Oct 3); kept, hidden, for the buttons
            that read which report is open -->
-      <div class="field" id="reportDateField" style="display:none;">
-        <label>Reading date</label>
+      <div class="field" id="reportDateField">
+        <label>Jump to a date</label>
         <div style="display:flex;align-items:center;gap:8px;">
           <select id="reportReadingSelect" style="flex:1;padding-right:16px;"></select>
           <button type="button" id="btnReportDatePicker" title="Pick a date from the calendar"
@@ -12705,6 +12705,11 @@ async function refreshDateSelector(customerId){
   }
   availableReportDates = dates.map(d => d.dateStr);
   reportDateDays = dates.map(d => ({key: d.dateStr, day: d.day || String(d.dateStr).slice(0, 10)}));
+  // Nothing picked until a date is chosen here or a row is pressed (Oct 3)
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = 'Pick a date';
+  sel.appendChild(none);
   dates.forEach(d=>{
     const opt = document.createElement('option');
     opt.value = d.dateStr;
@@ -12720,6 +12725,7 @@ async function refreshDateSelector(customerId){
   reportRowsList = dates;
   reportRowsShown = REPORT_ROWS_PAGE;
   reportOpenKey = null;
+  sel.value = '';
   putReportBackHome();
   drawReportRows();
 }
@@ -12785,14 +12791,6 @@ function drawReportRows(){
     }
     const right = document.createElement('div');
     right.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
-    // Completed or Skipped, in the badge Quotes & Orders uses on the website
-    if(!d.wo && !d.fc){
-      const mark = document.createElement('span');
-      mark.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:84px;padding:4px 0;border-radius:7px;'
-        + 'font-size:10px;font-weight:700;letter-spacing:.04em;color:#fff;background:' + (d.skipped ? 'var(--rust)' : 'var(--green)') + ';';
-      mark.textContent = d.skipped ? 'SKIPPED' : 'COMPLETED';
-      right.appendChild(mark);
-    }
     const ago = document.createElement('div');
     ago.style.cssText = 'font-size:12px;color:var(--muted);flex-shrink:0;white-space:nowrap;';
     ago.textContent = reportAgo(d.ts) + (isOpen ? '  \u25b4' : '  \u25be');
@@ -12802,6 +12800,8 @@ function drawReportRows(){
     bar.addEventListener('click', async ()=>{
       if(reportOpenKey === d.dateStr){
         reportOpenKey = null;
+        const s0 = document.getElementById('reportReadingSelect');
+        if(s0) s0.value = '';
         putReportBackHome();
         drawReportRows();
         return;
@@ -12835,6 +12835,8 @@ function placeReportUnderRow(key){
   const at = reportRowsList.findIndex(d => d.dateStr === key);
   if(at >= reportRowsShown) reportRowsShown = Math.ceil((at + 1) / REPORT_ROWS_PAGE) * REPORT_ROWS_PAGE;
   reportOpenKey = key;
+  const sel = document.getElementById('reportReadingSelect');
+  if(sel && sel.value !== key) sel.value = key;
   drawReportRows();
 }
 
@@ -12956,6 +12958,15 @@ document.getElementById('btnClearReportCustomer').addEventListener('click', ()=>
   document.getElementById('reportCustomerSelect').value = '';
   document.getElementById('btnClearReportCustomer').style.display = 'none';
   hideReportCustomerSuggestions();
+  // No customer, no reports: the rows, the open report and the date bar empty (Oct 3)
+  reportRowsCustomer = null; reportRowsList = []; reportOpenKey = null;
+  putReportBackHome();
+  const rowsBox = document.getElementById('reportRows');
+  if(rowsBox) rowsBox.innerHTML = '';
+  const dateSel = document.getElementById('reportReadingSelect');
+  if(dateSel) dateSel.innerHTML = '';
+  availableReportDates = []; reportDateDays = [];
+  document.getElementById('reportDateHint').style.display = 'none';
   input.focus();
 });
 
@@ -13009,6 +13020,8 @@ document.getElementById('reportDateInput').addEventListener('change', (e)=>{
 
 document.getElementById('reportReadingSelect').addEventListener('change', (e)=>{
   const custId = document.getElementById('reportCustomerSelect').value;
+  // Back to "Pick a date": the open report closes (Oct 3)
+  if(!e.target.value){ reportOpenKey = null; putReportBackHome(); drawReportRows(); return; }
   renderDateReport(custId, e.target.value);
 });
 
