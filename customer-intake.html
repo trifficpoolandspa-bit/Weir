@@ -299,6 +299,10 @@ input::placeholder{color:#A9BCB9;}
   padding:12px 4px;border-bottom:1px solid var(--line);
 }
 .cust-row:last-child{border-bottom:none;}
+/* History / Billing: a line between customers, as on Customers (Oct 3). Each
+   customer is a wrapper holding its row, so the line goes on the wrapper. */
+#billingList > div{border-bottom:1px solid var(--line);}
+#billingList > div:last-child{border-bottom:none;}
 .cust-left{display:flex;align-items:center;gap:11px;min-width:0;}
 .cust-avatar{
   width:34px;height:34px;border-radius:50%;flex-shrink:0;
@@ -1402,7 +1406,8 @@ input::placeholder{color:#A9BCB9;}
       <div class="seg-control" id="wcViewControl" style="margin:-8px 0 22px;">
         <button type="button" class="history-type-btn active" id="btnWcViewMain" data-wcview="main">Quote</button>
         <button type="button" class="history-type-btn" data-wcview="current">Current</button>
-        <button type="button" class="history-type-btn" data-wcview="history">History</button>
+        <!-- History is hidden for now (Oct 3); its code stays, to bring back -->
+        <button type="button" class="history-type-btn" data-wcview="history" style="display:none;">History</button>
       </div>
       <select id="wcType" style="display:none;">
         <option value="Quote">Quote</option>
@@ -1721,8 +1726,7 @@ input::placeholder{color:#A9BCB9;}
         </label>
       </div>
       <div class="field" style="position:relative;margin-bottom:14px;">
-        <label>Search customers</label>
-        <input id="billingSearch" placeholder="Start typing a name…" autocomplete="off" style="padding-right:38px;">
+        <input id="billingSearch" placeholder="Search by name, address, phone, or email" autocomplete="off" style="padding-right:38px;">
         <button type="button" id="billingSearchClear" style="display:none;position:absolute;right:8px;bottom:4px;height:30px;width:30px;padding:0;border:1px solid #EFC9BC;border-radius:8px;background:#fff;color:var(--rust);font-size:18px;line-height:1;cursor:pointer;align-items:center;justify-content:center;">×</button>
       </div>
       <div id="billingList"></div>
@@ -11320,7 +11324,7 @@ function renderEditDates(){
         if(!wcEditSeries) return;
         wcEditSeries.ids = wcEditSeries.ids.filter(id => id !== item.id);
         wcEditSeries.skip = (wcEditSeries.skip || []).concat(item.date);
-        showToast(wcShortDate(item.date) + ' completed \u2014 moved to History');
+        showToast(wcShortDate(item.date) + ' completed');
         if(!wcEditSeries.ids.length){ if(kind === 'task') clearTaskForm(); else resetWorkOrderForm(); return; }
         renderEditDates();
       });
@@ -11411,7 +11415,7 @@ function openRepeatWindow(kind, r, onClose){
           const j = jobs.find(x => x.id === item.id);
           if(j){ Object.assign(j, {status: 'done', doneAt: stamp, doneBy: 'office'}); lsSet('scheduledWorkOrders', jobs); }
         }
-        showToast(wcShortDate(item.date) + ' completed \u2014 moved to History');
+        showToast(wcShortDate(item.date) + ' completed');
         draw();
       });
       // The square bin here, as on the pages (Tyrus, Oct 2)
@@ -11593,7 +11597,7 @@ function openBundleWindow(kind, key){
           if(isTask){ const x = tasks.find(y => y.id === t.id); if(x){ Object.assign(x, {done: true, doneAt: stamp, doneBy: 'office'}); saveTasks(); } }
           else { const jobs = lsGet('scheduledWorkOrders') || []; const j = jobs.find(y => y.id === t.id);
             if(j){ Object.assign(j, {status: 'done', doneAt: stamp, doneBy: 'office'}); lsSet('scheduledWorkOrders', jobs); } }
-          showToast(t.techName + '\u2019s completed \u2014 moved to History');
+          showToast(t.techName + '\u2019s completed');
           draw();
         });
         row.appendChild(done);
@@ -11965,7 +11969,7 @@ function renderCurrentList(kind){
       close.className = 'btn btn-ghost';
       close.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;';
       close.textContent = 'Mark approved';
-      close.title = 'Approved by the customer \u2014 moves it to History';
+      close.title = 'Approved by the customer';
       close.addEventListener('click', ()=>{
         const w = workOrders.find(x => x.id === r.id);
         if(!w) return;
@@ -11974,7 +11978,7 @@ function renderCurrentList(kind){
         w.approvedAt = new Date().toISOString();
         saveWorkOrders();
         renderCurrentList(kind);
-        showToast('Approved \u2014 moved to History');
+        showToast('Approved');
       });
       acts.appendChild(close);
       // Mark denied, to its right: also moves the quote to History
@@ -11983,7 +11987,7 @@ function renderCurrentList(kind){
       deny.className = 'btn btn-ghost';
       deny.style.cssText = close.style.cssText;
       deny.textContent = 'Mark declined';
-      deny.title = 'Turned down by the customer \u2014 moves it to History';
+      deny.title = 'Turned down by the customer';
       deny.addEventListener('click', ()=>{
         const w = workOrders.find(x => x.id === r.id);
         if(!w) return;
@@ -11992,7 +11996,7 @@ function renderCurrentList(kind){
         w.deniedAt = new Date().toISOString();
         saveWorkOrders();
         renderCurrentList(kind);
-        showToast('Declined \u2014 moved to History');
+        showToast('Declined');
       });
       acts.appendChild(deny);
     } else {
@@ -12016,7 +12020,7 @@ function renderCurrentList(kind){
       complete.className = 'btn btn-ghost';
       complete.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;';
       complete.textContent = 'Mark completed';
-      complete.title = 'Done \u2014 moves it to History';
+      complete.title = 'Done';
       complete.addEventListener('click', e=>{
         e.stopPropagation();
         const stamp = new Date().toISOString();
@@ -12033,7 +12037,7 @@ function renderCurrentList(kind){
           lsSet('scheduledWorkOrders', jobs);
         }
         renderCurrentList(kind);
-        showToast('Completed \u2014 moved to History');
+        showToast('Completed');
       });
       // Mark completed on a single one; a repeat's is in its window (Oct 2)
       if(!(r.groupLeft > 1)) acts.appendChild(complete);
@@ -18378,7 +18382,7 @@ function twJobsFor(techId, iso){
       done: j.status === 'done', doneAt: j.doneAt});
   });
   (lsGet('scheduledFilterCleans') || []).filter(f => f && f.date === iso && mine(f)).forEach(f=>{
-    out.push({key: 'fc:' + f.id, label: '\ud83d\udee0 Filter clean', title: '', customerId: f.customerId,
+    out.push({key: 'fc:' + f.id, label: '\ud83d\udebf Filter clean', title: '', customerId: f.customerId,
       done: f.status === 'done', doneAt: f.doneAt});
   });
   (tasks || []).filter(t => t && t.date === iso && mine(t)).forEach(t=>{
@@ -25328,6 +25332,54 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
     if(!el.value) el.value = el.dataset.heldDate;      // nothing new: back as it was
     delete el.dataset.heldDate;
   });
+})();
+
+// ---- Suggestion lists: Up, Down and Enter (Oct 3) ----
+// Any box that shows a drop-down of suggestions as you type: Down and Up move
+// through them (highlighted as the mouse does), Enter puts the highlighted one
+// in, just as a click would. Enter with nothing highlighted does what it did.
+(function suggestionKeys(){
+  const listFor = input=>{
+    let p = input.parentElement;
+    for(let up = 0; p && up < 3; up++, p = p.parentElement){
+      const found = Array.from(p.children).find(el=>{
+        if(el === input || el.contains(input) || el.tagName === 'INPUT') return false;
+        const cs = getComputedStyle(el);
+        return cs.position === 'absolute' && cs.display !== 'none' && el.offsetParent !== null && el.children.length > 0;
+      });
+      if(found) return found;
+    }
+    return null;
+  };
+  const itemsOf = list => Array.from(list.children).filter(el =>
+    el.offsetParent !== null && getComputedStyle(el).cursor === 'pointer');
+  const paint = (items, at)=>{
+    items.forEach((el, i)=>{
+      if(i === at){ el.dataset.kbHi = '1'; el.style.background = 'var(--teal-pale)'; el.scrollIntoView({block: 'nearest'}); }
+      else if(el.dataset.kbHi){ delete el.dataset.kbHi; el.style.background = ''; }
+    });
+  };
+  document.addEventListener('keydown', e=>{
+    const input = e.target;
+    if(!input || input.tagName !== 'INPUT' || ['ArrowDown', 'ArrowUp', 'Enter'].indexOf(e.key) === -1) return;
+    const list = listFor(input);
+    if(!list) return;
+    const items = itemsOf(list);
+    if(!items.length) return;
+    let at = items.findIndex(el => el.dataset.kbHi === '1');
+    if(e.key === 'Enter'){
+      if(at === -1) return;                       // nothing chosen: Enter as before
+      e.preventDefault(); e.stopPropagation();
+      const item = items[at];
+      // The lists pick on press or on click; both are given
+      ['mousedown', 'mouseup', 'click'].forEach(type =>
+        item.dispatchEvent(new MouseEvent(type, {bubbles: true, cancelable: true, view: window})));
+      return;
+    }
+    e.preventDefault(); e.stopPropagation();
+    at = e.key === 'ArrowDown' ? Math.min(items.length - 1, at + 1) : Math.max(0, at - 1);
+    paint(items, at);
+  }, true);
 })();
 </script>
 

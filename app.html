@@ -8479,6 +8479,7 @@ function techCustomerCount(techId){
 }
 
 function renderTechList(){
+  rememberPlace();
   loadAdminTechnicians();
   const container = document.getElementById('techList');
   document.getElementById('techListCard').style.display = 'block';
@@ -8535,6 +8536,7 @@ function renderTechList(){
 }
 
 function openTechRoute(t){
+  rememberPlace();
   selectedTechId = t.id;
   // Always today when a route is opened (it used to keep the last day looked at)
   techRouteDay = DAYS_OF_WEEK[new Date().getDay()];
@@ -8918,7 +8920,7 @@ function techRouteJobRow(job, iso, onReorder){
   name.className = 'cust-name';
   name.style.cssText = "font-family:'Space Grotesk',sans-serif;font-weight:700;color:" + jobKindColours(job.kind)[1] + ';'
     + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-  name.textContent = (job.kind === 'task' ? '\ud83d\udccb ' : '\ud83d\udee0 ')
+  name.textContent = jobKindIcon(job.kind) + ' '
     + (customer ? customer.name + ' \u2013 ' : '') + job.title;
   if(job.done){
     const tag = document.createElement('span');
@@ -8932,7 +8934,7 @@ function techRouteJobRow(job, iso, onReorder){
   meta.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
   meta.textContent = job.done && job.doneAt
     ? 'Completed ' + new Date(job.doneAt).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'})
-    : (jobKindLabel(job.kind) + (customer ? ' \u00b7 ' + (customer.address || 'No address on file') : ''));
+    : (customer ? (customer.address || 'No address on file') : '');
   left.appendChild(meta);
   row.appendChild(left);
   // Reschedule, as a stop has: another date, another technician, or both
@@ -10334,6 +10336,10 @@ function jobKindColours(kind){
     : kind === 'filter clean' ? ['#FBF1DD', '#8A5E0B']
     : ['#E9EEF0', '#3E5560'];
 }
+// Each kind's icon (Oct 3): work order 🛠, filter clean 🚿, task 📋
+function jobKindIcon(kind){
+  return kind === 'task' ? '\ud83d\udccb' : kind === 'filter clean' ? '\ud83d\udebf' : '\ud83d\udee0';
+}
 function jobKindLabel(kind){
   return kind === 'task' ? 'Task' : (kind === 'filter clean' ? 'Filter clean' : 'Work order');
 }
@@ -10414,8 +10420,9 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
     // No gap between the parts, the same as a customer row, so the names start
     // at the same place whether or not there's a grip
     // The row in its kind's pale badge colour (Oct 3)
+    // The same padding as a stop's row, so they're the same height (Oct 3)
     row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:0;'
-      + 'padding:12px 4px 12px 12px;border-bottom:1px solid var(--line);cursor:pointer;'
+      + 'padding:15px 4px 15px 12px;border-bottom:1px solid var(--line);cursor:pointer;'
       + 'background:' + jobKindColours(job.kind)[0] + ';';
     // The same grip as a customer, so names line up down the list
     if(canReorder){
@@ -10436,12 +10443,12 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
     const nameLine = document.createElement('div');
     nameLine.className = 'cust-name';
     nameLine.style.cssText = 'color:' + jobKindColours(job.kind)[1] + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-    nameLine.textContent = (job.kind === 'task' ? '\ud83d\udccb ' : '\ud83d\udee0 ')
+    nameLine.textContent = jobKindIcon(job.kind) + ' '
       + (customer ? customer.name + ' \u2013 ' + job.title : job.title);
     const metaLine = document.createElement('div');
     metaLine.className = 'cust-meta';
     metaLine.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-    metaLine.textContent = jobKindLabel(job.kind) + (customer ? ' \u00b7 ' + (customer.address || 'No address on file') : '');
+    metaLine.textContent = customer ? (customer.address || 'No address on file') : '';
     text.appendChild(nameLine);
     text.appendChild(metaLine);
     row.appendChild(text);
@@ -10490,13 +10497,13 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
         } else el.appendChild(document.createTextNode(value));
         panel.appendChild(el);
       };
-      if(customer) line('\ud83d\udccd Address', customer.address || 'No address on file');
+      // The address is on the row itself (Oct 3)
       if(customer && customer.phone) line('\ud83d\udcde Phone', customer.phone, 'tel:' + customer.phone.replace(/[^0-9+]/g, ''));
       if(customer && customer.neighborhoodGateCode) line('\ud83d\udd11 Neighborhood gate', customer.neighborhoodGateCode);
       if(customer && customer.gateCode) line('\ud83d\udd11 Yard gate', customer.gateCode);
       const dogNames = ((customer && customer.dogs) || []).map(d => d.name).filter(Boolean);
       if(dogNames.length) line(dogNames.length === 1 ? '\ud83d\udc15 Dog' : '\ud83d\udc15 Dogs', dogNames.join(', '));
-      line(job.kind === 'task' ? '\ud83d\udccb Task' : '\ud83d\udee0 ' + jobKindLabel(job.kind), job.title);
+      line(jobKindIcon(job.kind) + ' ' + jobKindLabel(job.kind), job.title);
       if(job.details) line('Details', job.details);
       // Photo and video requirements are shown on the job screen itself (Oct 3)
 
@@ -10535,8 +10542,9 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
     // No gap between the parts, the same as a customer row, so the names start
     // at the same place whether or not there's a grip
     // The row in its kind's pale badge colour (Oct 3)
+    // The same padding as a stop's row, so they're the same height (Oct 3)
     row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:0;'
-      + 'padding:12px 4px 12px 12px;border-bottom:1px solid var(--line);cursor:pointer;'
+      + 'padding:15px 4px 15px 12px;border-bottom:1px solid var(--line);cursor:pointer;'
       + 'background:' + jobKindColours(job.kind)[0] + ';';
     // The same grip as a customer, so names line up down the list
     if(canReorder){
@@ -10557,12 +10565,12 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
     const nameLine = document.createElement('div');
     nameLine.className = 'cust-name';
     nameLine.style.cssText = 'color:' + jobKindColours(job.kind)[1] + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-    nameLine.textContent = (job.kind === 'task' ? '\ud83d\udccb ' : '\ud83d\udee0 ')
+    nameLine.textContent = jobKindIcon(job.kind) + ' '
       + (customer ? customer.name + ' \u2013 ' + job.title : job.title);
     const metaLine = document.createElement('div');
     metaLine.className = 'cust-meta';
     metaLine.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-    metaLine.textContent = jobKindLabel(job.kind) + (customer ? ' \u00b7 ' + (customer.address || 'No address on file') : '');
+    metaLine.textContent = customer ? (customer.address || 'No address on file') : '';
     text.appendChild(nameLine);
     text.appendChild(metaLine);
     row.appendChild(text);
@@ -10611,13 +10619,13 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
         } else el.appendChild(document.createTextNode(value));
         panel.appendChild(el);
       };
-      if(customer) line('\ud83d\udccd Address', customer.address || 'No address on file');
+      // The address is on the row itself (Oct 3)
       if(customer && customer.phone) line('\ud83d\udcde Phone', customer.phone, 'tel:' + customer.phone.replace(/[^0-9+]/g, ''));
       if(customer && customer.neighborhoodGateCode) line('\ud83d\udd11 Neighborhood gate', customer.neighborhoodGateCode);
       if(customer && customer.gateCode) line('\ud83d\udd11 Yard gate', customer.gateCode);
       const dogNames = ((customer && customer.dogs) || []).map(d => d.name).filter(Boolean);
       if(dogNames.length) line(dogNames.length === 1 ? '\ud83d\udc15 Dog' : '\ud83d\udc15 Dogs', dogNames.join(', '));
-      line(job.kind === 'task' ? '\ud83d\udccb Task' : '\ud83d\udee0 ' + jobKindLabel(job.kind), job.title);
+      line(jobKindIcon(job.kind) + ' ' + jobKindLabel(job.kind), job.title);
       if(job.details) line('Details', job.details);
       // Photo and video requirements are shown on the job screen itself (Oct 3)
 
@@ -13070,10 +13078,19 @@ async function techVersion_refreshReportSelectors(){
 document.getElementById('reportCustomerSelect').addEventListener('change', (e)=>{
   refreshDateSelector(e.target.value);
 });
+// Opening or closing a report, or choosing another customer, is a step Back
+// can return to (Oct 3)
+(function reportPlaces(){
+  const rows = document.getElementById('reportRows');
+  if(rows) rows.addEventListener('click', ()=> rememberPlace(), true);
+  const search = document.getElementById('reportCustomerSuggestions');
+  if(search) search.addEventListener('mousedown', ()=> rememberPlace(), true);
+})();
 
 let reportMode = 'serviced';   // the Report tab opens here by default
 
 function setReportMode(mode){
+  rememberPlace();
   reportMode = mode;
   const onReports = mode === 'reports';
   document.getElementById('reportModeReports').style.display = onReports ? 'block' : 'none';
@@ -14980,7 +14997,8 @@ function awcBuild(pane){
     <div class="seg-control" id="awcViewRow">
       <button type="button" class="history-type-btn active" data-view="main" id="awcMainTab">Work Order</button>
       <button type="button" class="history-type-btn" data-view="current">Current</button>
-      <button type="button" class="history-type-btn" data-view="history">History</button>
+      <!-- History is hidden for now (Oct 3); its code stays, to bring back -->
+      <button type="button" class="history-type-btn" data-view="history" style="display:none;">History</button>
     </div>
 
     <div id="awcWoForm">
@@ -15120,9 +15138,11 @@ function awcBuild(pane){
 
   pane.querySelectorAll('#awcKindRow [data-kind]').forEach(b => b.addEventListener('click', ()=>{
     if(awcEdit) awcEndEdit();
+    rememberPlace();
     awcKind = b.dataset.kind; awcView = 'main'; awcShown = 20; awcApply();
   }));
   pane.querySelectorAll('#awcViewRow [data-view]').forEach(b => b.addEventListener('click', ()=>{
+    rememberPlace();
     if(awcEdit) awcEndEdit();
     awcView = b.dataset.view; awcShown = 20; awcApply();
   }));
@@ -15768,7 +15788,7 @@ function awcRenderEditDates(){
         if(!awcEdit) return;
         awcEdit.ids = awcEdit.ids.filter(id => id !== item.id);
         awcEdit.skip = (awcEdit.skip || []).concat(item.date);
-        showToast(awcShortDate(item.date) + ' completed \u2014 moved to History');
+        showToast(awcShortDate(item.date) + ' completed');
         try{ if(typeof renderHomeList === 'function') renderHomeList(); }catch(e){}
         if(!awcEdit.ids.length){ if(kind === 'task') awcClearTask(); else awcClearWo(); return; }
         awcRenderEditDates();
@@ -15846,7 +15866,7 @@ function awcOpenRepeatWindow(isTask, r, onClose){
           fieldNoteLocalChange();
         }
         try{ if(typeof renderHomeList === 'function') renderHomeList(); }catch(e){}
-        showToast(awcShortDate(item.date) + ' completed \u2014 moved to History');
+        showToast(awcShortDate(item.date) + ' completed');
         draw();
       });
       // The square bin here, as on the pages (Tyrus, Oct 2)
@@ -16015,7 +16035,7 @@ function awcOpenBundleWindow(isTask, key){
             if(isTask){ try{ if(typeof tasks !== 'undefined') tasks = all; }catch(err){} }
             fieldNoteLocalChange();
           }
-          showToast(t.techName + '\u2019s completed \u2014 moved to History');
+          showToast(t.techName + '\u2019s completed');
           draw();
         });
         acts.appendChild(done);
@@ -16269,7 +16289,7 @@ function awcRenderCurrent(){
       fieldNoteLocalChange();
       awcRenderCurrent();
       try{ if(typeof renderHomeList === 'function') renderHomeList(); }catch(e){}
-      showToast('Completed \u2014 moved to History');
+      showToast('Completed');
     });
     // Mark completed on a single one; a repeat's is in its window (Oct 2)
     if(!(r.groupLeft > 1)) acts.appendChild(complete);
@@ -16405,6 +16425,7 @@ function awcRenderHistory(){
 
 // Customers / WorkCenter
 function showCustomerPane(which){
+  rememberPlace();
   const work = which === 'work';
   const a = document.getElementById('custPaneList'), b = document.getElementById('custPaneWork');
   if(!a || !b) return;
@@ -16989,7 +17010,7 @@ async function discardVisitInProgress(){
 // is consumed and the page is left. The cushion absorbs a burst; each Back
 // press then tops it back up.
 // How many places back the app remembers. Past this, Back does nothing.
-const NAV_STACK_LIMIT = 5;
+const NAV_STACK_LIMIT = 40;     // Oct 3: places, not just tabs, so more of them
 
 // Guard entries that Chrome will actually honour.
 //
@@ -17045,8 +17066,11 @@ const navStack = [];
 // two views forever instead of running out.
 let navigatingBack = false;
 
-function rememberPlace(){
-  if(navigatingBack) return;
+// Where exactly the app is (Oct 3): the tab, and within it the sub-tab, the
+// day on show, the customer whose reports are open, the technician's route.
+// Back returns to the last one, like a browser's.
+function snapshotPlace(){
+  const shown = id => { const el = document.getElementById(id); return !!(el && el.style.display !== 'none' && el.offsetParent !== null); };
   const place = {
     view: currentViewName,
     section: currentVisibleSection,
@@ -17054,24 +17078,100 @@ function rememberPlace(){
     step: currentVisitStep,
     customerId: currentVisitCustomerId
   };
+  try{
+    if(currentViewName === 'home'){ place.homeDay = selectedHomeDay; place.weekOffset = weekOffset; }
+    if(currentViewName === 'customers'){
+      place.pane = shown('custPaneWork') ? 'work' : 'list';
+      if(place.pane === 'work'){ place.awcKind = awcKind; place.awcView = awcView; }
+    }
+    if(currentViewName === 'report'){
+      place.reportMode = reportMode;
+      const sel = document.getElementById('reportCustomerSelect');
+      place.reportCustomer = sel ? sel.value : '';
+      place.reportOpen = reportOpenKey || null;
+    }
+    if(currentViewName === 'technicians'){
+      place.routeTech = shown('techRouteCard') ? selectedTechId : null;
+      place.techDay = techRouteDay;
+      place.techWeek = techRouteWeekOffset;
+    }
+  }catch(e){}
+  return place;
+}
+const samePlace = (a, b) => !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
+function rememberPlace(){
+  if(navigatingBack) return;
+  const place = snapshotPlace();
   const last = navStack[navStack.length - 1];
-  if(last && last.view === place.view && last.section === place.section
-     && last.step === place.step && last.customerId === place.customerId) return;
+  if(samePlace(last, place)) return;
   navStack.push(place);
   if(navStack.length > NAV_STACK_LIMIT) navStack.shift();
+}
+
+// Puts the app back at a remembered place
+async function restorePlace(p){
+  navigatingBack = true;
+  try{
+    switchView(p.view, {skipRefresh: true});
+    if(p.view === 'home' && p.homeDay){
+      selectedHomeDay = p.homeDay; weekOffset = p.weekOffset || 0;
+      try{ renderHomeList(); }catch(e){}
+    }
+    if(p.view === 'customers'){
+      showCustomerPane(p.pane || 'list');
+      if(p.pane === 'work' && typeof awcApply === 'function'){
+        awcKind = p.awcKind || awcKind; awcView = p.awcView || 'main';
+        try{ awcApply(); }catch(e){}
+      }
+    }
+    if(p.view === 'report'){
+      if(isAdminUser() && p.reportMode) setReportMode(p.reportMode);
+      const sel = document.getElementById('reportCustomerSelect');
+      if(sel){
+        populateCustomerSelect(sel, 'Add a customer first');
+        sel.value = p.reportCustomer || '';
+        syncReportCustomerSearchField();
+        if(sel.value){
+          await refreshDateSelector(sel.value);
+          if(p.reportOpen){
+            const ds = document.getElementById('reportReadingSelect');
+            if(ds) ds.value = p.reportOpen;
+            await renderDateReport(sel.value, p.reportOpen);
+          }
+        } else {
+          reportRowsCustomer = null; reportRowsList = []; reportOpenKey = null;
+          putReportBackHome(); drawReportRows();
+        }
+      }
+    }
+    if(p.view === 'technicians'){
+      const t = p.routeTech && (adminTechnicians || []).find(x => x && x.id === p.routeTech)
+        || (p.routeTech && (typeof technicians !== 'undefined') && technicians.find(x => x && x.id === p.routeTech));
+      if(t){
+        openTechRoute(t);
+        techRouteDay = p.techDay || techRouteDay; techRouteWeekOffset = p.techWeek || 0;
+        renderTechRoute();
+      } else {
+        renderTechList();
+      }
+    }
+  } finally {
+    setTimeout(()=>{ navigatingBack = false; }, 0);
+  }
 }
 
 // Returns to the most recent place that is not where we already are
 function goBackOnePlace(){
   // The stack holds places already left — the current one was never pushed —
   // so the top of it IS the previous place. Popping first would skip one.
+  const here = snapshotPlace();
   while(navStack.length){
     const p = navStack.pop();
     // Never retrace into a service report. Backing out of a tab means the
     // technician wants the route, not to be dropped inside a half-finished
     // visit they have to escape from again.
     if(p.view === 'visit') continue;
-    if(p.view === currentViewName) continue;   // already there
+    if(samePlace(p, here)) continue;          // already there
     return p;
   }
   return null;
@@ -17161,8 +17261,8 @@ window.addEventListener('popstate', async ()=>{
   // route only when there is no history left to walk.
   reportOpenedFrom = null;
   const place = goBackOnePlace();
-  if(place && place.view && place.view !== currentViewName){
-    switchView(place.view);
+  if(place && place.view){
+    await restorePlace(place);
     return;
   }
 
