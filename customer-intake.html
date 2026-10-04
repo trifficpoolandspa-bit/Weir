@@ -710,7 +710,14 @@ input::placeholder{color:#A9BCB9;}
         <label>Jump to a date</label>
         <input type="date" id="qoDateFilter">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;min-height:28px;">
-          <p style="font-size:11px;color:var(--muted);margin:0;">Pick a date to pull up what's on it.</p>
+          <!-- Which kind to show, All records to start (Oct 3) -->
+          <select id="qoKindFilter" style="width:auto;padding:6px 10px;font-size:13px;">
+            <option value="">All records</option>
+            <option value="quote">Quotes</option>
+            <option value="workorder">Work orders</option>
+            <option value="clean">Filter cleans</option>
+            <option value="task">Tasks</option>
+          </select>
           <div id="qoSelectSlot"></div>
         </div>
       </div>
@@ -731,7 +738,7 @@ input::placeholder{color:#A9BCB9;}
         <input type="date" id="historyDateFilter">
         <!-- Select on the same line as the hint, so the reports start higher -->
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;min-height:28px;">
-          <p style="font-size:11px;color:var(--muted);margin:0;">Pick a date to pull up that visit's report.</p>
+          <span></span>
           <div id="historySelectSlot"></div>
         </div>
       </div>
@@ -11182,7 +11189,8 @@ function selectionBar(key, visibleIds, noun, onDelete, redraw, pager, onLeft){
   }
   const all = b('Select all');
   all.addEventListener('click', ()=>{ visibleIds.forEach(id => st.ids.add(id)); redraw(); });
-  const del = b('Delete ' + st.ids.size + ' selected', 'color:var(--rust);border-color:#EFC9BC;');
+  // Words, not the bin (Oct 3): this one deletes everything ticked
+  const del = b('Delete selected' + (st.ids.size ? ' (' + st.ids.size + ')' : ''), 'color:var(--rust);border-color:#EFC9BC;');
   del.disabled = !st.ids.size;
   if(!st.ids.size) del.style.opacity = '0.5';
   del.addEventListener('click', async ()=>{
@@ -13385,8 +13393,11 @@ function qoEntriesFor(customerId){
     const num = w.number ? ' #' + quoteNumberText(w.number) : '';
     if(isQuote){
       const outcome = w.approved ? 'Approved' : w.denied ? 'Declined' : w.expired ? 'Expired' : (w.status === 'draft' ? 'Draft' : 'Sent');
-      out.push({key: 'q:' + w.id, kind: 'quote', w: w, tag: 'Quote' + num,
-        title: outcome, done: !!w.closed, date: w.createdAt || ''});
+      // The badge says where the customer stands; the row says what's on it (Oct 3)
+      const status = w.approved ? 'approved' : w.denied ? 'declined' : w.expired ? 'expired' : 'pending';
+      out.push({key: 'q:' + w.id, kind: 'quote', w: w, tag: 'Quote' + num, outcome: outcome, status: status,
+        title: (w.lineItems || []).map(li => li.description).filter(Boolean).join(', ') || w.name || '',
+        done: !!w.closed, date: w.createdAt || ''});
       return;
     }
     const mine = jobs.filter(j => j && j.workOrderId === w.id);
@@ -13470,7 +13481,7 @@ function qoBody(item, customerId){
   if(item.kind === 'quote'){
     const w = item.w;
     const doc = qoDoc('Quote' + (w.number ? ' #' + quoteNumberText(w.number) : ''),
-      ['Written ' + when(w.createdAt), item.title], !item.done);
+      ['Written ' + when(w.createdAt), item.outcome], !item.done);
     const card = doc;
     if((w.lineItems || []).length){
       const table = document.createElement('table');
@@ -13662,7 +13673,7 @@ function qoItemText(item){
   if(item.kind === 'quote'){
     const w = item.w;
     if(w.createdAt) lines.push('Written ' + fmtDate(w.createdAt));
-    lines.push('Status: ' + item.title);
+    lines.push('Status: ' + item.outcome);
     if((w.lineItems || []).length){ lines.push('Line items:'); items(w.lineItems); }
     if(w.notes) lines.push('Notes: ' + w.notes);
   } else if(item.kind === 'workorder'){
@@ -13783,6 +13794,10 @@ function openMultiQoPicker(){
   draw();
 }
 document.getElementById('btnMultiQo').addEventListener('click', openMultiQoPicker);
+document.getElementById('qoKindFilter').addEventListener('change', ()=>{
+  qoOpenId = null;
+  if(qoCustomerId) renderCustomerWorkOrders(qoCustomerId);
+});
 document.getElementById('qoDateFilter').addEventListener('change', e=>{
   qoDateFilter = e.target.value || '';
   qoOpenId = null;
@@ -13793,6 +13808,8 @@ function renderCustomerWorkOrders(customerId){
   const container = document.getElementById('custWorkOrderList');
   const countEl = document.getElementById('custWorkOrderCount');
   if(!container) return;
+  // Another customer starts back on All records
+  if(qoCustomerId !== customerId){ const k = document.getElementById('qoKindFilter'); if(k) k.value = ''; }
   qoCustomerId = customerId;
   const all = qoEntriesFor(customerId);
   const qoSlot = document.getElementById('qoSelectSlot');
@@ -13800,9 +13817,13 @@ function renderCustomerWorkOrders(customerId){
   if(countEl) countEl.textContent = all.length ? all.length + (all.length === 1 ? ' record' : ' records') : '';
   const box = document.getElementById('qoDateFilter');
   if(box && box.value !== qoDateFilter) box.value = qoDateFilter;
-  const list = qoDateFilter ? all.filter(x => qoDay(x) === qoDateFilter) : all;
+  const kindSel = document.getElementById('qoKindFilter');
+  const kind = kindSel ? kindSel.value : '';
+  const list = all.filter(x => (!qoDateFilter || qoDay(x) === qoDateFilter) && (!kind || x.kind === kind));
   if(!list.length){
+    const kindName = {quote: 'quotes', workorder: 'work orders', clean: 'filter cleans', task: 'tasks'}[kind];
     container.innerHTML = emptyState(qoDateFilter ? 'Nothing on that date.'
+      : kindName ? 'No ' + kindName + ' for this customer yet.'
       : 'No quotes, work orders, filter cleans or tasks for this customer yet.');
     return;
   }
@@ -13829,28 +13850,49 @@ function renderCustomerWorkOrders(customerId){
     bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;'
       + 'padding:11px 12px;border:1px solid var(--line);border-radius:10px;margin-top:8px;'
       + 'cursor:pointer;user-select:none;background:' + (isOpen ? 'var(--teal-pale)' : 'var(--card)') + ';';
+    // Three columns, each the same width on every row, so the dates, the tags
+    // and what each one is line up down the list (Oct 3)
     const when = document.createElement('div');
-    when.style.cssText = 'font-size:13.5px;font-weight:600;color:var(--ink);min-width:0;';
-    when.textContent = item.date ? fmtDate(item.date) : 'No date';
+    when.style.cssText = 'display:flex;align-items:center;min-width:0;flex:1 1 auto;font-size:13.5px;font-weight:600;color:var(--ink);';
+    const dateCell = document.createElement('span');
+    dateCell.style.cssText = 'flex:0 0 112px;white-space:nowrap;';
+    dateCell.textContent = item.date ? fmtDate(item.date) : 'No date';
+    when.appendChild(dateCell);
+    const tagCell = document.createElement('span');
+    tagCell.style.cssText = 'flex:0 0 168px;';
+    // Each kind its own colour (Tyrus, Oct 3): quote plum, work order slate,
+    // filter clean gold, task sage
+    const TAG_COLOURS = {quote: ['#F1E8F3', '#6B3E78'], workorder: ['#E9EEF0', '#3E5560'],
+      clean: ['#FBF1DD', '#8A5E0B'], task: ['#E8F1E4', '#4D6B3C']};
+    const tc = TAG_COLOURS[item.kind] || ['var(--teal-pale)', 'var(--teal-deep)'];
     const tag = document.createElement('span');
-    tag.style.cssText = "margin-left:10px;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;"
-      + 'letter-spacing:0.07em;text-transform:uppercase;color:var(--teal-deep);padding:3px 7px;border-radius:6px;'
-      + 'background:' + (isOpen ? 'var(--card)' : 'var(--teal-pale)') + ';';
+    tag.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;white-space:nowrap;"
+      + 'letter-spacing:0.07em;text-transform:uppercase;padding:3px 7px;border-radius:6px;'
+      + 'color:' + tc[1] + ';background:' + tc[0] + ';';
     tag.textContent = item.tag;
-    when.appendChild(tag);
+    tagCell.appendChild(tag);
+    when.appendChild(tagCell);
     const what = document.createElement('span');
-    what.style.cssText = 'font-weight:500;color:var(--muted);margin-left:8px;font-size:12.5px;';
+    what.style.cssText = 'flex:1 1 auto;min-width:0;font-weight:500;color:var(--muted);font-size:12.5px;'
+      + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:10px;';
     what.textContent = item.title || '';
+    what.title = item.title || '';
     when.appendChild(what);
     const right = document.createElement('div');
     right.style.cssText = 'display:flex;align-items:center;gap:10px;flex-shrink:0;';
     // Current or Completed, marked on every row
     const mark = document.createElement('span');
     // The website's status badge (as SCHEDULED, APPROVED), one width so they line up
+    // A quote: Pending until the customer answers, then Approved or Declined
+    // (Expired if they never did), in WorkCenter History's colours
+    const quoteLook = {pending: ['PENDING', 'var(--gold)'], approved: ['APPROVED', '#2E8B57'],
+      declined: ['DECLINED', '#B8492E'], expired: ['EXPIRED', '#8A9795']};
+    const look = item.kind === 'quote' ? quoteLook[item.status]
+      : (item.done ? ['COMPLETED', 'var(--green)'] : ['CURRENT', 'var(--teal-deep)']);
     mark.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:92px;padding:4px 0;border-radius:7px;'
       + 'font-size:10.5px;font-weight:700;letter-spacing:.04em;color:#fff;flex-shrink:0;'
-      + 'background:' + (item.done ? 'var(--green)' : 'var(--teal-deep)') + ';';
-    mark.textContent = item.done ? 'COMPLETED' : 'CURRENT';
+      + 'background:' + look[1] + ';';
+    mark.textContent = look[0];
     right.appendChild(mark);
     // One width for "how long ago", so the badges stand in one column (Oct 3)
     const ago = document.createElement('div');
@@ -13868,7 +13910,7 @@ function renderCustomerWorkOrders(customerId){
     right.appendChild(del);
     if(qoTick){
       const lead = document.createElement('div');
-      lead.style.cssText = 'display:flex;align-items:center;min-width:0;';
+      lead.style.cssText = 'display:flex;align-items:center;min-width:0;flex:1 1 auto;';
       lead.appendChild(qoTick); lead.appendChild(when);
       bar.appendChild(lead);
     } else bar.appendChild(when);
@@ -24915,7 +24957,9 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
   // "Remove changes" undoes a reorder rather than removing anything, so it
   // keeps its words; so do Clear and Unassign all.
   const WORD = /^(delete|remove)(\s|$)/i;
-  const KEEP_WORDS = /^remove changes$/i;
+  // Buttons that keep their words: Remove changes, and Delete selected (Oct 3),
+  // which deletes everything ticked rather than one row
+  const KEEP_WORDS = /^(remove changes|delete selected( \(\d+\))?)$/i;
   const filled = btn=>{
     try{
       const bg = getComputedStyle(btn).backgroundColor;
