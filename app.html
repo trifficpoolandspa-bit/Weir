@@ -15222,16 +15222,73 @@ function awcBuild(pane){
   document.getElementById('awcTaskDate').value = todayDateStr();
   awcWireSearch('awcWoSearch', 'awcWoSuggest', ()=> awcWoCustomers, id=>{ awcWoCustomers.push(id); awcRenderChips(); });
   awcWireSearch('awcTaskSearch', 'awcTaskSuggest', ()=> awcTaskCustomers, id=>{ awcTaskCustomers.push(id); awcRenderChips(); });
-  // + Filter clean (Oct 3), as on the website
+  // + Filter clean (Oct 3), as on the website: with more than one filter clean
+  // in Products and Services, a window to choose how many of each
   const fcBtn = document.getElementById('awcAddFilterClean');
-  if(fcBtn) fcBtn.addEventListener('click', ()=>{
-    const isFc = li => !!li && (li.filterClean === true || /^\s*filter clean\s*$/i.test(String(li.description || '')));
-    if(awcLineItems.some(isFc)){ showToast('This work order already has a filter clean'); return; }
-    const p = (lsGet('productsServices') || []).find(x => x && /^\s*filter clean\s*$/i.test(String(x.name || '')));
-    const blank = awcLineItems.findIndex(li => !String(li.description || '').trim() && !String(li.price || '').trim());
-    const item = {description: 'Filter clean', qty: '1', price: p && p.price != null ? String(p.price) : '', filterClean: true};
-    if(blank !== -1) awcLineItems[blank] = item; else awcLineItems.push(item);
+  const addFcLines = picks=>{
+    picks.forEach(({product, count})=>{
+      for(let i = 0; i < count; i++){
+        const item = {description: product ? product.name : 'Filter clean', qty: '1',
+          price: product && product.price != null && product.price !== '' ? String(product.price) : '', filterClean: true};
+        const blank = awcLineItems.findIndex(li => !String(li.description || '').trim() && !String(li.price || '').trim());
+        if(blank !== -1) awcLineItems[blank] = item; else awcLineItems.push(item);
+      }
+    });
     awcRenderLines();
+  };
+  if(fcBtn) fcBtn.addEventListener('click', ()=>{
+    const list = (lsGet('productsServices') || []).filter(x => x && /filter\s*clean/i.test(String(x.name || '')));
+    if(list.length <= 1){ addFcLines([{product: list[0] || null, count: 1}]); return; }
+    const counts = list.map(()=> 0);
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = '<div class="confirm-box" style="max-width:420px;width:100%;">'
+      + '<h3 style="font-size:17px;margin:0 0 4px;">Filter cleans</h3>'
+      + '<p style="font-size:13px;color:var(--muted);margin:0 0 10px;">How many of each? Each one is its own line.</p>'
+      + '<div data-list></div>'
+      + '<div class="btn-row" style="margin-top:14px;gap:8px;">'
+      + '<button type="button" class="btn btn-ghost" data-cancel style="flex:1;">Cancel</button>'
+      + '<button type="button" class="btn btn-primary" data-add style="flex:1;">Add</button></div></div>';
+    const box = overlay.querySelector('[data-list]');
+    const addBtn = overlay.querySelector('[data-add]');
+    const total = ()=> counts.reduce((x, y) => x + y, 0);
+    const sayTotal = ()=>{ const n = total(); addBtn.textContent = n ? 'Add ' + n : 'Add'; addBtn.disabled = !n; addBtn.style.opacity = n ? '' : '0.5'; };
+    list.forEach((pr, i)=>{
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;'
+        + (i < list.length - 1 ? 'border-bottom:1px solid var(--line);' : '');
+      const name = document.createElement('div');
+      name.style.cssText = 'font-size:15px;font-weight:600;min-width:0;';
+      name.textContent = pr.name;
+      if(pr.price != null && pr.price !== ''){
+        const price = document.createElement('div');
+        price.style.cssText = "font-size:13px;font-weight:500;color:var(--muted);font-family:'JetBrains Mono',monospace;";
+        price.textContent = '$' + (Number(pr.price) || 0).toFixed(2);
+        name.appendChild(price);
+      }
+      const step = document.createElement('div');
+      step.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
+      const mk = t=>{ const x = document.createElement('button'); x.type = 'button'; x.className = 'btn btn-ghost';
+        x.style.cssText = 'width:40px;height:40px;padding:0;font-size:20px;line-height:1;flex:0 0 40px;'; x.textContent = t; return x; };
+      const minus = mk('\u2212'), plus = mk('+');
+      const num = document.createElement('span');
+      num.style.cssText = "min-width:26px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:600;";
+      const draw = ()=>{ num.textContent = String(counts[i]); minus.disabled = !counts[i]; minus.style.opacity = counts[i] ? '' : '0.4'; sayTotal(); };
+      minus.addEventListener('click', ()=>{ if(counts[i]){ counts[i]--; draw(); } });
+      plus.addEventListener('click', ()=>{ counts[i]++; draw(); });
+      step.appendChild(minus); step.appendChild(num); step.appendChild(plus);
+      row.appendChild(name); row.appendChild(step);
+      box.appendChild(row);
+      draw();
+    });
+    const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+    overlay.querySelector('[data-cancel]').addEventListener('click', close);
+    addBtn.addEventListener('click', ()=>{
+      if(!total()) return;
+      addFcLines(list.map((product, i) => ({product, count: counts[i]})).filter(x => x.count));
+      close();
+    });
+    document.body.appendChild(overlay);
   });
   document.getElementById('awcAddLine').addEventListener('click', ()=>{
     awcLineItems.push({description: '', qty: '', price: ''});

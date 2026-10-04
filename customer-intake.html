@@ -10957,14 +10957,77 @@ function renderLineItems(){
 // Services when it's there. On the phone, a work order with one gets the
 // Replacements button, as a filter clean does.
 function isFilterCleanItem(li){ return !!li && (li.filterClean === true || /^\s*filter clean\s*$/i.test(String(li.description || ''))); }
-document.getElementById('btnAddFilterClean').addEventListener('click', ()=>{
-  if(currentLineItems.some(isFilterCleanItem)){ showToast('This work order already has a filter clean'); return; }
-  const p = (productsServices || []).find(x => x && /^\s*filter clean\s*$/i.test(String(x.name || '')));
-  // An empty first line is used rather than adding another under it
-  const blank = currentLineItems.findIndex(li => !String(li.description || '').trim() && !String(li.price || '').trim());
-  const item = {description: 'Filter clean', qty: 1, price: p && p.price != null ? String(p.price) : '', filterClean: true};
-  if(blank !== -1) currentLineItems[blank] = item; else currentLineItems.push(item);
+// Every filter clean in Products and Services ("520 Filter clean", "Filter clean
+// 420"…): with more than one, a window to choose how many of each (Oct 3)
+function filterCleanProducts(){
+  return (productsServices || []).filter(x => x && /filter\s*clean/i.test(String(x.name || '')));
+}
+function addFilterCleanLines(picks){
+  picks.forEach(({product, count})=>{
+    for(let i = 0; i < count; i++){
+      const item = {description: product ? product.name : 'Filter clean', qty: 1,
+        price: product && product.price != null && product.price !== '' ? String(product.price) : '', filterClean: true};
+      const blank = currentLineItems.findIndex(li => !String(li.description || '').trim() && !String(li.price || '').trim());
+      if(blank !== -1) currentLineItems[blank] = item; else currentLineItems.push(item);
+    }
+  });
   renderLineItems();
+}
+document.getElementById('btnAddFilterClean').addEventListener('click', ()=>{
+  const list = filterCleanProducts();
+  if(list.length <= 1){ addFilterCleanLines([{product: list[0] || null, count: 1}]); return; }
+  const counts = list.map(()=> 0);
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:420px;width:100%;">'
+    + '<h3 style="font-size:16px;margin:0 0 4px;">Filter cleans</h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">How many of each? Each one is its own line.</p>'
+    + '<div data-list></div>'
+    + '<div class="btn-row" style="margin-top:14px;gap:8px;">'
+    + '<button type="button" class="btn btn-ghost" data-cancel style="flex:1;">Cancel</button>'
+    + '<button type="button" class="btn btn-primary" data-add style="flex:1;">Add</button></div></div>';
+  const box = overlay.querySelector('[data-list]');
+  const addBtn = overlay.querySelector('[data-add]');
+  const total = ()=> counts.reduce((a, b) => a + b, 0);
+  const sayTotal = ()=>{ const n = total(); addBtn.textContent = n ? 'Add ' + n : 'Add'; addBtn.disabled = !n; addBtn.style.opacity = n ? '' : '0.5'; };
+  list.forEach((pr, i)=>{
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;'
+      + (i < list.length - 1 ? 'border-bottom:1px solid var(--line);' : '');
+    const name = document.createElement('div');
+    name.style.cssText = 'font-size:14px;font-weight:600;min-width:0;';
+    name.textContent = pr.name;
+    if(pr.price != null && pr.price !== ''){
+      const price = document.createElement('div');
+      price.style.cssText = "font-size:12.5px;font-weight:500;color:var(--muted);font-family:'JetBrains Mono',monospace;";
+      price.textContent = '$' + (Number(pr.price) || 0).toFixed(2);
+      name.appendChild(price);
+    }
+    const step = document.createElement('div');
+    step.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;';
+    const minus = document.createElement('button'); minus.type = 'button'; minus.className = 'btn btn-ghost';
+    minus.style.cssText = 'width:34px;height:34px;padding:0;font-size:18px;line-height:1;'; minus.textContent = '\u2212';
+    const num = document.createElement('span');
+    num.style.cssText = "min-width:26px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:600;";
+    num.textContent = '0';
+    const plus = document.createElement('button'); plus.type = 'button'; plus.className = 'btn btn-ghost';
+    plus.style.cssText = minus.style.cssText; plus.textContent = '+';
+    const draw = ()=>{ num.textContent = String(counts[i]); minus.disabled = !counts[i]; minus.style.opacity = counts[i] ? '' : '0.4'; sayTotal(); };
+    minus.addEventListener('click', ()=>{ if(counts[i]){ counts[i]--; draw(); } });
+    plus.addEventListener('click', ()=>{ counts[i]++; draw(); });
+    step.appendChild(minus); step.appendChild(num); step.appendChild(plus);
+    row.appendChild(name); row.appendChild(step);
+    box.appendChild(row);
+    draw();
+  });
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+  overlay.querySelector('[data-cancel]').addEventListener('click', close);
+  addBtn.addEventListener('click', ()=>{
+    if(!total()) return;
+    addFilterCleanLines(list.map((product, i) => ({product, count: counts[i]})).filter(x => x.count));
+    close();
+  });
+  document.body.appendChild(overlay);
 });
 document.getElementById('btnAddLineItem').addEventListener('click', ()=>{
   currentLineItems.push({description:'', qty:1, price:''});
