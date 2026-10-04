@@ -10102,6 +10102,7 @@ function openReplacementsPicker(current, onDone){
     + '<div style="display:flex;gap:8px;margin-top:10px;">'
     + '<input data-own placeholder="Something else" style="flex:1;min-width:0;">'
     + '<button type="button" class="btn btn-ghost" data-add style="width:auto;flex-shrink:0;">Add</button></div>'
+    + '<div data-warn style="display:none;font-size:12.5px;font-weight:600;color:var(--rust);margin:6px 0 0;"></div>'
     + '<button type="button" class="btn btn-primary" data-done style="width:100%;margin-top:12px;">Done</button></div>';
   const list = overlay.querySelector('[data-list]');
   const row = name=>{
@@ -10128,10 +10129,18 @@ function openReplacementsPicker(current, onDone){
     if(hit){ const cb = hit.querySelector('input'); cb.checked = true; picked.add(hit.textContent.trim()); }
     own.value = '';
   };
-  overlay.querySelector('[data-add]').addEventListener('click', add);
-  own.addEventListener('keydown', e=>{ if(e.key === 'Enter'){ e.preventDefault(); add(); } });
+  // Something typed but not added: said in red, and the window stays (Oct 3)
+  const warn = overlay.querySelector('[data-warn]');
+  const hideWarn = ()=>{ warn.style.display = 'none'; };
+  own.addEventListener('input', hideWarn);
+  overlay.querySelector('[data-add]').addEventListener('click', ()=>{ add(); hideWarn(); });
+  own.addEventListener('keydown', e=>{ if(e.key === 'Enter'){ e.preventDefault(); add(); hideWarn(); } });
   overlay.querySelector('[data-done]').addEventListener('click', ()=>{
-    if(own.value.trim()) add();
+    if(own.value.trim()){
+      warn.textContent = '\u201c' + own.value.trim() + '\u201d hasn\u2019t been added yet \u2014 press Add, or clear the box.';
+      warn.style.display = 'block';
+      return;
+    }
     // In the list's order, so it reads the same each time
     const order = Array.from(list.querySelectorAll('label')).map(l => l.textContent.trim());
     onDone(order.filter(n => picked.has(n)));
@@ -10465,6 +10474,9 @@ function openJobPage(customer, job){
   where.textContent = customer ? (customer.address || 'No address on file') : '';
   if(!customer) where.style.display = 'none';
   card.appendChild(where);
+  // A filter clean starts straight at its photos: no customer name or address
+  // under "Filter clean" (Oct 3)
+  if(job.kind === 'filter clean'){ who.style.display = 'none'; where.style.display = 'none'; }
   if(job.details){
     const said = document.createElement('div');
     said.style.cssText = 'background:var(--teal-pale);border-radius:10px;padding:12px 14px;font-size:14px;margin-bottom:16px;';

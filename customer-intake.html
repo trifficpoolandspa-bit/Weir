@@ -1381,11 +1381,12 @@ input::placeholder{color:#A9BCB9;}
         <option value="Work Order">Work Order</option>
         <option value="Task">Task</option>
       </select>
-      <div class="field" id="wcDateField">
-        <label>Scheduled date</label>
-        <!-- Date, then Photo required beside it (spaced as on the Task form), then
-             the number at the far right: the same place for quotes and work orders -->
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <!-- Two lines, in columns (Oct 3): the "Scheduled date" label, Photo required
+           and Email customer on the top line; the date, Video required and
+           Include prices under them; the number at the far right -->
+      <div class="field" id="wcDateField" style="display:grid;grid-template-columns:auto auto auto minmax(0,1fr);column-gap:28px;row-gap:6px;align-items:center;">
+        <label style="grid-column:1;grid-row:1;margin:0;">Scheduled date</label>
+        <div style="grid-column:1;grid-row:2;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <input type="date" id="wcDate" style="width:auto;min-width:0;padding-right:12px;">
           <!-- Quotes only: how long the customer has to answer -->
           <label id="wcExpiresWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;white-space:nowrap;margin:0;">
@@ -1393,23 +1394,23 @@ input::placeholder{color:#A9BCB9;}
             <input type="number" id="wcExpiresDays" min="1" max="365" step="1" value="30" inputmode="numeric" style="width:72px;padding:8px 10px;text-align:center;">
             days
           </label>
-          <label id="wcPhotoRequiredWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
-            <input type="checkbox" id="wcPhotoRequired" checked style="margin:0;"> Photo required
-          </label>
-          <!-- Video required, beside Photo required (Oct 2) -->
-          <label id="wcVideoRequiredWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
-            <input type="checkbox" id="wcVideoRequired" style="margin:0;"> Video required
-          </label>
-          <!-- Email the customer when it's submitted, work orders only (Oct 3) -->
-          <label id="wcEmailCustomerWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0 0 0 auto;">
-            <input type="checkbox" id="wcEmailCustomer" checked style="margin:0;"> Email customer
-          </label>
-          <!-- Prices in that email, work orders only (Oct 3) -->
-          <label id="wcEmailPricesWrap" style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0 0 0 14px;">
-            <input type="checkbox" id="wcEmailPrices" checked style="margin:0;"> Include prices
-          </label>
-          <span id="wcQuoteNumber" class="big-num" style="margin-left:auto;margin-right:12px;" title="The number this one will get"></span>
         </div>
+        <label id="wcPhotoRequiredWrap" style="grid-column:2;grid-row:1;display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
+          <input type="checkbox" id="wcPhotoRequired" checked style="margin:0;"> Photo required
+        </label>
+        <!-- Video required, under Photo required -->
+        <label id="wcVideoRequiredWrap" style="grid-column:2;grid-row:2;display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
+          <input type="checkbox" id="wcVideoRequired" style="margin:0;"> Video required
+        </label>
+        <!-- Email the customer when it's submitted, work orders only -->
+        <label id="wcEmailCustomerWrap" style="grid-column:3;grid-row:1;display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
+          <input type="checkbox" id="wcEmailCustomer" checked style="margin:0;"> Email customer
+        </label>
+        <!-- Prices in that email, under Email customer -->
+        <label id="wcEmailPricesWrap" style="grid-column:3;grid-row:2;display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
+          <input type="checkbox" id="wcEmailPrices" checked style="margin:0;"> Include prices
+        </label>
+        <span id="wcQuoteNumber" class="big-num" style="grid-column:4;grid-row:2;justify-self:end;margin-right:12px;" title="The number this one will get"></span>
       </div>
       <!-- Quotes only -->
       <div class="field" id="wcQuoteNameField">
@@ -1473,18 +1474,20 @@ input::placeholder{color:#A9BCB9;}
         <div id="wcTaskSection" style="display:none;">
       <h2 id="wcTaskHeading" style="display:none;margin-bottom:12px;"></h2>
 
-      <div class="field">
-        <label>Scheduled date</label>
-        <div style="display:flex;align-items:center;gap:12px;">
+      <!-- As on Work Order (Oct 3): Photo required beside the label, Video
+           required under it beside the date; Saved tasks at the far right -->
+      <div class="field" style="display:grid;grid-template-columns:auto auto minmax(0,1fr);column-gap:28px;row-gap:6px;align-items:center;">
+        <label style="grid-column:1;grid-row:1;margin:0;">Scheduled date</label>
+        <div style="grid-column:1;grid-row:2;display:flex;align-items:center;">
           <input type="date" id="taskDate" style="width:auto;min-width:0;padding-right:12px;">
-          <label style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
-            <input type="checkbox" id="taskPhotoRequired" style="margin:0;"> Photo required
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
-            <input type="checkbox" id="taskVideoRequired" style="margin:0;"> Video required
-          </label>
-          <button class="btn btn-primary" id="btnTaskTemplates" style="width:auto;margin-left:auto;flex:0 0 auto;">Saved tasks</button>
         </div>
+        <label style="grid-column:2;grid-row:1;display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
+          <input type="checkbox" id="taskPhotoRequired" style="margin:0;"> Photo required
+        </label>
+        <label style="grid-column:2;grid-row:2;display:inline-flex;align-items:center;gap:7px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin:0;">
+          <input type="checkbox" id="taskVideoRequired" style="margin:0;"> Video required
+        </label>
+        <button class="btn btn-primary" id="btnTaskTemplates" style="grid-column:3;grid-row:2;justify-self:end;width:auto;">Saved tasks</button>
       </div>
 
       <div class="field" style="position:relative;">
@@ -12123,7 +12126,7 @@ function renderSubmittedHistory(kind){
     } else if(!subTick && kind === 'work order' && sub.customerId && sub.sourceId){
       // A work order opens on the customer's Service reports (Oct 3)
       row.style.cursor = 'pointer';
-      row.title = 'Open this work order in the customer\u2019s Service reports';
+      row.title = 'Open this work order in the customer\u2019s Quotes & Orders';
       row.addEventListener('click', e=>{
         if(e.target.closest('button, input, a, select')) return;
         openWorkOrderReport(sub.customerId, sub.sourceId);
@@ -12216,7 +12219,7 @@ function openHistoryGroupWindow(kind, lead){
       // A work order's date opens it on the customer's Service reports (Oct 3)
       if(kind === 'work order' && m.customerId && m.sourceId){
         row.style.cursor = 'pointer';
-        row.title = 'Open this one in the customer\u2019s Service reports';
+        row.title = 'Open this one in the customer\u2019s Quotes & Orders';
         row.addEventListener('click', e=>{
           if(e.target.closest('button')) return;
           if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
@@ -12273,8 +12276,7 @@ function applyWorkOrderType(){
   if(emailWrap) emailWrap.style.display = isWO ? 'inline-flex' : 'none';
   const pricesWrap = document.getElementById('wcEmailPricesWrap');
   if(pricesWrap) pricesWrap.style.display = isWO ? 'inline-flex' : 'none';
-  const numEl = document.getElementById('wcQuoteNumber');
-  if(numEl) numEl.style.marginLeft = isWO ? '12px' : 'auto';
+  // The number sits at the far right of its grid column whatever shows
   // (A quote never carries it: saved only when the kind is Work Order)
 
   document.querySelectorAll('#wcTypeToggle [data-wctype]').forEach(btn=>{
@@ -13330,61 +13332,109 @@ function loadWorkOrderIntoForm(w){
 }
 
 // ---------- Quotes & work orders on a customer's profile ----------
-function renderCustomerWorkOrders(customerId){
-  const container = document.getElementById('custWorkOrderList');
-  const countEl = document.getElementById('custWorkOrderCount');
-  if(!container) return;
-
-  const mine = (workOrders || [])
-    .filter(w => w.customerId === customerId)
-    .slice()
-    .sort((a,b)=> (b.createdAt || '').localeCompare(a.createdAt || ''));
-
-  if(countEl) countEl.textContent = mine.length
-    ? mine.length + (mine.length === 1 ? ' record' : ' records') : '';
-
-  if(mine.length === 0){
-    container.innerHTML = emptyState('No quotes or work orders for this customer yet.');
-    return;
-  }
-
-  container.innerHTML = '';
-  mine.forEach(w=>{
-    const card = document.createElement('div');
-    card.style.cssText = 'border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;background:#fff;';
-
-    const head = document.createElement('div');
-    head.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;';
-
-    const left = document.createElement('div');
-    const title = document.createElement('div');
-    title.style.cssText = "font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;";
-    title.textContent = w.type || 'Quote';
-    const sub = document.createElement('div');
-    sub.style.cssText = 'font-size:11.5px;color:var(--muted);margin-top:2px;';
-    const bits = [];
-    if(w.createdAt) bits.push(new Date(w.createdAt).toLocaleDateString(undefined,{month:'short', day:'numeric', year:'numeric'}));
-    if(w.date) bits.push('Scheduled ' + new Date(w.date + 'T12:00:00').toLocaleDateString(undefined,{month:'short', day:'numeric'}));
-    if(w.technicianId) bits.push(technicianNameById(w.technicianId) || 'Technician');
-    if(w.repeat && w.repeat !== 'none'){
-      const labels = {weekly:'Weekly', biweekly:'Every 2 weeks', monthly:'Monthly',
-        bimonthly:'Every 2 months', quarterly:'Quarterly', biannual:'Every 6 months', yearly:'Yearly'};
-      bits.push(labels[w.repeat] || w.repeat);
+// ---------- Quotes & Orders (Oct 3) ----------
+// Everything the office has asked for at this customer, as rows like Service
+// Reports': quotes, work order visits, filter cleans and tasks, each marked
+// Current or Completed. Built from the same records WorkCenter uses, so
+// anything removed there is gone here too. Press a row to open it.
+let qoOpenId = null;
+function qoMoney(n){ return '$' + (Number(n) || 0).toFixed(2); }
+function qoEntriesFor(customerId){
+  const cid = String(customerId);
+  const out = [];
+  const jobs = lsGet('scheduledWorkOrders') || [];
+  (workOrders || []).filter(w => w && String(w.customerId) === cid).forEach(w=>{
+    const isQuote = (w.type || 'Quote') === 'Quote';
+    const num = w.number ? ' #' + quoteNumberText(w.number) : '';
+    if(isQuote){
+      const outcome = w.approved ? 'Approved' : w.denied ? 'Declined' : w.expired ? 'Expired' : (w.status === 'draft' ? 'Draft' : 'Sent');
+      out.push({key: 'q:' + w.id, kind: 'quote', w: w, tag: 'Quote' + num,
+        title: outcome, done: !!w.closed, date: w.createdAt || ''});
+      return;
     }
-    sub.textContent = bits.join(' · ');
-    left.appendChild(title);
-    left.appendChild(sub);
-    head.appendChild(left);
+    const mine = jobs.filter(j => j && j.workOrderId === w.id);
+    if(!mine.length){
+      out.push({key: 'wh:' + w.id, kind: 'workorder', w: w, tag: 'Work order' + num,
+        title: (w.lineItems || []).map(li => li.description).filter(Boolean).join(', '), done: false,
+        date: w.date ? w.date + 'T12:00:00' : (w.createdAt || '')});
+      return;
+    }
+    mine.forEach(j=>{
+      out.push({key: 'wo:' + j.id, kind: 'workorder', w: w, j: j, tag: 'Work order' + num,
+        title: j.title || '', done: j.status === 'done',
+        date: j.status === 'done' && j.doneAt ? j.doneAt : (j.date || '') + 'T12:00:00'});
+    });
+  });
+  (lsGet('scheduledFilterCleans') || []).filter(f => f && String(f.customerId) === cid).forEach(f=>{
+    out.push({key: 'fc:' + f.id, kind: 'clean', f: f, tag: 'Filter clean', title: f.groupName || '',
+      done: f.status === 'done', date: f.status === 'done' && f.doneAt ? f.doneAt : (f.date || '') + 'T12:00:00'});
+  });
+  (tasks || []).filter(t => t && (t.customerIds || []).map(String).indexOf(cid) !== -1).forEach(t=>{
+    out.push({key: 'tk:' + t.id, kind: 'task', t: t, tag: 'Task', title: t.title || '',
+      done: !!t.done, date: t.done && t.doneAt ? t.doneAt : (t.date ? t.date + 'T12:00:00' : (t.createdAt || ''))});
+  });
+  return out.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
 
-    const badge = document.createElement('span');
-    const st = w.status || 'draft';
-    const colors = {sent:'var(--green)', finalized:'var(--teal-deep)', draft:'var(--gold)'};
-    badge.style.cssText = 'background:' + (colors[st] || 'var(--muted)') +
-      ';color:#fff;font-size:10px;font-weight:700;padding:4px 9px;border-radius:7px;flex-shrink:0;';
-    badge.textContent = st.toUpperCase();
-    head.appendChild(badge);
-    card.appendChild(head);
+// The opened part of a row: the same report layout as Service Reports
+function qoDoc(heading, lines, current){
+  const doc = document.createElement('div');
+  doc.className = 'report-doc';
+  doc.style.marginTop = '8px';
+  const head = document.createElement('div');
+  head.className = 'report-head';
+  const left = document.createElement('div');
+  const h = document.createElement('h3');
+  h.textContent = heading;
+  left.appendChild(h);
+  lines.filter(Boolean).forEach(t=>{ const d = document.createElement('div'); d.className = 'rdate'; d.textContent = t; left.appendChild(d); });
+  const badge = document.createElement('div');
+  badge.className = 'report-badge';
+  badge.textContent = current ? 'Current' : 'Completed';
+  head.appendChild(left); head.appendChild(badge);
+  doc.appendChild(head);
+  return doc;
+}
+function qoSection(doc, label, el){
+  const sec = document.createElement('div');
+  sec.className = 'report-sec';
+  sec.textContent = label;
+  doc.appendChild(sec);
+  doc.appendChild(el);
+}
+function qoNotes(text){ const n = document.createElement('div'); n.className = 'report-notes'; n.textContent = text; return n; }
+function qoItems(items){
+  const table = document.createElement('table');
+  table.className = 'report-table';
+  let total = 0;
+  items.filter(li => li && String(li.description || '').trim()).forEach(li=>{
+    const qty = Number(li.qty) || 1, price = Number(li.price) || 0;
+    total += qty * price;
+    const tr = document.createElement('tr');
+    const a = document.createElement('td'); a.textContent = li.description;
+    const b = document.createElement('td');
+    b.style.cssText = "text-align:right;color:var(--muted);font-family:'Inter',sans-serif;font-weight:500;white-space:nowrap;";
+    b.textContent = qty + ' \u00d7 ' + qoMoney(price);
+    const c = document.createElement('td'); c.style.width = '90px'; c.textContent = qoMoney(qty * price);
+    tr.appendChild(a); tr.appendChild(b); tr.appendChild(c);
+    table.appendChild(tr);
+  });
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td style="color:var(--ink);font-weight:600;border-bottom:none;">Total</td><td style="border-bottom:none;"></td>'
+    + '<td style="color:var(--gold);border-bottom:none;"></td>';
+  tr.lastChild.textContent = qoMoney(total);
+  table.appendChild(tr);
+  return table;
+}
 
+function qoBody(item, customerId){
+  const when = d => d ? fmtDate(String(d).length === 10 ? d + 'T12:00:00' : d) : '';
+  const tech = id => id === 'office' ? 'the office' : (technicianNameById(id) || '');
+  if(item.kind === 'quote'){
+    const w = item.w;
+    const doc = qoDoc('Quote' + (w.number ? ' #' + quoteNumberText(w.number) : ''),
+      ['Written ' + when(w.createdAt), item.title], !item.done);
+    const card = doc;
     if((w.lineItems || []).length){
       const table = document.createElement('table');
       table.className = 'report-table';
@@ -13445,13 +13495,103 @@ function renderCustomerWorkOrders(customerId){
       saveWorkOrders();
       lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => j.workOrderId !== w.id));
       renderCustomerWorkOrders(customerId);
-      renderWorkOrderHistory();
+      try{ renderWorkOrderHistory(); }catch(e){}
       showToast('Record deleted');
     });
     actions.appendChild(delBtn);
 
     card.appendChild(actions);
-    container.appendChild(card);
+    return doc;
+  }
+  if(item.kind === 'workorder' && item.j && item.done) return buildWorkOrderDoc(customerId, item.j);
+  if(item.kind === 'clean' && item.done) return buildWorkOrderDoc(customerId, Object.assign({}, item.f, {_clean: true}));
+  if(item.kind === 'workorder'){
+    const w = item.w, j = item.j || w;
+    const doc = qoDoc('Work order' + (w.number ? ' #' + quoteNumberText(w.number) : ''),
+      ['Scheduled for ' + when(j.date), tech(j.technicianId) ? 'Technician: ' + tech(j.technicianId) : 'No technician yet'], true);
+    if((j.lineItems || w.lineItems || []).length) qoSection(doc, 'Line items', qoItems(j.lineItems || w.lineItems));
+    if(j.notes || w.notes) qoSection(doc, 'Work order notes', qoNotes(j.notes || w.notes));
+    const acts = document.createElement('div');
+    acts.className = 'btn-row';
+    acts.style.marginTop = '12px';
+    const edit = document.createElement('button');
+    edit.type = 'button'; edit.className = 'btn btn-ghost';
+    edit.style.cssText = 'width:auto;padding:7px 12px;font-size:12.5px;';
+    edit.textContent = 'Edit & resend';
+    edit.addEventListener('click', ()=> loadWorkOrderIntoForm(w));
+    acts.appendChild(edit);
+    doc.appendChild(acts);
+    return doc;
+  }
+  if(item.kind === 'clean'){
+    const f = item.f;
+    return qoDoc('Filter clean', ['Scheduled for ' + when(f.date), f.groupName ? 'Group: ' + f.groupName : '',
+      tech(f.technicianId) ? 'Technician: ' + tech(f.technicianId) : ''], true);
+  }
+  // A task
+  const t = item.t;
+  const doc = qoDoc('Task', [t.title || '', t.date ? 'Scheduled for ' + when(t.date) : '',
+    t.done && t.doneAt ? 'Completed ' + when(t.doneAt) + (t.doneBy ? ' by ' + (tech(t.doneBy) || 'a technician') : '') : '',
+    !t.done && tech(t.technicianId) ? 'Technician: ' + tech(t.technicianId) : ''], !t.done);
+  if(t.details) qoSection(doc, 'Details', qoNotes(t.details));
+  if(t.doneNotes) qoSection(doc, 'Technician\u2019s notes', qoNotes(t.doneNotes));
+  return doc;
+}
+
+function renderCustomerWorkOrders(customerId){
+  const container = document.getElementById('custWorkOrderList');
+  const countEl = document.getElementById('custWorkOrderCount');
+  if(!container) return;
+  const list = qoEntriesFor(customerId);
+  if(countEl) countEl.textContent = list.length ? list.length + (list.length === 1 ? ' record' : ' records') : '';
+  if(!list.length){
+    container.innerHTML = emptyState('No quotes, work orders, filter cleans or tasks for this customer yet.');
+    return;
+  }
+  if(qoOpenId && !list.some(x => x.key === qoOpenId)) qoOpenId = null;
+  container.innerHTML = '';
+  list.forEach(item=>{
+    const isOpen = qoOpenId === item.key;
+    const bar = document.createElement('div');
+    bar.dataset.qoId = item.key;
+    bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;'
+      + 'padding:11px 12px;border:1px solid var(--line);border-radius:10px;margin-top:8px;'
+      + 'cursor:pointer;user-select:none;background:' + (isOpen ? 'var(--teal-pale)' : 'var(--card)') + ';';
+    const when = document.createElement('div');
+    when.style.cssText = 'font-size:13.5px;font-weight:600;color:var(--ink);min-width:0;';
+    when.textContent = item.date ? fmtDate(item.date) : 'No date';
+    const tag = document.createElement('span');
+    tag.style.cssText = "margin-left:10px;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;"
+      + 'letter-spacing:0.07em;text-transform:uppercase;color:var(--teal-deep);padding:3px 7px;border-radius:6px;'
+      + 'background:' + (isOpen ? 'var(--card)' : 'var(--teal-pale)') + ';';
+    tag.textContent = item.tag;
+    when.appendChild(tag);
+    const what = document.createElement('span');
+    what.style.cssText = 'font-weight:500;color:var(--muted);margin-left:8px;font-size:12.5px;';
+    what.textContent = item.title || '';
+    when.appendChild(what);
+    const right = document.createElement('div');
+    right.style.cssText = 'display:flex;align-items:center;gap:10px;flex-shrink:0;';
+    // Current or Completed, marked on every row
+    const mark = document.createElement('span');
+    // The website's status badge (as SCHEDULED, APPROVED), one width so they line up
+    mark.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:92px;padding:4px 0;border-radius:7px;'
+      + 'font-size:10.5px;font-weight:700;letter-spacing:.04em;color:#fff;flex-shrink:0;'
+      + 'background:' + (item.done ? 'var(--green)' : 'var(--teal-deep)') + ';';
+    mark.textContent = item.done ? 'COMPLETED' : 'CURRENT';
+    right.appendChild(mark);
+    const ago = document.createElement('div');
+    ago.style.cssText = 'font-size:12px;color:var(--muted);';
+    ago.textContent = (item.date ? howLongAgo(item.date) : '') + (isOpen ? '  \u25b4' : '  \u25be');
+    right.appendChild(ago);
+    bar.appendChild(when);
+    bar.appendChild(right);
+    bar.addEventListener('click', ()=>{
+      qoOpenId = isOpen ? null : item.key;
+      renderCustomerWorkOrders(customerId);
+    });
+    container.appendChild(bar);
+    if(isOpen) container.appendChild(qoBody(item, customerId));
   });
 }
 
@@ -17858,6 +17998,60 @@ function twJustToday(c, iso){
   return (lsGet('rescheduledVisits') || []).some(r => r && r.customerId === c.id && r.toDate === iso
     && r.technicianId && String(r.technicianId) !== String(c.technicianId || ''));
 }
+// The technician's work orders, filter cleans and tasks for a day, as their
+// phone lists them (Oct 3): done ones too, so the day reads complete
+function twJobsFor(techId, iso){
+  const mine = x => String(x.technicianId || '') === String(techId)
+    || (Array.isArray(x.technicianIds) && x.technicianIds.map(String).indexOf(String(techId)) !== -1);
+  const out = [];
+  (lsGet('scheduledWorkOrders') || []).filter(j => j && j.date === iso && mine(j)).forEach(j=>{
+    out.push({key: 'wo:' + j.id, label: '\ud83d\udee0 Work order', title: j.title || '', customerId: j.customerId,
+      done: j.status === 'done', doneAt: j.doneAt});
+  });
+  (lsGet('scheduledFilterCleans') || []).filter(f => f && f.date === iso && mine(f)).forEach(f=>{
+    out.push({key: 'fc:' + f.id, label: '\ud83d\udee0 Filter clean', title: '', customerId: f.customerId,
+      done: f.status === 'done', doneAt: f.doneAt});
+  });
+  (tasks || []).filter(t => t && t.date === iso && mine(t)).forEach(t=>{
+    const ids = (t.customerIds || []).length ? t.customerIds : [''];
+    ids.forEach(cid=>{
+      out.push({key: 'tk:' + t.id, label: '\ud83d\udccb Task', title: t.title || '', customerId: cid,
+        done: !!t.done, doneAt: t.doneAt});
+    });
+  });
+  return out;
+}
+function twJobRow(job, withCustomer){
+  const c = job.customerId ? customers.find(x => String(x.id) === String(job.customerId)) : null;
+  const row = document.createElement('div');
+  row.className = 'tw-row' + (c ? ' tw-stop' : '');
+  row.appendChild(document.createElement('span'));
+  row.appendChild(document.createElement('span'));
+  const name = document.createElement('span');
+  name.className = 'tw-name';
+  name.style.cssText = 'color:var(--gold);font-weight:600;';
+  name.textContent = job.label + (job.title ? ': ' + job.title : '');
+  row.appendChild(name);
+  const addr = document.createElement('span');
+  addr.className = 'tw-addr';
+  addr.textContent = withCustomer ? (c ? displayName(c.name) + (c.address ? ' \u00b7 ' + c.address : '') : 'No customer') : '';
+  row.appendChild(addr);
+  const status = document.createElement('span');
+  let when = '';
+  if(job.done && job.doneAt){
+    try{ when = ' ' + new Date(job.doneAt).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'}); }catch(e){}
+  }
+  status.innerHTML = job.done ? '<span class="tw-pill done">Done' + esc(when) + '</span>' : '<span class="tw-pill todo">To do</span>';
+  row.appendChild(status);
+  row.appendChild(document.createElement('span'));
+  // Opens in the customer's Quotes & Orders
+  if(c){
+    row.title = 'Open it in ' + displayName(c.name) + '\u2019s Quotes & Orders';
+    row.addEventListener('click', ()=> openJobReport(c.id, job.key));
+  }
+  return row;
+}
+
 function renderTechRouteWeb(){
   const techId = currentTechDetailId;
   const box = document.getElementById('twList');
@@ -17876,10 +18070,12 @@ function renderTechRouteWeb(){
   document.getElementById('twCounts').textContent = list.length
     ? done + ' of ' + list.length + ' done \u00b7 ' + (list.length - done) + ' left'
     : 'No stops';
+  const jobs = twJobsFor(techId, twDateISO);
+  const onRoute = new Set(list.map(c => String(c.id)));
   const head = document.querySelector('#techRouteWebCard .tw-head');
-  if(head) head.style.display = list.length ? '' : 'none';
+  if(head) head.style.display = (list.length || jobs.length) ? '' : 'none';
   box.innerHTML = '';
-  if(!list.length){ box.innerHTML = emptyState('No customers on this day.'); return; }
+  if(!list.length && !jobs.length){ box.innerHTML = emptyState('No customers on this day.'); return; }
   list.forEach((c, i)=>{
     const served = twServicedOn(c, twDateISO);
     const row = document.createElement('div');
@@ -17936,7 +18132,11 @@ function renderTechRouteWeb(){
       bar.style.display = 'flex';
     });
     box.appendChild(row);
+    // Their work orders, filter cleans and tasks that day, just under them
+    jobs.filter(j => String(j.customerId) === String(c.id)).forEach(j => box.appendChild(twJobRow(j, false)));
   });
+  // Jobs at customers who aren't on the route that day, and tasks with no customer
+  jobs.filter(j => !onRoute.has(String(j.customerId))).forEach(j => box.appendChild(twJobRow(j, true)));
 }
 
 // Takes away a one-off move onto this day, so they're back on their usual
@@ -19641,8 +19841,7 @@ async function deleteWorkOrderVisit(customerId, j){
     'Delete for good');
   if(!sure) return;
   if(j._clean) removeFilterCleanVisits([j.id]); else removeWorkOrderVisits([j.id]);
-  const cust = customers.find(c => c.id === customerId);
-  showHistory(customerId, cust ? cust.name : '');
+  try{ renderCustomerWorkOrders(customerId); }catch(e){}
   showToast(j._clean ? 'Filter clean deleted' : 'Work order deleted');
 }
 
@@ -19775,40 +19974,28 @@ function buildWorkOrderDoc(customerId, j){
 // work orders and filter cleans submitted from the field (Oct 3)
 function historyEntriesFor(customer){
   const cid = customer.id;
-  return reportVisitsFor(customer)
-    .concat(workOrderVisitsFor(cid).map(j => ({id: 'wo:' + j.id, wo: j,
-      date: j.doneAt || ((j.date || '') + 'T12:00:00'), parts: []})))
-    .concat((lsGet('scheduledFilterCleans') || [])
-      .filter(f => f && f.status === 'done' && String(f.customerId) === String(cid))
-      .map(f => ({id: 'fc:' + f.id, wo: Object.assign({}, f, {_clean: true}),
-        date: f.doneAt || ((f.date || '') + 'T12:00:00'), parts: []})))
-    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  // Work orders and filter cleans live in Quotes & Orders now (Oct 3)
+  void cid;
+  return reportVisitsFor(customer);
 }
 
 // From WorkCenter → Work Order → History: the customer's Service reports, with
 // that work order opened and in view (Oct 3)
 function openWorkOrderReport(customerId, jobId){ return openJobReport(customerId, 'wo:' + jobId); }
 function openJobReport(customerId, key){
+  // Opens in Quotes & Orders, with that one opened and in view (Oct 3)
   const c = (customers || []).find(x => x && String(x.id) === String(customerId));
   if(!c){ showToast('This customer is no longer on file'); return; }
   switchView('customers');
   viewCustomer(c);
-  const tab = document.querySelector('#profileTabControl .history-type-btn[data-tab="history"]');
+  const tab = document.querySelector('#profileTabControl .history-type-btn[data-tab="workorders"]');
   if(tab) tab.click();
-  historyDateFilter = '';
-  const box = document.getElementById('historyDateFilter');
-  if(box) box.value = '';
-  const all = historyEntriesFor(c);
-  const at = all.findIndex(v => v.id === key);
-  historyOpenId = at >= 0 ? key : null;
-  historyOpenBody = null;
-  historyPageKey = c.id + '|visits|';
-  historyPage = at >= 0 ? Math.floor(at / HISTORY_PER_PAGE) + 1 : 1;
-  try{ showHistory(c.id, c.name); }catch(e){}
-  if(at < 0){ showToast('That report is no longer here \u2014 showing all their reports'); return; }
-  // Its row at the top of the screen, the report open under it
+  const found = qoEntriesFor(c.id).some(x => x.key === key);
+  qoOpenId = found ? key : null;
+  try{ renderCustomerWorkOrders(c.id); }catch(e){}
+  if(!found){ showToast('That one is no longer here \u2014 showing everything for this customer'); return; }
   setTimeout(()=>{
-    const bar = document.querySelector('#historyList [data-hist-id="' + key + '"]');
+    const bar = document.querySelector('#custWorkOrderList [data-qo-id="' + key + '"]');
     if(bar) bar.scrollIntoView({block: 'start'});
   }, 0);
 }
@@ -21777,10 +21964,27 @@ function renderAlerts(){
       watch.addEventListener('click', ()=> openVisitVideos(a.refs));
       acts.appendChild(watch);
     }
+    // Opening the report marks the alert seen (Oct 3). A filter clean opens in
+    // Quotes & Orders, a visit in Service reports.
+    const openAndSee = ()=>{
+      if(!seen[a.id]){
+        const s = alertsSeen();
+        s[a.id] = Date.now();
+        saveAlertsSeen(s);
+      }
+      if(a.jobKey) openJobReport(a.customerId, a.jobKey); else openAlertReport(a);
+      try{ renderAlerts(); }catch(e){}
+    };
     const open = small('Open report');
-    // A filter clean opens its own report in Service reports (Oct 3)
-    open.addEventListener('click', ()=> a.jobKey ? openJobReport(a.customerId, a.jobKey) : openAlertReport(a));
+    open.addEventListener('click', e=>{ e.stopPropagation(); openAndSee(); });
     acts.appendChild(open);
+    // The whole row opens it too; its other buttons do only their own job
+    row.style.cursor = 'pointer';
+    row.title = 'Open the report';
+    row.addEventListener('click', e=>{
+      if(e.target.closest('button, a, input')) return;
+      openAndSee();
+    });
     if(!seen[a.id]){
       const mark = small('Mark seen');
       mark.addEventListener('click', ()=>{
