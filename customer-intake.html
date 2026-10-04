@@ -1470,7 +1470,11 @@ input::placeholder{color:#A9BCB9;}
       <div class="field">
         <label>Line items</label>
         <div id="wcLineItems"></div>
-        <button class="btn btn-ghost" id="btnAddLineItem" style="width:auto;margin-top:6px;">+ Add line item</button>
+        <div class="btn-row" style="gap:8px;margin-top:6px;">
+          <button class="btn btn-ghost" id="btnAddLineItem" style="width:auto;">+ Add line item</button>
+          <!-- A filter clean on the work order: the technician gets Replacements (Oct 3) -->
+          <button class="btn btn-ghost" id="btnAddFilterClean" style="width:auto;">+ Filter clean</button>
+        </div>
       </div>
       <div class="field">
         <label>Notes (optional)</label>
@@ -2196,6 +2200,14 @@ input::placeholder{color:#A9BCB9;}
 <div id="offlineBadge" style="position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:400;padding:7px 14px;border-radius:999px;font-size:12px;font-weight:600;font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;box-shadow:0 3px 12px rgba(0,0,0,0.18);display:none;pointer-events:none;"></div>
 
 <script>
+// The Alerts bubble shows its last count the moment the page runs, so a
+// reload doesn't blink it off while everything else starts (Oct 3)
+(function(){ try{
+  var n = parseInt(localStorage.getItem('weirAlertsCount') || '0', 10);
+  var b = document.getElementById('alertsBadge');
+  if(b && n > 0){ b.textContent = String(n); b.style.display = 'inline-flex'; }
+}catch(e){} })();
+
 // ================== WHICH SERVER THIS COPY TALKS TO ==================
 // The only two lines that change between one company's copy and another's.
 // Both come from Supabase: Project Settings > API. The key is the publishable
@@ -6331,7 +6343,10 @@ function partsStillNeeded(f){
   return ((f && f.doneReplacements) || []).filter(x => x && !done.has(x));
 }
 function filterReplacementsList(){
-  return (lsGet('scheduledFilterCleans') || []).filter(f => f && f.status === 'done' && partsStillNeeded(f).length)
+  // Work orders with a filter clean report replacements too (Oct 3)
+  const wos = (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'done' && partsStillNeeded(j).length)
+    .map(j => Object.assign({}, j, {_wo: true}));
+  return (lsGet('scheduledFilterCleans') || []).filter(f => f && f.status === 'done' && partsStillNeeded(f).length).concat(wos)
     .sort((a, b) => String(b.doneAt || '').localeCompare(String(a.doneAt || '')));
 }
 function updateFilterReplacementsButton(){
@@ -6356,14 +6371,14 @@ function openFilterReplacements(){
   // Under each group, in the order the groups are listed
   const order = filterGroups.map(g => g.id);
   const byGroup = {};
-  done.forEach(f=>{ const k = f.groupId || ''; (byGroup[k] = byGroup[k] || []).push(f); });
+  done.forEach(f=>{ const k = f._wo ? '__wo' : (f.groupId || ''); (byGroup[k] = byGroup[k] || []).push(f); });
   Object.keys(byGroup).sort((a, b) => (order.indexOf(a) === -1 ? 999 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 999 : order.indexOf(b)))
     .forEach(k=>{
       const g = filterGroups.find(x => x.id === k);
       const head = document.createElement('div');
       head.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);"
         + 'text-transform:uppercase;letter-spacing:0.07em;margin:12px 0 2px;';
-      head.textContent = g ? g.name : (byGroup[k][0].groupName || 'No group');
+      head.textContent = k === '__wo' ? 'Work orders' : g ? g.name : (byGroup[k][0].groupName || 'No group');
       box.appendChild(head);
       byGroup[k].forEach((f, i, all)=>{
         const c = customers.find(x => String(x.id) === String(f.customerId));
@@ -6384,11 +6399,12 @@ function openFilterReplacements(){
           cb.title = 'Replaced';
           cb.addEventListener('change', ()=>{
             if(!cb.checked) return;
-            const list = lsGet('scheduledFilterCleans') || [];
+            const listKey = f._wo ? 'scheduledWorkOrders' : 'scheduledFilterCleans';
+            const list = lsGet(listKey) || [];
             const rec = list.find(x => x && x.id === f.id);
             if(!rec) return;
             rec.replacedItems = Array.from(new Set((rec.replacedItems || []).concat([part])));
-            lsSet('scheduledFilterCleans', list);
+            lsSet(listKey, list);
             showToast(part + ' replaced');
             if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
             openFilterReplacements();
@@ -10937,6 +10953,19 @@ function renderLineItems(){
   });
 }
 
+// + Filter clean (Oct 3): a "Filter clean" line item, priced from Products and
+// Services when it's there. On the phone, a work order with one gets the
+// Replacements button, as a filter clean does.
+function isFilterCleanItem(li){ return !!li && (li.filterClean === true || /^\s*filter clean\s*$/i.test(String(li.description || ''))); }
+document.getElementById('btnAddFilterClean').addEventListener('click', ()=>{
+  if(currentLineItems.some(isFilterCleanItem)){ showToast('This work order already has a filter clean'); return; }
+  const p = (productsServices || []).find(x => x && /^\s*filter clean\s*$/i.test(String(x.name || '')));
+  // An empty first line is used rather than adding another under it
+  const blank = currentLineItems.findIndex(li => !String(li.description || '').trim() && !String(li.price || '').trim());
+  const item = {description: 'Filter clean', qty: 1, price: p && p.price != null ? String(p.price) : '', filterClean: true};
+  if(blank !== -1) currentLineItems[blank] = item; else currentLineItems.push(item);
+  renderLineItems();
+});
 document.getElementById('btnAddLineItem').addEventListener('click', ()=>{
   currentLineItems.push({description:'', qty:1, price:''});
   renderLineItems();
@@ -22324,6 +22353,19 @@ function collectAlerts(){
       out.push(Object.assign({id: 'repair:' + f.id, kind: 'repair', notes: 'Needs replacing: ' + items.join(', ')}, base));
     }
   });
+  // Work orders with a filter clean that need parts (Oct 3)
+  (lsGet('scheduledWorkOrders') || []).forEach(j=>{
+    if(!j || j.status !== 'done' || !j.id) return;
+    const items = partsStillNeeded(j);
+    if(!items.length) return;
+    const c = (customers || []).find(x => x && String(x.id) === String(j.customerId));
+    if(!c || c.deleted) return;
+    const tm = new Date(j.doneAt || ((j.date || '') + 'T12:00:00')).getTime();
+    if(!tm || isNaN(tm)) return;
+    out.push({id: 'worepair:' + j.id, kind: 'repair', notes: 'Needs replacing: ' + items.join(', '),
+      customerId: c.id, name: displayName(c.name), body: 'Work order' + (j.title ? ': ' + j.title : ''), t: tm,
+      jobKey: 'wo:' + j.id, tech: j.doneBy === 'office' ? 'the office' : techName(j.doneBy || j.technicianId)});
+  });
   // Tasks finished in the field (Oct 3): their notes and videos
   (lsGet('tasks') || []).forEach(t=>{
     if(!t || !t.done || !t.id) return;
@@ -22363,6 +22405,7 @@ function updateAlertsBadge(list){
   const n = (list || collectAlerts()).filter(a => !seen[a.id]).length;
   badge.textContent = String(n);
   badge.style.display = n ? 'inline-flex' : 'none';
+  try{ localStorage.setItem('weirAlertsCount', String(n)); }catch(e){}
   return n;
 }
 
@@ -22555,6 +22598,8 @@ function openAlertReport(a){
     saveAlertsSeen(s);
     renderAlerts();
   });
+  // Counted as soon as the page is ready (it waited a second and a half)
+  try{ updateAlertsBadge(); }catch(e){}
   setTimeout(()=>{ try{ updateAlertsBadge(); }catch(e){} }, 1500);
   // Old ones drop off as they pass their days, even with nothing arriving
   setInterval(()=>{ try{

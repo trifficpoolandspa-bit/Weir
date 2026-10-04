@@ -4344,7 +4344,7 @@ const SYNC_WORK_LISTS = [
 const SYNC_WORK_SENDABLE = ['task', 'reschedule', 'work_order', 'filter_clean'];
 const SYNC_FILTER_CLEAN_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore', 'doneReplacements'];
 const SYNC_TASK_FIELDS = ['done', 'doneAt', 'doneBy', 'doneNotes', 'doneVideo', 'doneVideoMore'];
-const SYNC_WORK_ORDER_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore'];
+const SYNC_WORK_ORDER_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore', 'doneReplacements'];
 
 // A work order submitted before its photo and video went to the office (Oct 3)
 // kept them only in this phone's submissions: hang them on the visit now, so
@@ -10843,7 +10843,9 @@ function openJobPage(customer, job){
   // from a list or typed in, sent to the office with the filter clean
   let replacements = [];
   let repRow = null;
-  if(job.kind === 'filter clean'){
+  const woHasFilterClean = job.kind === 'work order' && (job.lineItems || []).some(li =>
+    li && (li.filterClean === true || /^\s*filter clean\s*$/i.test(String(li.description || ''))));
+  if(job.kind === 'filter clean' || woHasFilterClean){
     // Under the notes, above Submit with more room before it (Oct 3)
     repRow = document.createElement('div');
     repRow.style.cssText = 'margin:0 0 30px;';
@@ -10988,6 +10990,7 @@ function openJobPage(customer, job){
         if(storedMore.length) j.donePhotoMore = storedMore;
         if(isPhotoRef(videoRef)) j.doneVideo = videoRef;
         if(videoMore.length) j.doneVideoMore = videoMore;
+        if(replacements.length) j.doneReplacements = replacements.slice();
         lsSet('scheduledWorkOrders', jobs);
         // Unless the office unticked Email customer on it (Oct 3)
         if(customer && j.emailCustomer !== false) queueJobEmail(customer, Object.assign({kind: 'work order'}, j));
@@ -15088,7 +15091,10 @@ function awcBuild(pane){
         <label>Line items</label>
         <div id="awcLines"></div>
         <datalist id="awcProducts"></datalist>
-        <button type="button" class="btn btn-ghost" id="awcAddLine" style="width:auto;margin-top:4px;">+ Add line item</button>
+        <div class="btn-row" style="gap:8px;margin-top:4px;">
+          <button type="button" class="btn btn-ghost" id="awcAddLine" style="width:auto;">+ Add line item</button>
+          <button type="button" class="btn btn-ghost" id="awcAddFilterClean" style="width:auto;">+ Filter clean</button>
+        </div>
       </div>
       <div class="field">
         <label>Notes (optional)</label>
@@ -15216,6 +15222,17 @@ function awcBuild(pane){
   document.getElementById('awcTaskDate').value = todayDateStr();
   awcWireSearch('awcWoSearch', 'awcWoSuggest', ()=> awcWoCustomers, id=>{ awcWoCustomers.push(id); awcRenderChips(); });
   awcWireSearch('awcTaskSearch', 'awcTaskSuggest', ()=> awcTaskCustomers, id=>{ awcTaskCustomers.push(id); awcRenderChips(); });
+  // + Filter clean (Oct 3), as on the website
+  const fcBtn = document.getElementById('awcAddFilterClean');
+  if(fcBtn) fcBtn.addEventListener('click', ()=>{
+    const isFc = li => !!li && (li.filterClean === true || /^\s*filter clean\s*$/i.test(String(li.description || '')));
+    if(awcLineItems.some(isFc)){ showToast('This work order already has a filter clean'); return; }
+    const p = (lsGet('productsServices') || []).find(x => x && /^\s*filter clean\s*$/i.test(String(x.name || '')));
+    const blank = awcLineItems.findIndex(li => !String(li.description || '').trim() && !String(li.price || '').trim());
+    const item = {description: 'Filter clean', qty: '1', price: p && p.price != null ? String(p.price) : '', filterClean: true};
+    if(blank !== -1) awcLineItems[blank] = item; else awcLineItems.push(item);
+    awcRenderLines();
+  });
   document.getElementById('awcAddLine').addEventListener('click', ()=>{
     awcLineItems.push({description: '', qty: '', price: ''});
     awcRenderLines();
