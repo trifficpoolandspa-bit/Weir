@@ -856,10 +856,16 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     // Deleting a work order always takes its visits off the routes
     // (from the customer's profile, where saved work orders are listed)
     w.eval("switchView('customers'); viewCustomer(customers[0]); renderCustomerWorkOrders('a');"); await wait(100);
-    Array.from(d.querySelectorAll('#custWorkOrderList button')).filter(b => /Delete/.test(b.textContent || b.title))
-      .find(b => /Fix light|Work Order/.test((b.closest('.cust-row') || b.parentElement.parentElement).textContent)).click(); await wait(120);
+    // Oct 3: Quotes & Orders is rows; a repeat's upcoming visits are one
+    // RECURRING row whose bin deletes them all, after asking
+    Array.from(d.querySelectorAll('#custWorkOrderList [data-qo-id] button')).filter(b => /Delete/.test(b.textContent || b.title))
+      .find(b => /Fix light|work order/i.test(b.closest('[data-qo-id]').textContent) && /CURRENT|RECURRING/.test(b.closest('[data-qo-id]').textContent)).click(); await wait(80);
+    { const ok = Array.from(d.querySelectorAll('.confirm-overlay button')).filter(b => /^Delete/.test(b.textContent)).pop(); if(ok) ok.click(); }
+    await wait(120);
     w.eval("switchView('workcenter');");
-    check('deleting a work order takes all its visits off the routes', !w.eval("(lsGet('scheduledWorkOrders')||[]).some(j => j.workOrderId === 'wo1')"));
+    // Its scheduled visits come off the routes; a finished one stays in the
+    // customer's history (Oct 3)
+    check('deleting a work order takes all its visits off the routes', !w.eval("(lsGet('scheduledWorkOrders')||[]).some(j => j.workOrderId === 'wo1' && j.status !== 'done')"));
     // Tasks form: no Editing heading, no list below, Photo required
     kind('Task'); tab('main');
     check('no "Tasks on the schedule" list', d.getElementById('wcTaskListCard').style.display === 'none');
