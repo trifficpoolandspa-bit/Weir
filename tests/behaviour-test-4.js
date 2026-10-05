@@ -186,8 +186,10 @@ console.log('\n=== The task form mirrors the work order ===');
   w.console.warn = ()=>{};
   w.Element.prototype.scrollIntoView = function(){};
 
-  const labels = el => Array.from(el.querySelectorAll('.field > label'))
-    .map(l => l.textContent.replace(/\s+/g, ' ').trim());
+  // Oct 3: the date field's label sits inside a box (its ticks in columns), so
+  // each field's first label is read
+  const labels = el => Array.from(el.querySelectorAll('.field')).map(f => f.querySelector('label'))
+    .filter(Boolean).map(l => l.textContent.replace(/\s+/g, ' ').trim());
 
   try{
     w.eval("switchView('workcenter');");

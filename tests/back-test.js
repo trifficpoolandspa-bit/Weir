@@ -53,7 +53,7 @@ function boot(file){
     try{
       w.eval("currentUser={id:'t1',name:'Alex'}; confirmDialog=()=>Promise.resolve(true); renderHomeList();");
 
-      check('  it remembers five places', w.eval('NAV_STACK_LIMIT') === 5);
+      check('  it remembers forty places (Oct 3: places, not just tabs)', w.eval('NAV_STACK_LIMIT') === 40);
       check('  the old drifting counter is gone',
             fs.readFileSync(file,'utf8').indexOf('backEntries') === -1);
 

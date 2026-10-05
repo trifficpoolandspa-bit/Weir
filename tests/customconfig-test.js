@@ -849,7 +849,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     check('Mark approved takes a quote off Current, approved', !/Heater/.test(cur()) && w.eval("workOrders.some(x => x.id === 'q1' && x.closed && x.approved)"));
     // Select several and delete
     kind('Task'); tab('current');
-    Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => b.textContent === 'Select').click(); await wait(20);
+    Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => b.textContent === 'Select multiple').click(); await wait(20);   // renamed Oct 3
     Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => b.textContent === 'Select all').click(); await wait(20);
     Array.from(d.querySelectorAll('#wcCurrentList button')).find(b => /selected/.test(b.textContent || b.title)).click(); await wait(80);   // a bin now (Oct 2)
     check('Select all and delete clears the list', !w.eval("tasks.some(t => !t.done)"));

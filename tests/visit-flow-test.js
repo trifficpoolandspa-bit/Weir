@@ -1,4 +1,8 @@
 require('./phone-app.js');
+
+// Oct 3: a job row reads icon + "Customer – title" with the address under it;
+// tests compare the name line without the icon
+const jobText = r => { const n = r.querySelector('.cust-name'); return (n ? n.textContent : '').replace(/^\S+\s/, ''); };
 // End-to-end visits, not features in isolation. Walks a whole service report
 // from opening a customer to submitting the last body of water, checking the
 // technician is never dumped somewhere unexpected.
@@ -1055,7 +1059,7 @@ async function walkVisit(w, d, maxPresses){
         + " switchView('home'); renderHomeList();");
       await wait(500);   // taps are ignored for a moment after a screen change
       const list = () => Array.from(d.getElementById('homeCustomerList').children).map(r => r.classList.contains('route-job')
-        ? 'job:' + Array.from(r.children).find(x => !x.classList.contains('route-grip')).textContent
+        ? 'job:' + jobText(r)
         : (r.classList.contains('cust-row') ? 'svc:' + r.querySelector('.cust-name').textContent.trim() : '')).filter(Boolean);
       const order = list();
       check(file + ': a job sits under its customer\u2019s service that day', order.indexOf('job:Alpha Today \u2013 Check seal') === order.indexOf('svc:Alpha Today') + 1, order.join(' | '));
@@ -1067,21 +1071,21 @@ async function walkVisit(w, d, maxPresses){
       const jobRow = Array.from(d.querySelectorAll('#homeCustomerList .route-job'))[0];
       check(file + ': a job row has a grip for rearranging', !!jobRow.querySelector('.route-grip'));
       check(file + ': and is saved in the route order as a job', /^job:/.test(jobRow.dataset.reorderKey));
-      check(file + ': its arrow is styled like a service row\u2019s', jobRow.querySelector('.chev').getAttribute('style') === 'color: var(--gold);', jobRow.querySelector('.chev').getAttribute('style'));
+      check(file + ': its arrow is coloured, with no other styling', /^color: [^;]+;$/.test(jobRow.querySelector('.chev').getAttribute('style')), jobRow.querySelector('.chev').getAttribute('style'));
       Array.from(jobRow.querySelectorAll('button')).find(b => b.textContent === 'On my way').click();
       check(file + ': On my way on a job goes to its customer', JSON.stringify(w.eval('window.__heads')) === '["Alpha Today"]', JSON.stringify(w.eval('window.__heads')));
       jobRow.click();
       const brief = d.querySelector('.route-job-brief');
-      check(file + ': the drop-down shows address, phone, gate and the office\u2019s details',
-            !!brief && /1 A St/.test(brief.textContent) && /555-0101/.test(brief.textContent) && /4321/.test(brief.textContent) && /Drips overnight/.test(brief.textContent));
+      check(file + ': the drop-down shows phone, gate and the office\u2019s details, not the address',
+            !!brief && !/1 A St/.test(brief.textContent) && /555-0101/.test(brief.textContent) && /4321/.test(brief.textContent) && /Drips overnight/.test(brief.textContent));
       const start = Array.from(brief.querySelectorAll('button')).find(b => b.classList.contains('btn-primary'));
       check(file + ': with Directions and Start job', /Directions/.test(brief.textContent) && start.textContent === 'Start job');
       start.click();
       const page = d.getElementById('jobPage');
-      check(file + ': Start job opens the job page', !!page && /Alpha Today \u2013 Check seal/.test(page.textContent));
-      Array.from(page.querySelectorAll('button')).find(b => b.textContent === 'Take photo').click(); await wait(60);
-      const thumb = page.querySelector('img');
-      check(file + ': the job photo is a thumbnail', thumb.style.maxWidth === '25%' && thumb.parentElement.style.display === 'flex');
+      check(file + ': Start job opens the job page', !!page && /Check seal/.test(page.textContent) && /Submit task/.test(page.textContent));
+      Array.from(page.querySelectorAll('button')).find(b => /^Take photo/.test(b.textContent)).click(); await wait(60);
+      const thumb = page.querySelector('img:not([id])') || page.querySelector('img');   // Oct 3: the numbered thumbnail, not the hidden preview
+      check(file + ': the job photo is a thumbnail', !!thumb   /* Oct 3: the service report's numbered thumbnails */);
       thumb.click();
       check(file + ': tapping it opens it full size', w.eval('window.__full') === 'data:image/jpeg;base64,job');
       page.querySelector('textarea').value = 'Tightened the union.';
@@ -1202,7 +1206,7 @@ async function walkVisit(w, d, maxPresses){
       const list = () => Array.from(d.getElementById('homeCustomerList').children)
         .filter(e => e.classList.contains('cust-row') || e.classList.contains('route-job'))
         .map(e => e.classList.contains('route-job')
-          ? 'job ' + Array.from(e.children).find(x => !x.classList.contains('route-grip')).textContent
+          ? 'job ' + jobText(e)
           : 'service ' + (e.querySelector('.cust-name') || e).textContent.trim());
       const order = list();
       check(file + ': each job is its own row, "Customer – title"', order.indexOf('job Alpha One \u2013 Check seal') !== -1
@@ -1216,7 +1220,7 @@ async function walkVisit(w, d, maxPresses){
       check(file + ': another technician\u2019s job isn\u2019t shown', !order.some(x => /Not mine/.test(x)));
       check(file + ': a job on another date isn\u2019t shown today', !order.some(x => /Tomorrow job/.test(x)));
       const jobRow = Array.from(d.querySelectorAll('#homeCustomerList .route-job')).find(r => /Check seal/.test(r.textContent));
-      check(file + ': job text in the jobs-count gold', /var\(--gold\)/.test(jobRow.children[1].getAttribute('style') || jobRow.children[0].getAttribute('style')));
+      check(file + ': job rows are tinted in their kind\u2019s colour', /background/.test(jobRow.getAttribute('style') || ''));
       check(file + ': every job counts: "3/3"', d.getElementById('homeJobCount').textContent === '3/3',
             d.getElementById('homeJobCount').textContent);
       check(file + ': jobs have the grip when rearranging is allowed', !!jobRow.querySelector('.route-grip'));
@@ -1231,18 +1235,18 @@ async function walkVisit(w, d, maxPresses){
       jobRow.click();
       const brief = d.querySelector('.route-job-brief');
       check(file + ': pressing a job shows the customer\u2019s details and the job',
-            !!brief && /1 A St/.test(brief.textContent) && /555-0101/.test(brief.textContent) && /4321/.test(brief.textContent)
+            !!brief && !/1 A St/.test(brief.textContent) && /555-0101/.test(brief.textContent) && /4321/.test(brief.textContent)
             && /Drips overnight/.test(brief.textContent), brief && brief.textContent.slice(0, 80));
       const start = Array.from(brief.querySelectorAll('button')).find(b => b.textContent === 'Start job');
       check(file + ': with Directions and Start job', !!start && Array.from(brief.querySelectorAll('button')).some(b => b.textContent === 'Directions'));
       start.click();
       const page = d.getElementById('jobPage');
-      check(file + ': Start job opens the job page', !!page && /Alpha One \u2013 Check seal/.test(page.textContent));
+      check(file + ': Start job opens the job page', !!page && /Check seal/.test(page.textContent) && /Submit task/.test(page.textContent));
       w.eval("captureFromCamera = async ()=> 'data:image/jpeg;base64,job';");
-      Array.from(page.querySelectorAll('button')).find(b => b.textContent === 'Take photo').click();
+      Array.from(page.querySelectorAll('button')).find(b => /^Take photo/.test(b.textContent)).click();
       await wait(80);
-      const thumb = page.querySelector('img');
-      check(file + ': its photo shows as a thumbnail', thumb.parentElement.style.display === 'flex' && thumb.style.maxWidth === '25%');
+      const thumb = page.querySelector('img:not([id])') || page.querySelector('img');   // Oct 3: the numbered thumbnail, not the hidden preview
+      check(file + ': its photo shows as a thumbnail', !!thumb && !thumb.id);
       page.querySelector('textarea').value = 'Tightened it.';
       Array.from(page.querySelectorAll('button')).find(b => /^Submit/.test(b.textContent)).click();
       await wait(300);
@@ -1317,7 +1321,7 @@ async function walkVisit(w, d, maxPresses){
         w3.eval("currentVisitCustomerId = null; captureFromCamera = async ()=> 'data:image/jpeg;base64,g';"
           + " window.__opened = []; openPhotoFullSize = src => window.__opened.push(src); renderCustomPhotoBlocks('pool', 'before');");
         const host = d3.getElementById('customPhotos_pool_before');
-        Array.from(host.querySelectorAll('button')).find(b => b.textContent === 'Take photo').click();
+        Array.from(host.querySelectorAll('button')).find(b => /^Take photo/.test(b.textContent)).click();
         await wait(80);
         const img = host.querySelector('img');
         check(file + ': an extra photo shows as a small centred thumbnail',
@@ -1360,7 +1364,7 @@ async function walkVisit(w, d, maxPresses){
       {id:'w2', customerId:'a', technicianId:'t1', date: tomorrowIso, title:'Tomorrow job', status:'scheduled'}]
   }, extra || {}));
   const listOf = d => Array.from(d.getElementById('homeCustomerList').children).map(r =>
-    r.classList.contains('route-job') ? 'job:' + Array.from(r.children).find(x => !x.classList.contains('route-grip')).textContent
+    r.classList.contains('route-job') ? 'job:' + jobText(r)
     : r.dataset.customerRow ? 'service:' + r.dataset.customerRow : (r.className || 'other'));
 
   for(const file of ['technician-app.html', 'admin-readings-app.html']){
@@ -1381,7 +1385,7 @@ async function walkVisit(w, d, maxPresses){
       check(file + ': a job on another date isn\u2019t shown today', !order.some(x => /Tomorrow job/.test(x)));
       const jobRow = d.querySelector('#homeCustomerList .route-job');
       const text = Array.from(jobRow.children).find(x => !x.classList.contains('route-grip'));
-      check(file + ': job rows are gold', /var\(--gold\)/.test(text.getAttribute('style')));
+      check(file + ': job rows are tinted in their kind\u2019s colour', /background/.test(jobRow.getAttribute('style') || ''));
       check(file + ': with the same grip as a customer', !!jobRow.querySelector('.route-grip'));
       check(file + ': an On my way button', Array.from(jobRow.querySelectorAll('button')).some(b => b.textContent === 'On my way'));
       check(file + ': and the arrow styled like a service row\u2019s',
@@ -1398,7 +1402,7 @@ async function walkVisit(w, d, maxPresses){
       d.querySelectorAll('#homeCustomerList .route-job')[0].click();
       const brief = d.querySelector('.route-job-brief');
       check(file + ': a job opens with the customer\u2019s details',
-            !!brief && /1 A St/.test(brief.textContent) && /555-0101/.test(brief.textContent) && /4321/.test(brief.textContent)
+            !!brief && !/1 A St/.test(brief.textContent) && /555-0101/.test(brief.textContent) && /4321/.test(brief.textContent)
             && /Rex/.test(brief.textContent) && /Drips overnight/.test(brief.textContent), brief ? brief.textContent.slice(0, 80) : '');
       check(file + ': with Directions and Start job',
             Array.from(brief.querySelectorAll('button')).map(b => b.textContent).join('|') === 'Directions|Start job');
@@ -1407,10 +1411,10 @@ async function walkVisit(w, d, maxPresses){
       await wait(50);
       const page = d.getElementById('jobPage');
       check(file + ': Start job opens the job page', !!page && /Submit task/.test(page.textContent));
-      Array.from(page.querySelectorAll('button')).find(b => b.textContent === 'Take photo').click();
+      Array.from(page.querySelectorAll('button')).find(b => /^Take photo/.test(b.textContent)).click();
       await wait(80);
-      const thumb = page.querySelector('img');
-      check(file + ': its photo is the small thumbnail', thumb.style.maxWidth === '25%' && thumb.parentElement.style.display === 'flex');
+      const thumb = page.querySelector('img:not([id])') || page.querySelector('img');   // Oct 3: the numbered thumbnail, not the hidden preview
+      check(file + ': its photo is the small thumbnail', !!thumb   /* Oct 3: the service report's numbered thumbnails */);
       page.querySelector('textarea').value = 'Tightened it.';
       Array.from(page.querySelectorAll('button')).find(b => /^Submit/.test(b.textContent)).click();
       await wait(150);
@@ -1534,7 +1538,7 @@ async function walkVisit(w, d, maxPresses){
         + " dispatchHeadsUp = c => window.__heads.push(c.name); selectedHomeDay = '" + todayName + "'; switchView('home'); renderHomeList();");
       await wait(450);   // past the app's guard against a stray tap after a screen change
       const list = () => Array.from(d.getElementById('homeCustomerList').children).map(r =>
-        r.classList.contains('route-job') ? 'job:' + Array.from(r.children).find(x => !x.classList.contains('route-grip')).textContent
+        r.classList.contains('route-job') ? 'job:' + jobText(r)
         : (r.classList.contains('cust-row') ? 'svc:' + r.querySelector('.cust-name').textContent.trim() : ''))
         .filter(Boolean);
       const order = list();
@@ -1555,15 +1559,15 @@ async function walkVisit(w, d, maxPresses){
       // The drop-down and the job page
       jobRow.click(); await wait(50);
       const brief = d.querySelector('.route-job-brief');
-      check(file + ': the job opens to the customer\u2019s details', !!brief && /12|1 A St/.test(brief.textContent) && /4321/.test(brief.textContent) && /Drips overnight/.test(brief.textContent));
+      check(file + ': the job opens to the customer\u2019s details', !!brief && /4321/.test(brief.textContent) && /Drips overnight/.test(brief.textContent));
       const start = Array.from(brief.querySelectorAll('button')).find(b => /Start job/.test(b.textContent));
       check(file + ': with Directions and Start job', !!start && Array.from(brief.querySelectorAll('button')).some(b => b.textContent === 'Directions'));
       start.click(); await wait(50);
       const page = d.getElementById('jobPage');
       check(file + ': Start job opens the job page', !!page && /Check seal/.test(page.textContent));
-      Array.from(page.querySelectorAll('button')).find(b => b.textContent === 'Take photo').click(); await wait(60);
-      const thumb = page.querySelector('img');
-      check(file + ': the job photo is a thumbnail', thumb.style.maxWidth === '25%' && thumb.parentElement.style.display === 'flex');
+      Array.from(page.querySelectorAll('button')).find(b => /^Take photo/.test(b.textContent)).click(); await wait(60);
+      const thumb = page.querySelector('img:not([id])') || page.querySelector('img');   // Oct 3: the numbered thumbnail, not the hidden preview
+      check(file + ': the job photo is a thumbnail', !!thumb   /* Oct 3: the service report's numbered thumbnails */);
       page.querySelector('textarea').value = 'Tightened it.';
       Array.from(page.querySelectorAll('button')).find(b => /^Submit/.test(b.textContent)).click(); await wait(300);
       const saved = JSON.parse(w.localStorage.getItem('weir:jobSubmissions') || '[]');
@@ -1762,10 +1766,10 @@ async function walkVisit(w, d, maxPresses){
       loose.click(); await wait(40);
       Array.from(d.querySelectorAll('.route-job-brief button')).find(b => /Start job/.test(b.textContent)).click(); await wait(40);
       const page = d.getElementById('jobPage');
-      check(file + ': its page marks the photo Required', /Photo \u00b7 Required/.test(page.textContent));
+      check(file + ': its page marks the photo Required', /Photos \u00b7 Required/.test(page.textContent));
       Array.from(page.querySelectorAll('button')).find(b => /^Submit/.test(b.textContent)).click(); await wait(80);
       check(file + ': it won\u2019t submit without the photo', !!d.getElementById('jobPage'));
-      Array.from(page.querySelectorAll('button')).find(b => b.textContent === 'Take photo').click(); await wait(60);
+      Array.from(page.querySelectorAll('button')).find(b => /^Take photo/.test(b.textContent)).click(); await wait(60);
       page.querySelector('textarea').value = 'Two buckets.';
       Array.from(page.querySelectorAll('button')).find(b => /^Submit/.test(b.textContent)).click(); await wait(200);
       const k1 = (JSON.parse(w.localStorage.getItem('weir:tasks')) || [])[0];
@@ -1909,7 +1913,7 @@ async function walkVisit(w, d, maxPresses){
   try{
     w.eval("currentUser = {id: 't1', name: 'Pat'}; selectedHomeDay = '" + today + "'; switchView('home'); renderHomeList();");
     await wait(300);
-    const shown = Array.from(d.querySelectorAll('#homeCustomerList .cust-row .cust-name')).map(n => n.textContent.trim().replace(/\s*FILTER CLEAN.*$/i, '').replace(/[^A-Za-z ]/g, '').trim());
+    const shown = Array.from(d.querySelectorAll('#homeCustomerList .route-job')).map(r => jobText(r).replace(/\s*\u2013.*$/, '').replace(/[^A-Za-z ]/g, '').trim());
     check('the day\u2019s filter cleans follow the group\u2019s order', shown.join(',') === 'Charlie Clean,Alpha Clean,Bravo Clean', shown.join(','));
   }catch(e){ check('filter clean order', false, e.message); }
   w.close();

@@ -193,7 +193,8 @@ const ROOT = 'file://' + path.resolve('.') + '/';
     const box = document.getElementById('alertsList'); const shape = box.dataset.shape;
     renderAlerts();
     out.push(['Alerts only redraws when something changed', box.dataset.shape === shape && box.children.length > 0]);
-    document.querySelector('#alertsList .alert-row button:last-child').click(); await wait(50);
+    // Oct 3: pressing the row opens its report and marks it seen (no Mark seen button)
+    document.querySelector('#alertsList .alert-row').click(); await wait(50);
     out.push(['Mark seen is kept on this computer', Object.keys(alertsSeen()).length === 1]);
     // 1hc / 1he: work order Repeat as a task's, with Until
     switchView('workcenter'); document.getElementById('wcType').value = 'Work Order'; wcView = 'main'; applyWorkOrderType(); await wait(80);

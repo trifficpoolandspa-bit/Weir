@@ -866,8 +866,8 @@ console.log('\n=== Back never leaves the app ===');
           src.indexOf('backEntries') === -1);
     check(file + ' tops the guard up on user gestures',
           src.indexOf("['pointerdown','touchstart','mousedown','keydown'].forEach") !== -1);
-    check(file + ' remembers five places',
-          src.indexOf('NAV_STACK_LIMIT = 5') !== -1);
+    check(file + ' remembers forty places (Oct 3)',
+          src.indexOf('NAV_STACK_LIMIT = 40') !== -1);
     check(file + ' and does not record new places while going back',
           src.indexOf('if(navigatingBack) return;') !== -1);
   });
