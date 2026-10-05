@@ -707,7 +707,7 @@ select#customerSelect{font-weight:600;}
       <div id="photoPreviewWrapBefore" style="display:none;margin-bottom:12px;">
         <img id="photoPreviewBefore" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="Before photo preview">
       </div>
-      <div class="btn-row" style="justify-content:center;margin:34px 0 34px;">
+      <div class="btn-row" style="justify-content:center;margin:50px 0 34px;">
         <button class="btn btn-secondary" id="btnTakePhotoBefore" style="width:auto;padding:16px 40px;font-size:17px;background:#B8492E;color:#fff;border:1.5px solid #B8492E;">Take photo</button>
         <button class="btn btn-ghost" id="btnRemovePhotoBefore" style="width:auto;display:none;color:var(--rust);border-color:#EFC9BC;">Remove photo</button>
       </div>
@@ -751,7 +751,7 @@ select#customerSelect{font-weight:600;}
       <div id="photoPreviewWrap" style="display:none;margin-bottom:12px;">
         <img id="photoPreview" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="Visit photo preview">
       </div>
-      <div class="btn-row" style="justify-content:center;margin:34px 0 34px;">
+      <div class="btn-row" style="justify-content:center;margin:50px 0 34px;">
         <button class="btn btn-secondary" id="btnTakePhoto" style="width:auto;padding:16px 40px;font-size:17px;background:#B8492E;color:#fff;border:1.5px solid #B8492E;">Take photo</button>
         <button class="btn btn-ghost" id="btnRemovePhoto" style="width:auto;display:none;color:var(--rust);border-color:#EFC9BC;">Remove photo</button>
       </div>
@@ -782,7 +782,7 @@ select#customerSelect{font-weight:600;}
       <div id="photoPreviewWrapBeforeSpa" style="display:none;margin-bottom:12px;">
         <img id="photoPreviewBeforeSpa" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="Before photo preview">
       </div>
-      <div class="btn-row" style="justify-content:center;margin:34px 0 34px;">
+      <div class="btn-row" style="justify-content:center;margin:50px 0 34px;">
         <button class="btn btn-secondary" id="btnTakePhotoBeforeSpa" style="width:auto;padding:16px 40px;font-size:17px;background:#B8492E;color:#fff;border:1.5px solid #B8492E;">Take photo</button>
         <button class="btn btn-ghost" id="btnRemovePhotoBeforeSpa" style="width:auto;display:none;color:var(--rust);border-color:#EFC9BC;">Remove photo</button>
       </div>
@@ -812,7 +812,7 @@ select#customerSelect{font-weight:600;}
       <div id="photoPreviewWrapSpa" style="display:none;margin-bottom:12px;">
         <img id="photoPreviewSpa" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="Visit photo preview">
       </div>
-      <div class="btn-row" style="justify-content:center;margin:34px 0 34px;">
+      <div class="btn-row" style="justify-content:center;margin:50px 0 34px;">
         <button class="btn btn-secondary" id="btnTakePhotoSpa" style="width:auto;padding:16px 40px;font-size:17px;background:#B8492E;color:#fff;border:1.5px solid #B8492E;">Take photo</button>
         <button class="btn btn-ghost" id="btnRemovePhotoSpa" style="width:auto;display:none;color:var(--rust);border-color:#EFC9BC;">Remove photo</button>
       </div>
@@ -835,7 +835,7 @@ select#customerSelect{font-weight:600;}
       <div id="photoPreviewWrapBeforeFountain" style="display:none;margin-bottom:12px;">
         <img id="photoPreviewBeforeFountain" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="Before photo preview">
       </div>
-      <div class="btn-row" style="justify-content:center;margin:34px 0 34px;">
+      <div class="btn-row" style="justify-content:center;margin:50px 0 34px;">
         <button class="btn btn-secondary" id="btnTakePhotoBeforeFountain" style="width:auto;padding:16px 40px;font-size:17px;background:#B8492E;color:#fff;border:1.5px solid #B8492E;">Take photo</button>
         <button class="btn btn-ghost" id="btnRemovePhotoBeforeFountain" style="width:auto;display:none;color:var(--rust);border-color:#EFC9BC;">Remove photo</button>
       </div>
@@ -864,7 +864,7 @@ select#customerSelect{font-weight:600;}
       <div id="photoPreviewWrapFountain" style="display:none;margin-bottom:12px;">
         <img id="photoPreviewFountain" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="Visit photo preview">
       </div>
-      <div class="btn-row" style="justify-content:center;margin:34px 0 34px;">
+      <div class="btn-row" style="justify-content:center;margin:50px 0 34px;">
         <button class="btn btn-secondary" id="btnTakePhotoFountain" style="width:auto;padding:16px 40px;font-size:17px;background:#B8492E;color:#fff;border:1.5px solid #B8492E;">Take photo</button>
         <button class="btn btn-ghost" id="btnRemovePhotoFountain" style="width:auto;display:none;color:var(--rust);border-color:#EFC9BC;">Remove photo</button>
       </div>
@@ -10375,7 +10375,10 @@ function routeJobCustomerIds(dayISO, techId){
     });
   (lsGet('scheduledWorkOrders') || []).filter(j => j.status === 'scheduled' && j.date === dayISO && mine(j))
     .forEach(j => { if(!jobSubmitted('work order:' + j.id)) ids.add(j.customerId); });
+  // Filter cleans in the order their group was put in (Oct 3: since they
+  // became jobs they'd lost it and came in the order they were stored)
   (lsGet('scheduledFilterCleans') || []).filter(s => s && s.status === 'scheduled' && s.date === dayISO && mine(s))
+    .sort((a, b) => (typeof a.order === 'number' ? a.order : 9999) - (typeof b.order === 'number' ? b.order : 9999))
     .forEach(s => { if(!jobSubmitted('filter clean:' + s.id)) ids.add(s.customerId); });
   return ids;
 }
@@ -12346,6 +12349,7 @@ function promptHeadsUpText(customer, away){
     + '<button class="btn btn-primary" data-go style="width:100%;">Open text message</button>'
     + '<button class="btn btn-ghost" data-later style="width:100%;margin-top:8px;">Not now</button>'
     + '</div>';
+  overlay.dataset.stayOpen = '1';     // a tap outside doesn't close it (Oct 3)
   document.body.appendChild(overlay);
   const close = ()=>{ try{ document.body.removeChild(overlay); }catch(e){} };
   overlay.querySelector('[data-go]').addEventListener('click', ()=>{ close(); sendOnMyWay(customer); });
@@ -12366,12 +12370,12 @@ function askHeadsUpWay(customer){
       + '<button class="btn btn-primary" id="huText" style="width:100%;margin-top:8px;">Text message</button>'
       + '<button class="btn btn-ghost" id="huCancel" style="width:100%;margin-top:8px;">Cancel</button>'
       + '</div>';
+    overlay.dataset.stayOpen = '1';   // only Email, Text message or Cancel close it (Oct 3)
     document.body.appendChild(overlay);
     const done = answer => { try{ document.body.removeChild(overlay); }catch(e){} resolve(answer); };
     overlay.querySelector('#huEmail').addEventListener('click', ()=> done('email'));
     overlay.querySelector('#huText').addEventListener('click', ()=> done('text'));
     overlay.querySelector('#huCancel').addEventListener('click', ()=> done(null));
-    overlay.addEventListener('click', e=>{ if(e.target === overlay) done(null); });
   });
 }
 
@@ -20597,6 +20601,8 @@ attachAllPhoneFormatting();
     // A picture or video viewer, and Edit customers, close themselves
     if(layer.dataset && layer.dataset.closesOutside === '1') return;
     e.stopPropagation(); e.preventDefault();
+    // The On my way windows only close by their own buttons (Oct 3)
+    if(layer.dataset && layer.dataset.stayOpen === '1'){ downOn = null; return; }
     if(downOn !== layer){ downOn = null; return; }
     downOn = null;
     const way = wayOut(layer);
