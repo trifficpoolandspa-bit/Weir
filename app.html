@@ -883,6 +883,27 @@ select#customerSelect{font-weight:600;}
 
   <!-- CUSTOMERS VIEW -->
   <div class="view" id="view-technicians">
+    <!-- Technicians and Photo requirements, as on the website (Oct 3) -->
+    <div class="seg-control" id="techMainTabs" style="margin:0 0 12px;">
+      <button class="history-type-btn active" data-techmain="list" type="button">Technicians</button>
+      <button class="history-type-btn" data-techmain="photos" type="button">Photo requirements</button>
+    </div>
+    <div class="card" id="photoRequireCard" style="display:none;">
+      <h2 style="margin:0 0 4px;">Photos a technician must take</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 6px;">Checking a box requires that technician to take the photo before moving on to the next step of the service report.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 22px;">A report carries up to ten photos. Anything past that is taken and kept, but not sent with the report.</p>
+
+      <!-- The gap belongs above this line, not below it: every line sits the
+           same distance above the text of the row it introduces. -->
+      <div style="border-top:1px solid var(--line);"></div>
+      <div id="photoRequireRows"></div>
+
+      <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:14px;">
+        <button class="btn btn-ghost" id="btnAddCustomPhoto" style="width:auto;padding:7px 14px;font-size:12.5px;">+ Add a photo of your own</button>
+        <p style="font-size:11.5px;color:var(--muted);margin:8px 0 0;">Name something else a technician must photograph &mdash; a filter gauge, a skimmer basket &mdash; and choose who has to take it.</p>
+      </div>
+
+    </div>
     <div class="card" id="techListCard">
       <h2>Technicians</h2>
       <p class="voice-hint" style="margin:-6px 0 14px;">Technicians are managed on the website — tap one here to see their route or edit their details.</p>
@@ -1333,6 +1354,47 @@ select#customerSelect{font-weight:600;}
 <div class="toast" id="toast"></div>
 
 <div id="offlineBadge" style="position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:400;padding:7px 14px;border-radius:999px;font-size:12px;font-weight:600;font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;box-shadow:0 3px 12px rgba(0,0,0,0.18);display:none;pointer-events:none;"></div>
+
+  <div id="photoTaskOverlay" style="display:none;position:fixed;inset:0;z-index:180;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
+    <div style="background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);">
+      <h2 id="photoTaskHeading" style="font-size:18px;margin:0 0 14px;">A photo of your own</h2>
+      <div class="field">
+        <label>What to photograph</label>
+        <input id="photoTaskLabel" placeholder="Filter gauge" maxlength="40">
+      </div>
+      <div style="margin:4px 0 14px;">
+        <div style="font-size:12.5px;color:var(--muted);margin:0 0 6px;">When</div>
+        <label style="display:inline-flex;align-items:center;gap:8px;margin-right:16px;font-size:13.5px;cursor:pointer;">
+          <input type="checkbox" id="photoTaskBefore" style="margin:0;"> Before readings
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer;">
+          <input type="checkbox" id="photoTaskAfter" style="margin:0;"> After readings
+        </label>
+      </div>
+      <div style="margin:0 0 14px;">
+        <div style="font-size:12.5px;color:var(--muted);margin:0 0 6px;">Which bodies of water</div>
+        <label style="display:inline-flex;align-items:center;gap:8px;margin-right:16px;font-size:13.5px;cursor:pointer;">
+          <input type="checkbox" id="photoTaskPool" style="margin:0;"> Pool
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:8px;margin-right:16px;font-size:13.5px;cursor:pointer;">
+          <input type="checkbox" id="photoTaskSpa" style="margin:0;"> Spa
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer;">
+          <input type="checkbox" id="photoTaskExtra" style="margin:0;"> Extra
+        </label>
+      </div>
+      <div style="margin:0 0 14px;">
+        <div style="font-size:12.5px;color:var(--muted);margin:0 0 6px;">Which customers <span id="photoTaskCustCount" style="font-weight:600;color:var(--teal-deep);margin-left:4px;"></span></div>
+        <input id="photoTaskCustSearch" placeholder="Search customers" autocomplete="off" style="margin-bottom:6px;">
+        <div id="photoTaskCustList" style="max-height:180px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:0 8px;"></div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:5px;">Leave everyone unticked and it applies to all customers.</div>
+      </div>
+      <p id="photoTaskError" style="display:none;font-size:12.5px;color:var(--rust);margin:0 0 10px;"></p>
+      <button class="btn btn-primary" id="btnSavePhotoTask" style="width:100%;">Save</button>
+      <button class="btn btn-ghost" id="btnCancelPhotoTask" style="width:100%;margin-top:8px;">Cancel</button>
+    </div>
+  </div>
+
 
 <script>
 // ================== WHICH SERVER THIS COPY TALKS TO ==================
@@ -20675,6 +20737,827 @@ function reportLeftOpen(){
   document.addEventListener('mousedown', e=>{ if(isList(e.target)) away(); }, true);
   document.addEventListener('click', e=>{ if(isList(e.target)) away(); }, true);
   document.addEventListener('input', e=>{ if(e.inputType === 'insertReplacementText') away(); }, true);
+})();
+
+function reloadAppChemConfig(){ chemConfig = loadChemConfig(); }
+
+// ---- Photo requirements in the app (Oct 3) ----
+// The website's Photo requirements tab, brought across as it is (kept in its
+// own scope so its names can't collide with the app's), working on the same
+// technician records and company setup the website uses. Every change is sent
+// to the office straight away; with no signal it's held and sent as soon as it
+// can be, so the website and the phones follow within moments.
+(function photoRequirementsInTheApp(){
+  let technicians = [];
+  let chemConfig = {};
+  const reload = ()=>{
+    technicians = lsGet('technicians') || [];
+    chemConfig = lsGet('chemConfig') || {};
+    ['pool', 'spa', 'fountain'].forEach(k=>{ if(!chemConfig[k]) chemConfig[k] = {chemicals: [], dosages: []}; });
+  };
+  reload();
+  const displayName = n => String(n || '');
+  const fullAddressFor = c => [c.address, c.city, c.state, c.zip].filter(Boolean).join(', ');
+  function escapeSyncText(s){
+    return String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+  function nameWithAddress(el, c){
+    const addr = fullAddressFor(c || {});
+    el.innerHTML = '<span>' + esc(displayName((c && c.name) || '')) + '</span>'
+      + '<span style="display:block;font-size:11.5px;font-weight:400;color:var(--muted);margin-top:1px;">'
+      + esc(addr || 'No address on file') + '</span>';
+  }
+  function sortKeyName(name){ return displayName(name).toLowerCase(); }
+
+  // ---- Sending to the office ----
+  const TECH_FIELDS = ['photoOptional', 'photoRules', 'requireGatePhoto', 'requireSkipProof', 'allowVideo'];
+  const SETUP_KEYS = ['photoEveryone', 'photoDefaults', 'chemConfig'];
+  let seen = null;                       // what was last agreed with the office
+  const snapshot = ()=>{
+    const s = {techs: {}, setup: {}};
+    (lsGet('technicians') || []).forEach(t=>{
+      if(!t || !t.id) return;
+      const f = {}; TECH_FIELDS.forEach(k => { f[k] = t[k] === undefined ? null : t[k]; });
+      s.techs[t.id] = JSON.stringify(f);
+    });
+    SETUP_KEYS.forEach(k => { s.setup[k] = JSON.stringify(lsGet(k) === undefined ? null : lsGet(k)); });
+    return s;
+  };
+  const queue = ()=> lsGet('photoReqToSend') || {techs: {}, setup: {}};
+  // What changed here since it was last agreed: noted to send
+  const noteChanges = ()=>{
+    if(!seen) seen = snapshot();
+    const now = snapshot(), q = queue();
+    Object.keys(now.techs).forEach(id=>{
+      if(now.techs[id] === seen.techs[id]) return;
+      const a = JSON.parse(now.techs[id]), b = seen.techs[id] ? JSON.parse(seen.techs[id]) : {};
+      q.techs[id] = q.techs[id] || [];
+      TECH_FIELDS.forEach(k=>{ if(JSON.stringify(a[k]) !== JSON.stringify(b[k]) && q.techs[id].indexOf(k) === -1) q.techs[id].push(k); });
+    });
+    SETUP_KEYS.forEach(k=>{ if(now.setup[k] !== seen.setup[k]) q.setup[k] = true; });
+    lsSet('photoReqToSend', q);
+    seen = now;
+  };
+  let sending = false;
+  async function sendPhotoRequirements(){
+    if(sending || !deviceGet('session')) return;
+    const q = queue();
+    const techIds = Object.keys(q.techs || {}), keys = Object.keys(q.setup || {});
+    if(!techIds.length && !keys.length) return;
+    sending = true;
+    const stamp = new Date().toISOString();
+    try{
+      for(const k of keys){
+        const res = await fieldAuthed('/rest/v1/rpc/push_record_fields', {method: 'POST',
+          body: JSON.stringify({p_kind: 'setup', p_id: k, p_changes: {value: {t: stamp, v: lsGet(k)}}, p_base: null})});
+        if(!(res && res.ok)) return;
+        const q2 = queue(); delete q2.setup[k]; lsSet('photoReqToSend', q2);
+      }
+      for(const id of techIds){
+        const t = (lsGet('technicians') || []).find(x => x && String(x.id) === String(id));
+        const q2 = queue();
+        if(!t){ delete q2.techs[id]; lsSet('photoReqToSend', q2); continue; }
+        const changes = {};
+        (q2.techs[id] || []).forEach(k => { changes[k] = {t: stamp, v: t[k] === undefined ? null : t[k]}; });
+        const res = await fieldAuthed('/rest/v1/rpc/push_record_fields', {method: 'POST',
+          body: JSON.stringify({p_kind: 'technician', p_id: String(id), p_changes: changes, p_base: null})});
+        if(!(res && res.ok)) return;
+        const q3 = queue(); delete q3.techs[id]; lsSet('photoReqToSend', q3);
+      }
+    } catch(e){
+    } finally { sending = false; }
+  }
+  let sendTimer = null;
+  const sendSoon = ()=>{ clearTimeout(sendTimer); sendTimer = setTimeout(sendPhotoRequirements, 250); };
+  function saveTechnicians(){
+    lsSet('technicians', technicians);
+    try{ loadAdminTechnicians(); }catch(e){}
+    noteChanges(); sendSoon();
+  }
+  function saveChemConfig(){
+    lsSet('chemConfig', chemConfig);
+    try{ reloadAppChemConfig(); }catch(e){}
+    noteChanges(); sendSoon();
+  }
+const PHOTO_BODIES = [['pool', 'Pool'], ['spa', 'Spa'], ['fountain', 'Extra']];
+
+// Which step's technician list is open, if any
+let photoStepOpen = null;
+
+// A technician's own photo requirements: which step, for which body of water.
+// Kept on their profile, which is what the phones already read.
+function photoRuleFor(tech, step, bodyKey){
+  const rules = tech && tech.photoRules;
+  return !!(rules && rules[step] && rules[step][bodyKey] === true);
+}
+
+// ---------- Everyone ----------
+// A company setting, not a shortcut: it covers every technician, including
+// ones added later. {step: {pool, spa, fountain, gate, skip, optional}}.
+// Until the company sets anything, the after photo is required on pools.
+const PHOTO_EVERYONE_START = {after: {pool: true}};
+function photoEveryone(){
+  const saved = lsGet('photoEveryone');
+  return saved && typeof saved === 'object' ? saved : JSON.parse(JSON.stringify(PHOTO_EVERYONE_START));
+}
+function photoEveryoneOn(step, key){
+  const all = photoEveryone();
+  return !!(all[step] && all[step][key] === true);
+}
+var setPhotoEveryone = function(step, key, on){
+  const all = photoEveryone();
+  all[step] = all[step] || {};
+  if(on) all[step][key] = true; else delete all[step][key];
+  lsSet('photoEveryone', all);
+};
+
+// Optional, per technician per row: they see the photo and may walk past it.
+// A tick on a body of water makes it required there, whatever this says.
+function photoOptionalFor(tech, step){
+  return !!(tech && tech.photoOptional && tech.photoOptional[step] === true);
+}
+function setPhotoOptional(tech, step, on){
+  if(!tech) return;
+  tech.photoOptional = tech.photoOptional || {};
+  if(on) tech.photoOptional[step] = true;
+  else delete tech.photoOptional[step];
+}
+
+// The rows used to carry their own Off / Optional / Required. Those buttons are
+// gone, so anything still set that way is handed to the technicians: Required
+// becomes everyone ticked on every body of water in the row, Optional becomes
+// everyone on Optional. Then the row goes back to off, so nothing is applied
+// twice. Safe to run any number of times.
+function movePhotoDefaultsToTechnicians(){
+  const all = photoDefaults();
+  const steps = Object.keys(all).filter(k => all[k] === 'required' || all[k] === 'optional');
+  if(!steps.length || !technicians.length) return false;
+  const tasks = photoTasks();
+  steps.forEach(step=>{
+    const task = tasks.find(t => t.id === step);
+    const bodies = task ? task.bodies : {pool: true, spa: true, fountain: true};
+    // Required becomes Everyone, so technicians added later are covered too.
+    // Optional starts off under the new buttons, so it is not carried.
+    if(all[step] === 'required'){
+      if(step === 'gate' || step === 'skip') setPhotoEveryone(step, step, true);
+      else PHOTO_BODIES.forEach(([k])=>{ if(bodies[k]) setPhotoEveryone(step, k, true); });
+    }
+    all[step] = 'off';
+  });
+  lsSet('photoDefaults', all);
+  return true;
+}
+
+// Optional was switched on for whole rows when these buttons first arrived.
+// It starts off: cleared once, and never again.
+function clearFirstOptionals(){
+  if(lsGet('photoOptionalCleared')) return;
+  let changed = false;
+  technicians.forEach(t=>{ if(t && t.photoOptional){ delete t.photoOptional; changed = true; } });
+  lsSet('photoOptionalCleared', true);
+  if(changed) saveTechnicians();
+}
+
+// ---------- What a photo is for everyone, before exceptions ----------
+// Three states rather than two:
+//   off       the step never appears
+//   optional  the step appears, and can be walked past
+//   required  the step appears and must be done
+//
+// A technician can be raised to required or dropped to off on their own. Left
+// alone, they follow the row.
+const PHOTO_STATES = ['off', 'optional', 'required'];
+
+function photoDefaults(){
+  return lsGet('photoDefaults') || {};
+}
+
+function photoDefaultFor(step){
+  const saved = photoDefaults()[step];
+  return PHOTO_STATES.indexOf(saved) !== -1 ? saved : 'off';
+}
+
+function setPhotoDefault(step, state){
+  const all = photoDefaults();
+  all[step] = state;
+  lsSet('photoDefaults', all);
+}
+
+function setPhotoRule(tech, step, bodyKey, on){
+  if(!tech) return;
+  tech.photoRules = tech.photoRules || {};
+  tech.photoRules[step] = tech.photoRules[step] || {};
+  tech.photoRules[step][bodyKey] = !!on;
+}
+
+// The requirement lives on each body's own setup, which is what the phones read
+function photoBodyConfig(key){
+  if(!chemConfig[key]) chemConfig[key] = {chemicals: [], dosages: []};
+  return chemConfig[key];
+}
+
+// Every row on the Photo requirements tab: the two built-in ones, then any
+// photos the company added themselves.
+function photoTasks(){
+  const seen = {};
+  PHOTO_BODIES.forEach(([key])=>{
+    (photoBodyConfig(key).customPhotos || []).forEach(item=>{
+      if(!item || !item.id) return;
+      const at = seen[item.id] || (seen[item.id] = {
+        id: item.id, label: item.label || '', when: item.when || {}, bodies: {}, customerIds: []
+      });
+      at.label = item.label || at.label;
+      if(Array.isArray(item.customerIds) && item.customerIds.length) at.customerIds = item.customerIds.slice();
+      at.when = item.when || at.when;
+      at.bodies[key] = true;
+    });
+  });
+  return Object.keys(seen).map(id => seen[id]);
+}
+
+// Kept on each body's own setup, which is what the phones read
+function savePhotoTask(task){
+  PHOTO_BODIES.forEach(([key])=>{
+    const cfg = photoBodyConfig(key);
+    cfg.customPhotos = (cfg.customPhotos || []).filter(p => p && p.id !== task.id);
+    if(task.bodies[key]){
+      const item = {id: task.id, label: task.label, when: task.when, required: true};
+      // Only these customers; none means everyone
+      if(Array.isArray(task.customerIds) && task.customerIds.length) item.customerIds = task.customerIds.slice();
+      cfg.customPhotos.push(item);
+    }
+  });
+  saveChemConfig();
+}
+
+function removePhotoTask(id){
+  PHOTO_BODIES.forEach(([key])=>{
+    const cfg = photoBodyConfig(key);
+    cfg.customPhotos = (cfg.customPhotos || []).filter(p => p && p.id !== id);
+  });
+  technicians.forEach(t=>{ if(t.photoRules) delete t.photoRules[id]; });
+  saveChemConfig();
+  saveTechnicians();
+}
+
+// Who each row applies to, with a row at the top that ticks everybody at once
+function photoTechnicianList(step, bodies){
+  const box = document.createElement('div');
+  // Held to a comfortable width and centred, so names and ticks sit near each
+  // other instead of at opposite edges of a wide screen
+  box.dataset.techList = 'true';
+  box.style.cssText = 'margin:12px auto 0;max-width:460px;cursor:default;';
+  if(!technicians.length){
+    box.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:6px 0;">'
+      + 'No technicians yet. Add one on the Technicians tab.</div>';
+    return box;
+  }
+  // The gate and the skip rule are one each per person; the rest are per body
+  const single = step === 'gate' || step === 'skip' || step === 'video';
+  const columns = single
+    ? [[step, '']]
+    : PHOTO_BODIES.filter(([key]) => bodies[key]);
+  // Skipping has its own rules on the phone, so it has no Optional; a video
+  // is only ever optional, so its tick is all there is
+  const offersOptional = step !== 'skip' && step !== 'video';
+
+  // Always the technician as they are in the list right now. A sync replaces
+  // the whole list with fresh objects, so the one captured when this was drawn
+  // can be an orphan: writing to it changed nothing that gets saved.
+  const live = t => technicians.find(x => x && String(x.id) === String(t.id)) || t;
+
+  // A person's own tick, and Everyone's, which covers them too
+  const ownTick = (t, key)=>{
+    const cur = live(t);
+    return step === 'gate' ? cur.requireGatePhoto === true
+      : step === 'skip' ? cur.requireSkipProof === true
+      : step === 'video' ? cur.allowVideo === true
+      : photoRuleFor(cur, step, key) === true;
+  };
+  const setOwnTick = (t, key, on)=>{
+    const cur = live(t);
+    if(step === 'gate') cur.requireGatePhoto = on;
+    else if(step === 'skip') cur.requireSkipProof = on;
+    else if(step === 'video') cur.allowVideo = on;
+    else setPhotoRule(cur, step, key, on);
+  };
+  const everyoneKey = key => single ? step : key;
+  const tickFor = (t, key)=> ownTick(t, key) || photoEveryoneOn(step, everyoneKey(key));
+  const optionalFor = t => photoOptionalFor(live(t), step) || photoEveryoneOn(step, 'optional');
+
+  // Kept so a press updates what changed without rebuilding the list under
+  // the pointer: rebuilding mid-click is what made a tick need two
+  const everyoneBoxes = {};
+  const ownBoxes = [];
+  const optionalButtons = [];      // {t, btn}; t is null for Everyone
+  const paintOptional = (btn, on)=>{
+    btn.classList.toggle('btn-primary', on);
+    btn.classList.toggle('btn-ghost', !on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  };
+  const refresh = ()=>{
+    Object.keys(everyoneBoxes).forEach(key=>{
+      everyoneBoxes[key].checked = photoEveryoneOn(step, everyoneKey(key));
+    });
+    ownBoxes.forEach(entry => { entry.box.checked = tickFor(entry.t, entry.key); });
+    optionalButtons.forEach(({t, btn}) =>
+      paintOptional(btn, t ? optionalFor(t) : photoEveryoneOn(step, 'optional')));
+    updatePhotoRowCounts();
+  };
+
+  // One fixed-width slot for Optional, then one per tick, the same on every
+  // line, so the buttons and boxes stand in straight columns
+  const SLOT = 'width:52px;flex:0 0 52px;display:flex;justify-content:center;';
+  const OPT_SLOT = 'width:84px;flex:0 0 84px;display:flex;justify-content:center;';
+  const line = (nameEl, fill)=>{
+    const row = document.createElement('div');
+    row.className = 'press-row';     // pale teal under the pointer, like every list on the site
+    row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:7px 0;border-top:1px solid var(--line);';
+    nameEl.style.flex = '1';
+    nameEl.style.minWidth = '0';
+    row.appendChild(nameEl);
+    const right = document.createElement('div');
+    right.style.cssText = 'display:flex;align-items:center;gap:14px;flex-shrink:0;';
+    fill(right);
+    row.appendChild(right);
+    return row;
+  };
+
+  const optionalButton = (t)=>{
+    const slot = document.createElement('div');
+    slot.style.cssText = OPT_SLOT;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-ghost';
+    btn.style.cssText = 'width:auto;padding:4px 10px;font-size:11.5px;';
+    btn.textContent = 'Optional';
+    btn.title = 'They see this photo and may take it. A tick on a body of water makes it required there.';
+    paintOptional(btn, t ? optionalFor(t) : photoEveryoneOn(step, 'optional'));
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      if(!t){
+        setPhotoEveryone(step, 'optional', !photoEveryoneOn(step, 'optional'));
+      } else if(photoEveryoneOn(step, 'optional')){
+        // Turning one person off while Everyone is on: Everyone goes off and
+        // everybody else keeps it as their own
+        setPhotoEveryone(step, 'optional', false);
+        technicians.forEach(x => setPhotoOptional(live(x), step, String(x.id) !== String(t.id)));
+      } else {
+        setPhotoOptional(live(t), step, !photoOptionalFor(live(t), step));
+      }
+      saveTechnicians();
+      refresh();
+    });
+    slot.appendChild(btn);
+    optionalButtons.push({t: t, btn: btn});
+    return slot;
+  };
+
+  // Headings over the ticks
+  const header = document.createElement('div');
+  header.style.cssText = 'display:flex;align-items:center;gap:12px;font-size:11.5px;color:var(--muted);padding:0 0 6px;';
+  const spacer = document.createElement('div');
+  spacer.style.flex = '1';
+  header.appendChild(spacer);
+  const heads = document.createElement('div');
+  heads.style.cssText = 'display:flex;align-items:center;gap:14px;flex-shrink:0;';
+  if(offersOptional){
+    const h = document.createElement('span');
+    h.style.cssText = OPT_SLOT;
+    heads.appendChild(h);
+  }
+  columns.forEach(([, shown])=>{
+    const h = document.createElement('span');
+    h.style.cssText = SLOT;
+    h.textContent = shown;
+    heads.appendChild(h);
+  });
+  header.appendChild(heads);
+  box.appendChild(header);
+
+  // Everyone: a setting of its own, which covers technicians added later
+  const allName = document.createElement('div');
+  allName.style.cssText = 'font-size:13.5px;font-weight:600;';
+  allName.textContent = 'Everyone';
+  box.appendChild(line(allName, right=>{
+    if(offersOptional) right.appendChild(optionalButton(null));
+    columns.forEach(([key])=>{
+      const wrap = document.createElement('label');
+      wrap.style.cssText = SLOT + 'cursor:pointer;';
+      const box2 = document.createElement('input');
+      box2.type = 'checkbox';
+      box2.style.margin = '0';
+      box2.checked = photoEveryoneOn(step, everyoneKey(key));
+      everyoneBoxes[key] = box2;
+      box2.addEventListener('change', ()=>{
+        setPhotoEveryone(step, everyoneKey(key), box2.checked);
+        refresh();
+      });
+      wrap.appendChild(box2);
+      right.appendChild(wrap);
+    });
+  }));
+
+  technicians.forEach(t=>{
+    const who = document.createElement('div');
+    who.style.cssText = 'font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    who.textContent = t.name || 'Unnamed';
+    box.appendChild(line(who, right=>{
+      if(offersOptional) right.appendChild(optionalButton(t));
+      columns.forEach(([key])=>{
+        const wrap = document.createElement('label');
+        wrap.style.cssText = SLOT + 'cursor:pointer;';
+        const box3 = document.createElement('input');
+        box3.type = 'checkbox';
+        box3.style.margin = '0';
+        box3.checked = tickFor(t, key);
+        ownBoxes.push({t: t, key: key, box: box3});
+        box3.addEventListener('change', ()=>{
+          if(!box3.checked && photoEveryoneOn(step, everyoneKey(key))){
+            // Unticking one person while Everyone is on: Everyone goes off and
+            // everybody else keeps the tick as their own
+            setPhotoEveryone(step, everyoneKey(key), false);
+            technicians.forEach(x => setOwnTick(x, key, String(x.id) !== String(t.id)));
+          } else {
+            setOwnTick(t, key, box3.checked);
+          }
+          saveTechnicians();
+          refresh();
+        });
+        wrap.appendChild(box3);
+        right.appendChild(wrap);
+      });
+    }));
+  });
+  return box;
+}
+
+// "2 must · 1 optional", read as a sentence. Anyone ticked counts as must,
+// even if their Optional is also on.
+function photoRowCountText(step, bodies){
+  if(step === 'video'){
+    const can = technicians.filter(t => t.allowVideo === true || photoEveryoneOn('video', 'video')).length;
+    return can ? can + (can === 1 ? ' technician can' : ' technicians can') : 'Nobody yet';
+  }
+  const must = technicians.filter(t=>
+    step === 'gate' ? (t.requireGatePhoto === true || photoEveryoneOn('gate', 'gate'))
+    : step === 'skip' ? (t.requireSkipProof === true || photoEveryoneOn('skip', 'skip'))
+    : PHOTO_BODIES.some(([k]) => bodies[k] && (photoRuleFor(t, step, k) || photoEveryoneOn(step, k)))
+  );
+  const optional = technicians.filter(t => must.indexOf(t) === -1
+    && (photoOptionalFor(t, step) || photoEveryoneOn(step, 'optional'))).length;
+  const parts = [];
+  if(must.length) parts.push(must.length + (must.length === 1 ? ' technician must' : ' technicians must'));
+  if(optional) parts.push(optional + ' optional');
+  return parts.length ? parts.join(' \u00b7 ') : 'Nobody yet';
+}
+
+// The count beside each requirement, written into rows already on screen
+function updatePhotoRowCounts(){
+  const tasks = photoTasks();
+  document.querySelectorAll('#photoRequireRows [data-photo-step]').forEach(el=>{
+    const step = el.dataset.photoStep;
+    const task = tasks.find(t => t.id === step);
+    const bodies = task ? task.bodies : {pool: true, spa: true, fountain: true};
+    el.textContent = photoRowCountText(step, bodies)
+      + (photoStepOpen === step ? '  \u25b4' : '  \u25be');
+  });
+}
+
+function renderPhotoRequirements(){
+  const card = document.getElementById('photoRequireCard');
+  const rows = document.getElementById('photoRequireRows');
+  if(!card || !rows) return;
+  movePhotoDefaultsToTechnicians();
+
+  // Nothing here depends on Settings any more: the photo steps always exist,
+  // and this tab is the only thing that decides who must take what.
+  const built = [
+    // Short videos, never required: a tick lets that technician take them.
+    // At the top (Oct 1).
+    {step: 'video', label: 'Video', off: false,
+     note: 'Optional, up to 3 videos of 15 seconds each per visit. Seen by the office only, never sent to the customer. Videos delete themselves after 7 days to save storage. Videos can be downloaded in the Reports tab.',
+     bodies: {}, oneTick: true},
+    {step: 'before', label: 'Before photo', off: false, why: '',
+     bodies: {pool: true, spa: true, fountain: true}},
+    {step: 'after', label: 'After photo', off: false, why: '',
+     bodies: {pool: true, spa: true, fountain: true}},
+    // One photo for the whole visit, so its list is a single tick per person
+    {step: 'gate', label: 'Closed gate photo', off: false, why: '',
+     bodies: {}, oneTick: true},
+    // Not a photo step of its own: what a technician must do before skipping
+    {step: 'skip', label: 'Require a photo and note to skip a body of water', off: false,
+     why: '', bodies: {}, oneTick: true}
+  ];
+  const own = photoTasks().map(task => ({
+    step: task.id, label: task.label || 'Untitled photo', off: false, task: task, bodies: task.bodies
+  }));
+
+  rows.innerHTML = '';
+  built.concat(own).forEach(entry=>{
+    const block = document.createElement('div');
+    // A little more room around each requirement, so the rows are easier to
+    // press and read as separate things
+    block.style.cssText = 'padding:13px 0;border-bottom:1px solid var(--line);'
+      + (entry.off ? 'opacity:0.45;' : '');
+
+    const head = document.createElement('div');
+    head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:16px;'
+      + 'flex-wrap:wrap;padding:4px 0;';
+
+    const left = document.createElement('div');
+    left.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;';
+    const name = document.createElement('div');
+    name.style.cssText = 'font-size:14px;font-weight:600;color:var(--ink);'
+      + (entry.task ? 'cursor:pointer;' : '');
+    name.textContent = entry.label;
+    if(entry.task){
+      name.title = 'Change this photo';
+      name.dataset.keepsClick = 'name';
+      name.style.textDecoration = 'underline';
+      name.style.textDecorationStyle = 'dotted';
+      name.addEventListener('click', ()=> openPhotoTask(entry.task));
+    }
+    left.appendChild(name);
+
+    // Photos the company added can be changed from a button as well as the name
+    if(entry.task){
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'btn btn-ghost';
+      edit.textContent = 'Edit';
+      edit.title = 'Change this photo';
+      edit.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;';
+      edit.dataset.keepsClick = 'edit';
+      edit.addEventListener('click', ()=> openPhotoTask(entry.task));
+      left.appendChild(edit);
+    }
+
+    // Only photos the company added can be taken away
+    if(entry.task){
+      const x = document.createElement('button');
+      x.className = 'btn btn-ghost fountain-remove';   // the red × in a red square, like the rest
+      x.textContent = '\u00d7';
+      x.title = 'Remove this photo';
+      // The same red style, a size down to suit the row
+      x.style.cssText = 'width:24px;height:26px;font-size:13px;border-radius:7px;';
+      x.dataset.keepsClick = 'remove';
+      x.addEventListener('click', async ()=>{
+        const sure = await confirmDialog('Remove "' + escapeSyncText(entry.label)
+          + '"? Technicians will no longer be asked for it.', 'Remove');
+        if(!sure) return;
+        if(photoStepOpen === entry.step) photoStepOpen = null;
+        removePhotoTask(entry.task.id);
+        renderPhotoRequirements();
+        showToast('Removed');
+      });
+      left.appendChild(x);
+    }
+    head.appendChild(left);
+
+
+    const open = document.createElement('span');
+    open.dataset.photoStep = entry.step;
+    open.style.cssText = 'font-size:12.5px;color:var(--muted);flex-shrink:0;';
+    open.textContent = photoRowCountText(entry.step, entry.bodies)
+      + (photoStepOpen === entry.step ? '  \u25b4' : '  \u25be');
+    head.appendChild(open);
+
+    // The whole band between the lines is the press, not just where the words
+    // sit, so a thumb anywhere in the row opens that row's technicians
+    if(!entry.off){
+      if(photoStepOpen !== entry.step) block.className = 'press-row';
+      block.style.cursor = 'pointer';
+      block.style.userSelect = 'none';
+      block.style.webkitUserSelect = 'none';
+      block.addEventListener('mousedown', e=>{
+        if(!e.target.closest('[data-keeps-click]') && !e.target.closest('[data-tech-list]')){
+          e.preventDefault();
+        }
+      });
+      block.title = photoStepOpen === entry.step ? 'Hide the technicians' : 'Choose who this applies to';
+      block.addEventListener('click', (e)=>{
+        // Unless it was the name, the X, or the technicians underneath
+        if(e.target.closest('[data-keeps-click]')) return;
+        if(e.target.closest('[data-tech-list]')) return;
+        photoStepOpen = photoStepOpen === entry.step ? null : entry.step;
+        renderPhotoRequirements();
+      });
+    }
+    block.appendChild(head);
+
+    if(entry.task){
+      const when = [];
+      if(entry.task.when && entry.task.when.before) when.push('before readings');
+      if(entry.task.when && entry.task.when.after) when.push('after readings');
+      const bodies = PHOTO_BODIES.filter(([k]) => entry.bodies[k]).map(([, shown]) => shown);
+      const sub = document.createElement('div');
+      sub.style.cssText = 'font-size:11.5px;color:var(--muted);margin-top:3px;';
+      const forWho = (entry.task.customerIds || []).length;
+      sub.textContent = (when.length ? when.join(' and ') : 'no step chosen')
+        + ' \u00b7 ' + (bodies.length ? bodies.join(', ') : 'no body of water chosen')
+        + ' \u00b7 ' + (forWho ? forWho + (forWho === 1 ? ' customer' : ' customers') : 'all customers');
+      block.appendChild(sub);
+    }
+
+    if(photoStepOpen === entry.step && !entry.off){
+      // The row's note, inside it once it's open, above who it applies to
+      if(entry.note){
+        const note = document.createElement('div');
+        note.style.cssText = 'margin:10px auto 0;max-width:460px;font-size:12px;color:var(--muted);line-height:1.5;'
+          + 'padding:9px 12px;border-radius:10px;background:var(--teal-pale, #E4F1EF);';
+        note.textContent = entry.note;
+        block.appendChild(note);
+      }
+      block.appendChild(photoTechnicianList(entry.step, entry.bodies));
+    }
+
+    rows.appendChild(block);
+
+    if(entry.off){
+      const note = document.createElement('p');
+      note.style.cssText = 'font-size:11.5px;color:var(--rust);margin:4px 0 0;';
+      note.textContent = entry.why;
+      rows.appendChild(note);
+    }
+  });
+
+
+}
+
+// The window for adding one, or changing one that exists
+let photoTaskEditing = null;
+const photoTaskCustomers = new Set();
+
+function renderPhotoTaskCustomers(){
+  const box = document.getElementById('photoTaskCustList');
+  const count = document.getElementById('photoTaskCustCount');
+  if(!box) return;
+  if(count) count.textContent = photoTaskCustomers.size ? photoTaskCustomers.size + ' chosen' : 'All customers';
+  const term = (document.getElementById('photoTaskCustSearch').value || '').trim().toLowerCase();
+  const list = customers.filter(c => c.active !== false)
+    .filter(c => !term || (c.name || '').toLowerCase().includes(term) || (c.address || '').toLowerCase().includes(term))
+    .sort((a, b) => sortKeyName(a.name).localeCompare(sortKeyName(b.name)));
+  box.innerHTML = '';
+  if(!list.length){
+    box.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:8px 0;">No customer matches that search.</div>';
+    return;
+  }
+  list.forEach((c, i)=>{
+    const row = document.createElement('label');
+    row.className = 'pick-row press-row';
+    if(i === list.length - 1) row.style.borderBottom = 'none';
+    const tick = document.createElement('input');
+    tick.type = 'checkbox';
+    tick.style.margin = '0';
+    tick.checked = photoTaskCustomers.has(c.id);
+    tick.addEventListener('change', ()=>{
+      if(tick.checked) photoTaskCustomers.add(c.id); else photoTaskCustomers.delete(c.id);
+      if(count) count.textContent = photoTaskCustomers.size ? photoTaskCustomers.size + ' chosen' : 'All customers';
+    });
+    const nm = document.createElement('span');
+    nameWithAddress(nm, c);
+    row.appendChild(tick); row.appendChild(nm);
+    box.appendChild(row);
+  });
+}
+
+function openPhotoTask(task){
+  photoTaskEditing = task || null;
+  document.getElementById('photoTaskHeading').textContent = task ? 'Change this photo' : 'A photo of your own';
+  document.getElementById('photoTaskLabel').value = task ? (task.label || '') : '';
+  document.getElementById('photoTaskBefore').checked = !!(task && task.when && task.when.before);
+  document.getElementById('photoTaskAfter').checked = task ? !!(task.when && task.when.after) : true;
+  document.getElementById('photoTaskPool').checked = task ? !!task.bodies.pool : true;
+  document.getElementById('photoTaskSpa').checked = task ? !!task.bodies.spa : false;
+  document.getElementById('photoTaskExtra').checked = task ? !!task.bodies.fountain : false;
+  photoTaskCustomers.clear();
+  ((task && task.customerIds) || []).forEach(id => photoTaskCustomers.add(id));
+  document.getElementById('photoTaskCustSearch').value = '';
+  renderPhotoTaskCustomers();
+  const err = document.getElementById('photoTaskError');
+  err.style.display = 'none';
+  document.getElementById('photoTaskOverlay').style.display = 'flex';
+  document.getElementById('photoTaskLabel').focus();
+}
+
+function closePhotoTask(){
+  document.getElementById('photoTaskOverlay').style.display = 'none';
+  photoTaskEditing = null;
+}
+
+// Saving from the window, and the buttons around it
+document.addEventListener('DOMContentLoaded', ()=>{
+  const add = document.getElementById('btnAddCustomPhoto');
+  if(add) add.addEventListener('click', ()=> openPhotoTask(null));
+
+  // Before or after the readings, not both: ticking one clears the other
+  const beforeBox = document.getElementById('photoTaskBefore');
+  const afterBox = document.getElementById('photoTaskAfter');
+  if(beforeBox && afterBox){
+    beforeBox.addEventListener('change', ()=>{ if(beforeBox.checked) afterBox.checked = false; });
+    afterBox.addEventListener('change', ()=>{ if(afterBox.checked) beforeBox.checked = false; });
+  }
+
+  const cancel = document.getElementById('btnCancelPhotoTask');
+  if(cancel) cancel.addEventListener('click', closePhotoTask);
+  const custSearch = document.getElementById('photoTaskCustSearch');
+  if(custSearch) custSearch.addEventListener('input', renderPhotoTaskCustomers);
+  const overlay = document.getElementById('photoTaskOverlay');
+
+  // Enter saves, the same as pressing the button
+  const typed = document.getElementById('photoTaskLabel');
+  if(typed) typed.addEventListener('keydown', e=>{
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      const btn = document.getElementById('btnSavePhotoTask');
+      if(btn) btn.click();
+    }
+  });
+
+  const save = document.getElementById('btnSavePhotoTask');
+  if(save) save.addEventListener('click', ()=>{
+    const err = document.getElementById('photoTaskError');
+    const say = t => { err.textContent = t || ''; err.style.display = t ? 'block' : 'none'; };
+    const label = (document.getElementById('photoTaskLabel').value || '').trim();
+    const when = {before: document.getElementById('photoTaskBefore').checked,
+                  after: document.getElementById('photoTaskAfter').checked};
+    const bodies = {pool: document.getElementById('photoTaskPool').checked,
+                    spa: document.getElementById('photoTaskSpa').checked,
+                    fountain: document.getElementById('photoTaskExtra').checked};
+    if(!label){ say('Give it a name, so the technician knows what to photograph.'); return; }
+    if(!when.before && !when.after){ say('Choose whether it comes before or after the readings.'); return; }
+    if(!bodies.pool && !bodies.spa && !bodies.fountain){ say('Choose at least one body of water.'); return; }
+
+    const task = photoTaskEditing || {id: 'cp_' + Date.now()};
+    task.label = label;
+    task.when = when;
+    task.bodies = bodies;
+    // Only the customers ticked; none ticked means everyone
+    task.customerIds = Array.from(photoTaskCustomers);
+    savePhotoTask(task);
+
+    // A body of water no longer ticked should not leave requirements behind
+    technicians.forEach(t=>{
+      if(!t.photoRules || !t.photoRules[task.id]) return;
+      PHOTO_BODIES.forEach(([key])=>{ if(!bodies[key]) delete t.photoRules[task.id][key]; });
+    });
+    saveTechnicians();
+
+    closePhotoTask();
+    renderPhotoRequirements();
+    showToast(photoTaskEditing ? 'Saved' : 'Added \u2014 now choose who has to take it');
+  });
+
+});
+
+// Switches the Readings and Dosages screen between its two roles: the default
+// lists every customer inherits, and one customer's own setup.
+
+  // Everyone and the old defaults are saved with lsSet: noted after each change
+  const _setPhotoEveryone = setPhotoEveryone;
+  setPhotoEveryone = function(step, key, on){ _setPhotoEveryone(step, key, on); noteChanges(); sendSoon(); };
+
+  const _render = renderPhotoRequirements;
+  function show(){
+    if(!lsGet('photoReqToSend') || !Object.keys((lsGet('photoReqToSend') || {}).techs || {}).length) seen = snapshot();
+    reload();
+    _render();
+    lastDrawn = JSON.stringify([lsGet('technicians'), lsGet('photoEveryone'), lsGet('chemConfig')]);
+  }
+  let lastDrawn = '';
+  window.renderAppPhotoRequirements = show;
+
+  // The two tabs on the Technicians page
+  document.querySelectorAll('#techMainTabs .history-type-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('#techMainTabs .history-type-btn').forEach(b => b.classList.toggle('active', b === btn));
+      const photos = btn.dataset.techmain === 'photos';
+      const card = document.getElementById('photoRequireCard');
+      if(photos){
+        ['techListCard', 'techFormCard', 'techRouteCard'].forEach(id=>{ const el = document.getElementById(id); if(el) el.style.display = 'none'; });
+        if(card) card.style.display = 'block';
+        show();
+      } else {
+        if(card) card.style.display = 'none';
+        try{ renderTechList(); }catch(e){}
+      }
+    });
+  });
+
+  // Sent as soon as there's signal; and while the tab is open, what the office
+  // changes shows up here too
+  setInterval(()=>{
+    sendPhotoRequirements();
+    const card = document.getElementById('photoRequireCard');
+    if(!card || card.style.display === 'none' || !card.offsetParent) return;
+    if(document.getElementById('photoTaskOverlay').style.display === 'flex') return;
+    const q = lsGet('photoReqToSend') || {};
+    if(Object.keys(q.techs || {}).length || Object.keys(q.setup || {}).length) return;
+    const now = JSON.stringify([lsGet('technicians'), lsGet('photoEveryone'), lsGet('chemConfig')]);
+    if(now !== lastDrawn) show();
+  }, 3000);
+  window.addEventListener('online', sendPhotoRequirements);
 })();
 </script>
 </body>

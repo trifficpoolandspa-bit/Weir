@@ -8720,7 +8720,10 @@ const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'r
                          // Saved tasks, shared with the app's WorkCenter (Oct 2)
                          'taskTemplates',
                          // Equipment quick buttons, so every office computer has them (Oct 2)
-                         'equipmentChoices'];
+                         'equipmentChoices',
+                         // Alerts seen and deleted, cleared on every office computer and
+                         // phone at once (Oct 3; they were kept per computer)
+                         'alertsSeen', 'alertsDismissed'];
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
   // The "Last 3 months" readings table on the phones' visits, and its chemicals added rows
   'showRecentReadings', 'showRecentDosages',
@@ -8936,6 +8939,25 @@ function syncApplyRecord(kind, id, data, deleted){
   }
   if(kind === 'setup'){
     if(deleted || !('value' in data)) return true;
+    // Alerts seen or deleted: what arrives is added to what's here, never
+    // swapped for it, so two computers clearing at once both stick (Oct 3)
+    if(id === 'alertsSeen' || id === 'alertsDismissed'){
+      const here = lsGet(id) || {}, there = (data.value && typeof data.value === 'object') ? data.value : {};
+      const merged = Object.assign({}, there);
+      let ownExtra = false;
+      Object.keys(here).forEach(k=>{
+        if(!(k in merged) || here[k] > merged[k]){ merged[k] = here[k]; if(!(k in there)) ownExtra = true; }
+      });
+      if(!lsSet(id, merged)) return false;
+      // Anything only this computer had goes back up, so the others get it too
+      if(ownExtra){ try{ setTimeout(()=>{ if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange(); }, 0); }catch(e){} }
+      try{ setTimeout(()=>{
+        const page = document.getElementById('view-alerts');
+        if(page && page.classList.contains('active') && !document.querySelector('.confirm-overlay')) renderAlerts();
+        else updateAlertsBadge();
+      }, 0); }catch(e){}
+      return true;
+    }
     if(!lsSet(id, data.value)) return false;
     // The page works from its own copy of the groups. Left alone it goes on
     // showing the old list, and the next save writes it back over this one.
@@ -22398,6 +22420,8 @@ function dismissAlerts(ids){
   const cut = Date.now() - 60 * 86400000;
   Object.keys(g).forEach(k => { if(g[k] < cut) delete g[k]; });
   lsSet('alertsDismissed', g);
+  // To the other computers and phones straight away (Oct 3)
+  try{ if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange(); }catch(e){}
 }
 function alertsSeen(){
   const seen = lsGet('alertsSeen');
@@ -22408,6 +22432,8 @@ function saveAlertsSeen(seen){
   const cut = Date.now() - 40 * 86400000;
   Object.keys(seen).forEach(id=>{ if(!(seen[id] > cut)) delete seen[id]; });
   lsSet('alertsSeen', seen);
+  // To the other computers and phones straight away (Oct 3)
+  try{ if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange(); }catch(e){}
 }
 
 function collectAlerts(){
