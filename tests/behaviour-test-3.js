@@ -1131,7 +1131,7 @@ setTimeout(()=>{
   const w = dom.window, d = w.document;
   w.console.warn = ()=>{};
   try{
-    w.eval("siteUser = {id:'u', companyId:'co', role:'owner'}; hideSiteLogin(); switchView('settings'); renderAccount();");
+    w.eval("siteUser = {id:'u', companyId:'co', role:'owner'}; hideSiteLogin(); switchView('account'); renderAccount();");   // Oct 3: the Account page, where the box is
     const box = d.getElementById('acctCompanyName');
     check('the company name box is there', !!box);
     box.focus();

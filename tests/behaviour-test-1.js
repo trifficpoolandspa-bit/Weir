@@ -1944,7 +1944,9 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
   console.log('\n=== Website: evening changes ===');
   {
     const s = quiet(load('customer-intake.html', {seed: {customers: custs.concat([
-      {id: 'c4', name: 'Delta', address: '4 D St', day: 'Monday', technicianId: 't2', active: true}]), technicians: techs,
+      // Oct 3: a day that is never today, or the move lands on Delta's own day
+      // and there's nothing to say "Just today" about (it failed on Mondays)
+      {id: 'c4', name: 'Delta', address: '4 D St', day: ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][(new Date().getDay() + 3) % 7], technicianId: 't2', active: true}]), technicians: techs,
       rescheduledVisits: [{id: 'm5', customerId: 'c4', fromDate: plusDays(-1), toDate: todayISO}]}}));
     const w = s.dom.window, d = w.document;
     w.eval("readingsFor = () => [];");

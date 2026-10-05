@@ -455,8 +455,11 @@ console.log('\n=== Arrow keys step between customers ===');
 
     // Typing is not hijacked
     w.eval("viewCustomer(customers[0]);");
+    // Oct 3: a box that's on screen and takes the cursor (the first input on
+    // the page is hidden, so the test never actually typed anywhere)
+    d.querySelector('#profileTabControl [data-tab="history"]').click();
     const before = who();
-    const input = d.querySelector('#view-customers input');
+    const input = d.getElementById('historyDateFilter');
     if(input){
       input.focus();
       press('ArrowRight');
