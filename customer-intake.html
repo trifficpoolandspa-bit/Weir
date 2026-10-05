@@ -4234,6 +4234,9 @@ function renderProductsServicesList(){
       const rank = i => i.category === 'repairs' ? 0 : (i.category === 'chemicals' ? 1 : 2);
       const ra = rank(a), rb = rank(b);
       if(ra !== rb) return ra - rb;
+      // The order they were dragged into (Oct 3), else alphabetical
+      const oa = typeof a.order === 'number' ? a.order : Infinity, ob = typeof b.order === 'number' ? b.order : Infinity;
+      if(oa !== ob) return oa - ob;
       return (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
     });
 
@@ -4256,10 +4259,32 @@ function renderProductsServicesList(){
   const psStart = (psPage - 1) * PS_PER_PAGE;
   const pageItems = visible.slice(psStart, psStart + PS_PER_PAGE);
 
+  // Drag a line to move it (Oct 3); the new order is kept. Not while searching,
+  // when only some lines show.
+  const canDrag = !term;
+  const onReorderPs = keys=>{
+    const pageKeys = pageItems.map(x => x.key);
+    const moved = keys.filter(k => pageKeys.indexOf(k) !== -1);
+    const full = visible.map(x => x.key);
+    full.splice(psStart, pageKeys.length, ...moved);
+    full.forEach((k, i)=>{ const it = productsServices.find(x => x.key === k); if(it) it.order = i; });
+    saveProductsServices();
+    renderProductsServicesList();
+  };
   pageItems.forEach(item=>{
     const row = document.createElement('div');
     row.className = 'fountain-row';
     row.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:nowrap;';
+    if(!item.key) item.key = 'ps_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+    row.dataset.reorderKey = item.key;
+    if(canDrag){
+      const handle = document.createElement('div');
+      handle.textContent = '\u2261';
+      handle.title = 'Drag to move';
+      handle.style.cssText = 'color:var(--muted);font-size:19px;flex-shrink:0;padding:0 8px 0 2px;cursor:grab;touch-action:none;';
+      attachTouchReorder(handle, row, container, '[data-reorder-key]', onReorderPs);
+      row.appendChild(handle);
+    }
 
     const nameInput = document.createElement('input');
     nameInput.value = item.name;
@@ -5692,7 +5717,14 @@ async function manageBroadcastCategory(cat){
 // only shows on hover, so a resting row is never cluttered with them.
 function attachHoverDelete(el, title, onDelete){
   el.style.position = 'relative';
-  el.style.paddingRight = '26px';
+  // The words sit in the middle; on hover they slide left and the × shows in
+  // the space they leave. The button's width never changes (Oct 3).
+  const baseLeft = parseFloat(el.style.paddingLeft) || 13;
+  const room = 13;                                   // what the × needs
+  const centred = (baseLeft + baseLeft + room) / 2;
+  el.style.paddingLeft = centred + 'px';
+  el.style.paddingRight = centred + 'px';
+  el.style.transition = (el.style.transition ? el.style.transition + ',' : '') + 'padding .12s ease';
   el.title = title;
 
   // A drawn ×, centred in its own 16px square, so it sits exactly in the
@@ -5705,8 +5737,14 @@ function attachHoverDelete(el, title, onDelete){
     + 'opacity:0;transition:opacity .12s ease;color:var(--rust);cursor:pointer;';
   el.appendChild(x);
 
-  el.addEventListener('mouseenter', ()=>{ x.style.opacity = '1'; });
-  el.addEventListener('mouseleave', ()=>{ x.style.opacity = '0'; });
+  el.addEventListener('mouseenter', ()=>{
+    x.style.opacity = '1';
+    el.style.paddingLeft = baseLeft + 'px'; el.style.paddingRight = (baseLeft + room) + 'px';
+  });
+  el.addEventListener('mouseleave', ()=>{
+    x.style.opacity = '0';
+    el.style.paddingLeft = centred + 'px'; el.style.paddingRight = centred + 'px';
+  });
 
   x.addEventListener('click', (e)=>{
     e.stopPropagation();
