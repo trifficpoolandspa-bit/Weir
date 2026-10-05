@@ -1317,7 +1317,7 @@ input::placeholder{color:#A9BCB9;}
         </label>
       </div>
       <div id="chemConfigChemicalsList"></div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;" id="chemButtonsRow">
         <button class="btn btn-ghost" id="btnAddChemical" style="width:auto;">+ Add chemical</button>
         <!-- Every quick button on this body of water (or all of them) in one colour -->
         <button class="btn btn-ghost" id="btnAllQuickColors" type="button" style="width:auto;">All quick button colors</button>
@@ -13638,7 +13638,16 @@ function qoEntriesFor(customerId){
         date: w.date ? w.date + 'T12:00:00' : (w.createdAt || '')});
       return;
     }
+    // A repeat's upcoming visits are one row that opens to them (Oct 3);
+    // finished ones keep a row each
+    const upcoming = mine.filter(j => j.status !== 'done').sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+    if(upcoming.length > 1){
+      out.push({key: 'ws:' + w.id, kind: 'series', of: 'workorder', w: w, items: upcoming, tag: 'Work order' + num,
+        title: (upcoming[0].title || '') + ' \u00b7 ' + upcoming.length + ' scheduled', done: false,
+        date: (upcoming[0].date || '') + 'T12:00:00'});
+    }
     mine.forEach(j=>{
+      if(upcoming.length > 1 && j.status !== 'done') return;
       out.push({key: 'wo:' + j.id, kind: 'workorder', w: w, j: j, tag: 'Work order' + num,
         title: j.title || '', done: j.status === 'done',
         date: j.status === 'done' && j.doneAt ? j.doneAt : (j.date || '') + 'T12:00:00'});
@@ -13658,7 +13667,18 @@ function qoEntriesFor(customerId){
     out.push({key: 'fc:' + f.id, kind: 'clean', f: f, tag: 'Filter clean', title: said, titleHtml: html,
       done: f.status === 'done', date: f.status === 'done' && f.doneAt ? f.doneAt : (f.date || '') + 'T12:00:00'});
   });
-  (tasks || []).filter(t => t && (t.customerIds || []).map(String).indexOf(cid) !== -1).forEach(t=>{
+  // Repeating tasks the same way: their upcoming ones are one row
+  const myTasks = (tasks || []).filter(t => t && (t.customerIds || []).map(String).indexOf(cid) !== -1);
+  const taskSeries = {};
+  myTasks.filter(t => !t.done && t.seriesId).forEach(t=>{ (taskSeries[t.seriesId] = taskSeries[t.seriesId] || []).push(t); });
+  Object.keys(taskSeries).forEach(sid=>{
+    const list = taskSeries[sid].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+    if(list.length < 2){ delete taskSeries[sid]; return; }
+    out.push({key: 'ts:' + sid, kind: 'series', of: 'task', items: list, tag: 'Task',
+      title: (list[0].title || 'Task') + ' \u00b7 ' + list.length + ' scheduled', done: false,
+      date: list[0].date ? list[0].date + 'T12:00:00' : ''});
+  });
+  myTasks.filter(t => !(t.seriesId && !t.done && taskSeries[t.seriesId])).forEach(t=>{
     out.push({key: 'tk:' + t.id, kind: 'task', t: t, tag: 'Task', title: t.title || '',
       done: !!t.done, date: t.done && t.doneAt ? t.doneAt : (t.date ? t.date + 'T12:00:00' : (t.createdAt || ''))});
   });
@@ -13839,9 +13859,115 @@ function qoDay(item){
   return new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 
+// A repeat's upcoming visits (Oct 3), as Current's window shows them: each date
+// with Mark completed and its bin, and Select multiple to delete several
+function openQoSeriesWindow(item, customerId){
+  const isTask = item.of === 'task';
+  const groupId = isTask ? item.items[0].seriesId : item.w.id;
+  const selKey = 'qoseries:' + groupId;
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:480px;width:100%;max-height:82vh;display:flex;flex-direction:column;">'
+    + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">'
+    + '<div><h3 style="font-size:16px;margin:0 0 2px;" data-title></h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;" data-sub></p></div>'
+    + '<div data-sel style="flex-shrink:0;"></div></div>'
+    + '<div data-dates style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:0 10px;"></div>'
+    + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-ghost" data-close style="flex:1;">Close</button></div></div>';
+  document.body.appendChild(overlay);
+  const close = ()=>{
+    const st = listSel(selKey); st.on = false; st.ids.clear();
+    if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    renderCustomerWorkOrders(customerId);
+    try{ renderWorkOrderHistory(); }catch(e){}
+  };
+  overlay.querySelector('[data-close]').addEventListener('click', close);
+  const left = ()=> isTask
+    ? tasks.filter(t => t && !t.done && t.seriesId === groupId).sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+    : (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status !== 'done' && j.workOrderId === groupId)
+      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  const removeIds = ids=>{
+    const set = new Set(ids.map(String));
+    if(isTask){ tasks = tasks.filter(t => !set.has(String(t.id))); saveTasks(); }
+    else lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !set.has(String(j.id))));
+  };
+  const draw = ()=>{
+    const list = left();
+    if(!list.length){ close(); return; }
+    const first = list[0];
+    overlay.querySelector('[data-title]').textContent = (isTask ? (first.title || 'Task') : (first.title || 'Work order'))
+      + (!isTask && item.w && item.w.number ? ' #' + quoteNumberText(item.w.number) : '');
+    const tech = technicianNameById(first.technicianId) || '';
+    overlay.querySelector('[data-sub]').textContent = [tech, list.length + ' scheduled'].filter(Boolean).join(' \u00b7 ');
+    // Select multiple, at the top right of the window
+    const selSlot = overlay.querySelector('[data-sel]');
+    selSlot.innerHTML = '';
+    const bar = selectionBar(selKey, list.map(x => String(x.id)), 'visit', ids => removeIds(ids), draw);
+    bar.style.margin = '0'; bar.style.display = 'flex'; bar.style.gap = '8px';
+    selSlot.appendChild(bar);
+    const st = listSel(selKey);
+    const box = overlay.querySelector('[data-dates]');
+    box.innerHTML = '';
+    list.forEach((x, i)=>{
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 0;font-size:13.5px;'
+        + (i === list.length - 1 ? '' : 'border-bottom:1px solid var(--line);') + (st.on ? 'cursor:pointer;' : '');
+      const tick = selectionTick(selKey, String(x.id), draw);
+      if(tick) row.appendChild(tick);
+      const when = document.createElement('span');
+      when.style.flex = '1';
+      when.textContent = wcShortDate(x.date);
+      if(i === 0){
+        const nx = document.createElement('span');
+        nx.style.cssText = 'font-size:11px;color:var(--muted);margin-left:6px;';
+        nx.textContent = '\u00b7 next';
+        when.appendChild(nx);
+      }
+      row.appendChild(when);
+      if(st.on){
+        row.addEventListener('click', e=>{ if(e.target.closest('input, button')) return; toggleSelected(selKey, String(x.id), draw); });
+      } else {
+        const done = document.createElement('button');
+        done.type = 'button'; done.className = 'btn btn-ghost';
+        done.style.cssText = 'width:auto;flex:0 0 auto;padding:5px 10px;font-size:12px;';
+        done.textContent = 'Mark completed';
+        done.addEventListener('click', ()=>{
+          const stamp = new Date().toISOString();
+          if(isTask){ const t = tasks.find(y => y.id === x.id); if(t){ Object.assign(t, {done: true, doneAt: stamp, doneBy: 'office'}); saveTasks(); } }
+          else { const jobs = lsGet('scheduledWorkOrders') || []; const j = jobs.find(y => y.id === x.id);
+            if(j){ Object.assign(j, {status: 'done', doneAt: stamp, doneBy: 'office'}); lsSet('scheduledWorkOrders', jobs); } }
+          showToast(wcShortDate(x.date) + ' completed');
+          draw();
+        });
+        const bin = document.createElement('button');
+        bin.type = 'button';
+        bin.innerHTML = WEIR_BIN_SVG;
+        bin.title = 'Take ' + wcShortDate(x.date) + ' off the route';
+        bin.setAttribute('aria-label', bin.title);
+        bin.addEventListener('click', async ()=>{
+          const ok = await confirmDialog('Take ' + wcShortDate(x.date) + ' off the route?', 'Remove');
+          if(!ok) return;
+          removeIds([x.id]);
+          showToast(wcShortDate(x.date) + ' removed');
+          draw();
+        });
+        row.appendChild(done); row.appendChild(bin);
+      }
+      box.appendChild(row);
+    });
+  };
+  draw();
+}
+
 // The bin on a row: gone from here and from WorkCenter, after asking (Oct 3)
 // Removes one item with no question asked (Select's Delete asks once for all)
 function qoRemove(item, customerId){
+  if(item.kind === 'series'){
+    const ids = new Set(item.items.map(x => String(x.id)));
+    if(item.of === 'task'){ tasks = tasks.filter(t => !ids.has(String(t.id))); saveTasks(); }
+    else lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !ids.has(String(j.id))));
+    return;
+  }
   if(item.done && item.kind === 'workorder' && item.j){ removeWorkOrderVisits([item.j.id]); return; }
   if(item.done && item.kind === 'clean'){ removeFilterCleanVisits([item.f.id]); return; }
   if(item.kind === 'quote' || (item.kind === 'workorder' && !item.j)){
@@ -13862,6 +13988,16 @@ function qoRemove(item, customerId){
   }
 }
 async function qoDelete(item, customerId){
+  if(item.kind === 'series'){
+    const ok = await confirmDialog('Delete all ' + item.items.length + ' scheduled visits of this ' + (item.of === 'task' ? 'task' : 'work order')
+      + '? They come off the routes and WorkCenter too. Finished ones stay.', 'Delete all');
+    if(!ok) return;
+    qoRemove(item, customerId);
+    renderCustomerWorkOrders(customerId);
+    try{ renderWorkOrderHistory(); }catch(e){}
+    showToast(item.items.length + ' visits deleted');
+    return;
+  }
   const what = item.kind === 'quote' ? 'quote' : item.kind === 'workorder' ? 'work order'
     : item.kind === 'clean' ? 'filter clean' : 'task';
   if(item.done && (item.kind === 'workorder' && item.j || item.kind === 'clean')){
@@ -13911,6 +14047,11 @@ function qoItemText(item){
     if(total) lines.push('  Total: ' + qoMoney(total));
   };
   lines.push(item.tag.toUpperCase() + ' \u2014 ' + (item.done ? 'COMPLETED' : 'CURRENT'));
+  if(item.kind === 'series'){
+    lines.push((item.items[0].title || '') + ' \u2014 ' + item.items.length + ' scheduled');
+    item.items.forEach(x => lines.push('  ' + fmtDate((x.date || '') + 'T12:00:00')));
+    return lines.join('\n');
+  }
   if(item.kind === 'quote'){
     const w = item.w;
     if(w.createdAt) lines.push('Written ' + fmtDate(w.createdAt));
@@ -14105,7 +14246,7 @@ function renderCustomerWorkOrders(customerId){
     // filter clean gold, task sage
     const TAG_COLOURS = {quote: ['#F1E8F3', '#6B3E78'], workorder: ['#E9EEF0', '#3E5560'],
       clean: ['#FBF1DD', '#8A5E0B'], task: ['#E8F1E4', '#4D6B3C']};
-    const tc = TAG_COLOURS[item.kind] || ['var(--teal-pale)', 'var(--teal-deep)'];
+    const tc = TAG_COLOURS[item.kind === 'series' ? item.of : item.kind] || ['var(--teal-pale)', 'var(--teal-deep)'];
     const tag = document.createElement('span');
     tag.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;white-space:nowrap;"
       + 'letter-spacing:0.07em;text-transform:uppercase;padding:3px 7px;border-radius:6px;'
@@ -14128,7 +14269,9 @@ function renderCustomerWorkOrders(customerId){
     // (Expired if they never did), in WorkCenter History's colours
     const quoteLook = {pending: ['PENDING', 'var(--gold)'], approved: ['APPROVED', '#2E8B57'],
       declined: ['DECLINED', '#B8492E'], expired: ['EXPIRED', '#8A9795']};
+    // A repeat's upcoming visits say RECURRING (Oct 3)
     const look = item.kind === 'quote' ? quoteLook[item.status]
+      : item.kind === 'series' ? ['RECURRING', 'var(--teal-deep)']
       : (item.done ? ['COMPLETED', 'var(--green)'] : ['CURRENT', 'var(--teal-deep)']);
     mark.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:92px;padding:4px 0;border-radius:7px;'
       + 'font-size:10.5px;font-weight:700;letter-spacing:.04em;color:#fff;flex-shrink:0;'
@@ -14158,6 +14301,7 @@ function renderCustomerWorkOrders(customerId){
     bar.appendChild(right);
     bar.addEventListener('click', ()=>{
       if(listSel(qoKey).on){ toggleSelected(qoKey, item.key, redrawQo); return; }
+      if(item.kind === 'series'){ openQoSeriesWindow(item, customerId); return; }
       qoOpenId = isOpen ? null : item.key;
       renderCustomerWorkOrders(customerId);
     });
@@ -16974,16 +17118,24 @@ function renderChemConfigLists(){
   const addChem = document.getElementById('btnAddChemical');
   const addDose = document.getElementById('btnAddDosage');
 
+  // Until a customer is picked both cards are just their headings, with no
+  // buttons (All quick button colors included) and no message (Oct 3)
+  const allColours = document.getElementById('btnAllQuickColors');
+  const chemRow = document.getElementById('chemButtonsRow');
   const lists = activeConfigLists();
   if(!lists){
-    chemContainer.innerHTML = emptyState('Pick a customer and a body of water above.');
+    chemContainer.innerHTML = '';
     doseContainer.innerHTML = '';
     if(addChem) addChem.style.display = 'none';
     if(addDose) addDose.style.display = 'none';
+    if(allColours) allColours.style.display = 'none';
+    if(chemRow) chemRow.style.display = 'none';
     return;
   }
   if(addChem) addChem.style.display = 'inline-flex';
   if(addDose) addDose.style.display = 'inline-flex';
+  if(allColours) allColours.style.display = 'inline-flex';
+  if(chemRow) chemRow.style.display = 'flex';
 
   chemContainer.innerHTML = '';
   lists.chemicals.forEach(item=>{
