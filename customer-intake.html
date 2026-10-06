@@ -4950,6 +4950,26 @@ function renderGlobalHistory(){
         body.appendChild(t);
       }
 
+      // Service performed (Oct 3): backwash, salt cell, and the pool's
+      // after-photos buttons, as the app's report and the email list them
+      const doneHere = [['filterBackwashed', 'Filter backwashed'], ['saltCellCleaned', 'Salt cell cleaned'],
+        ['skimmerBasketEmptied', 'Skimmer basket emptied'], ['pumpBasketEmptied', 'Pump basket emptied'],
+        ['poolSkimmed', 'Pool skimmed'], ['wallsBrushed', 'Walls brushed']].filter(([f]) => r[f]);
+      if(doneHere.length){
+        const lbl = document.createElement('div');
+        lbl.className = 'report-sec';
+        lbl.textContent = 'Service performed';
+        body.appendChild(lbl);
+        const t = document.createElement('table');
+        t.className = 'report-table';
+        doneHere.forEach(([, label])=>{
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td>' + label + '</td><td>Yes</td>';
+          t.appendChild(tr);
+        });
+        body.appendChild(t);
+      }
+
       if(r.notes){
         const lbl = document.createElement('div');
         lbl.className = 'report-sec';
@@ -20460,6 +20480,17 @@ function buildReportDoc(customerId, name, customer, type, r, onDelete){
       used.forEach(d=>{
         html += `<tr><td>${d.label}</td><td>${r[d.key]}${d.unit ? ' ' + d.unit : ''}</td></tr>`;
       });
+      html += '</table>';
+    }
+
+    // Service performed (Oct 3): backwash, salt cell, and the pool's
+    // after-photos buttons, as the app's report and the email list them
+    const doneHere = [['filterBackwashed', 'Filter backwashed'], ['saltCellCleaned', 'Salt cell cleaned'],
+      ['skimmerBasketEmptied', 'Skimmer basket emptied'], ['pumpBasketEmptied', 'Pump basket emptied'],
+      ['poolSkimmed', 'Pool skimmed'], ['wallsBrushed', 'Walls brushed']].filter(([f]) => r[f]);
+    if(doneHere.length){
+      html += '<div class="report-sec">Service performed</div><table class="report-table">';
+      doneHere.forEach(([, label]) => { html += '<tr><td>' + label + '</td><td>Yes</td></tr>'; });
       html += '</table>';
     }
 

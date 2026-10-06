@@ -331,6 +331,12 @@ textarea{min-height:52px;resize:vertical;}
 @keyframes briefIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
 
 .reorder-placeholder{pointer-events:none;}
+.svc-tasks{display:flex;flex-direction:column;gap:8px;}
+/* As the Filter backwashed / Salt cell cleaned buttons: teal outline, solid when done */
+.svc-tasks .svc-task{width:100%;padding:9px 14px;border-radius:10px;font-size:14px;font-weight:600;line-height:1.25;
+  font-family:'Inter',sans-serif;cursor:pointer;text-align:center;
+  background:#fff;color:var(--teal-deep);border:1.5px solid var(--teal-mid);transition:background-color .15s ease,color .15s ease;}
+.svc-tasks .svc-task.on{background:var(--teal-deep);color:#fff;border-color:var(--teal-deep);}
 /* Technicians → Photo requirements: only its own card shows, whatever else
    redraws the list underneath (Oct 3) */
 #view-technicians.photos-mode #techListCard,
@@ -741,6 +747,9 @@ select#customerSelect{font-weight:600;}
     <div class="card" id="visitPoolPhotoSection" style="display:none;">
       <div id="customPhotos_pool_after" style="display:none;"></div>
       <h2>After Photos</h2>
+      <!-- Skimmer basket, pump basket, skimmed, brushed (Oct 3): moved to the top
+           of the pool's last page when this technician has no after photo -->
+      <div id="poolServiceTasks" class="svc-tasks" style="margin:10px 0 16px;"></div>
       <p class="voice-hint" style="margin:0 0 14px;">Tap a photo to access the delete button.</p>
       <div id="gatePhotoBlock" style="display:none;margin-bottom:16px;padding:14px;border:1.5px solid #E8B5A8;border-radius:11px;background:#FBEAE6;text-align:center;">
         <div style="font-size:14px;font-weight:700;color:#B8492E;margin-bottom:4px;">Closed gate photo required</div>
@@ -2220,6 +2229,7 @@ function regularPhotoWanted(type, when){
   return !!(lists && (when === 'before' ? lists.requireBeforePhoto : lists.requireAfterPhoto) === true);
 }
 function syncRegularPhotoParts(){
+  setTimeout(()=>{ try{ drawServiceTasks(); }catch(e){} try{ placeVisitNotes(); }catch(e){} }, 0);
   Object.keys(PHOTO_PAGES).forEach(type=>{
     ['before', 'after'].forEach(when=>{
       const card = document.getElementById(PHOTO_PAGES[type][when]);
@@ -2228,6 +2238,8 @@ function syncRegularPhotoParts(){
       Array.from(card.children).forEach(el=>{
         if(el.id === 'customPhotos_' + type + '_' + when) return;   // the extra photos
         if(el.id === 'gatePhotoBlock') return;                     // the gate photo
+        if(el.id === 'poolServiceTasks') return;                   // its own place (Oct 3)
+        if(el.querySelector && el.querySelector('#inNotes, #inSpaNotes, #inFountainNotes')) return;   // notes (Oct 3)
         el.classList.toggle('photo-part-off', off);
       });
     });
@@ -8228,7 +8240,12 @@ document.getElementById('btnSaveReading').addEventListener('click', async ()=>{
     video: (isLastSectionOfVisit() && visitVideoRefs[0]) || null,
     videoMore: isLastSectionOfVisit() ? visitVideoRefs.slice(1) : [],
     filterBackwashed: (document.getElementById('chkBackwashed') || {}).dataset ? document.getElementById('chkBackwashed').dataset.on === 'true' : false,
-    saltCellCleaned: (document.getElementById('chkSaltCell') || {}).dataset ? document.getElementById('chkSaltCell').dataset.on === 'true' : false
+    saltCellCleaned: (document.getElementById('chkSaltCell') || {}).dataset ? document.getElementById('chkSaltCell').dataset.on === 'true' : false,
+    // The after-photos buttons (Oct 3)
+    skimmerBasketEmptied: visitTasksDone.indexOf('Skimmer basket emptied') !== -1,
+    pumpBasketEmptied: visitTasksDone.indexOf('Pump basket emptied') !== -1,
+    poolSkimmed: visitTasksDone.indexOf('Pool skimmed') !== -1,
+    wallsBrushed: visitTasksDone.indexOf('Walls brushed') !== -1
   };
   // The fields on screen come from THIS customer's list. Reading the global
   // one meant a customer with a custom setup saved nothing at all.
@@ -8262,6 +8279,7 @@ document.getElementById('btnSaveReading').addEventListener('click', async ()=>{
   gatePhotoController.clear();
   beforeControllerFor('pool').clear();
   poolServicePressed = {customerId: null, on: {}};
+  visitTasksDone = []; try{ drawServiceTasks(); }catch(e){}
   ['chkBackwashed','chkSaltCell'].forEach(id=>{
     const el = document.getElementById(id);
     if(el){
@@ -16940,6 +16958,7 @@ document.getElementById('stepBarNext').addEventListener('click', ()=>{
 });
 
 function goToVisitStep(step){
+  setTimeout(()=>{ try{ drawServiceTasks(); }catch(e){} try{ placeVisitNotes(); }catch(e){} }, 0);   // placed for the page now showing (Oct 3)
   currentVisitStep = step;
   applyVisitStep();
 }
@@ -17021,6 +17040,11 @@ function restoreFinishedSection(type){
     : (type === 'spa' ? 'inSpaNotes' : 'inFountainNotes');
   const notes = document.getElementById(notesId);
   if(notes && reading.notes !== undefined) notes.value = reading.notes;
+  // The after-photos buttons pressed on that visit (Oct 3)
+  if(type === 'pool'){
+    visitTasksDone = SERVICE_TASKS.filter(t => reading[SERVICE_TASK_FIELDS[t]]);
+    try{ drawServiceTasks(); }catch(e){}
+  }
 
   // Photos come back too — they are part of what was recorded
   const after = type === 'pool' ? poolPhotoController
@@ -17231,6 +17255,7 @@ async function discardVisitInProgress(){
   // Nothing held for this customer survives a cancelled report
   if(currentVisitCustomerId) clearVisitPackage(currentVisitCustomerId);
   poolServicePressed = {customerId: null, on: {}};
+  visitTasksDone = []; try{ drawServiceTasks(); }catch(e){}
   // Anything already written for this visit goes too — cancelling means there
   // should be no report at all, not a partial one.
   await removeVisitSavedReadings();
@@ -17639,6 +17664,11 @@ function sectionsAlreadyDoneToday(customer){
 }
 
 function openVisit(...args){
+  // A different customer's visit starts with no after-photos buttons pressed (Oct 3)
+  try{
+    const id = args[0] && typeof args[0] === 'object' ? args[0].id : args[0];
+    if(!(pendingVisit && pendingVisit.customerId === id)) visitTasksDone = [];
+  }catch(e){}
   return isAdminUser() ? adminVersion_openVisit.apply(this, args) : techVersion_openVisit.apply(this, args);
 }
 async function adminVersion_openVisit(customerId){
@@ -18586,6 +18616,8 @@ function adminVersion_buildReadingSection(reading, chemList, prodList){
   const doneItems = [];
   if(reading.filterBackwashed) doneItems.push('Filter backwashed');
   if(reading.saltCellCleaned) doneItems.push('Salt cell cleaned');
+  // The after-photos buttons (Oct 3)
+  SERVICE_TASKS.forEach(t => { if(reading[SERVICE_TASK_FIELDS[t]]) doneItems.push(t); });
 
   let servicedHtml = '';
   let servicedText = '';
@@ -18657,6 +18689,8 @@ function techVersion_buildReadingSection(reading, chemList, prodList){
   const doneItems = [];
   if(reading.filterBackwashed) doneItems.push('Filter backwashed');
   if(reading.saltCellCleaned) doneItems.push('Salt cell cleaned');
+  // The after-photos buttons (Oct 3)
+  SERVICE_TASKS.forEach(t => { if(reading[SERVICE_TASK_FIELDS[t]]) doneItems.push(t); });
 
   let servicedHtml = '';
   let servicedText = '';
@@ -21630,6 +21664,112 @@ document.addEventListener('DOMContentLoaded', ()=>{
   }, 3000);
   window.addEventListener('online', sendPhotoRequirements);
 })();
+
+// ---- What was done at the pool (Oct 3) ----
+// Thin wide buttons: tap what was done; tapped ones go into the report. Pool
+// only. They sit just under the After Photos heading — or, when this
+// technician has no after photo, at the top of the pool's last page, just
+// under the tabs.
+const SERVICE_TASKS = ['Skimmer basket emptied', 'Pump basket emptied', 'Pool skimmed', 'Walls brushed'];
+const SERVICE_TASK_FIELDS = {'Skimmer basket emptied': 'skimmerBasketEmptied', 'Pump basket emptied': 'pumpBasketEmptied',
+  'Pool skimmed': 'poolSkimmed', 'Walls brushed': 'wallsBrushed'};
+let visitTasksDone = [];
+function drawServiceTasks(){
+  let box = document.getElementById('poolServiceTasks');
+  if(!box){
+    box = document.createElement('div');
+    box.id = 'poolServiceTasks';
+    box.className = 'svc-tasks';
+  }
+  const photoCard = document.getElementById('visitPoolPhotoSection');
+  const saveCard = document.getElementById('visitPoolSaveSection');
+  // By what's on screen: the after-photos page showing (with its photos on)
+  // takes them under its heading; otherwise the pool's last page has them
+  const photoShowing = !!(photoCard && photoCard.style.display !== 'none' && photoCard.offsetParent !== null
+    && photoCard.querySelector('h2') && !photoCard.querySelector('h2').classList.contains('photo-part-off'));
+  const saveShowing = !!(saveCard && saveCard.style.display !== 'none' && saveCard.offsetParent !== null);
+  // Just under a page's heading row: the row holding its heading and Back
+  // button when there is one, so they never end up in between them
+  const headRow = card=>{
+    const kids = Array.from(card.children).filter(el => el !== box && el.offsetParent !== null);
+    const withBack = kids.find(el => Array.from(el.querySelectorAll('button')).some(b => /Back/.test(b.textContent))
+      || (el.tagName === 'BUTTON' && /Back/.test(el.textContent)));
+    if(withBack) return withBack;
+    const h2 = card.querySelector('h2');
+    if(h2){ let n = h2; while(n.parentElement && n.parentElement !== card) n = n.parentElement; return n; }
+    return null;
+  };
+  const putUnder = card=>{
+    const row = headRow(card);
+    if(row){ if(row.nextSibling !== box) row.after(box); }
+    else if(card.firstChild !== box) card.insertBefore(box, card.firstChild);
+  };
+  if(!photoShowing && !saveShowing && box.parentNode){ /* neither page is up: leave it where it is */ }
+  else if(photoShowing){
+    putUnder(photoCard);
+    box.style.margin = '10px 0 16px';
+  } else {
+    putUnder(saveCard);
+    box.style.margin = '8px 0 18px';
+  }
+  box.classList.remove('photo-part-off');
+  box.innerHTML = '';
+  SERVICE_TASKS.forEach(task=>{
+    const on = visitTasksDone.indexOf(task) !== -1;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'svc-task' + (on ? ' on' : '');
+    b.textContent = task;
+    b.addEventListener('click', ()=>{
+      const at = visitTasksDone.indexOf(task);
+      if(at === -1) visitTasksDone.push(task); else visitTasksDone.splice(at, 1);
+      drawServiceTasks();
+    });
+    box.appendChild(b);
+  });
+}
+
+// ---- Notes above the after photos (Oct 3) ----
+// On a body of water's last page, its notes sit between what's at the top
+// (the pool's service buttons) and the after photos, which come last. With no
+// after photos on that page they stay where they are, under the buttons.
+const NOTES_PLACES = [['pool', 'inNotes', 'visitPoolPhotoSection', 'visitPoolSaveSection'],
+  ['spa', 'inSpaNotes', 'visitSpaPhotoSection', 'visitSpaSaveSection'],
+  ['fountain', 'inFountainNotes', 'visitFountainPhotoSection', 'visitFountainSaveSection']];
+function placeVisitNotes(){
+  NOTES_PLACES.forEach(([type, notesId, photoId, saveId])=>{
+    const notes = document.getElementById(notesId);
+    const field = notes && notes.closest('.field');
+    const photoCard = document.getElementById(photoId);
+    const saveCard = document.getElementById(saveId);
+    if(!field || !photoCard || !saveCard) return;
+    const h2 = photoCard.querySelector('h2');
+    const photoShowing = photoCard.style.display !== 'none' && photoCard.offsetParent !== null
+      && !!h2 && !h2.classList.contains('photo-part-off');
+    if(photoShowing){
+      // Under the service buttons (pool), or else under the heading row
+      const tasks = type === 'pool' ? document.getElementById('poolServiceTasks') : null;
+      let anchor = tasks && tasks.parentElement === photoCard ? tasks : null;
+      if(!anchor){
+        const kids = Array.from(photoCard.children);
+        anchor = kids.find(el => Array.from(el.querySelectorAll ? el.querySelectorAll('button') : []).some(b => /Back/.test(b.textContent)))
+          || (()=>{ let n = h2; while(n.parentElement && n.parentElement !== photoCard) n = n.parentElement; return n; })();
+      }
+      if(anchor && anchor.nextSibling !== field) anchor.after(field);
+      field.classList.remove('photo-part-off');
+      field.style.margin = '0 0 18px';
+    } else if(field.parentElement !== saveCard){
+      // Back on its own page, under the pool's buttons if they're there
+      const tasks = type === 'pool' ? document.getElementById('poolServiceTasks') : null;
+      if(tasks && tasks.parentElement === saveCard) tasks.after(field);
+      else {
+        const submit = saveCard.querySelector('button.btn-primary');
+        if(submit) saveCard.insertBefore(field, submit); else saveCard.appendChild(field);
+      }
+      field.style.margin = '';
+    }
+  });
+}
 </script>
 </body>
 </html>
