@@ -4108,7 +4108,7 @@ async function photoRequirementsPage(){
       const names = Array.from(d.querySelectorAll('#photoRequireRows > div')).map(r => r.firstChild.firstChild.firstChild.textContent);
       check('the rows read Video, Before photo, After photo, Closed gate photo (Video first, 1em.6)',
             names[0] === 'Video' && names[1] === 'Before photo' && names[2] === 'After photo' && names[3] === 'Closed gate photo', names.join(' | '));
-      check('the skip row keeps its full wording', names[4] === 'Require a photo and note to skip a body of water', names[4]);
+      check('the skip row keeps its full wording', names[4] === 'Skip body of water photo and note', names[4]);   // renamed Oct 3
       const site = fs.readFileSync('customer-intake.html', 'utf8');
       check('the line under the heading says what a tick does',
             site.indexOf('Checking a box requires that technician to take the photo before moving on to the next step of the service report.') !== -1

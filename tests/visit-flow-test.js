@@ -459,7 +459,7 @@ async function walkVisit(w, d, maxPresses){
   {
     const site = fs.readFileSync('customer-intake.html', 'utf8');
     check('the website sets it on the Photo requirements tab',
-          site.indexOf("{step: 'skip', label: 'Require a photo and note to skip") !== -1);
+          site.indexOf("{step: 'skip', label: 'Skip body of water photo and note") !== -1);   // renamed Oct 3
     check('with one tick per technician, or Everyone',
           site.indexOf("step === 'skip' ? (t.requireSkipProof === true || photoEveryoneOn('skip', 'skip'))") !== -1);
     const admin = fs.readFileSync('admin-readings-app.html', 'utf8');
