@@ -331,6 +331,11 @@ textarea{min-height:52px;resize:vertical;}
 @keyframes briefIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
 
 .reorder-placeholder{pointer-events:none;}
+/* Technicians → Photo requirements: only its own card shows, whatever else
+   redraws the list underneath (Oct 3) */
+#view-technicians.photos-mode #techListCard,
+#view-technicians.photos-mode #techFormCard,
+#view-technicians.photos-mode #techRouteCard{display:none !important;}
 .cust-row{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;
   display:flex;justify-content:space-between;align-items:center;
   padding:15px 4px 15px 12px;border-bottom:1px solid var(--line);cursor:pointer;
@@ -884,9 +889,11 @@ select#customerSelect{font-weight:600;}
   <!-- CUSTOMERS VIEW -->
   <div class="view" id="view-technicians">
     <!-- Technicians and Photo requirements, as on the website (Oct 3) -->
-    <div class="seg-control" id="techMainTabs" style="margin:0 0 12px;">
-      <button class="history-type-btn active" data-techmain="list" type="button">Technicians</button>
-      <button class="history-type-btn" data-techmain="photos" type="button">Photo requirements</button>
+    <div class="card" id="techMainTabs" style="padding:10px;">
+      <div class="btn-row" style="gap:6px;">
+        <button class="btn btn-primary" data-techmain="list" type="button" style="flex:1;white-space:nowrap;padding-left:8px;padding-right:8px;">Technicians</button>
+        <button class="btn btn-ghost" data-techmain="photos" type="button" style="flex:1;white-space:nowrap;padding-left:8px;padding-right:8px;">Photo requirements</button>
+      </div>
     </div>
     <div class="card" id="photoRequireCard" style="display:none;">
       <h2 style="margin:0 0 4px;">Photos a technician must take</h2>
@@ -2871,6 +2878,14 @@ function switchView(view, opts){
   if(view === 'technicians' && !keepAsLeft){
     selectedTechId = null;
     editingTechId = null;
+    // ...and it opens on Technicians again, not Photo requirements (Oct 3),
+    // as Customers opens on Customers
+    const prCard = document.getElementById('photoRequireCard');
+    if(prCard) prCard.style.display = 'none';
+    document.getElementById('view-technicians').classList.remove('photos-mode');
+    document.querySelectorAll('#techMainTabs [data-techmain]').forEach(b=>{
+      b.className = 'btn ' + (b.dataset.techmain === 'list' ? 'btn-primary' : 'btn-ghost');
+    });
     renderTechList();
   }
   // Back to a technician's route as it was left: drawn again from what's saved
@@ -13112,11 +13127,15 @@ function drawReportRows(){
       + 'cursor:pointer;user-select:none;-webkit-user-select:none;background:' + (isOpen ? 'var(--teal-pale)' : 'var(--card)') + ';';
     const when = document.createElement('div');
     when.style.cssText = 'font-size:14px;font-weight:600;color:var(--ink);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-    when.textContent = fmtDate(d.ts);
+    // The date in a column of one width, so the tags line up down the list (Oct 3)
+    const dateCell = document.createElement('span');
+    dateCell.style.cssText = 'display:inline-block;width:112px;vertical-align:middle;font-size:13.5px;';
+    dateCell.textContent = fmtDate(d.ts);
+    when.appendChild(dateCell);
     const tag = document.createElement('span');
     const tc = d.wo ? jobKindColours('work order') : d.fc ? jobKindColours('filter clean') : d.task ? jobKindColours('task')
       : ['var(--teal-pale)', 'var(--teal-deep)'];
-    tag.style.cssText = "margin-left:8px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;"
+    tag.style.cssText = "margin-left:0;vertical-align:middle;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;"
       + 'letter-spacing:0.07em;text-transform:uppercase;padding:3px 6px;border-radius:6px;'
       + 'color:' + tc[1] + ';background:' + (isOpen && !d.wo && !d.fc && !d.task ? 'var(--card)' : tc[0]) + ';';
     tag.textContent = d.wo ? 'Work order ' + workOrderNumberText(d.wo.workOrderNumber) : d.fc ? 'Filter clean' : d.task ? 'Task' : 'Service report';
@@ -21246,7 +21265,7 @@ function renderPhotoRequirements(){
     {step: 'gate', label: 'Closed gate photo', off: false, why: '',
      bodies: {}, oneTick: true},
     // Not a photo step of its own: what a technician must do before skipping
-    {step: 'skip', label: 'Require a photo and note to skip a body of water', off: false,
+    {step: 'skip', label: 'Skip body of water photo and note', off: false,
      why: '', bodies: {}, oneTick: true}
   ];
   const own = photoTasks().map(task => ({
@@ -21529,11 +21548,13 @@ document.addEventListener('DOMContentLoaded', ()=>{
   window.renderAppPhotoRequirements = show;
 
   // The two tabs on the Technicians page
-  document.querySelectorAll('#techMainTabs .history-type-btn').forEach(btn=>{
+  // Styled as the app's other sub-tabs: the chosen one solid, the other outlined
+  document.querySelectorAll('#techMainTabs [data-techmain]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
-      document.querySelectorAll('#techMainTabs .history-type-btn').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('#techMainTabs [data-techmain]').forEach(b => { b.className = 'btn ' + (b === btn ? 'btn-primary' : 'btn-ghost'); });
       const photos = btn.dataset.techmain === 'photos';
       const card = document.getElementById('photoRequireCard');
+      document.getElementById('view-technicians').classList.toggle('photos-mode', photos);
       if(photos){
         ['techListCard', 'techFormCard', 'techRouteCard'].forEach(id=>{ const el = document.getElementById(id); if(el) el.style.display = 'none'; });
         if(card) card.style.display = 'block';
