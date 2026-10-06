@@ -2345,7 +2345,8 @@ function renderConfigFields(containerId, list, type, kind, onInput){
     const wrap = document.createElement('div');
     wrap.className = 'field';
     const label = document.createElement('label');
-    label.textContent = item.label + (item.unit ? ' (' + item.unit + ')' : '');
+    // Readings show just their name; dosages keep their unit (Oct 3)
+    label.textContent = item.label + (kind !== 'chem' && item.unit ? ' (' + item.unit + ')' : '');
     const input = document.createElement('input');
     input.className = 'mono';
     input.type = 'number';
@@ -6647,8 +6648,14 @@ function reorderEquipmentType(draggedType, targetType){
 // while a placeholder holds its gap and the other rows glide out of the way.
 // Reordering only happens when the finger passes a neighbour's midpoint, so
 // nothing jitters back and forth.
-function attachTouchReorder(handle, item, container, itemSelector, onReorder){
+function attachTouchReorder(handle, item, container, itemSelector, onReorder, opts){
   const DRAG_THRESHOLD = 8;   // pixels of travel before it counts as a drag
+  // opts.holdMs (Oct 3): the grip must be held still this long before it can be
+  // moved, so a swipe across it scrolls instead of grabbing it (the service
+  // report's tabs). Without it, everything works as it always has.
+  const HOLD_MS = opts && opts.holdMs ? opts.holdMs : 0;
+  let holdTimer = null, held = false;
+  const cancelHold = ()=>{ clearTimeout(holdTimer); holdTimer = null; held = false; item.style.transform = ''; };
   let dragging = false;
   let armed = false;          // touched the grip, but not yet moved enough
   let armX = 0, armY = 0;
@@ -6773,21 +6780,43 @@ function attachTouchReorder(handle, item, container, itemSelector, onReorder){
     }
   }
 
-  handle.style.touchAction = 'none';
+  // With a hold, the page can still scroll from the grip until it's been held
+  handle.style.touchAction = HOLD_MS ? 'pan-x pan-y' : 'none';
   handle.style.webkitUserSelect = 'none';
   handle.style.userSelect = 'none';
   handle.style.cursor = 'grab';
 
   handle.addEventListener('touchstart', (e)=>{
     if(e.touches.length !== 1) return;
-    e.preventDefault();
     armed = true;
     armX = e.touches[0].clientX;
     armY = e.touches[0].clientY;
+    if(HOLD_MS){
+      // Held still for the time: picked up, with a small lift and buzz to say so
+      cancelHold();
+      holdTimer = setTimeout(()=>{
+        holdTimer = null;
+        if(!armed) return;
+        held = true;
+        item.style.transition = 'transform .12s ease';
+        item.style.transform = 'scale(1.06)';
+        try{ if(navigator.vibrate) navigator.vibrate(15); }catch(err){}
+        handle.style.touchAction = 'none';
+      }, HOLD_MS);
+      return;                 // the page may still scroll until then
+    }
+    e.preventDefault();
   }, {passive:false});
 
   handle.addEventListener('touchmove', (e)=>{
     const t = e.touches[0];
+    if(HOLD_MS && armed && !dragging && !held){
+      // Moved before the hold was up: it's a swipe — let the page have it
+      if(Math.abs(t.clientX - armX) >= DRAG_THRESHOLD || Math.abs(t.clientY - armY) >= DRAG_THRESHOLD){
+        armed = false; cancelHold();
+      }
+      return;
+    }
     if(armed && !dragging){
       // Wait for real movement before picking the row up
       if(Math.abs(t.clientX - armX) < DRAG_THRESHOLD
@@ -6806,6 +6835,7 @@ function attachTouchReorder(handle, item, container, itemSelector, onReorder){
   ['touchend','touchcancel'].forEach(ev=>{
     handle.addEventListener(ev, (e)=>{
       armed = false;
+      if(HOLD_MS){ const wasHeld = held; cancelHold(); handle.style.touchAction = 'pan-x pan-y'; if(wasHeld && !dragging) return; }
       if(!dragging) return;   // a tap that never became a drag changes nothing
       e.preventDefault();
       drop();
@@ -6815,7 +6845,16 @@ function attachTouchReorder(handle, item, container, itemSelector, onReorder){
   handle.addEventListener('mousedown', (e)=>{
     e.preventDefault();
     armed = true; armX = e.clientX; armY = e.clientY;
+    if(HOLD_MS){
+      cancelHold();
+      holdTimer = setTimeout(()=>{ holdTimer = null; if(!armed) return; held = true;
+        item.style.transition = 'transform .12s ease'; item.style.transform = 'scale(1.06)'; }, HOLD_MS);
+    }
     const onMove = (ev)=>{
+      if(HOLD_MS && armed && !dragging && !held){
+        if(Math.abs(ev.clientX - armX) >= DRAG_THRESHOLD || Math.abs(ev.clientY - armY) >= DRAG_THRESHOLD){ armed = false; cancelHold(); }
+        return;
+      }
       if(armed && !dragging){
         if(Math.abs(ev.clientX - armX) < DRAG_THRESHOLD
            && Math.abs(ev.clientY - armY) < DRAG_THRESHOLD) return;
@@ -6830,6 +6869,7 @@ function attachTouchReorder(handle, item, container, itemSelector, onReorder){
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
       armed = false;
+      if(HOLD_MS) cancelHold();
       if(dragging) drop();
     };
     document.addEventListener('mousemove', onMove);
@@ -13827,15 +13867,20 @@ function adminVersion_renderVisitSectionButtons(){
       grip.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;'
         + 'width:14px;font-size:14px;line-height:1;color:' + colour.border + ';'
         + 'cursor:grab;user-select:none;';
+      // Held for half a second before it moves, so a swipe along the tabs
+      // doesn't grab one (Oct 3)
       attachTouchReorder(grip, chip, container, '[data-reorder-key]', (keys)=>{
         const store = lsGet('customBodyOrder') || {};
         store[customer.id] = keys;
         lsSet('customBodyOrder', store);
         pendingVisit.neededSections = computeNeededSections(customer);
         renderVisitSectionButtons();
-  renderClipSection();
+        // Which body of water is last may have changed: the videos box follows
+        // (Oct 3: this called the old "Send a clip" card, which then showed on
+        // every page of the report)
+        try{ syncVideoBlock(); }catch(e){}
         showToast('Order saved for ' + customer.name);
-      });
+      }, {holdMs: 500});
 
       chip.appendChild(grip);
       chip.appendChild(btn);
@@ -13927,15 +13972,20 @@ function techVersion_renderVisitSectionButtons(){
       grip.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;'
         + 'width:14px;font-size:14px;line-height:1;color:' + colour.border + ';'
         + 'cursor:grab;user-select:none;';
+      // Held for half a second before it moves, so a swipe along the tabs
+      // doesn't grab one (Oct 3)
       attachTouchReorder(grip, chip, container, '[data-reorder-key]', (keys)=>{
         const store = lsGet('customBodyOrder') || {};
         store[customer.id] = keys;
         lsSet('customBodyOrder', store);
         pendingVisit.neededSections = computeNeededSections(customer);
         renderVisitSectionButtons();
-  renderClipSection();
+        // Which body of water is last may have changed: the videos box follows
+        // (Oct 3: this called the old "Send a clip" card, which then showed on
+        // every page of the report)
+        try{ syncVideoBlock(); }catch(e){}
         showToast('Order saved for ' + customer.name);
-      });
+      }, {holdMs: 500});
 
       chip.appendChild(grip);
       chip.appendChild(btn);

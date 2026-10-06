@@ -10888,12 +10888,14 @@ document.getElementById('btnEmailFilterGroups').addEventListener('click', openFi
 document.getElementById('btnNewFilterGroup').addEventListener('click', async ()=>{
   const name = await promptDialog('Name this group', 'e.g. Tuesday north route');
   if(!name) return;
+  // Showing one technician's groups: the new group is theirs to start with (Oct 3)
+  const shownTech = (document.getElementById('filterGroupTech') || {}).value || '';
   filterGroups.push({
     id: 'fg_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
     name,
     customerIds: [],
     date: '',
-    technicianId: '',
+    technicianId: shownTech && shownTech !== 'none' ? shownTech : '',
     finalized: false
   });
   saveFilterGroups();
