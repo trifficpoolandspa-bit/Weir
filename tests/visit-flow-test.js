@@ -667,8 +667,9 @@ async function walkVisit(w, d, maxPresses){
     const none = await stepsFor(file, {});
     check(file + ': nothing asked means no before photo step',
           !none.some(c => /BeforePhotoSection/.test(c)), none.join(' | '));
-    check(file + ': and no after photo step of its own',
-          !none.some(c => /PhotoSection/.test(c) && !/Before/.test(c)), none.join(' | '));
+    // Oct 3: the after photo is always on the last page, optional
+    check(file + ': the after photo is always there, to take if wanted',
+          none.some(c => /PhotoSection/.test(c) && !/Before/.test(c)), none.join(' | '));
     check(file + ': the readings are still there', none.some(c => /Products|Save|Section/.test(c)), none.join(' | '));
 
     const before = await stepsFor(file, {before: {pool: true}});
@@ -1816,7 +1817,8 @@ async function walkVisit(w, d, maxPresses){
       // Return to route clears the whole report, and the last page has Back
       w.eval("openVisit('v')"); await wait(400);
       w.eval("goToVisitStep(visitStepCardsFor('pool').length)"); await wait(80);
-      check(file + ': the last page has Back when no after photo is asked for', !!d.querySelector('#visitPoolSaveSection .step-back'));
+      // Oct 3: the last page is the after photos and Submit together; Back is at its top
+      check(file + ': the last page has Back when no after photo is asked for', !!d.querySelector('#visitPoolPhotoSection .step-back, #visitPoolSaveSection .step-back'));
       w.eval("goToVisitStep(1)"); await wait(80);
       await w.eval("skipBodyOfWater('pool')"); await wait(300);
       const spa = d.getElementById('spa_chem_chlorine'); spa.value = '4'; spa.dispatchEvent(new w.Event('input', {bubbles: true}));
