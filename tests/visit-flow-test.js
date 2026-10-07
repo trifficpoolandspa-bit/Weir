@@ -1017,7 +1017,7 @@ async function walkVisit(w, d, maxPresses){
       check(file + ': an optional gate photo is shown without being required',
             (w.eval("localStorage.setItem('weir:photoEveryone', '{}'); currentUser.photoOptional = {gate: true};"),
              w.eval("techOptionalPhoto('gate') && !gatePhotoApplies()")) === true);
-      check(file + ': Everyone travels down with the company setup', /'photoDefaults', 'photoEveryone'\]/.test(src));
+      check(file + ': Everyone travels down with the company setup', /'photoDefaults', 'photoEveryone'[,\]]/.test(src));   // more may follow (Oct 3)
     }catch(e){ check(file + ': start, gate and skip', false, e.message); }
     w.close();
   }

@@ -447,11 +447,13 @@ console.log('\n=== Arrow keys step between customers ===');
     check('  the arrow matches the Next button', who() === byButton,
           who() + ' vs ' + byButton);
 
-    // At the end it stops rather than wrapping
-    for(let i = 0; i < 5; i++) press('ArrowRight');
-    const atEnd = who();
+    // Oct 3: a loop — after the last customer comes the first again
+    const order = w.eval("customerListInOrder().map(c => c.id)");
+    w.eval("viewCustomer(customerListInOrder()[customerListInOrder().length - 1]);");
     press('ArrowRight');
-    check('  it stops at the last customer', who() === atEnd);
+    check('  after the last customer comes the first', w.eval('profileCustomerId') === order[0]);
+    press('ArrowLeft');
+    check('  and before the first comes the last', w.eval('profileCustomerId') === order[order.length - 1]);
 
     // Typing is not hijacked
     w.eval("viewCustomer(customers[0]);");
