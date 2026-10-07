@@ -1690,6 +1690,8 @@ input::placeholder{color:#A9BCB9;}
           <button class="btn btn-primary" id="btnFilterReplacements" style="width:auto;">Replacements</button>
         </div>
       </div>
+      <!-- Customers across the groups shown, for the technician chosen (Oct 3) -->
+      <div class="section-count" id="filterGroupCount" style="margin:-4px 0 12px;"></div>
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Group customers together, give the group a date and a technician, then press Schedule to push it onto that technician's route. Customize emails to send to groups individually or all together.</p>
       <div id="filterGroupList"></div>
     </div>
@@ -6486,8 +6488,32 @@ function openFilterReplacements(){
 }
 document.getElementById('btnFilterReplacements').addEventListener('click', openFilterReplacements);
 
+// The groups the technician menu at the top of Filter cleans is showing, and
+// how many customers they hold between them, each counted once (Oct 3)
+function fgShownGroups(){
+  const tech = (document.getElementById('filterGroupTech') || {}).value || '';
+  return filterGroups.filter(g => !tech ? true : tech === 'none' ? !g.technicianId : String(g.technicianId) === String(tech));
+}
+function fgCountText(groups){
+  const people = new Set();
+  groups.forEach(g => (g.customerIds || []).forEach(id => { if(customers.some(c => c.id === id)) people.add(id); }));
+  return people.size + (people.size === 1 ? ' customer' : ' customers') + ' in '
+    + groups.length + (groups.length === 1 ? ' group' : ' groups');
+}
+// Where each customer in a scheduled group is up to: their filter clean for
+// this group's date, 'done' or 'scheduled' (Oct 3)
+function fgCleanStatus(g){
+  const out = {};
+  (lsGet('scheduledFilterCleans') || []).forEach(f=>{
+    if(!f || f.groupId !== g.id || (g.date && f.date !== g.date)) return;
+    if(out[f.customerId] === 'done') return;
+    out[f.customerId] = f.status === 'done' ? 'done' : 'scheduled';
+  });
+  return out;
+}
 function renderFilterGroups(){
   try{ updateFilterReplacementsButton(); }catch(e){}
+  setTimeout(()=>{ try{ const el = document.getElementById('filterGroupCount'); if(el) el.textContent = filterGroups.length ? fgCountText(fgShownGroups()) : ''; }catch(e){} }, 0);
   // Back after more than a minute away: every group starts closed
   if(onFilterGroupsPage()) closeGroupsIfAway();
   // Drawn first: with no groups at all this function stops early, and the
@@ -6604,6 +6630,13 @@ function renderFilterGroups(){
     const headRight = document.createElement('div');
     headRight.style.cssText = 'display:flex;align-items:center;gap:8px;margin-left:auto;flex-shrink:0;';
 
+    // Every customer finished: the group goes back to how it was before it was
+    // scheduled — no SCHEDULED badge, plain names (Oct 3)
+    const fcDone = fgCleanStatus(g);
+    if(g.finalized && (g.customerIds || []).length && (g.customerIds || []).every(cid => fcDone[cid] === 'done')){
+      g.finalized = false;
+      saveFilterGroups();
+    }
     if(g.finalized){
       const badge = document.createElement('span');
       badge.style.cssText = 'background:var(--green);color:#fff;font-size:10.5px;font-weight:700;padding:4px 9px;border-radius:7px;flex-shrink:0;';
@@ -6713,6 +6746,25 @@ function renderFilterGroups(){
         cgrip.title = 'Drag to reorder \u2014 the order the technician sees';
         cgrip.style.cssText = 'color:var(--muted);font-size:14px;line-height:1;';
         chip.appendChild(cgrip);
+        // On a scheduled group, each name shows where it's up to (Oct 3):
+        // a clock and a dark outline while it's waiting, a green tick once done
+        const state = g.finalized ? fgCleanStatus(g)[cid] : null;
+        if(state === 'done'){
+          chip.style.background = '#E3F1E8';
+          chip.style.color = 'var(--green)';
+          chip.title = 'Filter clean done';
+          const tick = document.createElement('span');
+          tick.textContent = '\u2713';
+          tick.style.cssText = 'font-weight:800;font-size:13px;line-height:1;';
+          chip.appendChild(tick);
+        } else if(state === 'scheduled'){
+          chip.style.boxShadow = 'inset 0 0 0 1.5px var(--teal-deep)';
+          chip.title = 'Scheduled \u2014 not done yet';
+          const clock = document.createElement('span');
+          clock.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
+          clock.style.cssText = 'display:inline-flex;line-height:1;';
+          chip.appendChild(clock);
+        }
         chip.appendChild(document.createTextNode(displayName(cust.name)));
         attachTouchReorder(cgrip, chip, members, ':scope > [data-reorder-key]', keys=>{
           const known = new Set(g.customerIds);
@@ -8370,6 +8422,9 @@ async function syncCustomers(){
     }catch(e){}
 
     const records = await syncRecords(state, companyId);
+    // With the company's own settings now here, the After photo defaults
+    // can be given — once, ever (Oct 3)
+    if(!records.pullFailed){ try{ seedAfterPhotoDefaults(); }catch(e){} }
     result.recordsPulled = records.pulled;
     result.recordsPushed = records.pushed;
     if(records.failed) result.failed += records.failed;
@@ -8743,7 +8798,9 @@ const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'r
                          'equipmentChoices',
                          // Alerts seen and deleted, cleared on every office computer and
                          // phone at once (Oct 3; they were kept per computer)
-                         'alertsSeen', 'alertsDismissed'];
+                         'alertsSeen', 'alertsDismissed',
+                         // After photo's defaults given once, company-wide (Oct 3)
+                         'photoDefaultsSeeded'];
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
   // The "Last 3 months" readings table on the phones' visits, and its chemicals added rows
   'showRecentReadings', 'showRecentDosages',
@@ -10775,7 +10832,8 @@ document.getElementById('btnScheduleFilterGroups').addEventListener('click', ope
 document.getElementById('filterGroupTech').addEventListener('change', ()=> renderFilterGroups());
 
 async function openFilterGroupEmail(){
-  const usable = filterGroups.filter(g => (g.customerIds || []).length);
+  // The groups for the technician chosen at the top of the page (Oct 3)
+  const usable = fgShownGroups().filter(g => (g.customerIds || []).length);
   if(!usable.length){
     showToast('No filter clean groups have customers in them yet');
     return;
@@ -10802,6 +10860,13 @@ async function openFilterGroupEmail(){
   sub.textContent = 'Each customer gets one email with their own scheduled date. Anyone in '
     + 'several groups is told about all of their dates in a single message.';
   card.appendChild(sub);
+  // Every customer across these groups, and whose groups they are
+  const techSel = document.getElementById('filterGroupTech');
+  const techName = techSel && techSel.value ? (techSel.options[techSel.selectedIndex] || {}).textContent : '';
+  const total = document.createElement('div');
+  total.style.cssText = 'font-size:13.5px;font-weight:700;color:var(--ink);margin:0 0 4px;';
+  total.textContent = fgCountText(usable) + (techName ? ' \u00b7 ' + techName : '');
+  card.appendChild(total);
 
   const count = document.createElement('div');
   count.style.cssText = 'font-size:12.5px;color:var(--muted);margin-bottom:10px;';
@@ -11447,6 +11512,7 @@ function selectionTick(key, id, redraw){
   if(!st.on) return null;
   const tick = document.createElement('input');
   tick.type = 'checkbox';
+  tick.dataset.selTick = '1';      // ranges handled by Select multiple itself
   tick.checked = st.ids.has(id);
   tick.style.cssText = 'margin:0 10px 0 0;flex-shrink:0;width:18px;height:18px;cursor:pointer;';
   tick.addEventListener('click', e=>{
@@ -16365,6 +16431,20 @@ function photoEveryone(){
 function photoEveryoneOn(step, key){
   const all = photoEveryone();
   return !!(all[step] && all[step][key] === true);
+}
+// After photo starts on for everyone — Optional, and required at the pool,
+// spa and extras (Oct 3). Given once per company, only after a sync has
+// brought the company's own settings here, and marked with a company-wide
+// flag that syncs everywhere: after that it's never put back, so whatever is
+// set on the Photo requirements tab stays, through every update.
+function seedAfterPhotoDefaults(){
+  if(lsGet('photoDefaultsSeeded') === true) return;
+  const all = photoEveryone();
+  all.after = Object.assign({}, all.after || {}, {optional: true, pool: true, spa: true, fountain: true});
+  lsSet('photoEveryone', all);
+  lsSet('photoDefaultsSeeded', true);
+  try{ if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange(); }catch(e){}
+  try{ const c = document.getElementById('photoRequireCard'); if(c && c.offsetParent) renderPhotoRequirements(); }catch(e){}
 }
 function setPhotoEveryone(step, key, on){
   const all = photoEveryone();
@@ -23913,8 +23993,9 @@ function customerListInOrder(){
 function stepToCustomer(delta){
   const list = customerListInOrder();
   const i = list.findIndex(x => x.id === profileCustomerId);
-  if(i === -1) return;
-  const target = list[i + delta];
+  if(i === -1 || list.length < 2) return;
+  // A loop (Oct 3): before the first is the last, after the last is the first
+  const target = list[(i + delta + list.length) % list.length];
   if(!target) return;
 
   // Stay on whichever tab is open — stepping through Equipment should keep
@@ -23932,18 +24013,16 @@ function refreshCustomerStepButtons(){
   const list = customerListInOrder();
   const i = list.findIndex(x => x.id === profileCustomerId);
 
-  const atStart = i <= 0;
-  const atEnd = i === -1 || i >= list.length - 1;
-
-  prev.disabled = atStart;
-  prev.style.opacity = atStart ? '0.35' : '';
-  prev.style.cursor = atStart ? 'not-allowed' : '';
-  prev.title = atStart ? 'First customer' : 'Go to ' + displayName(list[i-1].name);
-
-  next.disabled = atEnd;
-  next.style.opacity = atEnd ? '0.35' : '';
-  next.style.cursor = atEnd ? 'not-allowed' : '';
-  next.title = atEnd ? 'Last customer' : 'Go to ' + displayName(list[i+1].name);
+  // A loop (Oct 3): never stuck at either end; only greyed with one customer
+  const alone = i === -1 || list.length < 2;
+  const before = alone ? null : list[(i - 1 + list.length) % list.length];
+  const after = alone ? null : list[(i + 1) % list.length];
+  [[prev, before], [next, after]].forEach(([btn, to])=>{
+    btn.disabled = alone;
+    btn.style.opacity = alone ? '0.35' : '';
+    btn.style.cursor = alone ? 'not-allowed' : '';
+    btn.title = alone ? 'Only customer' : 'Go to ' + displayName(to.name);
+  });
 }
 
 // Extra service days, beside the main day in the profile, each with an × to
@@ -25862,6 +25941,51 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
     at = e.key === 'ArrowDown' ? Math.min(items.length - 1, at + 1) : Math.max(0, at - 1);
     paint(items, at);
   }, true);
+})();
+
+// ---- Shift-click a range of tick boxes, anywhere on the website (Oct 3) ----
+// Click one tick box, hold Shift and click another in the same list, and every
+// box between them is set the same way. Each is set by an ordinary click, so
+// whatever that list does on a tick still happens.
+(function shiftClickTickBoxes(){
+  const anchors = new WeakMap();      // list -> the box last clicked in it
+  let ranging = false;
+  const usable = cb => cb && cb.type === 'checkbox' && !cb.disabled && !cb.dataset.selTick && cb.offsetParent !== null;
+  const listOf = cb=>{
+    let n = cb.parentElement;
+    while(n && n !== document.body){
+      if(Array.from(n.querySelectorAll('input[type=checkbox]')).filter(usable).length >= 2) return n;
+      n = n.parentElement;
+    }
+    return null;
+  };
+  // No text highlighted by the Shift-click on a tick box or its row
+  document.addEventListener('mousedown', e=>{
+    if(!e.shiftKey) return;
+    const t = e.target;
+    if(t && (t.type === 'checkbox' || (t.closest && t.closest('label') && t.closest('label').querySelector('input[type=checkbox]')))) e.preventDefault();
+  }, true);
+  document.addEventListener('click', e=>{
+    if(ranging) return;
+    const cb = e.target;
+    if(!usable(cb)) return;
+    const list = listOf(cb);
+    if(!list) return;
+    const last = anchors.get(list);
+    anchors.set(list, cb);
+    if(!e.shiftKey || !last || last === cb || !list.contains(last)) return;
+    const boxes = Array.from(list.querySelectorAll('input[type=checkbox]')).filter(usable);
+    const a = boxes.indexOf(last), b = boxes.indexOf(cb);
+    if(a === -1 || b === -1) return;
+    const want = cb.checked;
+    ranging = true;
+    try{
+      boxes.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(x=>{
+        if(x !== cb && x.isConnected && x.checked !== want) x.click();
+      });
+    } finally { ranging = false; }
+    try{ const sel = window.getSelection(); if(sel) sel.removeAllRanges(); }catch(err){}
+  });
 })();
 </script>
 
