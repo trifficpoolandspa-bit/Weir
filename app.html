@@ -337,6 +337,14 @@ textarea{min-height:52px;resize:vertical;}
   font-family:'Inter',sans-serif;cursor:pointer;text-align:center;
   background:#fff;color:var(--teal-deep);border:1.5px solid var(--teal-mid);transition:background-color .15s ease,color .15s ease;}
 .svc-tasks .svc-task.on{background:var(--teal-deep);color:#fff;border-color:var(--teal-deep);}
+/* Text that's cut off scrolls to show the rest, then starts over (Oct 3).
+   --marquee-shift is set per piece of text: how far it must travel. */
+@keyframes weirMarquee{
+  0%, 18%   { transform: translateX(0); }
+  82%, 100% { transform: translateX(var(--marquee-shift, 0px)); }
+}
+.marquee-inner{display:inline-block;white-space:nowrap;will-change:transform;}
+.marquee-on .marquee-inner{animation:weirMarquee var(--marquee-time, 6s) ease-in-out infinite;}
 /* Technicians → Photo requirements: only its own card shows, whatever else
    redraws the list underneath (Oct 3) */
 #view-technicians.photos-mode #techListCard,
@@ -5838,6 +5846,9 @@ function techWantsPhoto(step, type){
 // Set for this technician on the website: they see the photo and may walk
 // past it. A tick on a body of water still makes it required there.
 function techOptionalPhoto(step){
+  // The after photo is always on a service report's last page, optional
+  // unless a tick makes it required for that body of water (Oct 3)
+  if(step === 'after') return true;
   const opt = currentUser && currentUser.photoOptional;
   return !!(opt && opt[step] === true) || photoEveryoneOn(step, 'optional');
 }
@@ -10410,7 +10421,8 @@ function routeJobsFor(customerId, dayISO, techId){
   const cleans = (lsGet('scheduledFilterCleans') || [])
     .filter(s => s && s.status === 'scheduled' && s.date === dayISO && s.customerId === customerId && mine(s))
     .map(s => ({key: 'filter clean:' + s.id, kind: 'filter clean', id: s.id,
-                title: 'Filter clean', details: '', photoRequired: s.photoRequired !== false, videoRequired: false}));
+                // Only when the group's Photo required was ticked (Oct 3)
+                title: 'Filter clean', details: '', photoRequired: s.photoRequired === true, videoRequired: false}));
   return orders.concat(cleans).concat(tasks).filter(j => !jobSubmitted(j.key));
 }
 // The Replacements window on a filter clean (Oct 3): the usual parts to tick,
@@ -17978,16 +17990,17 @@ async function techVersion_openVisit(customerId){
 // When a technician is required to justify a skip, this asks for a photo and a
 // note and refuses to go ahead without both. Returns null if they back out, or
 // {photo, note} once it has what it needs.
-function askSkipProof(label){
+function askSkipProof(label, required){
+  if(required === undefined) required = true;
   return new Promise(resolve=>{
     const overlay = document.createElement('div');
     overlay.className = 'confirm-overlay';
     overlay.innerHTML = `
       <div class="confirm-box" style="max-width:420px;">
         <h3 style="margin:0 0 6px;">Skipping the ${esc(label)}</h3>
-        <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.5;">
-          You need a photo of why it is being skipped, and a short note. Both are
-          required before this can be skipped.</p>
+        <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.5;">${required
+          ? 'You need a photo of why it is being skipped, and a short note. Both are required before this can be skipped.'
+          : 'Add a photo of why it is being skipped, and a short note, if you like \u2014 neither is needed.'}</p>
 
         <div class="field">
           <button class="btn btn-ghost" type="button" id="skipProofPhotoBtn" style="width:100%;">Take photo</button>
@@ -18074,9 +18087,9 @@ function askSkipProof(label){
 
     overlay.querySelector('#skipProofSave').addEventListener('click', ()=>{
       const note = overlay.querySelector('#skipProofNote').value.trim();
-      if(!photoData){ say('A photo is required before this can be skipped.'); return; }
-      if(!note){ say('Write a short note saying why.'); return; }
-      close({photo: photoData, note: note});
+      if(required && !photoData){ say('A photo is required before this can be skipped.'); return; }
+      if(required && !note){ say('Write a short note saying why.'); return; }
+      close({photo: photoData || null, note: note, required: !!required});
     });
   });
 }
@@ -18116,8 +18129,13 @@ async function skipBodyOfWater(type){
   // technician on the Technicians page.
   let proof = null;
   if(techRequires('requireSkipProof') || photoEveryoneOn('skip', 'skip')){
-    proof = await askSkipProof(label);
+    proof = await askSkipProof(label, true);
     if(!proof) return;                      // backed out
+  } else if(techOptionalPhoto('skip')){
+    // Optional (Oct 3): the same window, nothing in it needed
+    proof = await askSkipProof(label, false);
+    if(!proof) return;                      // backed out
+    if(!proof.photo && !proof.note) proof = null;   // nothing added: a plain skip
   } else {
     const ok = await confirmDialog(
       'Skip the ' + label + ' on this visit?\n\n'
@@ -18142,6 +18160,7 @@ async function skipBodyOfWater(type){
       label: label,
       note: proof.note,
       photo: proof.photo,
+      required: proof.required !== false,   // optional ones are never owed (Oct 3)
       technician: currentUser ? currentUser.name : '',
       at: new Date().toISOString()
     });
@@ -18176,6 +18195,7 @@ function saveSkipProofEntry(sectionId, changes){
 function skippedProofMissing(sectionId){
   const e = skipProofEntry(sectionId);
   if(!e) return false;
+  if(e.required === false) return false;      // given though it wasn't needed (Oct 3)
   return !e.photo || !String(e.note || '').trim();
 }
 function showSkippedScreen(sectionId){
@@ -21123,7 +21143,9 @@ function photoTechnicianList(step, bodies){
     : PHOTO_BODIES.filter(([key]) => bodies[key]);
   // Skipping has its own rules on the phone, so it has no Optional; a video
   // is only ever optional, so its tick is all there is
-  const offersOptional = step !== 'skip' && step !== 'video';
+  // After photo is always shown now, so it has no Optional button (Oct 3)
+  // Skip has Optional too (Oct 3): the photo-and-note window, nothing in it needed
+  const offersOptional = step !== 'video' && step !== 'after';
 
   // Always the technician as they are in the list right now. A sync replaces
   // the whole list with fresh objects, so the one captured when this was drawn
@@ -21365,16 +21387,22 @@ function renderPhotoRequirements(){
     block.style.cssText = 'padding:13px 0;border-bottom:1px solid var(--line);'
       + (entry.off ? 'opacity:0.45;' : '');
 
+    // One line (Oct 3): a long name fades out before the count rather than
+    // pushing it down a line
     const head = document.createElement('div');
-    head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:16px;'
-      + 'flex-wrap:wrap;padding:4px 0;';
+    head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;'
+      + 'flex-wrap:nowrap;padding:4px 0;';
 
     const left = document.createElement('div');
-    left.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;';
+    left.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 auto;';
     const name = document.createElement('div');
-    name.style.cssText = 'font-size:14px;font-weight:600;color:var(--ink);'
+    const fade = 'linear-gradient(to right, #000 calc(100% - 26px), transparent)';
+    name.style.cssText = 'font-size:14px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;'
+      + 'min-width:0;flex:1 1 auto;-webkit-mask-image:' + fade + ';mask-image:' + fade + ';'
       + (entry.task ? 'cursor:pointer;' : '');
     name.textContent = entry.label;
+    if(!entry.task) name.title = entry.label;
+    setTimeout(()=> marqueeIfCut(name), 0);      // scrolls if it's cut off (Oct 3)
     if(entry.task){
       name.title = 'Change this photo';
       name.dataset.keepsClick = 'name';
@@ -21391,7 +21419,7 @@ function renderPhotoRequirements(){
       edit.className = 'btn btn-ghost';
       edit.textContent = 'Edit';
       edit.title = 'Change this photo';
-      edit.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;';
+      edit.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;flex-shrink:0;';
       edit.dataset.keepsClick = 'edit';
       edit.addEventListener('click', ()=> openPhotoTask(entry.task));
       left.appendChild(edit);
@@ -21404,7 +21432,7 @@ function renderPhotoRequirements(){
       x.textContent = '\u00d7';
       x.title = 'Remove this photo';
       // The same red style, a size down to suit the row
-      x.style.cssText = 'width:24px;height:26px;font-size:13px;border-radius:7px;';
+      x.style.cssText = 'width:24px;height:26px;font-size:13px;border-radius:7px;flex-shrink:0;';
       x.dataset.keepsClick = 'remove';
       x.addEventListener('click', async ()=>{
         const sure = await confirmDialog('Remove "' + escapeSyncText(entry.label)
@@ -21768,6 +21796,32 @@ function placeVisitNotes(){
         if(submit) saveCard.insertBefore(field, submit); else saveCard.appendChild(field);
       }
       field.style.margin = '';
+    }
+  });
+}
+
+// ---- Cut-off text scrolls (Oct 3) ----
+// Give it an element whose text may be cut off (overflow hidden, one line):
+// if it is, the text slides left to show the rest, pauses, and starts over.
+// Text that fits stays still.
+function marqueeIfCut(el){
+  if(!el) return;
+  let inner = el.querySelector(':scope > .marquee-inner');
+  if(!inner){
+    inner = document.createElement('span');
+    inner.className = 'marquee-inner';
+    while(el.firstChild) inner.appendChild(el.firstChild);
+    el.appendChild(inner);
+  }
+  requestAnimationFrame(()=>{
+    const over = inner.scrollWidth - el.clientWidth + 30;      // past the fade at the edge
+    if(inner.scrollWidth > el.clientWidth + 1 && over > 0){
+      el.style.setProperty('--marquee-shift', (-over) + 'px');
+      // About 40 pixels a second, plus the pauses at each end
+      el.style.setProperty('--marquee-time', Math.max(4, over / 40 / 0.64).toFixed(1) + 's');
+      el.classList.add('marquee-on');
+    } else {
+      el.classList.remove('marquee-on');
     }
   });
 }

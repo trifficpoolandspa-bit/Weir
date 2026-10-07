@@ -6496,10 +6496,15 @@ function fgShownGroups(){
 }
 function fgCountText(groups){
   const people = new Set();
-  groups.forEach(g => (g.customerIds || []).forEach(id => { if(customers.some(c => c.id === id)) people.add(id); }));
+  groups.forEach(g => fgLiveIds(g).forEach(id => { if(customers.some(c => c.id === id)) people.add(id); }));
   return people.size + (people.size === 1 ? ' customer' : ' customers') + ' in '
     + groups.length + (groups.length === 1 ? ' group' : ' groups');
 }
+// Paused in a group (Oct 3): still listed, greyed, but left out when the
+// group is scheduled or emailed. Kept per group, so the customer is otherwise
+// untouched — their own route and service carry on.
+function fgPaused(g, cid){ return Array.isArray(g.pausedIds) && g.pausedIds.indexOf(cid) !== -1; }
+function fgLiveIds(g){ return (g.customerIds || []).filter(cid => !fgPaused(g, cid)); }
 // Where each customer in a scheduled group is up to: their filter clean for
 // this group's date, 'done' or 'scheduled' (Oct 3)
 function fgCleanStatus(g){
@@ -6633,7 +6638,7 @@ function renderFilterGroups(){
     // Every customer finished: the group goes back to how it was before it was
     // scheduled — no SCHEDULED badge, plain names (Oct 3)
     const fcDone = fgCleanStatus(g);
-    if(g.finalized && (g.customerIds || []).length && (g.customerIds || []).every(cid => fcDone[cid] === 'done')){
+    if(g.finalized && fgLiveIds(g).length && fgLiveIds(g).every(cid => fcDone[cid] === 'done')){
       g.finalized = false;
       saveFilterGroups();
     }
@@ -6766,6 +6771,35 @@ function renderFilterGroups(){
           chip.appendChild(clock);
         }
         chip.appendChild(document.createTextNode(displayName(cust.name)));
+        // Pause / resume this customer in this group (Oct 3)
+        const paused = fgPaused(g, cid);
+        if(paused){
+          chip.style.background = 'var(--surface-alt)';
+          chip.style.color = 'var(--muted)';
+          chip.style.boxShadow = 'inset 0 0 0 1.5px var(--line)';
+          chip.lastChild.textContent = displayName(cust.name);
+          chip.title = 'Paused in this group \u2014 not scheduled or emailed';
+        }
+        const pause = document.createElement('button');
+        pause.type = 'button';
+        pause.title = paused ? 'Resume \u2014 schedule and email them with this group again' : 'Pause \u2014 leave them out when this group is scheduled or emailed';
+        pause.setAttribute('aria-label', pause.title);
+        pause.innerHTML = paused
+          ? '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M8 5l11 7-11 7z" fill="currentColor"/></svg>'
+          : '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>';
+        pause.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;'
+          + 'border:1px solid ' + (paused ? 'var(--teal-mid)' : 'var(--line)') + ';background:#fff;color:' + (paused ? 'var(--teal-deep)' : 'var(--muted)') + ';cursor:pointer;padding:0;';
+        pause.addEventListener('click', e=>{
+          e.stopPropagation();
+          const list = Array.isArray(g.pausedIds) ? g.pausedIds.slice() : [];
+          const at = list.indexOf(cid);
+          if(at === -1) list.push(cid); else list.splice(at, 1);
+          g.pausedIds = list;
+          saveFilterGroups();
+          renderFilterGroups();
+          showToast(displayName(cust.name) + (at === -1 ? ' paused in ' : ' back in ') + (g.name || 'this group'));
+        });
+        chip.appendChild(pause);
         attachTouchReorder(cgrip, chip, members, ':scope > [data-reorder-key]', keys=>{
           const known = new Set(g.customerIds);
           const next = keys.filter(k => known.has(k));
@@ -6829,7 +6863,7 @@ async function finalizeFilterGroup(g){
   sched = sched.filter(s => s.groupId !== g.id || s.status === 'done');
   // Re-finalizing replaces this group's previous schedule rather than stacking
   sched = sched.filter(s => s.groupId !== g.id || s.status === 'done');
-  g.customerIds.forEach((cid, i)=>{
+  fgLiveIds(g).forEach((cid, i)=>{
     sched.push({
       id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
       groupId: g.id,
@@ -7026,7 +7060,7 @@ function filterEmailRecipients(groups){
 
   groups.forEach(g=>{
     const when = filterGroupDateText(g);
-    (g.customerIds || []).forEach(id=>{
+    fgLiveIds(g).forEach(id=>{
       const cust = customers.find(c => c.id === id);
       if(!cust || !(cust.email || '').trim()) return;
       const seen = byCustomer.get(cust.id) || {customer: cust, dates: []};
@@ -10692,7 +10726,7 @@ function scheduleFilterGroup(g){
   let sched = lsGet('scheduledFilterCleans') || [];
   // Re-scheduling replaces this group's previous entries rather than stacking
   sched = sched.filter(s => s.groupId !== g.id || s.status === 'done');
-  (g.customerIds || []).forEach((cid, i)=>{
+  fgLiveIds(g).forEach((cid, i)=>{
     sched.push({
       id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
       groupId: g.id,
@@ -16601,7 +16635,9 @@ function photoTechnicianList(step, bodies){
     : PHOTO_BODIES.filter(([key]) => bodies[key]);
   // Skipping has its own rules on the phone, so it has no Optional; a video
   // is only ever optional, so its tick is all there is
-  const offersOptional = step !== 'skip' && step !== 'video';
+  // After photo is always shown now, so it has no Optional button (Oct 3)
+  // Skip has Optional too (Oct 3): the photo-and-note window, nothing in it needed
+  const offersOptional = step !== 'video' && step !== 'after';
 
   // Always the technician as they are in the list right now. A sync replaces
   // the whole list with fresh objects, so the one captured when this was drawn
