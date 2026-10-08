@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Weir — Readings & Reports</title>
 <link rel="manifest" href="./manifest.json">
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <meta name="theme-color" content="#114B4F">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -4477,6 +4476,7 @@ function syncWorkLocal(){
 function syncScanWork(state, now){
   try{ workOrderMediaFromSubmissions(); }catch(e){}
   try{ sendJobEmails(); }catch(e){}
+  try{ sendHeldReportEmails(); }catch(e){}       // held service reports (Oct 3)
   const wk = state.work;
   const stamp = now || new Date().toISOString();
   const local = syncWorkLocal();
@@ -19511,6 +19511,10 @@ const EMAILJS_SERVICE_ID = 'service_6i1y90b';
 const EMAILJS_TEMPLATE_ID = 'template_j8bfwfn';
 
 function emailjsIsConfigured(){
+  // Off for good (Oct 3): EmailJS sent every company's reports from one shared
+  // mailbox. Reports go only through the office's sender now; if it can't
+  // send, the report waits for the technician to resend it.
+  return false;
   return EMAILJS_PUBLIC_KEY !== 'YOUR_PUBLIC_KEY'
     && EMAILJS_SERVICE_ID !== 'YOUR_SERVICE_ID'
     && EMAILJS_TEMPLATE_ID !== 'YOUR_TEMPLATE_ID'
@@ -19832,8 +19836,10 @@ async function sendReportFromOffice(customerId, type){
   const custName = actions.dataset.customerName;
   const session = deviceGet('session');
   if(!session || !session.access_token){
-    noteLastReport('the old way', 'this phone needs signing in again');
-    return {ok: false, reason: 'signed-out'};
+    noteLastReport('held', 'this phone needs signing in again');
+    // Held, and sent once this phone is signed in and has signal (Oct 3)
+    await holdReportEmail(customerId, type, email, custName);
+    return {ok: false, reason: 'held'};
   }
 
   const photos = [];
@@ -19891,10 +19897,83 @@ async function sendReportFromOffice(customerId, type){
                                   missing: (photosNotOnThisPhone || []).slice(0, 8)});
     return {ok: true};
   }catch(e){
-    noteLastReport('the old way', 'no connection when it was sent');
-    return {ok: false, reason: 'offline'};
+    noteLastReport('held', 'no connection when it was sent');
+    // No signal: held on this phone and sent as soon as there is (Oct 3)
+    await holdReportEmail(customerId, type, email, custName);
+    return {ok: false, reason: 'held'};
   }
 }
+
+// ---- Service report emails held for signal (Oct 3) ----
+// Like work order and filter clean emails: a report that couldn't go waits on
+// this phone — its layout, who it's to, and its photos (kept in the photo
+// store, not the list) — and goes out by itself once there's signal.
+async function holdReportEmail(customerId, type, email, custName){
+  try{
+    const photos = [];
+    for(const p of (currentReportPhotos || [])){
+      const ref = await storePhoto(p.source, 'heldreport');
+      if(ref) photos.push({name: p.name || 'photo.jpg', caption: p.caption || '', ref: ref});
+    }
+    const q = lsGet('reportEmailsToSend') || [];
+    q.push({key: 'rep_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      to: email, subject: reportTypeLabel(type) + ' service report \u2014 ' + custName,
+      html: currentReportHtml || currentReportText, customerId: customerId, photos: photos,
+      heldAt: new Date().toISOString()});
+    lsSet('reportEmailsToSend', q);
+  }catch(e){}
+}
+let reportEmailsSending = false;
+async function sendHeldReportEmails(){
+  if(reportEmailsSending) return;
+  const q = lsGet('reportEmailsToSend') || [];
+  if(!q.length) return;
+  const session = deviceGet('session');
+  if(!session || !session.access_token) return;
+  if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
+  reportEmailsSending = true;
+  try{
+    for(const item of q){
+      const photos = [];
+      for(const p of (item.photos || [])){
+        let content = '';
+        try{
+          const src = await resolvePhoto(p.ref);
+          const jpeg = src ? await webpToJpegDataUrl(src) : '';
+          content = String(jpeg || src || '').split(',')[1] || '';
+        }catch(e){}
+        if(content) photos.push({filename: p.name, content: content, caption: p.caption || ''});
+      }
+      let res;
+      try{
+        res = await fetch(FIELD_SUPABASE_URL + '/functions/v1/send-report', {
+          method: 'POST',
+          headers: {'apikey': FIELD_SUPABASE_KEY, 'Authorization': 'Bearer ' + (deviceGet('session') || {}).access_token,
+                    'Content-Type': 'application/json'},
+          body: JSON.stringify({to: item.to, subject: item.subject, html: item.html, customerId: item.customerId, photos: photos})
+        });
+      }catch(e){ break; }                       // still no signal: try again later
+      if(res.status === 401){ await fieldRefresh(); break; }
+      if(res.ok || res.status === 400 || res.status === 403){
+        // Sent, or refused for good (a bad address, say): either way off the list
+        lsSet('reportEmailsToSend', (lsGet('reportEmailsToSend') || []).filter(x => x.key !== item.key));
+        (item.photos || []).forEach(p=>{
+          if(isPhotoRef(p.ref)){ try{ deletePhotoData(String(p.ref).slice(PHOTO_REF.length)); }catch(e){} }
+        });
+        if(res.ok){
+          noteLastReport('office', 'sent once there was signal');
+          showToast(item.subject.split(' \u2014 ')[1] + '\u2019s report emailed');
+        } else {
+          let why = '';
+          try{ const body = await res.json(); why = body && body.error ? ': ' + body.error : ''; }catch(e){}
+          showToast('A held report for ' + item.subject.split(' \u2014 ')[1] + ' could not be sent' + why + '. Resend it from the Report tab.');
+        }
+      } else break;                             // the office is having trouble: later
+    }
+  }finally{ reportEmailsSending = false; }
+}
+window.addEventListener('online', ()=>{ setTimeout(()=>{ try{ sendHeldReportEmails(); }catch(e){} }, 1500); });
+setInterval(()=>{ try{ sendHeldReportEmails(); }catch(e){} }, 30000);
 
 function sendViaEmailJS(...args){
   return isAdminUser() ? adminVersion_sendViaEmailJS.apply(this, args) : techVersion_sendViaEmailJS.apply(this, args);
@@ -20009,6 +20088,13 @@ async function adminVersion_attemptAutoSend(customerId, type, manual){
   if(fromOffice.reason === 'retry'){
     const second = await sendReportFromOffice(customerId, type);
     if(second.ok){ showToast('Report sent to ' + email); return; }
+    if(second.reason === 'held'){ showToast('Saved \u2014 the email will go out when you have signal'); return; }
+  }
+  // Held for signal (Oct 3): it goes by itself
+  if(fromOffice.reason === 'held'){
+    showToast('Saved \u2014 the email will go out when you have signal');
+    setTimeout(fieldRenderSyncCard, 0);
+    return;
   }
 
   // The office could not send it — no signal, or it refused. The old way is
@@ -20116,6 +20202,13 @@ async function techVersion_attemptAutoSend(customerId, type, manual){
   if(fromOffice.reason === 'retry'){
     const second = await sendReportFromOffice(customerId, type);
     if(second.ok){ showToast('Report sent to ' + email); return; }
+    if(second.reason === 'held'){ showToast('Saved \u2014 the email will go out when you have signal'); return; }
+  }
+  // Held for signal (Oct 3): it goes by itself
+  if(fromOffice.reason === 'held'){
+    showToast('Saved \u2014 the email will go out when you have signal');
+    setTimeout(fieldRenderSyncCard, 0);
+    return;
   }
 
   // The office could not send it — no signal, or it refused. The old way is

@@ -12,7 +12,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <style>
 /* A drawn × for close and remove buttons, centred on the box whatever the font
    does (a typed × sits about a pixel high) */
@@ -4678,21 +4677,29 @@ const EMAILJS_PUBLIC_KEY = 'bfwHISvPYiHm3NP4i';
 const EMAILJS_SERVICE_ID = 'service_6i1y90b';
 const EMAILJS_TEMPLATE_ID = 'template_j8bfwfn';
 
+// Through the office's own sender, the way service reports go (Oct 3; was
+// EmailJS, which sent every company's mail from one mailbox): from
+// "<company> via Weir" at reports@getweir.com, replies to the company.
+function plainEmailHtml(message){
+  const esc2 = t => String(t).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+  const paras = String(message || '').split(/\n{2,}/).map(p => '<p style="margin:0 0 14px;">' + esc2(p).replace(/\n/g, '<br>') + '</p>').join('');
+  return '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#0B2422;max-width:560px;">' + paras + '</div>';
+}
 async function sendCustomerEmail(toEmail, subject, message){
   if(!toEmail){
     showToast('This customer has no email on file');
     return false;
   }
   try{
-    emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
-    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-      to_email: toEmail,
-      subject: subject,
-      message: message
+    const res = await sbFetch('/functions/v1/send-report', {
+      method: 'POST',
+      body: JSON.stringify({to: toEmail, subject: subject, html: plainEmailHtml(message)})
     });
-    return true;
+    if(res.ok) return true;
+    showToast('Could not send \u2014 the office could not be reached. Try again in a moment.');
+    return false;
   }catch(e){
-    showToast('Could not send automatically — try copying the text instead');
+    showToast('Could not send \u2014 the office could not be reached. Try again in a moment.');
     return false;
   }
 }
@@ -6774,9 +6781,10 @@ function renderFilterGroups(){
         // Pause / resume this customer in this group (Oct 3)
         const paused = fgPaused(g, cid);
         if(paused){
-          chip.style.background = 'var(--surface-alt)';
-          chip.style.color = 'var(--muted)';
-          chip.style.boxShadow = 'inset 0 0 0 1.5px var(--line)';
+          // Paused: the red style, so it stands out as left out (Oct 3)
+          chip.style.background = '#FBE9E5';
+          chip.style.color = 'var(--rust)';
+          chip.style.boxShadow = 'inset 0 0 0 1.5px #EFC0B4';
           chip.lastChild.textContent = displayName(cust.name);
           chip.title = 'Paused in this group \u2014 not scheduled or emailed';
         }
@@ -6788,7 +6796,7 @@ function renderFilterGroups(){
           ? '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M8 5l11 7-11 7z" fill="currentColor"/></svg>'
           : '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>';
         pause.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;'
-          + 'border:1px solid ' + (paused ? 'var(--teal-mid)' : 'var(--line)') + ';background:#fff;color:' + (paused ? 'var(--teal-deep)' : 'var(--muted)') + ';cursor:pointer;padding:0;';
+          + 'border:1px solid ' + (paused ? '#EFC0B4' : 'var(--line)') + ';background:#fff;color:' + (paused ? 'var(--rust)' : 'var(--muted)') + ';cursor:pointer;padding:0;';
         pause.addEventListener('click', e=>{
           e.stopPropagation();
           const list = Array.isArray(g.pausedIds) ? g.pausedIds.slice() : [];
@@ -10933,13 +10941,14 @@ async function openFilterGroupEmail(){
 
     const label = document.createElement('span');
     label.style.flex = '1';
-    const withEmail = (g.customerIds || [])
+    // Who will actually get one (Oct 3): has an email, and isn't paused
+    const willGet = fgLiveIds(g)
       .map(id => customers.find(c => c.id === id))
       .filter(c => c && (c.email || '').trim()).length;
     label.innerHTML = '<strong>' + (g.name || 'Untitled group') + '</strong>'
       + '<br><span style="font-size:11.5px;color:var(--muted);">'
-      + withEmail + ' of ' + (g.customerIds || []).length
-      + (withEmail === 1 ? ' has' : ' have') + ' an email  \u00b7  '
+      + willGet + ' of ' + (g.customerIds || []).length
+      + ' will be sent an email  \u00b7  '
       + filterGroupDateText(g) + '</span>';
     row.appendChild(label);
 
@@ -13666,8 +13675,8 @@ setInterval(takeQuoteAnswers, 60000);
 // and once shortly after the page opens
 setTimeout(takeQuoteAnswers, 4000);
 
-// Through the report function; the plain-text email is kept as a fallback so a
-// quote still goes out if that can't be reached
+// Through the report function, and only that (Oct 3: the EmailJS fallback
+// is gone — it sent from one shared mailbox)
 async function sendQuoteEmail(customer, subject, html, plainText){
   if(!customer.email){ showToast('This customer has no email on file'); return false; }
   const res = await sbFetch('/functions/v1/send-report', {
@@ -13675,7 +13684,8 @@ async function sendQuoteEmail(customer, subject, html, plainText){
     body: JSON.stringify({to: customer.email, subject: subject, html: html})
   });
   if(res.ok) return true;
-  return sendCustomerEmail(customer.email, subject, plainText);
+  showToast('Could not send the quote \u2014 the office could not be reached. Try again in a moment.');
+  return false;
 }
 
 // Reopens an existing quote or work order in the WorkCenter form for editing
