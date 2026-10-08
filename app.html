@@ -929,7 +929,7 @@ select#customerSelect{font-weight:600;}
     </div>
     <div class="card" id="techListCard">
       <h2>Technicians</h2>
-      <p class="voice-hint" style="margin:-6px 0 14px;">Technicians are managed on the website — tap one here to see their route or edit their details.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Technicians are managed on the website — tap one here to see their route or edit their details.</p>
       <div id="techList"></div>
     </div>
 
@@ -1091,6 +1091,7 @@ select#customerSelect{font-weight:600;}
     </div>
     <div class="card" id="yourCustomersCard">
       <h2>Your customers</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Search to find a customer, or add a new one.</p>
       <div style="position:relative;margin-bottom:12px;">
         <input id="adminCustomerSearch" placeholder="Search by name, address, phone, or email" style="padding-right:38px;">
         <button type="button" id="btnClearAdminCustomerSearch" style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);height:26px;width:26px;padding:0;border:none;background:none;color:var(--muted);font-size:17px;line-height:1;cursor:pointer;align-items:center;justify-content:center;">×</button>
@@ -1116,6 +1117,8 @@ select#customerSelect{font-weight:600;}
     <div id="reportModeReports">
     <div class="card">
       <h2>Service reports</h2>
+      <!-- Every tab: heading, then one line on what it's for (Oct 8) -->
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Every report for a customer, newest first. Pick a customer, then press a report to open it.</p>
       <div class="field" style="position:relative;">
         <label>Customer</label>
         <input id="reportCustomerSearch" placeholder="Search customers by name, address, phone, or email" autocomplete="off" style="padding-right:38px;">
@@ -15228,14 +15231,17 @@ function awcBuild(pane){
       <button type="button" class="btn" data-kind="Work Order" style="flex:1;padding:10px 6px;">Work Order</button>
       <button type="button" class="btn" data-kind="Task" style="flex:1;padding:10px 6px;">Task</button>
     </div>
-    <div class="seg-control" id="awcViewRow">
-      <button type="button" class="history-type-btn active" data-view="main" id="awcMainTab">Work Order</button>
-      <button type="button" class="history-type-btn" data-view="current">Current</button>
+    <!-- The same two buttons as every other sub-tab row (Oct 8): the chosen one solid -->
+    <div class="btn-row" id="awcViewRow" style="gap:6px;margin-bottom:16px;flex-wrap:nowrap;">
+      <button type="button" class="btn btn-primary" data-view="main" id="awcMainTab" style="flex:1;padding:10px 6px;">Work Order</button>
+      <button type="button" class="btn btn-ghost" data-view="current" style="flex:1;padding:10px 6px;">Current</button>
       <!-- History is hidden for now (Oct 3); its code stays, to bring back -->
-      <button type="button" class="history-type-btn" data-view="history" style="display:none;">History</button>
+      <button type="button" class="btn btn-ghost" data-view="history" style="display:none;flex:1;padding:10px 6px;">History</button>
     </div>
 
     <div id="awcWoForm">
+      <h2>New work order</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Goes onto the technician&rsquo;s route on the scheduled date.</p>
       <div class="field">
         <!-- The number on the Scheduled date line (Oct 2) -->
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px;">
@@ -15305,6 +15311,8 @@ function awcBuild(pane){
     </div>
 
     <div id="awcTaskForm" style="display:none;">
+      <h2>New task</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">A job for a technician &mdash; for a customer, or on its own.</p>
       <div class="field">
         <label>Scheduled date</label>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -15364,6 +15372,8 @@ function awcBuild(pane){
     </div>
 
     <div id="awcCurrent" style="display:none;">
+      <h2>Current</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Work orders and tasks still to be done.</p>
       <select id="awcCurTech" style="margin-bottom:8px;"></select>
       <div id="awcCurList"></div>
     </div>
@@ -15491,7 +15501,7 @@ function awcApply(){
     b.className = 'btn ' + (b.dataset.kind === awcKind ? 'btn-primary' : 'btn-ghost');
   });
   document.getElementById('awcMainTab').textContent = awcKind;
-  document.querySelectorAll('#awcViewRow [data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === awcView));
+  document.querySelectorAll('#awcViewRow [data-view]').forEach(b => { b.className = 'btn ' + (b.dataset.view === awcView ? 'btn-primary' : 'btn-ghost'); });
   document.getElementById('awcWoForm').style.display = (awcView === 'main' && !isTask) ? '' : 'none';
   document.getElementById('awcTaskForm').style.display = (awcView === 'main' && isTask) ? '' : 'none';
   document.getElementById('awcCurrent').style.display = awcView === 'current' ? '' : 'none';

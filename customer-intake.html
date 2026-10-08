@@ -592,6 +592,7 @@ input::placeholder{color:#A9BCB9;}
       <div class="nav-subs" id="wcNavSubs">
         <button type="button" class="nav-sub active" data-type="quotes"><span>Work orders and quotes</span></button>
         <button type="button" class="nav-sub" data-type="filters"><span>Filter cleans</span></button>
+        <button type="button" class="nav-sub" data-type="drains"><span>Pool drains</span></button>
         <button type="button" class="nav-sub" data-type="broadcast"><span>Email</span></button>
       </div>
       <button class="tab" data-view="history">History / Billing</button>
@@ -1266,7 +1267,12 @@ input::placeholder{color:#A9BCB9;}
       <div id="customExistingWrap" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line);">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
           <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Customers with a custom setup</span>
-          <button class="btn btn-ghost" id="btnClearAllCustom" style="width:auto;padding:6px 11px;font-size:12px;color:var(--rust);border-color:#EFC9BC;">Clear all</button>
+          <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+            <!-- Every customized customer's quick buttons in one colour (Oct 8):
+                 the one on Readings and Dosages only changes the standard lists -->
+            <button class="btn btn-ghost" id="btnAllCustomQuickColors" type="button" style="width:auto;padding:6px 11px;font-size:12px;">All quick button colors</button>
+            <button class="btn btn-ghost" id="btnClearAllCustom" style="width:auto;padding:6px 11px;font-size:12px;color:var(--rust);border-color:#EFC9BC;">Clear all</button>
+          </div>
         </div>
         <div id="customExistingList"></div>
       </div>
@@ -1342,6 +1348,7 @@ input::placeholder{color:#A9BCB9;}
       <div class="seg-control" id="workCenterTypeControl">
         <button class="history-type-btn active" data-type="quotes">Work Orders & Quotes</button>
         <button class="history-type-btn" data-type="filters">Filter Cleans</button>
+        <button class="history-type-btn" data-type="drains">Pool Drains</button>
         <button class="history-type-btn" data-type="broadcast">Email</button>
       </div>
     </div>
@@ -1703,6 +1710,34 @@ input::placeholder{color:#A9BCB9;}
       </div>
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">These are on technicians&rsquo; routes, but none of the filter groups here made them &mdash; left over from a group made in another browser, one since deleted, or an older date. Groups are only kept in the browser they were made in. Removing one takes it off every route at the next sync.</p>
       <div id="wcFilterStrayList"></div>
+    </div>
+
+    <!-- Pool drains (Oct 8): when each pool was last drained, when the next is
+         due, and groups to drain together -->
+    <div class="card" id="wcDrainsSection" style="display:none;">
+      <div class="section-head">
+        <h2>Pool drains</h2>
+        <div style="display:flex;gap:8px;margin-left:auto;align-items:center;flex-wrap:wrap;">
+          <select id="drainTech" aria-label="Technician" title="Show one technician's customers" style="width:auto;min-width:160px;"></select>
+          <label for="drainEvery" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--ink);margin:0;white-space:nowrap;cursor:pointer;">Drain every
+            <select id="drainEvery" title="How often pools are drained in your area" style="width:auto;"></select>
+          </label>
+        </div>
+      </div>
+      <div class="section-count" id="drainCount" style="margin:-4px 0 12px;"></div>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">When each pool was last drained and when the next one is due. Set how often pools are drained in your area above; open a customer to change it just for them or to add drains done before. Tick customers to record a drain or put them in a group.</p>
+      <div id="drainSelBar" style="display:none;"></div>
+      <div id="drainStatusList"></div>
+    </div>
+
+    <div class="card" id="wcDrainGroupsCard" style="display:none;">
+      <div class="section-head">
+        <h2>Drain groups</h2>
+        <button class="btn btn-ghost" id="btnNewDrainGroup" style="width:auto;margin-left:auto;">+ New group</button>
+      </div>
+      <div class="section-count" id="drainGroupCount" style="margin:-4px 0 12px;"></div>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Group customers to drain together and give the group a date and a technician. Once the work is done, press Mark drained &mdash; each customer&rsquo;s next drain is worked out from that date.</p>
+      <div id="drainGroupList"></div>
     </div>
   </div>
 
@@ -6259,6 +6294,7 @@ function applyWorkCenterMode(mode){
     quotes:    ['wcQuotesSection', 'wcQuotesHistoryCard'],
     calls:     ['wcCallsSection', 'wcCallsListCard'],
     filters:   ['wcFiltersSection', 'wcFilterStrayCard'],
+    drains:    ['wcDrainsSection', 'wcDrainGroupsCard'],
     broadcast: ['wcBroadcastSection']
   };
 
@@ -6270,6 +6306,7 @@ function applyWorkCenterMode(mode){
   });
 
   if(mode === 'filters') renderFilterGroups();
+  if(mode === 'drains') renderPoolDrains();
   if(mode === 'broadcast') renderBroadcast();
 
   // The task form lives inside the quotes mode, so its own visibility is
@@ -6892,7 +6929,12 @@ async function finalizeFilterGroup(g){
   showToast('Filter cleans sent to ' + (tech ? tech.name : 'technician'));
 }
 
-function openGroupCustomerPicker(g){
+// opts (Oct 8, for pool drain groups): save, done and hint replace the filter
+// clean ones; without opts it behaves exactly as before
+function openGroupCustomerPicker(g, opts){
+  opts = opts || {};
+  const saveGroup = opts.save || saveFilterGroups;
+  const afterClose = opts.done || renderFilterGroups;
   const active = customers.filter(c => c.active !== false);
   if(active.length === 0){ showToast('No customers yet'); return; }
 
@@ -6905,7 +6947,7 @@ function openGroupCustomerPicker(g){
         <!-- How many are ticked, kept up to date (Oct 2) -->
         <span id="gcpCount" style="flex:0 0 auto;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--teal-deep);white-space:nowrap;"></span>
       </div>
-      <p style="font-size:11.5px;color:var(--muted);margin:0 0 12px;">Tick everyone who needs a filter clean in this batch.</p>
+      <p style="font-size:11.5px;color:var(--muted);margin:0 0 12px;">${opts.hint || 'Tick everyone who needs a filter clean in this batch.'}</p>
       <div style="position:relative;margin-bottom:10px;">
         <input id="gcpSearch" placeholder="Search by name, address, phone, or email" autocomplete="off">
         <button type="button" id="gcpSearchClear" hidden style="display:none !important;position:absolute;right:9px;top:50%;transform:translateY(-50%);height:24px;width:24px;padding:0;border:none;background:none;color:var(--muted);font-size:16px;line-height:1;cursor:pointer;">×</button>
@@ -6997,7 +7039,7 @@ function openGroupCustomerPicker(g){
         } else {
           g.customerIds = g.customerIds.filter(id => id !== cust.id);
         }
-        saveFilterGroups();
+        saveGroup();
         drawCount();
       });
       lbl.appendChild(cb);
@@ -7008,10 +7050,732 @@ function openGroupCustomerPicker(g){
     });
 
   drawCount();
-  const cleanup = ()=>{ document.body.removeChild(overlay); renderFilterGroups(); };
+  const cleanup = ()=>{ document.body.removeChild(overlay); afterClose(); };
   overlay.querySelector('#gcpDone').addEventListener('click', cleanup);
   overlay.querySelector('#gcpCancel').addEventListener('click', cleanup);
 }
+
+
+// ---------- Pool drains (Oct 8) ----------
+// Each customer's drains are kept on the customer themselves (c.drains, a list
+// of {date, groupId}), so they travel with the customer to every computer.
+// How often pools are drained is a company setting (3 years to start, the
+// Arizona norm), with a per-customer choice for the odd pool that differs.
+// Drain groups work like filter clean groups: customers, a date, a technician.
+const DRAIN_EVERY_CHOICES = [12, 18, 24, 36, 48, 60];
+const DRAIN_SOON_MONTHS = 6;          // "Due soon" looks this far ahead
+let drainGroups = lsGet('drainGroups') || [];
+function saveDrainGroups(){ lsSet('drainGroups', drainGroups); }
+let openDrainBuckets = new Set(['overdue']);
+let openDrainGroupIds = new Set();
+const drainPicked = new Set();        // customers ticked in the lists above
+
+function pdToday(){
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+function pdEveryText(m){
+  m = Number(m) || 36;
+  if(m % 12 === 0) return (m / 12) + (m === 12 ? ' year' : ' years');
+  return m + ' months';
+}
+function pdCompanyEvery(){ return Number(appSettings.drainEveryMonths) || 36; }
+function pdEvery(c){ return Number(c && c.drainEveryMonths) || pdCompanyEvery(); }
+function pdDrains(c){
+  return (Array.isArray(c && c.drains) ? c.drains : [])
+    .filter(d => d && /^\d{4}-\d{2}-\d{2}$/.test(d.date || ''))
+    .slice().sort((a, b) => b.date.localeCompare(a.date));
+}
+function pdLast(c){ const l = pdDrains(c); return l.length ? l[0].date : ''; }
+// A date some months on, as YYYY-MM-DD; the 31st of a short month lands on its last day
+function pdAddMonths(iso, months){
+  const [y, m, d] = iso.split('-').map(Number);
+  const total = (m - 1) + months;
+  const ny = y + Math.floor(total / 12), nm = ((total % 12) + 12) % 12;
+  const last = new Date(ny, nm + 1, 0).getDate();
+  return ny + '-' + String(nm + 1).padStart(2, '0') + '-' + String(Math.min(d, last)).padStart(2, '0');
+}
+function pdDue(c){ const l = pdLast(c); return l ? pdAddMonths(l, pdEvery(c)) : ''; }
+function pdBucket(c){
+  const due = pdDue(c);
+  if(!due) return 'never';
+  const today = pdToday();
+  if(due < today) return 'overdue';
+  if(due <= pdAddMonths(today, DRAIN_SOON_MONTHS)) return 'soon';
+  return 'later';
+}
+function pdDate(iso, withDay){
+  if(!iso) return '';
+  return new Date(iso + 'T12:00:00').toLocaleDateString(undefined,
+    withDay ? {weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'} : {month: 'short', day: 'numeric', year: 'numeric'});
+}
+// "8 months ago", "in 2 years 3 months"
+function pdSpan(iso){
+  const today = pdToday();
+  const [a, b] = iso < today ? [iso, today] : [today, iso];
+  const [y1, m1, d1] = a.split('-').map(Number), [y2, m2, d2] = b.split('-').map(Number);
+  let months = (y2 - y1) * 12 + (m2 - m1) - (d2 < d1 ? 1 : 0);
+  let text;
+  if(months < 1){
+    const days = Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
+    if(days === 0) return 'today';
+    text = days + (days === 1 ? ' day' : ' days');
+  } else {
+    const y = Math.floor(months / 12), m = months % 12;
+    text = [y ? y + (y === 1 ? ' year' : ' years') : '', m ? m + (m === 1 ? ' month' : ' months') : ''].filter(Boolean).join(' ');
+  }
+  return iso < today ? text + ' ago' : 'in ' + text;
+}
+// Only customers with a pool, still active, for the technician chosen
+function pdShownCustomers(){
+  const tech = (document.getElementById('drainTech') || {}).value || '';
+  return customers.filter(c => c && c.active !== false && c.hasPool !== false
+    && (!tech || (tech === 'none' ? !c.technicianId : String(c.technicianId || '') === tech)));
+}
+// A group still to be drained that this customer is in, if any
+function pdOpenGroupFor(cid){
+  return drainGroups.find(g => (g.customerIds || []).indexOf(cid) !== -1 && !pdGroupDrained(g, cid));
+}
+function pdGroupDrained(g, cid){
+  const c = customers.find(x => x.id === cid);
+  return !!c && pdDrains(c).some(d => d.groupId === g.id);
+}
+function pdRecord(cids, date, groupId){
+  let n = 0;
+  cids.forEach(cid=>{
+    const c = customers.find(x => x.id === cid);
+    if(!c) return;
+    const list = Array.isArray(c.drains) ? c.drains.slice() : [];
+    // The same day twice is one drain
+    if(list.some(d => d && d.date === date)){
+      if(groupId) list.forEach(d => { if(d && d.date === date && !d.groupId) d.groupId = groupId; });
+    } else {
+      list.push(groupId ? {date, groupId} : {date});
+    }
+    c.drains = list;
+    n++;
+  });
+  if(n) saveCustomers();
+  return n;
+}
+
+function pdFillMenus(){
+  const techMenu = document.getElementById('drainTech');
+  if(techMenu){
+    const keep = techMenu.value;
+    techMenu.innerHTML = '';
+    [['', 'All technicians']].concat(technicians.slice()
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity: 'base'}))
+        .map(t => [String(t.id), t.name || 'Technician']), [['none', 'No technician']])
+      .forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; techMenu.appendChild(o); });
+    techMenu.value = Array.from(techMenu.options).some(o => o.value === keep) ? keep : '';
+  }
+  const every = document.getElementById('drainEvery');
+  if(every){
+    every.innerHTML = '';
+    const have = DRAIN_EVERY_CHOICES.slice();
+    if(have.indexOf(pdCompanyEvery()) === -1) have.push(pdCompanyEvery());
+    have.sort((a, b) => a - b).forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = pdEveryText(m); every.appendChild(o); });
+    every.value = String(pdCompanyEvery());
+  }
+}
+
+const DRAIN_BUCKETS = [
+  {key: 'overdue', label: 'Overdue',              tone: 'var(--rust)'},
+  {key: 'soon',    label: 'Due in the next 6 months', tone: 'var(--gold)'},
+  {key: 'never',   label: 'No drain on record',   tone: 'var(--muted)'},
+  {key: 'later',   label: 'Up to date',           tone: 'var(--green)'}
+];
+
+function renderPoolDrains(){
+  pdFillMenus();
+  const shown = pdShownCustomers();
+  const byBucket = {overdue: [], soon: [], never: [], later: []};
+  shown.forEach(c => byBucket[pdBucket(c)].push(c));
+  // Most overdue first; due soonest first; never and up-to-date by name / due
+  byBucket.overdue.sort((a, b) => pdDue(a).localeCompare(pdDue(b)));
+  byBucket.soon.sort((a, b) => pdDue(a).localeCompare(pdDue(b)));
+  byBucket.later.sort((a, b) => pdDue(a).localeCompare(pdDue(b)));
+  byBucket.never.sort((a, b) => sortKeyName(a.name).localeCompare(sortKeyName(b.name)));
+  // Ticks only on customers still on screen
+  const shownIds = new Set(shown.map(c => c.id));
+  Array.from(drainPicked).forEach(id => { if(!shownIds.has(id)) drainPicked.delete(id); });
+
+  const countEl = document.getElementById('drainCount');
+  if(countEl){
+    countEl.textContent = shown.length + (shown.length === 1 ? ' pool' : ' pools')
+      + ' · ' + byBucket.overdue.length + ' overdue'
+      + ' · ' + byBucket.soon.length + ' due soon'
+      + ' · ' + byBucket.never.length + ' not on record';
+  }
+
+  const container = document.getElementById('drainStatusList');
+  if(!container) return;
+  container.innerHTML = '';
+  if(!shown.length){
+    container.innerHTML = emptyState(customers.some(c => c.active !== false && c.hasPool !== false) ? 'No pools for this technician.' : 'No customers with a pool yet.');
+    pdRenderSelBar();
+    renderDrainGroups();
+    return;
+  }
+
+  DRAIN_BUCKETS.forEach(b=>{
+    const list = byBucket[b.key];
+    const isOpen = openDrainBuckets.has(b.key) && list.length > 0;
+    const card = document.createElement('div');
+    card.style.cssText = 'border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;background:#fff;';
+
+    const head = document.createElement('div');
+    head.className = 'fg-head';
+    head.style.cssText = 'display:flex;align-items:center;gap:10px;' + (list.length ? 'cursor:pointer;' : '') + (isOpen ? 'margin-bottom:10px;' : '');
+    if(list.length) head.title = isOpen ? 'Tap to collapse' : 'Tap to open';
+    const chev = document.createElement('span');
+    chev.style.cssText = 'color:var(--muted);font-size:15px;flex-shrink:0;' + (list.length ? '' : 'visibility:hidden;');
+    chev.textContent = isOpen ? '‹' : '›';
+    head.appendChild(chev);
+    const dot = document.createElement('span');
+    dot.style.cssText = 'width:9px;height:9px;border-radius:50%;flex-shrink:0;background:' + b.tone + ';';
+    head.appendChild(dot);
+    const title = document.createElement('div');
+    title.style.cssText = "font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;";
+    title.textContent = b.label;
+    head.appendChild(title);
+    const n = document.createElement('span');
+    n.style.cssText = "margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:" + (list.length ? b.tone : 'var(--muted)') + ';';
+    n.textContent = list.length + (list.length === 1 ? ' customer' : ' customers');
+    head.appendChild(n);
+    if(list.length){
+      head.addEventListener('click', e=>{
+        if(e.target.closest('button, input, select, label')) return;
+        if(openDrainBuckets.has(b.key)) openDrainBuckets.delete(b.key); else openDrainBuckets.add(b.key);
+        renderPoolDrains();
+      });
+    }
+    card.appendChild(head);
+
+    if(isOpen){
+      // Tick the whole list at once
+      const all = document.createElement('label');
+      all.style.cssText = 'display:flex;align-items:center;gap:10px;padding:2px 6px 8px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;';
+      const allBox = document.createElement('input');
+      allBox.type = 'checkbox';
+      allBox.dataset.selTick = '1';     // not part of a Shift-click range
+      allBox.style.cssText = 'width:auto;margin:0;';
+      allBox.checked = list.every(c => drainPicked.has(c.id));
+      allBox.addEventListener('change', ()=>{
+        list.forEach(c => { if(allBox.checked) drainPicked.add(c.id); else drainPicked.delete(c.id); });
+        renderPoolDrains();
+      });
+      all.appendChild(allBox);
+      all.appendChild(document.createTextNode('Select all'));
+      card.appendChild(all);
+
+      const rows = document.createElement('div');
+      list.forEach(c => rows.appendChild(pdRow(c, b)));
+      card.appendChild(rows);
+    }
+    container.appendChild(card);
+  });
+  pdRenderSelBar();
+  renderDrainGroups();
+}
+
+function pdRow(c, b){
+  const row = document.createElement('div');
+  row.className = 'press-row';
+  row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:9px 6px;border-top:1px solid var(--line);cursor:pointer;border-radius:6px;';
+  row.title = 'Open ' + displayName(c.name) + '’s drains';
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.style.cssText = 'width:auto;margin:0;flex-shrink:0;';
+  box.checked = drainPicked.has(c.id);
+  box.addEventListener('click', e => e.stopPropagation());
+  box.addEventListener('change', ()=>{
+    if(box.checked) drainPicked.add(c.id); else drainPicked.delete(c.id);
+    pdRenderSelBar();
+    // The list's "Select all" follows
+    const card = row.closest('div[style*="border-radius:12px"]');
+    const allBox = card && card.querySelector('input[data-sel-tick]');
+    if(allBox) allBox.checked = Array.from(card.querySelectorAll('.press-row input[type=checkbox]')).every(x => x.checked);
+  });
+  row.appendChild(box);
+
+  const who = document.createElement('div');
+  who.style.cssText = 'flex:1 1 auto;min-width:0;font-size:13.5px;font-weight:600;';
+  nameWithAddress(who, c);
+  row.appendChild(who);
+
+  // In a group that hasn't drained yet: its name and date
+  const g = pdOpenGroupFor(c.id);
+  if(g){
+    const tag = document.createElement('span');
+    tag.style.cssText = 'flex-shrink:0;background:var(--teal-pale);color:var(--teal-deep);font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;white-space:nowrap;';
+    tag.textContent = (g.name || 'Group') + (g.date ? ' · ' + new Date(g.date + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : '');
+    tag.title = 'In the drain group "' + (g.name || '') + '"';
+    row.appendChild(tag);
+  }
+
+  const last = pdLast(c), due = pdDue(c);
+  const lastCol = document.createElement('div');
+  lastCol.style.cssText = 'flex:0 0 150px;width:150px;font-size:12px;color:var(--muted);line-height:1.35;';
+  lastCol.innerHTML = '<span style="display:block;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">Last drained</span>'
+    + (last ? '<span style="color:var(--ink);font-weight:600;">' + esc(pdDate(last)) + '</span><span style="display:block;font-size:11px;">' + esc(pdSpan(last)) + '</span>'
+            : '<span>Not on record</span>');
+  row.appendChild(lastCol);
+
+  const dueCol = document.createElement('div');
+  dueCol.style.cssText = 'flex:0 0 150px;width:150px;font-size:12px;color:var(--muted);line-height:1.35;';
+  const custom = !!Number(c.drainEveryMonths);
+  dueCol.innerHTML = '<span style="display:block;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">Next due</span>'
+    + (due ? '<span style="color:' + (b.key === 'overdue' ? 'var(--rust)' : 'var(--ink)') + ';font-weight:600;">' + esc(pdDate(due)) + '</span>'
+             + '<span style="display:block;font-size:11px;' + (b.key === 'overdue' ? 'color:var(--rust);' : '') + '">'
+             + esc(b.key === 'overdue' ? pdSpan(due).replace(/ ago$/, ' overdue') : pdSpan(due)) + '</span>'
+           : '<span>Once a drain is added</span>')
+    + (custom ? '<span style="display:block;font-size:11px;color:var(--teal-deep);font-weight:600;">Every ' + esc(pdEveryText(c.drainEveryMonths)) + '</span>' : '');
+  row.appendChild(dueCol);
+
+  row.addEventListener('click', e=>{
+    if(e.target.closest('button, input, select, label')) return;
+    openDrainHistory(c);
+  });
+  return row;
+}
+
+// The bar of things to do with the ticked customers
+function pdRenderSelBar(){
+  const bar = document.getElementById('drainSelBar');
+  if(!bar) return;
+  const n = drainPicked.size;
+  if(!n){ bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  bar.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding:9px 12px;border-radius:10px;background:var(--teal-pale);';
+  bar.innerHTML = '';
+  const t = document.createElement('span');
+  t.style.cssText = 'font-size:13px;font-weight:700;color:var(--teal-deep);margin-right:auto;';
+  t.textContent = n + (n === 1 ? ' customer' : ' customers') + ' ticked';
+  bar.appendChild(t);
+  const rec = document.createElement('button');
+  rec.type = 'button'; rec.className = 'btn btn-primary';
+  rec.style.cssText = 'width:auto;padding:7px 12px;font-size:12.5px;';
+  rec.textContent = 'Record drain';
+  rec.addEventListener('click', ()=> pdAskDate(Array.from(drainPicked)));
+  bar.appendChild(rec);
+  const grp = document.createElement('button');
+  grp.type = 'button'; grp.className = 'btn btn-ghost';
+  grp.style.cssText = 'width:auto;padding:7px 12px;font-size:12.5px;background:#fff;';
+  grp.textContent = 'Add to group';
+  grp.addEventListener('click', ()=> pdPickGroup(Array.from(drainPicked)));
+  bar.appendChild(grp);
+  const clr = document.createElement('button');
+  clr.type = 'button'; clr.className = 'btn btn-ghost';
+  clr.style.cssText = 'width:auto;padding:7px 12px;font-size:12.5px;background:#fff;';
+  clr.textContent = 'Clear';
+  clr.addEventListener('click', ()=>{ drainPicked.clear(); renderPoolDrains(); });
+  bar.appendChild(clr);
+}
+
+// When was it drained? Today unless changed.
+function pdAskDate(cids){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-box">
+      <h3 style="font-size:15px;margin:0 0 4px;">Record a drain</h3>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">For ${cids.length} ${cids.length === 1 ? 'customer' : 'customers'}. Their next drain is worked out from this date.</p>
+      <label for="pdDateIn" style="font-size:12.5px;font-weight:600;">Drained on</label>
+      <input type="date" id="pdDateIn" style="margin:4px 0 14px;">
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="pdDateCancel">Cancel</button>
+        <button class="btn btn-primary" id="pdDateOk">Record</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const inp = overlay.querySelector('#pdDateIn');
+  inp.value = pdToday();
+  const close = ()=> overlay.remove();
+  overlay.querySelector('#pdDateCancel').addEventListener('click', close);
+  overlay.querySelector('#pdDateOk').addEventListener('click', ()=>{
+    if(!inp.value){ showToast('Choose a date'); return; }
+    const n = pdRecord(cids, inp.value);
+    close();
+    drainPicked.clear();
+    renderPoolDrains();
+    showToast('Drain recorded for ' + n + (n === 1 ? ' customer' : ' customers'));
+  });
+}
+
+// Which group? An existing one or a new one.
+function pdPickGroup(cids){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const open = drainGroups.filter(g => !(g.customerIds || []).length || !(g.customerIds || []).every(cid => pdGroupDrained(g, cid)));
+  overlay.innerHTML = `
+    <div class="confirm-box" style="max-width:380px;">
+      <h3 style="font-size:15px;margin:0 0 4px;">Add to a drain group</h3>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">${cids.length} ${cids.length === 1 ? 'customer' : 'customers'}.</p>
+      <div id="pdGroupList" style="border:1px solid var(--line);border-radius:10px;padding:4px 6px;margin-bottom:14px;max-height:50vh;overflow-y:auto;"></div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="pdGroupCancel">Cancel</button>
+        <button class="btn btn-primary" id="pdGroupNew">New group</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const listEl = overlay.querySelector('#pdGroupList');
+  const close = ()=> overlay.remove();
+  const addTo = g=>{
+    if(!Array.isArray(g.customerIds)) g.customerIds = [];
+    cids.forEach(cid => { if(g.customerIds.indexOf(cid) === -1) g.customerIds.push(cid); });
+    saveDrainGroups();
+    openDrainGroupIds.add(g.id);
+    drainPicked.clear();
+    close();
+    renderPoolDrains();
+    showToast('Added to ' + (g.name || 'the group'));
+  };
+  if(!open.length){
+    listEl.innerHTML = '<div style="padding:12px 4px;font-size:12.5px;color:var(--muted);">No groups yet.</div>';
+  }
+  open.forEach(g=>{
+    const r = document.createElement('div');
+    r.className = 'press-row';
+    r.style.cssText = 'padding:9px 6px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:6px;font-size:13.5px;font-weight:600;';
+    const sub = (g.customerIds || []).length + ' customers' + (g.date ? ' · ' + pdDate(g.date) : '');
+    r.innerHTML = esc(g.name || 'Group') + '<span style="display:block;font-size:11.5px;font-weight:400;color:var(--muted);">' + esc(sub) + '</span>';
+    r.addEventListener('click', ()=> addTo(g));
+    listEl.appendChild(r);
+  });
+  overlay.querySelector('#pdGroupCancel').addEventListener('click', close);
+  overlay.querySelector('#pdGroupNew').addEventListener('click', async ()=>{
+    close();
+    const g = await pdNewGroup();
+    if(g){ cids.forEach(cid => g.customerIds.push(cid)); saveDrainGroups(); drainPicked.clear(); renderPoolDrains(); }
+  });
+}
+
+async function pdNewGroup(){
+  const name = await promptDialog('Name this group', 'e.g. Spring drains');
+  if(!name) return null;
+  const shownTech = (document.getElementById('drainTech') || {}).value || '';
+  const g = {
+    id: 'dg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+    name, customerIds: [], date: '',
+    technicianId: shownTech && shownTech !== 'none' ? shownTech : ''
+  };
+  drainGroups.push(g);
+  openDrainGroupIds.add(g.id);
+  saveDrainGroups();
+  return g;
+}
+
+// One customer's drains: every one recorded, add one done before, and how
+// often this pool in particular is drained
+function openDrainHistory(c){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-box" style="max-width:400px;">
+      <h3 style="font-size:15px;margin:0 0 2px;">Pool drains &mdash; ${esc(displayName(c.name))}</h3>
+      <p id="pdhAddr" style="font-size:11.5px;color:var(--muted);margin:0 0 14px;"></p>
+      <label for="pdhEvery" style="font-size:12.5px;font-weight:600;">Drain every</label>
+      <select id="pdhEvery" style="margin:4px 0 14px;"></select>
+      <div style="font-size:12.5px;font-weight:600;margin-bottom:4px;">Drains</div>
+      <div id="pdhList" style="border:1px solid var(--line);border-radius:10px;padding:2px 10px;margin-bottom:12px;max-height:36vh;overflow-y:auto;"></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
+        <input type="date" id="pdhDate" aria-label="Date drained" style="flex:1;">
+        <button class="btn btn-ghost" id="pdhAdd" style="width:auto;">Add drain</button>
+      </div>
+      <div id="pdhNext" style="font-size:12.5px;color:var(--muted);margin-bottom:14px;"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="pdhDone" style="flex:1;">Done</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#pdhAddr').textContent = fullAddressFor(c) || 'No address on file';
+  const every = overlay.querySelector('#pdhEvery');
+  [['', 'Company setting (' + pdEveryText(pdCompanyEvery()) + ')']]
+    .concat(DRAIN_EVERY_CHOICES.map(m => [String(m), pdEveryText(m)]))
+    .forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; every.appendChild(o); });
+  every.value = Number(c.drainEveryMonths) && DRAIN_EVERY_CHOICES.indexOf(Number(c.drainEveryMonths)) !== -1 ? String(c.drainEveryMonths) : '';
+  every.addEventListener('change', ()=>{
+    if(every.value) c.drainEveryMonths = Number(every.value); else delete c.drainEveryMonths;
+    saveCustomers();
+    draw();
+  });
+  const listEl = overlay.querySelector('#pdhList');
+  const nextEl = overlay.querySelector('#pdhNext');
+  const dateIn = overlay.querySelector('#pdhDate');
+  dateIn.value = pdToday();
+  function draw(){
+    listEl.innerHTML = '';
+    const list = pdDrains(c);
+    if(!list.length) listEl.innerHTML = '<div style="padding:10px 0;font-size:12.5px;color:var(--muted);">None recorded yet.</div>';
+    list.forEach(d=>{
+      const r = document.createElement('div');
+      r.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;';
+      const g = d.groupId ? drainGroups.find(x => x.id === d.groupId) : null;
+      r.innerHTML = '<span style="flex:1;font-weight:600;">' + esc(pdDate(d.date, true))
+        + '<span style="display:block;font-size:11px;font-weight:400;color:var(--muted);">' + esc(pdSpan(d.date) + (g ? ' · ' + g.name : '')) + '</span></span>';
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.textContent = 'Remove';
+      x.className = 'btn btn-ghost';
+      x.style.cssText = 'width:auto;flex:0 0 auto;padding:4px 9px;font-size:11.5px;color:var(--rust);border-color:#EFC9BC;';
+      x.addEventListener('click', ()=>{
+        c.drains = (c.drains || []).filter(o => !(o && o.date === d.date));
+        saveCustomers();
+        draw();
+      });
+      r.appendChild(x);
+      listEl.appendChild(r);
+    });
+    const due = pdDue(c);
+    nextEl.innerHTML = due ? 'Next drain due <b style="color:' + (due < pdToday() ? 'var(--rust)' : 'var(--ink)') + ';">' + esc(pdDate(due)) + '</b> (' + esc(due < pdToday() ? pdSpan(due).replace(/ ago$/, ' overdue') : pdSpan(due)) + ')'
+      : 'Add the last drain to see when the next is due.';
+  }
+  draw();
+  overlay.querySelector('#pdhAdd').addEventListener('click', ()=>{
+    if(!dateIn.value){ showToast('Choose a date'); return; }
+    pdRecord([c.id], dateIn.value);
+    draw();
+  });
+  overlay.querySelector('#pdhDone').addEventListener('click', ()=>{ overlay.remove(); renderPoolDrains(); });
+}
+
+// ---- Drain groups: like filter clean groups ----
+function renderDrainGroups(){
+  const container = document.getElementById('drainGroupList');
+  if(!container) return;
+  const countEl = document.getElementById('drainGroupCount');
+  const tech = (document.getElementById('drainTech') || {}).value || '';
+  const shownGroup = g => !tech || (tech === 'none' ? !g.technicianId : String(g.technicianId || '') === tech);
+  const groups = drainGroups.filter(shownGroup);
+  if(countEl){
+    const people = new Set();
+    groups.forEach(g => (g.customerIds || []).forEach(id => { if(customers.some(c => c.id === id)) people.add(id); }));
+    countEl.textContent = drainGroups.length ? people.size + (people.size === 1 ? ' customer' : ' customers') + ' in ' + groups.length + (groups.length === 1 ? ' group' : ' groups') : '';
+  }
+  container.innerHTML = '';
+  if(!drainGroups.length){
+    container.innerHTML = emptyState('No groups yet — create one to batch pool drains together.');
+    return;
+  }
+  if(!groups.length){
+    const menu = document.getElementById('drainTech');
+    container.innerHTML = emptyState(tech === 'none' ? 'Every group has a technician.' : 'No groups for ' + (menu ? menu.options[menu.selectedIndex].textContent : 'this technician') + '.');
+  }
+  groups.forEach(g=>{
+    const isOpen = openDrainGroupIds.has(g.id);
+    const ids = (g.customerIds || []).filter(cid => customers.some(c => c.id === cid));
+    const doneCount = ids.filter(cid => pdGroupDrained(g, cid)).length;
+    const allDone = ids.length > 0 && doneCount === ids.length;
+
+    const card = document.createElement('div');
+    card.dataset.reorderKey = g.id;
+    card.style.cssText = 'border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;background:#fff;';
+    const head = document.createElement('div');
+    head.className = 'fg-head';
+    head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;cursor:pointer;' + (isOpen ? 'margin-bottom:10px;' : '');
+    head.title = isOpen ? 'Tap to collapse' : 'Tap to open';
+    head.addEventListener('click', e=>{
+      if(e.target.closest('button') || e.target.closest('input') || e.target.closest('select')) return;
+      if(isOpen) openDrainGroupIds.delete(g.id); else openDrainGroupIds.add(g.id);
+      renderDrainGroups();
+    });
+
+    const leftWrap = document.createElement('div');
+    leftWrap.style.cssText = 'display:flex;align-items:center;gap:10px;min-width:0;';
+    const grip = document.createElement('span');
+    grip.textContent = '≡';
+    grip.title = 'Drag to reorder';
+    grip.style.cssText = 'color:var(--muted);font-size:18px;flex-shrink:0;padding:0 2px;';
+    grip.addEventListener('click', e => e.stopPropagation());
+    leftWrap.appendChild(grip);
+    attachTouchReorder(grip, card, container, ':scope > [data-reorder-key]', keys=>{
+      const byId = {};
+      drainGroups.forEach(x => { byId[x.id] = x; });
+      const moved = keys.filter((k, i) => byId[k] && keys.indexOf(k) === i);
+      const onScreen = new Set(moved);
+      let at = 0;
+      drainGroups = drainGroups.map(x => onScreen.has(x.id) ? byId[moved[at++]] : x);
+      saveDrainGroups();
+      renderDrainGroups();
+    });
+    const chev = document.createElement('span');
+    chev.style.cssText = 'color:var(--muted);font-size:15px;flex-shrink:0;';
+    chev.textContent = isOpen ? '‹' : '›';
+    leftWrap.appendChild(chev);
+    const title = document.createElement('div');
+    const nameEl = document.createElement('div');
+    nameEl.style.cssText = "font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;";
+    nameEl.textContent = g.name;
+    const sub = document.createElement('div');
+    sub.style.cssText = 'font-size:11.5px;color:var(--muted);margin-top:2px;';
+    sub.textContent = ids.length + (ids.length === 1 ? ' customer' : ' customers') + ' · ' + (technicianNameById(g.technicianId) || 'No technician')
+      + (ids.length && doneCount && !allDone ? ' · ' + doneCount + ' drained' : '');
+    title.appendChild(nameEl);
+    title.appendChild(sub);
+    leftWrap.appendChild(title);
+    head.appendChild(leftWrap);
+
+    const headRight = document.createElement('div');
+    headRight.style.cssText = 'display:flex;align-items:center;gap:8px;margin-left:auto;flex-shrink:0;';
+    if(allDone){
+      const badge = document.createElement('span');
+      badge.style.cssText = 'background:var(--green);color:#fff;font-size:10.5px;font-weight:700;padding:4px 9px;border-radius:7px;flex-shrink:0;';
+      badge.textContent = 'DRAINED';
+      headRight.appendChild(badge);
+    }
+    const dateCol = document.createElement('div');
+    dateCol.style.cssText = 'flex:0 0 112px;width:112px;font-size:13px;font-weight:600;color:var(--teal-deep);white-space:nowrap;';
+    dateCol.textContent = g.date ? new Date(g.date + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'}) : 'No date';
+    headRight.appendChild(dateCol);
+    const renameBtn = document.createElement('button');
+    renameBtn.type = 'button';
+    renameBtn.className = 'btn btn-ghost';
+    renameBtn.style.cssText = 'width:auto;padding:5px 10px;font-size:11.5px;flex-shrink:0;';
+    renameBtn.textContent = 'Rename';
+    renameBtn.addEventListener('click', async e=>{
+      e.stopPropagation();
+      const nm = await promptDialog('Rename this group', g.name, g.name, 'Save');
+      if(!nm) return;
+      g.name = nm;
+      saveDrainGroups();
+      renderPoolDrains();
+    });
+    headRight.appendChild(renameBtn);
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'btn btn-ghost';
+    delBtn.style.cssText = 'width:auto;padding:5px 10px;font-size:11.5px;color:var(--rust);border-color:#EFC9BC;flex-shrink:0;';
+    delBtn.textContent = 'Delete group';
+    delBtn.addEventListener('click', async e=>{
+      e.stopPropagation();
+      const ok = await confirmDialog('Delete "' + esc(g.name) + '"? Drains already recorded stay on each customer.');
+      if(!ok) return;
+      drainGroups = drainGroups.filter(x => x.id !== g.id);
+      saveDrainGroups();
+      renderPoolDrains();
+      showToast('Group deleted');
+    });
+    headRight.appendChild(delBtn);
+    head.appendChild(headRight);
+    card.appendChild(head);
+
+    if(!isOpen){ container.appendChild(card); return; }
+
+    const controls = document.createElement('div');
+    controls.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;';
+    const dateInput = document.createElement('input');
+    dateInput.type = 'date';
+    dateInput.value = g.date || '';
+    dateInput.style.cssText = 'flex:1;min-width:150px;';
+    dateInput.addEventListener('change', ()=>{
+      g.date = dateInput.value;
+      saveDrainGroups();
+      dateCol.textContent = g.date ? new Date(g.date + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'}) : 'No date';
+    });
+    controls.appendChild(dateInput);
+    const techSel = document.createElement('select');
+    techSel.style.cssText = 'flex:1;min-width:150px;';
+    techSel.innerHTML = '<option value="">Assign technician</option>';
+    technicians.forEach(t=>{
+      const o = document.createElement('option');
+      o.value = t.id; o.textContent = t.name;
+      if(g.technicianId === t.id) o.selected = true;
+      techSel.appendChild(o);
+    });
+    techSel.addEventListener('change', ()=>{ g.technicianId = techSel.value; saveDrainGroups(); renderDrainGroups(); });
+    controls.appendChild(techSel);
+    card.appendChild(controls);
+
+    if(ids.length){
+      const members = document.createElement('div');
+      members.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;';
+      ids.forEach(cid=>{
+        const cust = customers.find(x => x.id === cid);
+        const chip = document.createElement('span');
+        chip.dataset.reorderKey = cid;
+        chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:var(--teal-pale);color:var(--teal-deep);font-size:12px;font-weight:600;padding:4px 8px;border-radius:8px;';
+        const cgrip = document.createElement('span');
+        cgrip.textContent = '≡';
+        cgrip.title = 'Drag to reorder';
+        cgrip.style.cssText = 'color:var(--muted);font-size:14px;line-height:1;';
+        chip.appendChild(cgrip);
+        if(pdGroupDrained(g, cid)){
+          chip.style.background = '#E3F1E8';
+          chip.style.color = 'var(--green)';
+          chip.title = 'Drained';
+          const tick = document.createElement('span');
+          tick.textContent = '✓';
+          tick.style.cssText = 'font-weight:800;font-size:13px;line-height:1;';
+          chip.appendChild(tick);
+        }
+        chip.appendChild(document.createTextNode(displayName(cust.name)));
+        attachTouchReorder(cgrip, chip, members, ':scope > [data-reorder-key]', keys=>{
+          const known = new Set(g.customerIds);
+          const next = keys.filter(k => known.has(k));
+          g.customerIds.forEach(k => { if(next.indexOf(k) === -1) next.push(k); });
+          g.customerIds = next;
+          saveDrainGroups();
+          renderDrainGroups();
+        });
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.textContent = '×';
+        x.title = 'Take out of this group';
+        x.style.cssText = 'border:none;background:none;color:var(--rust);cursor:pointer;font-size:14px;line-height:1;padding:0;';
+        x.addEventListener('click', ()=>{
+          g.customerIds = g.customerIds.filter(id => id !== cid);
+          saveDrainGroups();
+          renderPoolDrains();
+        });
+        chip.appendChild(x);
+        members.appendChild(chip);
+      });
+      card.appendChild(members);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'btn-row';
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn btn-ghost';
+    addBtn.style.cssText = 'width:auto;padding:7px 12px;font-size:12.5px;';
+    addBtn.textContent = '+ Add customers';
+    addBtn.addEventListener('click', ()=> openGroupCustomerPicker(g, {
+      save: saveDrainGroups, done: renderPoolDrains, hint: 'Tick everyone to drain in this group.'}));
+    actions.appendChild(addBtn);
+    const left = ids.filter(cid => !pdGroupDrained(g, cid));
+    if(left.length){
+      const mark = document.createElement('button');
+      mark.className = 'btn btn-primary';
+      mark.style.cssText = 'width:auto;padding:7px 12px;font-size:12.5px;margin-left:auto;';
+      mark.textContent = 'Mark drained';
+      mark.addEventListener('click', async ()=>{
+        if(!g.date){ showToast('Give this group a date first'); return; }
+        if(g.date > pdToday()){ showToast('That date hasn’t come yet'); return; }
+        const ok = await confirmDialog('Record a drain on ' + esc(pdDate(g.date, true)) + ' for '
+          + left.length + (left.length === 1 ? ' customer' : ' customers') + ' in "' + esc(g.name) + '"?', 'Mark drained');
+        if(!ok) return;
+        pdRecord(left, g.date, g.id);
+        renderPoolDrains();
+        showToast('Drain recorded for ' + left.length + (left.length === 1 ? ' customer' : ' customers'));
+      });
+      actions.appendChild(mark);
+    }
+    card.appendChild(actions);
+    container.appendChild(card);
+  });
+}
+
+document.getElementById('btnNewDrainGroup').addEventListener('click', async ()=>{
+  if(await pdNewGroup()) renderPoolDrains();
+});
+document.getElementById('drainTech').addEventListener('change', renderPoolDrains);
+document.getElementById('drainEvery').addEventListener('change', e=>{
+  appSettings.drainEveryMonths = Number(e.target.value) || 36;
+  saveSettings();
+  renderPoolDrains();
+  showToast('Pools drained every ' + pdEveryText(appSettings.drainEveryMonths));
+});
 
 
 // ---------- Emailing a filter clean group ----------
@@ -16185,6 +16949,37 @@ document.getElementById('btnClearAllCustom').addEventListener('click', async ()=
   renderExistingCustomSetups();
   renderChemConfigLists();
   showToast('All custom setups cleared');
+});
+
+// All quick button colors on Customer Customization (Oct 8): every customer
+// with their own setup, and every group's setup, all bodies of water, in one
+// colour. The standard lists are left alone.
+document.getElementById('btnAllCustomQuickColors').addEventListener('click', async ()=>{
+  const people = Object.keys(customConfig).filter(cid => customers.some(x => x.id === cid));
+  if(!people.length && !customerGroups.some(g => g.config && Object.keys(g.config).length)){
+    showToast('Nobody has a custom setup yet');
+    return;
+  }
+  const pick = await pickQuickColor('Colour for every customized customer\u2019s quick buttons', false);
+  if(!pick) return;
+  const lists = [];
+  const addSetup = setup => Object.keys(setup || {}).forEach(k => { if(setup[k] && lists.indexOf(setup[k]) === -1) lists.push(setup[k]); });
+  Object.keys(customConfig).forEach(cid => addSetup(customConfig[cid]));
+  customerGroups.forEach(g => addSetup(g.config));
+  // A body of water open but not yet changed: its copy follows too
+  if(customWorking && lists.indexOf(customWorking) === -1) lists.push(customWorking);
+  let n = 0;
+  lists.forEach(l=>{
+    l.defaultButtonColor = pick.key;
+    ['chemicals', 'dosages'].forEach(part => (l[part] || []).forEach(it=>{
+      n += colorAllButtons(it, pick.key);
+      delete it.buttonColor;
+    }));
+  });
+  saveCustomerGroups();
+  lsSet('customChemConfig', customConfig);
+  renderChemConfigLists();
+  showToast('Every customized customer\u2019s quick buttons now ' + QUICK_BUTTON_COLORS[pick.key].label.toLowerCase());
 });
 
 function bodiesForCustomer(cust){
