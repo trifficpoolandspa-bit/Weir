@@ -1,106 +1,119 @@
-// quote-response: records a customer's answer to a quote (Approve / Deny).
+// email-events
 //
-// The email's buttons open quote-response.html on the Weir website, which
-// sends the answer here straight away and thanks the customer. (Supabase shows
-// pages from its own function addresses as plain text, so the thank-you page
-// lives on the website.) Buttons in emails sent before that page existed come
-// here directly: the answer is recorded and a plain thank-you shown.
-// The latest answer counts, so a customer can change their mind, for the
-// quote's days (30 unless the office set another number when sending it,
-// snippet 20) from when it was sent; after that the quote has expired.
+// Resend calls this when an email it accepted later bounces (the address
+// doesn't exist), is marked as spam, or fails. Each one is kept in the
+// email_events table for the company that sent it, and the office website
+// shows it under Alerts → Emails (Oct 8).
 //
-// Talks to the database the same way send-report does (its own keys, straight
-// requests), and says why if the database refuses rather than "not found".
+// Deploy with Verify JWT OFF: Resend has no Supabase sign-in. Instead every
+// call is checked against the webhook's signing secret, stored in Supabase as
+// RESEND_WEBHOOK_SECRET (Resend shows it as "whsec_…" on the webhook's page).
+// A call without a good signature is refused.
 //
-// Deploy in Supabase (Edge Functions) as "quote-response" with
-// "Verify JWT" OFF: the customer isn't signed in.
+// The company and customer come from the labels send-report puts on every
+// email (tags: company, customer).
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+const SECRET = Deno.env.get('RESEND_WEBHOOK_SECRET') ?? '';
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "content-type, apikey, authorization, x-client-info",
-};
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { ...CORS, "content-type": "application/json" } });
-const text = (body: string) =>
-  new Response(body, { headers: { ...CORS, "content-type": "text/plain; charset=utf-8" } });
-
-const ANSWER_DAYS = 30;
-
-const db = async (path: string, init: RequestInit = {}) => {
-  const res = await fetch(SUPABASE_URL + "/rest/v1/" + path, {
-    ...init,
-    headers: {
-      apikey: SERVICE_KEY,
-      Authorization: "Bearer " + SERVICE_KEY,
-      "Content-Type": "application/json",
-      ...(init.headers || {}),
-    },
-  });
-  const body = await res.text();
-  let data: unknown = null;
-  try { data = body ? JSON.parse(body) : null; } catch (_e) { data = null; }
-  return { ok: res.ok, status: res.status, data, body };
+// The events worth an alert. Delivered, opened and so on are ignored.
+const KEEP: Record<string, string> = {
+  'email.bounced': 'bounced',
+  'email.complained': 'complained',
+  'email.failed': 'failed'
 };
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+function reply(status: number, body: Record<string, unknown>){
+  return new Response(JSON.stringify(body), {status, headers: {'Content-Type': 'application/json'}});
+}
 
-  const url = new URL(req.url);
-  let token = url.searchParams.get("t") || "";
-  let action = url.searchParams.get("a") || "";
-  const fromOldEmail = req.method === "GET" && !!action;   // a button in an older email
-  if (req.method === "POST") {
-    try {
-      const body = await req.json();
-      token = String(body.t || token);
-      action = String(body.a || action);
-    } catch (_e) { /* keep what the address had */ }
-  }
-  const outcome = action === "approve" ? "approved" : action === "deny" ? "denied" : null;
-  const sorry = "Thank you! We couldn't match this link to a quote. Please reply to the email or give us a call and we'll sort it out.";
-
-  if (!token) return fromOldEmail ? text(sorry) : json({ state: "missing" });
-
-  const found = await db("quote_responses?select=*&token=eq." + encodeURIComponent(token));
-  if (!found.ok) {
-    // The database refused: say why, rather than "not found"
-    return fromOldEmail ? text(sorry) : json({ state: "error", why: found.status + " " + found.body.slice(0, 200) }, 500);
-  }
-  const row = Array.isArray(found.data) && found.data.length ? found.data[0] as { company_id: string; outcome: string | null; created_at: string; expires_days?: number | null } : null;
-  if (!row) return fromOldEmail ? text(sorry) : json({ state: "missing" });
-
-  const co = await db("companies?select=name&id=eq." + encodeURIComponent(row.company_id));
-  const company = co.ok && Array.isArray(co.data) && co.data.length ? String((co.data[0] as { name?: string }).name || "") : "";
-
-  // Past the quote's days from sending (30 unless set): expired, nothing recorded
-  const days = Number(row.expires_days) || ANSWER_DAYS;
-  const sentAt = new Date(row.created_at).getTime();
-  if (sentAt && Date.now() - sentAt > days * 24 * 60 * 60 * 1000) {
-    return fromOldEmail
-      ? text("This quote has expired. It was sent more than " + days + " days ago — please contact " + (company || "us") + " for an updated quote.")
-      : json({ state: "expired", outcome: row.outcome, company, days });
-  }
-
-  if (!outcome) return json({ state: row.outcome ? "answered" : "open", outcome: row.outcome, company });
-
-  // The latest answer counts: a customer can change their mind
-  const recorded = outcome;
-  const saved = await db("quote_responses?token=eq." + encodeURIComponent(token), {
-    method: "PATCH",
-    headers: { Prefer: "return=minimal" },
-    body: JSON.stringify({ outcome, responded_at: new Date().toISOString() }),
+// Resend signs with Svix: HMAC-SHA256 of "id.timestamp.body", keyed with the
+// secret after "whsec_", base64. The header may carry several "v1,<sig>".
+async function signedByResend(req: Request, raw: string){
+  if(!SECRET) return false;
+  const id = req.headers.get('svix-id') || req.headers.get('webhook-id') || '';
+  const ts = req.headers.get('svix-timestamp') || req.headers.get('webhook-timestamp') || '';
+  const sigs = req.headers.get('svix-signature') || req.headers.get('webhook-signature') || '';
+  if(!id || !ts || !sigs) return false;
+  // Not more than five minutes old, so an old call can't be replayed
+  const age = Math.abs(Date.now() / 1000 - Number(ts));
+  if(!(age < 300)) return false;
+  let keyBytes: Uint8Array;
+  try{
+    const b64 = SECRET.startsWith('whsec_') ? SECRET.slice(6) : SECRET;
+    keyBytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  }catch(e){ return false; }
+  const key = await crypto.subtle.importKey('raw', keyBytes, {name: 'HMAC', hash: 'SHA-256'}, false, ['sign']);
+  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(id + '.' + ts + '.' + raw));
+  const expected = btoa(String.fromCharCode(...new Uint8Array(mac)));
+  return sigs.split(' ').some(part => {
+    const sig = part.includes(',') ? part.split(',')[1] : part;
+    if(sig.length !== expected.length) return false;
+    let diff = 0;
+    for(let i = 0; i < sig.length; i++) diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i);
+    return diff === 0;
   });
-  if (!saved.ok) {
-    return fromOldEmail ? text(sorry) : json({ state: "error", why: saved.status + " " + saved.body.slice(0, 200) }, 500);
-  }
+}
 
-  if (fromOldEmail) {
-    return text("Thank you for your response! " + (company ? company + " has" : "We have")
-      + " your answer and will be in touch soon. You can close this page.");
+// Tags arrive either as {name: value} or as [{name, value}]
+function tag(tags: unknown, name: string){
+  if(Array.isArray(tags)){
+    const t = tags.find((x: any) => x && x.name === name);
+    return t ? String(t.value || '') : '';
   }
-  return json({ state: "recorded", outcome: recorded, company });
+  if(tags && typeof tags === 'object') return String((tags as Record<string, unknown>)[name] || '');
+  return '';
+}
+
+Deno.serve(async (req: Request)=>{
+  if(req.method !== 'POST') return reply(405, {error: 'Send it as a POST'});
+  if(!SERVICE_KEY || !SUPABASE_URL) return reply(500, {error: 'This server is not set up'});
+
+  const raw = await req.text();
+  if(!(await signedByResend(req, raw))) return reply(401, {error: 'Not signed by Resend'});
+
+  let event: any;
+  try{ event = JSON.parse(raw); }catch(e){ return reply(400, {error: 'That was not readable'}); }
+  const kind = KEEP[String(event && event.type || '')];
+  // Anything else: thanks, nothing to keep (a 200 stops Resend retrying)
+  if(!kind) return reply(200, {ignored: true});
+
+  const d = event.data || {};
+  const company = tag(d.tags, 'company');
+  // An email sent before the labels existed can't be matched to a company
+  if(!/^[0-9a-f-]{36}$/i.test(company)) return reply(200, {ignored: true, why: 'no company label'});
+
+  const bounce = d.bounce || {};
+  const failed = d.failed || {};
+  const reason = kind === 'bounced'
+    ? (bounce.message || bounce.subType || bounce.type || 'The address does not exist')
+    : kind === 'complained' ? 'The customer marked it as spam'
+    : (failed.reason || d.reason || 'The email service could not deliver it');
+
+  const row = {
+    id: String(d.email_id || '') + ':' + kind,
+    company_id: company,
+    customer_id: tag(d.tags, 'customer') || null,
+    to_address: Array.isArray(d.to) ? d.to.join(', ') : String(d.to || ''),
+    subject: String(d.subject || ''),
+    event: kind,
+    reason: String(reason).slice(0, 500),
+    happened_at: String(event.created_at || d.created_at || new Date().toISOString())
+  };
+  const res = await fetch(SUPABASE_URL + '/rest/v1/email_events', {
+    method: 'POST',
+    headers: {apikey: SERVICE_KEY, Authorization: 'Bearer ' + SERVICE_KEY,
+              'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates,return=minimal'},
+    body: JSON.stringify(row)
+  });
+  // A company on the other server (live and beta both hear every email):
+  // not ours, so nothing to keep here
+  if(res.status === 409) return reply(200, {ignored: true, why: 'not a company on this server'});
+  if(!res.ok){
+    const said = await res.text().catch(()=> '');
+    // A failure here makes Resend try again later
+    return reply(500, {error: 'Could not keep it', detail: said.slice(0, 300)});
+  }
+  return reply(200, {kept: true});
 });
