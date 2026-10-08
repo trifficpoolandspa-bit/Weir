@@ -85,6 +85,11 @@ async function keepFullSize(companyId: string, id: string, content: string){
   }catch(e){ return ''; }
 }
 
+// Resend takes only letters, numbers, _ and - in a label
+function tagValue(v: string){
+  return String(v || '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 256) || 'none';
+}
+
 Deno.serve(async (req: Request)=>{
   if(req.method === 'OPTIONS') return new Response('ok', {headers: CORS});
   if(req.method !== 'POST') return reply(405, {error: 'Send it as a POST'});
@@ -258,7 +263,13 @@ Deno.serve(async (req: Request)=>{
     subject,
     html: withPhotos(html),
     ...(who.replyTo ? {reply_to: who.replyTo} : {}),
-    ...(attachments.length ? {attachments} : {})
+    ...(attachments.length ? {attachments} : {}),
+    // Labels Resend hands back if the email bounces, so the bounce can be
+    // matched to the company and customer (Oct 8; see functions/email-events)
+    tags: [
+      {name: 'company', value: tagValue(who.companyId)},
+      ...(body.customerId ? [{name: 'customer', value: tagValue(String(body.customerId))}] : [])
+    ]
   };
 
   const sent = await fetch('https://api.resend.com/emails', {
