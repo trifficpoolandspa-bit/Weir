@@ -4742,6 +4742,54 @@ function recordEmailFailure(customer, what, to, reason){
     try{ updateAlertsBadge(); }catch(e){}
   }catch(e){}
 }
+// Bounces (Oct 8): emails Resend accepted but couldn't deliver, reported back
+// to the server by the email-events function. Pulled every minute and added
+// to Alerts → Emails, matched to the customer by the label on the email or,
+// failing that, by the address.
+function emailWhatFromSubject(subject){
+  const s = String(subject || '');
+  if(/service report/i.test(s)) return 'Service report';
+  if(/quote/i.test(s)) return 'Quote';
+  if(/work order/i.test(s)) return 'Work order email';
+  if(/filter clean/i.test(s)) return 'Filter clean email';
+  if(/on my way/i.test(s)) return 'On my way';
+  return s || 'Email';
+}
+async function takeEmailBounces(){
+  try{
+    if(typeof siteUser === 'undefined' || !siteUser || !siteUser.companyId) return;
+    const since = lsGet('emailEventsSince') || new Date(Date.now() - 30 * 86400000).toISOString();
+    const res = await sbFetch('/rest/v1/email_events?select=*&created_at=gt.' + encodeURIComponent(since)
+      + '&order=created_at.asc&limit=200', {method: 'GET'});
+    if(!res || !res.ok || !Array.isArray(res.body) || !res.body.length) return;
+    const list = lsGet('emailFailures');
+    const all = list && typeof list === 'object' ? Object.assign({}, list) : {};
+    const label = v => String(v || '').replace(/[^A-Za-z0-9_-]/g, '_');
+    let added = 0, last = since;
+    res.body.forEach(e=>{
+      if(e.created_at > last) last = e.created_at;
+      const id = 'bounce:' + e.id;
+      if(all[id]) return;
+      const to = String(e.to_address || '').toLowerCase();
+      const c = (customers || []).find(x => x && e.customer_id && label(x.id) === e.customer_id)
+        || (customers || []).find(x => x && to && String(x.email || '').trim().toLowerCase() === to);
+      const t = new Date(e.happened_at || e.created_at).getTime() || Date.now();
+      all[id] = {t: t, customerId: c ? c.id : '', name: c ? displayName(c.name) : (e.to_address || ''),
+        to: e.to_address || '', what: emailWhatFromSubject(e.subject), event: e.event, reason: e.reason || ''};
+      added++;
+    });
+    lsSet('emailEventsSince', last);
+    if(!added) return;
+    lsSet('emailFailures', all);
+    try{ if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange(); }catch(e){}
+    const page = document.getElementById('view-alerts');
+    if(page && page.classList.contains('active') && !document.querySelector('.confirm-overlay')) renderAlerts();
+    else updateAlertsBadge();
+  }catch(e){}
+}
+setInterval(takeEmailBounces, 60000);
+setTimeout(takeEmailBounces, 5000);
+
 function emailFailReason(res){
   if(!res || res.offline || !res.status) return 'No connection to the office';
   const said = res.body && (res.body.error || res.body.message);
@@ -4755,7 +4803,8 @@ async function sendCustomerEmail(toEmail, subject, message, customer, what){
   try{
     const res = await sbFetch('/functions/v1/send-report', {
       method: 'POST',
-      body: JSON.stringify({to: toEmail, subject: subject, html: plainEmailHtml(message)})
+      body: JSON.stringify({to: toEmail, subject: subject, html: plainEmailHtml(message),
+                            customerId: customer && customer.id || undefined})
     });
     if(res.ok) return true;
     recordEmailFailure(customer, what, toEmail, emailFailReason(res));
@@ -14481,7 +14530,7 @@ async function sendQuoteEmail(customer, subject, html, plainText){
   if(!customer.email){ showToast('This customer has no email on file'); return false; }
   const res = await sbFetch('/functions/v1/send-report', {
     method: 'POST',
-    body: JSON.stringify({to: customer.email, subject: subject, html: html})
+    body: JSON.stringify({to: customer.email, subject: subject, html: html, customerId: customer.id})
   });
   if(res.ok) return true;
   recordEmailFailure(customer, 'Quote', customer.email, emailFailReason(res));
@@ -23670,7 +23719,8 @@ function collectAlerts(){
     const c = f.customerId ? (customers || []).find(x => x && String(x.id) === String(f.customerId)) : null;
     out.push({id: id, kind: 'email', customerId: c ? c.id : '', name: c ? displayName(c.name) : (f.name || 'Customer'),
       body: f.what || 'Email', t: f.t, tech: f.by || '',
-      notes: 'Not sent' + (f.to ? ' to ' + f.to : '') + (f.reason ? ' \u2014 ' + f.reason : '')});
+      notes: (f.event === 'bounced' ? 'Bounced' : f.event === 'complained' ? 'Marked as spam' : 'Not sent')
+        + (f.to ? (f.event === 'complained' ? ' by ' : ' to ') + f.to : '') + (f.reason ? ' \u2014 ' + f.reason : '')});
   });
   const gone = alertsGone();
   const kept = out.filter(a => !gone[a.id]);
