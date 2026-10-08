@@ -291,6 +291,9 @@ input::placeholder{color:#A9BCB9;}
 .alert-tag.note{background:#E8F1E4;color:#4D6B3C;}
 .wc-tick-col{display:flex;flex-direction:column;gap:10px;padding-bottom:10px;}
 .alert-tag.repair{background:var(--gold-pale);color:var(--gold);}
+.alert-tag.email{background:#FBE9E5;color:var(--rust);}
+.alerts-tab-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:7px;border-radius:999px;background:var(--gold);color:#fff;font-size:10.5px;font-weight:700;vertical-align:1px;}
+.alerts-kind-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:7px;border-radius:999px;background:var(--gold);color:#fff;font-size:10.5px;font-weight:700;vertical-align:1px;}
 
 
 .reorder-placeholder{pointer-events:none;}
@@ -1954,6 +1957,8 @@ input::placeholder{color:#A9BCB9;}
         <button type="button" class="history-type-btn" data-kind="video">Videos</button>
         <button type="button" class="history-type-btn" data-kind="note">Notes</button>
         <button type="button" class="history-type-btn" data-kind="repair">Repairs</button>
+        <!-- Emails that didn't go out (Oct 8) -->
+        <button type="button" class="history-type-btn" data-kind="email">Emails</button>
       </div>
       <div id="alertsList"></div>
     </div>
@@ -4720,7 +4725,29 @@ function plainEmailHtml(message){
   const paras = String(message || '').split(/\n{2,}/).map(p => '<p style="margin:0 0 14px;">' + esc2(p).replace(/\n/g, '<br>') + '</p>').join('');
   return '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#0B2422;max-width:560px;">' + paras + '</div>';
 }
-async function sendCustomerEmail(toEmail, subject, message){
+// An email that didn't go out, kept for Alerts → Emails (Oct 8). Shared with
+// every office computer and phone, added to rather than replaced.
+function recordEmailFailure(customer, what, to, reason){
+  try{
+    const list = lsGet('emailFailures');
+    const all = list && typeof list === 'object' ? list : {};
+    const id = 'emailfail:' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    all[id] = {t: Date.now(), customerId: customer && customer.id || '', name: customer ? displayName(customer.name) : '',
+      to: to || '', what: what || 'Email', reason: reason || ''};
+    // A month's worth is plenty
+    const cut = Date.now() - 40 * 86400000;
+    Object.keys(all).forEach(k => { if(!(all[k] && all[k].t > cut)) delete all[k]; });
+    lsSet('emailFailures', all);
+    try{ if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange(); }catch(e){}
+    try{ updateAlertsBadge(); }catch(e){}
+  }catch(e){}
+}
+function emailFailReason(res){
+  if(!res || res.offline || !res.status) return 'No connection to the office';
+  const said = res.body && (res.body.error || res.body.message);
+  return said ? String(said) : 'The email service refused it (' + res.status + ')';
+}
+async function sendCustomerEmail(toEmail, subject, message, customer, what){
   if(!toEmail){
     showToast('This customer has no email on file');
     return false;
@@ -4731,9 +4758,11 @@ async function sendCustomerEmail(toEmail, subject, message){
       body: JSON.stringify({to: toEmail, subject: subject, html: plainEmailHtml(message)})
     });
     if(res.ok) return true;
+    recordEmailFailure(customer, what, toEmail, emailFailReason(res));
     showToast('Could not send \u2014 the office could not be reached. Try again in a moment.');
     return false;
   }catch(e){
+    recordEmailFailure(customer, what, toEmail, 'No connection to the office');
     showToast('Could not send \u2014 the office could not be reached. Try again in a moment.');
     return false;
   }
@@ -9605,6 +9634,8 @@ const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'r
                          // Alerts seen and deleted, cleared on every office computer and
                          // phone at once (Oct 3; they were kept per computer)
                          'alertsSeen', 'alertsDismissed',
+                         // Emails that didn't go out, from any computer or phone (Oct 8)
+                         'emailFailures',
                          // After photo's defaults given once, company-wide (Oct 3)
                          'photoDefaultsSeeded'];
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
@@ -9824,7 +9855,7 @@ function syncApplyRecord(kind, id, data, deleted){
     if(deleted || !('value' in data)) return true;
     // Alerts seen or deleted: what arrives is added to what's here, never
     // swapped for it, so two computers clearing at once both stick (Oct 3)
-    if(id === 'alertsSeen' || id === 'alertsDismissed'){
+    if(id === 'alertsSeen' || id === 'alertsDismissed' || id === 'emailFailures'){
       const here = lsGet(id) || {}, there = (data.value && typeof data.value === 'object') ? data.value : {};
       const merged = Object.assign({}, there);
       let ownExtra = false;
@@ -11489,6 +11520,8 @@ document.getElementById('btnTaskTemplates').addEventListener('click', ()=>{
 function filterGroupBlockers(g){
   const out = [];
   if(!(g.customerIds || []).length) out.push('no customers');
+  // Everyone paused: nothing to schedule (Oct 8)
+  else if(!fgLiveIds(g).length) out.push('a customer who isn\u2019t paused');
   if(!g.date) out.push('no date');
   if(!g.technicianId) out.push('no technician');
   return out;
@@ -11569,8 +11602,11 @@ async function openFilterGroupScheduler(){
       + '<br><span style="font-size:11.5px;color:var(--muted);">'
       + (blockers.length
           ? 'Needs ' + blockers.join(', ')
-          : (g.customerIds || []).length + ' customer'
-            + ((g.customerIds || []).length === 1 ? '' : 's') + '  \u00b7  '
+          // Paused customers aren't scheduled, so they aren't counted (Oct 8)
+          : fgLiveIds(g).length + ' customer'
+            + (fgLiveIds(g).length === 1 ? '' : 's')
+            + ((g.customerIds || []).length > fgLiveIds(g).length ? ' (' + ((g.customerIds || []).length - fgLiveIds(g).length) + ' paused, left out)' : '')
+            + '  \u00b7  '
             + filterGroupDateText(g)
             + (tech ? '  \u00b7  ' + tech.name : ''))
       + '</span>';
@@ -11765,7 +11801,7 @@ async function openFilterGroupEmail(){
     for(const p of people){
       const subject = fillFilterEmail(t.subject, p.dates);
       const body = fillFilterEmail(t.body, p.dates);
-      const ok = await sendCustomerEmail(p.customer.email.trim(), subject, body);
+      const ok = await sendCustomerEmail(p.customer.email.trim(), subject, body, p.customer, 'Filter clean email');
       if(ok) sent++; else failed++;
     }
 
@@ -14448,6 +14484,7 @@ async function sendQuoteEmail(customer, subject, html, plainText){
     body: JSON.stringify({to: customer.email, subject: subject, html: html})
   });
   if(res.ok) return true;
+  recordEmailFailure(customer, 'Quote', customer.email, emailFailReason(res));
   showToast('Could not send the quote \u2014 the office could not be reached. Try again in a moment.');
   return false;
 }
@@ -23625,6 +23662,16 @@ function collectAlerts(){
     const vids = [t.doneVideo].concat(t.doneVideoMore || []).filter(Boolean);
     if(vids.length && now - tm <= ALERT_VIDEO_DAYS * 86400000) out.push(Object.assign({id: 'tkvideo:' + t.id, kind: 'video', refs: vids}, base));
   });
+  // Emails that didn't go out (Oct 8)
+  const fails = lsGet('emailFailures');
+  if(fails && typeof fails === 'object') Object.keys(fails).forEach(id=>{
+    const f = fails[id];
+    if(!f || !f.t) return;
+    const c = f.customerId ? (customers || []).find(x => x && String(x.id) === String(f.customerId)) : null;
+    out.push({id: id, kind: 'email', customerId: c ? c.id : '', name: c ? displayName(c.name) : (f.name || 'Customer'),
+      body: f.what || 'Email', t: f.t, tech: f.by || '',
+      notes: 'Not sent' + (f.to ? ' to ' + f.to : '') + (f.reason ? ' \u2014 ' + f.reason : '')});
+  });
   const gone = alertsGone();
   const kept = out.filter(a => !gone[a.id]);
   kept.sort((a, b) => b.t - a.t);
@@ -23663,6 +23710,34 @@ function renderAlerts(){
   if(newBtn) newBtn.textContent = 'New' + (n ? ' (' + n + ')' : '');
   document.querySelectorAll('#alertsSeenControl [data-alerts]').forEach(b => b.classList.toggle('active', b.dataset.alerts === alertsView));
   document.querySelectorAll('#alertsKindControl [data-kind]').forEach(b => b.classList.toggle('active', b.dataset.kind === alertsKind));
+  // How many new on each tab (Oct 8)
+  document.querySelectorAll('#alertsKindControl [data-kind]').forEach(b=>{
+    if(!b.dataset.label) b.dataset.label = b.textContent;
+    const k = b.dataset.kind;
+    const c = all.filter(a => !seen[a.id] && (k === 'all' || a.kind === k)).length;
+    b.textContent = '';
+    b.appendChild(document.createTextNode(b.dataset.label));
+    if(c){
+      const pill = document.createElement('span');
+      pill.className = 'alerts-tab-count';
+      pill.textContent = String(c);
+      b.appendChild(pill);
+    }
+  });
+  // How many new ones each sub-tab holds, beside its name (Oct 8)
+  document.querySelectorAll('#alertsKindControl [data-kind]').forEach(b=>{
+    if(!b.dataset.label) b.dataset.label = b.textContent.trim();
+    const k = b.dataset.kind;
+    const fresh = all.filter(a => !seen[a.id] && (k === 'all' || a.kind === k)).length;
+    b.innerHTML = '';
+    b.appendChild(document.createTextNode(b.dataset.label));
+    if(fresh){
+      const c = document.createElement('span');
+      c.className = 'alerts-kind-count';
+      c.textContent = String(fresh);
+      b.appendChild(c);
+    }
+  });
   const allSeen = document.getElementById('btnAlertsAllSeen');
   if(allSeen) allSeen.style.display = n ? '' : 'none';
 
@@ -23708,7 +23783,7 @@ function renderAlerts(){
     if(tick){ tick.style.marginTop = '4px'; row.appendChild(tick); }
     const tag = document.createElement('span');
     tag.className = 'alert-tag ' + a.kind;
-    tag.textContent = a.kind === 'video' ? 'Video' : (a.kind === 'repair' ? 'Repair' : 'Note');
+    tag.textContent = a.kind === 'video' ? 'Video' : (a.kind === 'repair' ? 'Repair' : (a.kind === 'email' ? 'Email' : 'Note'));
     const body = document.createElement('div');
     body.style.cssText = 'flex:1;min-width:0;';
     const t1 = document.createElement('div');
@@ -23770,13 +23845,17 @@ function renderAlerts(){
         saveAlertsSeen(s);
       }
       if(!a.customerId){ try{ renderAlerts(); }catch(e){} return; }   // a task with no customer
-      if(a.jobKey) openJobReport(a.customerId, a.jobKey); else openAlertReport(a);
+      if(a.kind === 'email'){
+        // An email that didn't go out: the customer, to check their address
+        const c = (customers || []).find(x => x && String(x.id) === String(a.customerId));
+        if(c){ switchView('customers'); viewCustomer(c); }
+      } else if(a.jobKey) openJobReport(a.customerId, a.jobKey); else openAlertReport(a);
       try{ renderAlerts(); }catch(e){}
     };
     // Pressing the row opens the report (Open report and Mark seen buttons
     // gone, Oct 3); while selecting, it ticks the row instead
     row.style.cursor = 'pointer';
-    row.title = selSt.on ? 'Tick this alert' : 'Open the report';
+    row.title = selSt.on ? 'Tick this alert' : (a.kind === 'email' ? 'Open the customer' : 'Open the report');
     row.addEventListener('click', e=>{
       if(e.target.closest('button, a, input')) return;
       if(selSt.on){ toggleSelected(selKey, a.id, redrawSel); return; }

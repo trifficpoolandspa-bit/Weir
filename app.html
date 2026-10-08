@@ -4052,6 +4052,12 @@ function syncApplyRecord(kind, id, data, deleted, agreed){
   }
   if(kind === 'setup'){
     if(deleted || !('value' in data)) return true;
+    // Emails that didn't go out: added to, never swapped, so a failure noted
+    // here and not yet sent isn't lost (Oct 8)
+    if(id === 'emailFailures'){
+      const here = lsGet('emailFailures') || {};
+      return lsSet('emailFailures', Object.assign({}, here, (data.value && typeof data.value === 'object') ? data.value : {}));
+    }
     if(id === 'routeOrders') officeRouteOrderArrived(lsGet('routeOrders'), data.value);
     if(id === 'routeOrdersOnce') officeOnceOrderArrived(lsGet('routeOrdersOnce'), data.value);
     const saved = lsSet(id, data.value);
@@ -19919,6 +19925,23 @@ async function sendReportFromOffice(customerId, type){
   }
 }
 
+// ---- Emails that didn't go out, for the office's Alerts → Emails (Oct 8) ----
+// Kept with the company setup and sent with the next sync. What arrives from
+// the office is added to what's here, never swapped for it.
+function recordEmailFailure(customerId, customerName, what, to, reason){
+  try{
+    const all = Object.assign({}, lsGet('emailFailures') || {});
+    const id = 'emailfail:' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    all[id] = {t: Date.now(), customerId: customerId || '', name: customerName || '', to: to || '',
+      what: what || 'Email', reason: reason || '', by: (typeof currentUser !== 'undefined' && currentUser && currentUser.name) || ''};
+    const cut = Date.now() - 40 * 86400000;
+    Object.keys(all).forEach(k => { if(!(all[k] && all[k].t > cut)) delete all[k]; });
+    lsSet('emailFailures', all);
+    queueSetupSend('emailFailures');
+    try{ clearTimeout(syncTimer); syncTimer = setTimeout(()=> fieldSync(), 2000); }catch(e){}
+  }catch(e){}
+}
+
 // ---- Service report emails held for signal (Oct 3) ----
 // Like work order and filter clean emails: a report that couldn't go waits on
 // this phone — its layout, who it's to, and its photos (kept in the photo
@@ -19981,6 +20004,8 @@ async function sendHeldReportEmails(){
         } else {
           let why = '';
           try{ const body = await res.json(); why = body && body.error ? ': ' + body.error : ''; }catch(e){}
+          recordEmailFailure(item.customerId, item.subject.split(' \u2014 ')[1], 'Service report', item.to,
+            why ? why.slice(2) : 'The email service refused it (' + res.status + ')');
           showToast('A held report for ' + item.subject.split(' \u2014 ')[1] + ' could not be sent' + why + '. Resend it from the Report tab.');
         }
       } else break;                             // the office is having trouble: later
@@ -20127,6 +20152,9 @@ async function adminVersion_attemptAutoSend(customerId, type, manual){
     // fall through to the manual fallbacks below if sending failed
   }
 
+  // Not sent at all: on the office's Alerts → Emails (Oct 8)
+  recordEmailFailure(customerId, custName, 'Service report', email, officeSaid);
+
   // An automatic send that failed stops here. The report is saved; the tech can
   // resend deliberately rather than being dropped into a share sheet.
   if(!manual){
@@ -20240,6 +20268,9 @@ async function techVersion_attemptAutoSend(customerId, type, manual){
     }
     // fall through to the manual fallbacks below if sending failed
   }
+
+  // Not sent at all: on the office's Alerts → Emails (Oct 8)
+  recordEmailFailure(customerId, custName, 'Service report', email, officeSaid);
 
   // An automatic send that failed stops here. The report is saved; the tech can
   // resend deliberately rather than being dropped into a share sheet.
