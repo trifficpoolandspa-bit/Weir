@@ -642,8 +642,10 @@ function boot(){
     w.eval("wcSelectedCustomerIds=['a']; renderWcCustomerChips(); currentLineItems=[{description:'Acid wash',qty:1,price:'250'}]; renderLineItems();");
     d.getElementById('btnSendWorkOrder').click();
     await new Promise(r => setTimeout(r, 400));
-    check('  if the report function can\u2019t be reached, the plain email still goes',
-          JSON.parse(w.eval("JSON.stringify(window.__plain)")).length === 1);
+    // Oct 3: no second route any more (EmailJS sent from one shared mailbox) —
+    // if the office can't be reached, nothing goes and nothing slips out another way
+    check('  if the report function can\u2019t be reached, nothing goes another way',
+          JSON.parse(w.eval("JSON.stringify(window.__plain)")).length === 0);
 
     console.log('\n=== quotes: Customize email ===');
     const btn = d.getElementById('btnCustomizeQuoteEmail');
