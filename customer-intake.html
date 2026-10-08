@@ -14864,8 +14864,17 @@ function openDoseRulesModal(item){
         opt.value = d.key; opt.textContent = d.label || d.key;
         doseSel.appendChild(opt);
       });
-      doseSel.value = rule.doseKey || doses[0].key;
-      rule.doseKey = doseSel.value;
+      // A dosage this list doesn't have is kept and shown by name, never
+      // swapped for the first one (Oct 8: that's what turned a custom dosage
+      // into Chlorine tabs, and saved it that way)
+      if(rule.doseKey && !doses.some(d => d.key === rule.doseKey)){
+        const opt = document.createElement('option');
+        opt.value = rule.doseKey;
+        opt.textContent = doseNameFor(rule.doseKey, item.doseRulesFrom, doses) + ' (not in this list)';
+        doseSel.appendChild(opt);
+      }
+      if(!rule.doseKey) rule.doseKey = doses[0].key;
+      doseSel.value = rule.doseKey;
       doseSel.addEventListener('change', ()=>{ rule.doseKey = doseSel.value; saveActiveConfig(); });
       row.appendChild(doseSel);
 
@@ -17324,7 +17333,9 @@ document.getElementById('btnAddChemical').addEventListener('click', ()=>{
   const lists = activeConfigLists();
   if(!lists){ showToast('Pick a customer and a body of water first'); return; }
   lists.chemicals.push({key, label:'', unit:'', buttons:[]});
-  saveChemConfig();
+  // The lists being edited — a customer's own on Customer Customization (Oct 8;
+  // this saved the standard lists, so the customer's new row wasn't kept)
+  saveActiveConfig();
   renderChemConfigLists();
   const inputs = document.querySelectorAll('#chemConfigChemicalsList input');
   if(inputs.length) inputs[inputs.length - 2].focus();
@@ -17369,7 +17380,7 @@ document.getElementById('btnAddDosage').addEventListener('click', ()=>{
   const lists = activeConfigLists();
   if(!lists){ showToast('Pick a customer and a body of water first'); return; }
   lists.dosages.push({key, label:'', unit:'', buttons:[]});
-  saveChemConfig();
+  saveActiveConfig();      // the customer's own lists there, not the standard ones (Oct 8)
   renderChemConfigLists();
   const inputs = document.querySelectorAll('#chemConfigDosagesList input');
   if(inputs.length) inputs[inputs.length - 2].focus();

@@ -2236,7 +2236,8 @@ function regularPhotoWanted(type, when){
   return !!(lists && (when === 'before' ? lists.requireBeforePhoto : lists.requireAfterPhoto) === true);
 }
 function syncRegularPhotoParts(){
-  setTimeout(()=>{ try{ drawServiceTasks(); }catch(e){} try{ placeVisitNotes(); }catch(e){} }, 0);
+  // Placed once the photo parts below are set (at the end), not a frame later
+  try{ queueMicrotask(()=>{ try{ drawServiceTasks(); }catch(e){} try{ placeVisitNotes(); }catch(e){} }); }catch(e){}
   Object.keys(PHOTO_PAGES).forEach(type=>{
     ['before', 'after'].forEach(when=>{
       const card = document.getElementById(PHOTO_PAGES[type][when]);
@@ -16971,9 +16972,13 @@ document.getElementById('stepBarNext').addEventListener('click', ()=>{
 });
 
 function goToVisitStep(step){
-  setTimeout(()=>{ try{ drawServiceTasks(); }catch(e){} try{ placeVisitNotes(); }catch(e){} }, 0);   // placed for the page now showing (Oct 3)
   currentVisitStep = step;
   applyVisitStep();
+  // The pool's buttons and the notes are put in place now, before the page is
+  // drawn (Oct 8: on a timer they arrived a frame late and pushed the photos
+  // down — the stutter on the after-photos page)
+  try{ drawServiceTasks(); }catch(e){}
+  try{ placeVisitNotes(); }catch(e){}
 }
 
 
