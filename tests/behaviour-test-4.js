@@ -4156,7 +4156,8 @@ async function photoRequirementsPage(){
       check('a technician added later is covered by Everyone', boxOf(d, 'Lee', 2).checked);
 
       rowBlock(d, 'skip').click(); await sleep(100);
-      check('the skip row has no Optional', !Array.from(d.querySelector('#photoRequireRows [data-tech-list]').querySelectorAll('button')).some(b => b.textContent === 'Optional'));
+      // Skip body of water has its own Optional since Oct 3
+      check('the skip row has an Optional', Array.from(d.querySelector('#photoRequireRows [data-tech-list]').querySelectorAll('button')).some(b => b.textContent === 'Optional'));
       rowBlock(d, 'gate').click(); await sleep(100);
       check('the gate row has Optional', !!optionalOf(d, 'Pat'));
 

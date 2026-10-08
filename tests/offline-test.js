@@ -1106,7 +1106,9 @@ async function serverCompanyRecords(){
     r = await push(ALEX, 'task', 'task_new', {id: {t: T2(3), v: 'task_new'}, technicianId: {t: T2(3), v: 't_alex'}});
     check('nor invent a task', !r.ok && /Only the office can add a task/.test(r.error), r.error);
     r = await push(ALEX, 'filter_clean', 'fc_1', {done: {t: T2(3), v: true}});
-    check('a filter clean stays the office\'s', !r.ok && /Only the office/.test(r.error), r.error);
+    // Since snippet 25 a technician may mark their own filter clean done, but
+    // nothing else: this push changes another field, so it is still refused
+    check('a filter clean stays the office\'s', !r.ok && /Only the office|can only mark this done/.test(r.error), r.error);
 
     r = await push(ALEX, 'reschedule', 'res_new', {id: {t: T2(4), v: 'res_new'}, customerId: {t: T2(4), v: 'c_alex'},
                                                   fromDate: {t: T2(4), v: '2026-09-24'}, toDate: {t: T2(4), v: '2026-09-25'}});
