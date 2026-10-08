@@ -293,7 +293,6 @@ input::placeholder{color:#A9BCB9;}
 .alert-tag.repair{background:var(--gold-pale);color:var(--gold);}
 .alert-tag.email{background:#FBE9E5;color:var(--rust);}
 .alerts-tab-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:7px;border-radius:999px;background:var(--gold);color:#fff;font-size:10.5px;font-weight:700;vertical-align:1px;}
-.alerts-kind-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:7px;border-radius:999px;background:var(--gold);color:#fff;font-size:10.5px;font-weight:700;vertical-align:1px;}
 
 
 .reorder-placeholder{pointer-events:none;}
@@ -23772,20 +23771,6 @@ function renderAlerts(){
       pill.className = 'alerts-tab-count';
       pill.textContent = String(c);
       b.appendChild(pill);
-    }
-  });
-  // How many new ones each sub-tab holds, beside its name (Oct 8)
-  document.querySelectorAll('#alertsKindControl [data-kind]').forEach(b=>{
-    if(!b.dataset.label) b.dataset.label = b.textContent.trim();
-    const k = b.dataset.kind;
-    const fresh = all.filter(a => !seen[a.id] && (k === 'all' || a.kind === k)).length;
-    b.innerHTML = '';
-    b.appendChild(document.createTextNode(b.dataset.label));
-    if(fresh){
-      const c = document.createElement('span');
-      c.className = 'alerts-kind-count';
-      c.textContent = String(fresh);
-      b.appendChild(c);
     }
   });
   const allSeen = document.getElementById('btnAlertsAllSeen');
