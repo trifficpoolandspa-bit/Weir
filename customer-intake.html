@@ -2193,6 +2193,9 @@ input::placeholder{color:#A9BCB9;}
       <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
         <div style="flex:2;min-width:280px;">
           <div id="routeMap" style="width:100%;height:420px;border-radius:12px;border:1px solid var(--line);background:var(--surface-alt);"></div>
+          <!-- Every other week off, for the technician picked: under the map,
+               its width, so a long route order beside it doesn't push it (Oct 9) -->
+          <div id="offWeeksCard" style="display:none;margin-top:14px;padding:16px;border:1px solid var(--line);border-radius:12px;background:#fff;"></div>
         </div>
         <div style="flex:1;min-width:250px;">
           <h3 style="font-size:14px;margin:0 0 8px;">Route order</h3>
@@ -2208,9 +2211,6 @@ input::placeholder{color:#A9BCB9;}
       </div>
       <p style="font-size:11px;color:var(--muted);margin-top:10px;">Uses a free public map/location service (OpenStreetMap). Locating a lot of new addresses at once can take a little while, since that service limits how fast it accepts requests.</p>
     </div>
-
-    <!-- Every other week off, for the technician picked (Oct 9) -->
-    <div class="card" id="offWeeksCard" style="display:none;"></div>
 
   </div>
 
@@ -3234,7 +3234,7 @@ function renderOffWeeks(){
   const ow = t.offWeeks || {};
   const on = !!ow.on;
   const name = esc(t.name || 'This technician');
-  card.innerHTML = '<div class="section-head"><h2>Every other week off &mdash; ' + name + '</h2>'
+  card.innerHTML = '<div class="section-head"><h2 style="font-size:16px;">Every other week off &mdash; ' + name + '</h2>'
     + '<label class="toggle-switch" style="margin-left:auto;" title="Every other week off"><input type="checkbox" id="owOn"' + (on ? ' checked' : '') + '><span class="toggle-slider"></span></label></div>'
     + '<p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">For part of the year ' + name + ' works one week and has the next off. On an off week their phone shows only the customers below, plus any work orders, tasks or filter cleans the office sends &mdash; so the off weeks are free for repairs. Everyone else is skipped that week, not moved.</p>'
     + '<div id="owBody"></div>';
