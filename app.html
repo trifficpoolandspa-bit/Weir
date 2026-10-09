@@ -11260,10 +11260,15 @@ function owInSeason(ow, iso){
   const md = String(iso).slice(5), f = ow.from || '11-01', t = ow.to || '03-31';
   return f <= t ? (md >= f && md <= t) : (md >= f || md <= t);
 }
+function owWork(ow){ return Math.min(8, Math.max(1, Number(ow && ow.work) || 1)); }
+function owOff(ow){ return Math.min(8, Math.max(1, Number(ow && ow.off) || 1)); }
 function owIsOffWeek(ow, iso){
   if(!ow || !ow.on || !ow.firstOff || !iso || !owInSeason(ow, iso)) return false;
   const weeks = Math.round((new Date(owMonday(iso) + 'T12:00:00') - new Date(owMonday(ow.firstOff) + 'T12:00:00')) / (7 * 86400000));
-  return ((weeks % 2) + 2) % 2 === 0;
+  // Any pattern (Oct 9): work so many weeks, then off so many, and repeat.
+  // firstOff starts a run of off weeks. 1 and 1 is every other week.
+  const work = owWork(ow), off = owOff(ow), cycle = work + off;
+  return (((weeks % cycle) + cycle) % cycle) < off;
 }
 function owFor(techId){
   if(!techId) return null;

@@ -3186,10 +3186,15 @@ function owInSeason(ow, iso){
   const md = String(iso).slice(5), f = ow.from || '11-01', t = ow.to || '03-31';
   return f <= t ? (md >= f && md <= t) : (md >= f || md <= t);
 }
+function owWork(ow){ return Math.min(8, Math.max(1, Number(ow && ow.work) || 1)); }
+function owOff(ow){ return Math.min(8, Math.max(1, Number(ow && ow.off) || 1)); }
 function owIsOffWeek(ow, iso){
   if(!ow || !ow.on || !ow.firstOff || !iso || !owInSeason(ow, iso)) return false;
   const weeks = Math.round((new Date(owMonday(iso) + 'T12:00:00') - new Date(owMonday(ow.firstOff) + 'T12:00:00')) / (7 * 86400000));
-  return ((weeks % 2) + 2) % 2 === 0;
+  // Any pattern (Oct 9): work so many weeks, then off so many, and repeat.
+  // firstOff starts a run of off weeks. 1 and 1 is every other week.
+  const work = owWork(ow), off = owOff(ow), cycle = work + off;
+  return (((weeks % cycle) + cycle) % cycle) < off;
 }
 function owFor(techId){
   if(!techId) return null;
@@ -3234,21 +3239,23 @@ function renderOffWeeks(){
   const ow = t.offWeeks || {};
   const on = !!ow.on;
   const name = esc(t.name || 'This technician');
-  card.innerHTML = '<div class="section-head"><h2 style="font-size:16px;">Every other week off &mdash; ' + name + '</h2>'
-    + '<label class="toggle-switch" style="margin-left:auto;" title="Every other week off"><input type="checkbox" id="owOn"' + (on ? ' checked' : '') + '><span class="toggle-slider"></span></label></div>'
-    + '<p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">For part of the year ' + name + ' works one week and has the next off. On an off week their phone shows only the customers below, plus any work orders, tasks or filter cleans the office sends &mdash; so the off weeks are free for repairs. Everyone else is skipped that week, not moved.</p>'
+  card.innerHTML = '<div class="section-head"><h2 style="font-size:16px;">Weeks off &mdash; ' + name + '</h2>'
+    + '<label class="toggle-switch" style="margin-left:auto;" title="Weeks off"><input type="checkbox" id="owOn"' + (on ? ' checked' : '') + '><span class="toggle-slider"></span></label></div>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">For part of the year ' + name + ' works some weeks and has others off. On an off week their phone shows only the customers below, plus any work orders, tasks or filter cleans the office sends &mdash; so the off weeks are free for repairs. Everyone else is skipped that week, not moved.</p>'
     + '<div id="owBody"></div>';
   card.querySelector('#owOn').addEventListener('change', e=>{
     if(e.target.checked){
       const fresh = Object.assign({from: '11-01', to: '03-31', keep: []}, t.offWeeks || {}, {on: true});
-      // The second week of the stretch to start with: work the first week
-      if(!fresh.firstOff) fresh.firstOff = owLocalISO(new Date(new Date(owFirstMonday(fresh) + 'T12:00:00').getTime() + 7 * 86400000));
+      // Every other week to start with, working the first week
+      if(!fresh.work) fresh.work = 1;
+      if(!fresh.off) fresh.off = 1;
+      if(!fresh.firstOff) fresh.firstOff = owLocalISO(new Date(new Date(owFirstMonday(fresh) + 'T12:00:00').getTime() + owWork(fresh) * 7 * 86400000));
       t.offWeeks = fresh;
     } else {
       t.offWeeks = Object.assign({}, t.offWeeks || {}, {on: false});
     }
     owSave(t);
-    showToast(e.target.checked ? 'Every other week off is on for ' + (t.name || 'this technician') : 'Every other week off is off for ' + (t.name || 'this technician'));
+    showToast((e.target.checked ? 'Weeks off turned on for ' : 'Weeks off turned off for ') + (t.name || 'this technician'));
   });
   if(!on) return;
 
@@ -3261,14 +3268,24 @@ function renderOffWeeks(){
     for(let i = 1; i <= 31; i++) h += '<option value="' + i + '"' + (i === d ? ' selected' : '') + '>' + i + '</option>';
     return h + '</select></div></div>';
   };
+  // Work so many weeks, then off so many, and repeat (Oct 9)
+  const work = owWork(ow), offN = owOff(ow), cycle = work + offN;
+  const nums = (n, sel) => Array.from({length: n}, (_, i) => '<option value="' + (i + 1) + '"' + (i + 1 === sel ? ' selected' : '') + '>' + (i + 1) + '</option>').join('');
+  let h = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;font-size:13.5px;font-weight:600;">'
+    + '<span>Work</span><select id="owWork" style="width:auto;">' + nums(8, work) + '</select>'
+    + '<span>' + (work === 1 ? 'week' : 'weeks') + ', then off</span><select id="owOff" style="width:auto;">' + nums(8, offN) + '</select>'
+    + '<span>' + (offN === 1 ? 'week' : 'weeks') + '</span>'
+    + '<span style="font-size:12px;font-weight:400;color:var(--muted);margin-left:6px;">and repeat &middot; 1 and 1 is every other week</span></div>';
+  // First week off: any week of the first round of the pattern; the one
+  // chosen is whichever starts a run of off weeks as things stand
   const m0 = owFirstMonday(ow);
-  const m1 = owLocalISO(new Date(new Date(m0 + 'T12:00:00').getTime() + 7 * 86400000));
-  const firstIsM0 = owIsOffWeek(Object.assign({}, ow, {from: '01-01', to: '12-31'}), m0);
-  let h = '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;">'
+  const choices = Array.from({length: cycle}, (_, i) => owLocalISO(new Date(new Date(m0 + 'T12:00:00').getTime() + i * 7 * 86400000)));
+  const startsRun = iso => { const w = Math.round((new Date(iso + 'T12:00:00') - new Date(owMonday(ow.firstOff || m0) + 'T12:00:00')) / (7 * 86400000)); return ((w % cycle) + cycle) % cycle === 0; };
+  h += '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;">'
     + mdSelects('from', 'From') + mdSelects('to', 'To')
     + '<div class="field" style="margin:0;flex:0 0 auto;"><label>First week off</label><select id="owFirst" style="width:auto;min-width:170px;">'
-    + '<option value="' + m0 + '"' + (firstIsM0 ? ' selected' : '') + '>Week of ' + owShort(m0) + '</option>'
-    + '<option value="' + m1 + '"' + (!firstIsM0 ? ' selected' : '') + '>Week of ' + owShort(m1) + '</option></select></div>'
+    + choices.map(c => '<option value="' + c + '"' + (startsRun(c) ? ' selected' : '') + '>Week of ' + owShort(c) + '</option>').join('')
+    + '</select></div>'
     + '<span style="font-size:12px;color:var(--muted);padding-bottom:10px;">Repeats every year</span></div>';
 
   // The coming weeks it covers, on or off
@@ -3316,6 +3333,8 @@ function renderOffWeeks(){
   };
   body.querySelectorAll('[data-ow]').forEach(s => s.addEventListener('change', ()=> setMD(s.dataset.ow.split('-')[0])));
   body.querySelector('#owFirst').addEventListener('change', e=>{ t.offWeeks.firstOff = e.target.value; owSave(t); });
+  body.querySelector('#owWork').addEventListener('change', e=>{ t.offWeeks.work = Number(e.target.value); owSave(t); });
+  body.querySelector('#owOff').addEventListener('change', e=>{ t.offWeeks.off = Number(e.target.value); owSave(t); });
   body.querySelector('#owAdd').addEventListener('click', ()=>{
     const holder = {name: (t.name || 'this technician') + '’s off weeks', customerIds: (t.offWeeks.keep || []).slice()};
     openGroupCustomerPicker(holder, {
