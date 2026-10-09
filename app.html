@@ -8841,6 +8841,7 @@ function renderTechRoute(){
     cst.technicianId === selectedTechId
     && customerServicedOn(cst, techRouteDay)
     && cst.active !== false
+    && !offWeekSkips(cst, iso)
     && !movedAway.has(cst.id));
 
   const movedWho = movedOntoDate(reschedules, iso);
@@ -11242,6 +11243,41 @@ function servicedForCovers(c, dayISO){
   return c.servicedFor.some(x => x && (x.day === dayISO
     || (x.day > dayISO && !customerServicedOn(c, NAMES[new Date(x.day + 'T12:00:00').getDay()]))));
 }
+// ---- Every other week off (Oct 9) ----
+// A technician can work one week and have the next off for part of the year
+// (Nov to Mar, say), and do repairs in the off weeks. Kept on the technician
+// (offWeeks: {on, from: 'MM-DD', to: 'MM-DD', firstOff: Monday 'YYYY-MM-DD',
+// keep: [customer ids still serviced on off weeks]}), so it travels to the
+// phones with the technician. Weeks run Monday to Sunday.
+function owLocalISO(d){ return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+function owMonday(iso){
+  const d = new Date(iso + 'T12:00:00');
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return owLocalISO(d);
+}
+// In the stretch of the year it covers; one running over New Year works too
+function owInSeason(ow, iso){
+  const md = String(iso).slice(5), f = ow.from || '11-01', t = ow.to || '03-31';
+  return f <= t ? (md >= f && md <= t) : (md >= f || md <= t);
+}
+function owIsOffWeek(ow, iso){
+  if(!ow || !ow.on || !ow.firstOff || !iso || !owInSeason(ow, iso)) return false;
+  const weeks = Math.round((new Date(owMonday(iso) + 'T12:00:00') - new Date(owMonday(ow.firstOff) + 'T12:00:00')) / (7 * 86400000));
+  return ((weeks % 2) + 2) % 2 === 0;
+}
+function owFor(techId){
+  if(!techId) return null;
+  const t = (lsGet('technicians') || []).find(x => x && String(x.id) === String(techId));
+  return t && t.offWeeks && t.offWeeks.on ? t.offWeeks : null;
+}
+// Left off that day's route: their technician's off week, and not one of the
+// customers still serviced on off weeks
+function offWeekSkips(c, iso){
+  if(!c || !c.technicianId) return false;
+  const ow = owFor(c.technicianId);
+  return !!ow && owIsOffWeek(ow, iso) && (ow.keep || []).indexOf(c.id) === -1;
+}
+
 function customerServicedOn(c, day){
   return !!c && !!day && (c.day === day || (Array.isArray(c.extraDays) && c.extraDays.indexOf(day) !== -1));
 }
@@ -11318,6 +11354,8 @@ function adminVersion_renderHomeList(){
   // Anyone finished on the day being viewed drops off — today, or any day before
   const baseCustomers = customers
     .filter(c => customerServicedOn(c, selectedHomeDay) && c.active !== false)
+    // Their technician's off week (Oct 9)
+    .filter(c => !offWeekSkips(c, selectedDayISO))
     .filter(c => !servicedOnDate(c, selectedDayISO))
     .filter(c => !movedAway.has(c.id))
     .filter(c => !adminViewTechId || c.technicianId === adminViewTechId);
@@ -11621,6 +11659,8 @@ function techVersion_renderHomeList(){
     .filter(c => customerServicedOn(c, selectedHomeDay) && c.active !== false)
     // Only customers assigned to the signed-in technician appear on their route
     .filter(c => currentUser ? c.technicianId === currentUser.id : false)
+    // An off week: only the customers still serviced then (Oct 9)
+    .filter(c => !offWeekSkips(c, selectedDayISO))
     // Done on that day, or since: a Friday customer caught up on Monday drops
     // off Friday's route rather than sitting there for good
     .filter(c => !servicedForDay(c, selectedDayISO));
@@ -12364,6 +12404,7 @@ function routeOrderToday(){
   const base = customers
     .filter(c => customerServicedOn(c, selectedHomeDay) && c.active !== false)
     .filter(c => !viewing || c.technicianId === viewing)
+    .filter(c => !offWeekSkips(c, iso))
     .filter(c => !movedAway.has(c.id));
 
   const movedWho = movedOntoDate(reschedules, iso);
