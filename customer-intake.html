@@ -679,6 +679,11 @@ input::placeholder{color:#A9BCB9;}
         <span id="profileExtraDays" style="display:inline-flex;align-items:flex-start;gap:22px;flex-wrap:wrap;align-self:flex-start;margin-left:8px;"></span>
         <!-- Property, then Technician, at the right of the name line (Oct 2) -->
         <span style="margin-left:auto;display:inline-flex;align-items:flex-start;gap:28px;align-self:flex-start;">
+        <!-- How often they're serviced (Oct 9) -->
+        <span id="profileFrequencyWrap" style="display:inline-flex;flex-direction:column;align-items:flex-start;margin-top:-1px;cursor:pointer;white-space:nowrap;">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Frequency</span>
+          <span id="profileFrequencyName" style="font-size:15.5px;font-weight:700;color:var(--teal-deep);"></span>
+        </span>
         <span id="profilePropertyWrap" style="display:inline-flex;flex-direction:column;align-items:flex-start;margin-top:-1px;cursor:pointer;white-space:nowrap;">
           <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Property</span>
           <span id="profilePropertyName" style="font-size:15.5px;font-weight:700;color:var(--teal-deep);"></span>
@@ -2192,7 +2197,9 @@ input::placeholder{color:#A9BCB9;}
 
       <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
         <div style="flex:2;min-width:280px;">
-          <div id="routeMap" style="width:100%;height:420px;border-radius:12px;border:1px solid var(--line);background:var(--surface-alt);"></div>
+          <!-- position + z-index 0 keep the map's own layers (they go up to 1000)
+               inside it, so pop-up windows show in front of the map (Oct 9) -->
+          <div id="routeMap" style="position:relative;z-index:0;width:100%;height:420px;border-radius:12px;border:1px solid var(--line);background:var(--surface-alt);"></div>
           <!-- Every other week off, for the technician picked: under the map,
                its width, so a long route order beside it doesn't push it (Oct 9) -->
           <div id="offWeeksCard" style="display:none;margin-top:14px;padding:16px;border:1px solid var(--line);border-radius:12px;background:#fff;"></div>
@@ -3208,6 +3215,38 @@ function offWeekSkips(c, iso){
   const ow = owFor(c.technicianId);
   return !!ow && owIsOffWeek(ow, iso) && (ow.keep || []).indexOf(c.id) === -1;
 }
+
+// ---- How often a customer is serviced (Oct 9) ----
+// On the customer: frequency '' (every week), 'every2' / 'every3' / 'every4'
+// (with freqStart, the Monday of a week they're serviced), 'monthly' (with
+// freqMonthWeek 1 to 4 or 'last': which of that weekday in the month) or
+// 'oncall' (never on the regular route; only a moved visit brings them).
+// Only the regular service list follows it: work orders, filter cleans and
+// tasks are their own items.
+const FREQ_LABELS = {'': 'Every week', every2: 'Every other week', every3: 'Every 3 weeks', every4: 'Every 4 weeks',
+  monthly: 'Once a month', oncall: 'On call'};
+function frequencySkips(c, iso){
+  const f = c && c.frequency;
+  if(!f || !iso) return false;
+  if(f === 'oncall') return true;
+  const n = {every2: 2, every3: 3, every4: 4}[f];
+  if(n){
+    if(!c.freqStart) return false;
+    const weeks = Math.round((new Date(owMonday(iso) + 'T12:00:00') - new Date(owMonday(c.freqStart) + 'T12:00:00')) / (7 * 86400000));
+    return ((weeks % n) + n) % n !== 0;
+  }
+  if(f === 'monthly'){
+    const d = new Date(iso + 'T12:00:00');
+    const date = d.getDate();
+    const want = c.freqMonthWeek || 1;
+    if(want === 'last') return date + 7 <= new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    return Math.ceil(date / 7) !== Number(want);
+  }
+  return false;
+}
+// Off the regular service list that day: their own frequency, or their
+// technician's weeks off
+function skipsThisDay(c, iso){ return offWeekSkips(c, iso) || frequencySkips(c, iso); }
 
 const OW_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function owTech(){
@@ -17081,7 +17120,9 @@ function openCustomSetup(cust, bodies){
   }
   customGroupId = null;
   customCustomerId = cust.id;
-  customBodyKey = (bodies && bodies[0]) || null;
+  // Opens on the first body of water in their row, whichever were
+  // customised (Oct 9: it opened on the first one with a setup of its own)
+  customBodyKey = null;
   customWorking = null;
   customWorkingFor = null;
 
@@ -17369,8 +17410,9 @@ function renderCustomBodies(){
     return;
   }
 
+  // Nothing chosen yet: the first in the row, in this customer's own order
   if(!customBodyKey || !bodies.some(b => b.key === customBodyKey)){
-    customBodyKey = bodies[0].key;
+    customBodyKey = orderedBodiesFor(cust, bodies)[0].key;
   }
 
   const label = document.createElement('div');
@@ -25301,6 +25343,63 @@ function openServiceDaysWindow(c){
 // Redrawing the open profile after a field is saved or another one opened:
 // the page stays exactly where it's scrolled to and on the same tab. Opening a
 // customer from the list still brings their profile into view.
+// "Every other week", "2nd Tuesday of the month"
+function frequencyText(c){
+  const f = (c && c.frequency) || '';
+  if(f === 'monthly'){
+    const w = c.freqMonthWeek || 1;
+    const nth = w === 'last' ? 'Last' : ({1: '1st', 2: '2nd', 3: '3rd', 4: '4th'})[w] || '1st';
+    return nth + ' ' + (c.day ? c.day.slice(0, 3) : 'week') + ' of the month';
+  }
+  return FREQ_LABELS[f] || FREQ_LABELS[''];
+}
+// Every 2, 3 or 4 weeks: which week they're serviced. Once a month: which
+// week of the month. Resolves with the fields to set, or null if cancelled.
+function askFrequencyDetail(c, f){
+  return new Promise(resolve=>{
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    const day = c.day || 'Monday';
+    let field = '';
+    if(f === 'monthly'){
+      const cur = c.frequency === 'monthly' ? String(c.freqMonthWeek || 1) : '1';
+      field = '<select data-fq>' + [['1', '1st'], ['2', '2nd'], ['3', '3rd'], ['4', '4th'], ['last', 'Last']]
+        .map(([v, t]) => '<option value="' + v + '"' + (v === cur ? ' selected' : '') + '>' + t + ' ' + day + ' of the month</option>').join('') + '</select>';
+    } else {
+      const n = {every2: 2, every3: 3, every4: 4}[f];
+      // Their next service day in each of those weeks, starting from the next
+      // one still to come
+      const offset = (['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].indexOf(day) + 7) % 7;
+      const today = owLocalISO(new Date());
+      let mon0 = owMonday(today);
+      if(owLocalISO(new Date(new Date(mon0 + 'T12:00:00').getTime() + offset * 86400000)) < today)
+        mon0 = owLocalISO(new Date(new Date(mon0 + 'T12:00:00').getTime() + 7 * 86400000));
+      const opts = Array.from({length: n}, (_, i) => owLocalISO(new Date(new Date(mon0 + 'T12:00:00').getTime() + i * 7 * 86400000)));
+      const cur = c.frequency === f && c.freqStart ? owMonday(c.freqStart) : '';
+      field = '<select data-fq>' + opts.map(m=>{
+        const d = owLocalISO(new Date(new Date(m + 'T12:00:00').getTime() + offset * 86400000));
+        // Weeks of the same cycle as the one saved count as that one
+        const same = cur && Math.round((new Date(m + 'T12:00:00') - new Date(cur + 'T12:00:00')) / (7 * 86400000)) % n === 0;
+        return '<option value="' + m + '"' + (same ? ' selected' : '') + '>' + new Date(d + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'}) + '</option>';
+      }).join('') + '</select>';
+    }
+    overlay.innerHTML = '<div class="confirm-box" style="max-width:360px;">'
+      + '<h3 style="font-size:15px;margin:0 0 4px;">' + FREQ_LABELS[f] + '</h3>'
+      + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">' + (f === 'monthly'
+          ? 'Which ' + esc(day) + ' of the month is ' + esc(displayName(c.name)) + ' serviced?'
+          : 'When is ' + esc(displayName(c.name)) + '\u2019s next service? It repeats from there.') + '</p>'
+      + field
+      + '<div class="btn-row" style="margin-top:14px;"><button class="btn btn-ghost" data-cancel>Cancel</button><button class="btn btn-primary" data-ok>Save</button></div></div>';
+    document.body.appendChild(overlay);
+    const done = v => { overlay.remove(); resolve(v); };
+    overlay.querySelector('[data-cancel]').addEventListener('click', ()=> done(null));
+    overlay.querySelector('[data-ok]').addEventListener('click', ()=>{
+      const v = overlay.querySelector("[data-fq]").value;
+      done(f === 'monthly' ? {freqMonthWeek: v === 'last' ? 'last' : Number(v)} : {freqStart: v});
+    });
+  });
+}
+
 function viewCustomerInPlace(c){
   const y = window.scrollY;
   const keep = keepProfileTab;
@@ -25459,6 +25558,61 @@ function viewCustomer(c){
     sel.addEventListener('change', commit);
     sel.addEventListener('blur', commit);
   };
+
+  // Frequency (Oct 9): Every week to start. Tapped like Property; every 2, 3
+  // or 4 weeks then asks which week they're serviced, once a month which week
+  // of the month.
+  const freqEl = document.getElementById('profileFrequencyName');
+  const freqWrap = document.getElementById('profileFrequencyWrap');
+  if(freqEl && freqWrap){
+    freqEl.textContent = frequencyText(c);
+    freqWrap.title = 'Tap to change how often they\u2019re serviced';
+    freqWrap.dataset.editing = 'false';
+    freqWrap.onclick = ()=>{
+      if(freqWrap.dataset.editing === 'true') return;
+      freqWrap.dataset.editing = 'true';
+      const sel = document.createElement('select');
+      sel.className = 'profile-inline-input';
+      sel.style.cssText = 'width:auto;font-size:13px;padding:4px 8px;';
+      Object.keys(FREQ_LABELS).forEach(k=>{
+        const opt = document.createElement('option');
+        opt.value = k; opt.textContent = FREQ_LABELS[k];
+        if((c.frequency || '') === k) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      freqWrap.style.display = 'none';
+      freqWrap.after(sel);
+      sel.focus();
+      if(typeof sel.showPicker === 'function'){ try{ sel.showPicker(); }catch(e){} }
+      else { try{ sel.dispatchEvent(new MouseEvent('mousedown', {bubbles:true})); }catch(e){} }
+      let committed = false;
+      const finish = ()=>{
+        sel.remove();
+        freqWrap.style.display = 'inline-flex';
+        freqWrap.dataset.editing = 'false';
+        viewCustomerInPlace(c);
+      };
+      const commit = async ()=>{
+        if(committed) return;
+        committed = true;
+        const f = sel.value;
+        if(f === (c.frequency || '') && f !== 'monthly' && !/^every/.test(f)){ finish(); return; }
+        if(/^every/.test(f) || f === 'monthly'){
+          const more = await askFrequencyDetail(c, f);
+          if(!more){ finish(); return; }          // changed their mind: as it was
+          Object.assign(c, more);
+        }
+        if(f) c.frequency = f; else delete c.frequency;
+        if(!/^every/.test(f)) delete c.freqStart;
+        if(f !== 'monthly') delete c.freqMonthWeek;
+        saveCustomerField();
+        finish();
+        showToast(displayName(c.name) + ': ' + frequencyText(c));
+      };
+      sel.addEventListener('change', commit);
+      sel.addEventListener('blur', commit);
+    };
+  }
 
   // Property: Unassigned to start, or Residential, Commercial, Rental (Oct 2).
   // The same tap-to-choose as Technician.

@@ -8841,7 +8841,7 @@ function renderTechRoute(){
     cst.technicianId === selectedTechId
     && customerServicedOn(cst, techRouteDay)
     && cst.active !== false
-    && !offWeekSkips(cst, iso)
+    && !skipsThisDay(cst, iso)
     && !movedAway.has(cst.id));
 
   const movedWho = movedOntoDate(reschedules, iso);
@@ -11283,6 +11283,38 @@ function offWeekSkips(c, iso){
   return !!ow && owIsOffWeek(ow, iso) && (ow.keep || []).indexOf(c.id) === -1;
 }
 
+// ---- How often a customer is serviced (Oct 9) ----
+// On the customer: frequency '' (every week), 'every2' / 'every3' / 'every4'
+// (with freqStart, the Monday of a week they're serviced), 'monthly' (with
+// freqMonthWeek 1 to 4 or 'last': which of that weekday in the month) or
+// 'oncall' (never on the regular route; only a moved visit brings them).
+// Only the regular service list follows it: work orders, filter cleans and
+// tasks are their own items.
+const FREQ_LABELS = {'': 'Every week', every2: 'Every other week', every3: 'Every 3 weeks', every4: 'Every 4 weeks',
+  monthly: 'Once a month', oncall: 'On call'};
+function frequencySkips(c, iso){
+  const f = c && c.frequency;
+  if(!f || !iso) return false;
+  if(f === 'oncall') return true;
+  const n = {every2: 2, every3: 3, every4: 4}[f];
+  if(n){
+    if(!c.freqStart) return false;
+    const weeks = Math.round((new Date(owMonday(iso) + 'T12:00:00') - new Date(owMonday(c.freqStart) + 'T12:00:00')) / (7 * 86400000));
+    return ((weeks % n) + n) % n !== 0;
+  }
+  if(f === 'monthly'){
+    const d = new Date(iso + 'T12:00:00');
+    const date = d.getDate();
+    const want = c.freqMonthWeek || 1;
+    if(want === 'last') return date + 7 <= new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    return Math.ceil(date / 7) !== Number(want);
+  }
+  return false;
+}
+// Off the regular service list that day: their own frequency, or their
+// technician's weeks off
+function skipsThisDay(c, iso){ return offWeekSkips(c, iso) || frequencySkips(c, iso); }
+
 function customerServicedOn(c, day){
   return !!c && !!day && (c.day === day || (Array.isArray(c.extraDays) && c.extraDays.indexOf(day) !== -1));
 }
@@ -11360,7 +11392,7 @@ function adminVersion_renderHomeList(){
   const baseCustomers = customers
     .filter(c => customerServicedOn(c, selectedHomeDay) && c.active !== false)
     // Their technician's off week (Oct 9)
-    .filter(c => !offWeekSkips(c, selectedDayISO))
+    .filter(c => !skipsThisDay(c, selectedDayISO))
     .filter(c => !servicedOnDate(c, selectedDayISO))
     .filter(c => !movedAway.has(c.id))
     .filter(c => !adminViewTechId || c.technicianId === adminViewTechId);
@@ -11665,7 +11697,7 @@ function techVersion_renderHomeList(){
     // Only customers assigned to the signed-in technician appear on their route
     .filter(c => currentUser ? c.technicianId === currentUser.id : false)
     // An off week: only the customers still serviced then (Oct 9)
-    .filter(c => !offWeekSkips(c, selectedDayISO))
+    .filter(c => !skipsThisDay(c, selectedDayISO))
     // Done on that day, or since: a Friday customer caught up on Monday drops
     // off Friday's route rather than sitting there for good
     .filter(c => !servicedForDay(c, selectedDayISO));
@@ -12409,7 +12441,7 @@ function routeOrderToday(){
   const base = customers
     .filter(c => customerServicedOn(c, selectedHomeDay) && c.active !== false)
     .filter(c => !viewing || c.technicianId === viewing)
-    .filter(c => !offWeekSkips(c, iso))
+    .filter(c => !skipsThisDay(c, iso))
     .filter(c => !movedAway.has(c.id));
 
   const movedWho = movedOntoDate(reschedules, iso);
