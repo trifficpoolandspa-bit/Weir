@@ -8,7 +8,7 @@
 // Bump the version to force every device to take a fresh copy.
 // Renamed with the app. The new name means every device builds a fresh
 // cache and drops the old one, which is what the line below already does.
-const CACHE_NAME = 'weir-cache-v255';
+const CACHE_NAME = 'weir-cache-v257';
 
 const PRECACHE_URLS = [
   './',

@@ -7770,7 +7770,9 @@ function pdSpan(iso){
 function pdShownCustomers(){
   const tech = (document.getElementById('drainTech') || {}).value || '';
   const term = String((document.getElementById('drainSearch') || {}).value || '').trim().toLowerCase();
-  return customers.filter(c => c && c.active !== false && c.hasPool !== false
+  // Every active customer, whatever bodies of water they have (Oct 10: spa,
+  // fountain or pond only were left out)
+  return customers.filter(c => c && c.active !== false && !c.deleted
     && (!tech || (tech === 'none' ? !c.technicianId : String(c.technicianId || '') === tech))
     && (!term || matchesSearch(c, term) || displayName(c.name).toLowerCase().includes(term)));
 }
@@ -7853,7 +7855,7 @@ function renderPoolDrains(){
 
   const countEl = document.getElementById('drainCount');
   if(countEl){
-    countEl.textContent = shown.length + (shown.length === 1 ? ' pool' : ' pools')
+    countEl.textContent = shown.length + (shown.length === 1 ? ' customer' : ' customers')
       + ' · ' + byBucket.overdue.length + ' overdue'
       + ' · ' + byBucket.soon.length + ' due soon'
       + ' · ' + byBucket.never.length + ' not on record';
@@ -7863,7 +7865,7 @@ function renderPoolDrains(){
   if(!container) return;
   container.innerHTML = '';
   if(!shown.length){
-    container.innerHTML = emptyState(pdSearching() ? 'No customer matches.' : customers.some(c => c.active !== false && c.hasPool !== false) ? 'No pools for this technician.' : 'No customers with a pool yet.');
+    container.innerHTML = emptyState(pdSearching() ? 'No customer matches.' : customers.some(c => c.active !== false) ? 'No customers for this technician.' : 'No customers yet.');
     pdRenderSelBar();
     renderDrainGroups();
     return;
@@ -25496,13 +25498,23 @@ setTimeout(()=>{ try{ lastPlaceKey = null; notePlace(); }catch(e){} }, 0);
 document.addEventListener('keydown', (e)=>{
   if(e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
   if(!profileKeysAllowed(e)) return;
-  const tabs = Array.from(document.querySelectorAll('nav .tab'))
-    .filter(t => t.style.display !== 'none');
-  const at = tabs.findIndex(t => t.classList.contains('active'));
-  const next = tabs[at + (e.key === 'ArrowDown' ? 1 : -1)];
+  // Each tab, and in place of a tab with sections in the sidebar, each of its
+  // sections, so the arrows step through those too (Oct 10)
+  const subsOn = document.body.classList.contains('sidebar-subtabs');
+  const stops = [];
+  Array.from(document.querySelectorAll('nav .tab')).filter(t => t.style.display !== 'none').forEach(t=>{
+    const subBox = t.nextElementSibling && t.nextElementSibling.classList.contains('nav-subs') ? t.nextElementSibling : null;
+    const subs = subsOn && subBox ? Array.from(subBox.querySelectorAll('.nav-sub')).filter(b => b.style.display !== 'none') : [];
+    if(subs.length) subs.forEach(b => stops.push({el: b, tab: t}));
+    else stops.push({el: t, tab: t});
+  });
+  const activeTab = document.querySelector('nav .tab.active');
+  let at = stops.findIndex(x => x.tab === activeTab && x.el.classList.contains('nav-sub') && x.el.classList.contains('active'));
+  if(at === -1) at = stops.findIndex(x => x.tab === activeTab);
+  const next = stops[at + (e.key === 'ArrowDown' ? 1 : -1)];
   if(at === -1 || !next) return;
   e.preventDefault();
-  next.click();
+  next.el.click();
 });
 
 function saveCustomerField(){
