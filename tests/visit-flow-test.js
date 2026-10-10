@@ -1785,8 +1785,9 @@ async function walkVisit(w, d, maxPresses){
       const j1 = (JSON.parse(w.localStorage.getItem('weir:scheduledWorkOrders')) || [])[0];
       check(file + ': submitting a work order visit marks it done with the notes', j1.status === 'done' && j1.doneNotes === 'New bulb.');
       const sends = JSON.parse(w.eval("(()=>{ const st={work:{known:{},seen:{},edits:{},refused:{}}}; syncScanWork(st, '2026-09-25T12:00:00Z'); return JSON.stringify(Object.keys(st.work.edits).reduce((o,k)=>{ o[k.replace('\\u0002',':')]=Object.keys(st.work.edits[k]).sort(); return o; },{})); })()"));
-      check(file + ': and sends only what snippet 16 allows', JSON.stringify(sends['task:k1']) === '["done","doneAt","doneBy","doneNotes"]'
-            && JSON.stringify(sends['work_order:j1']) === '["doneAt","doneBy","doneNotes","status"]', JSON.stringify(sends));
+      // ...plus the time on the job, which snippet 32 allows (Oct 10)
+      check(file + ': and sends only what snippets 16 and 32 allow', JSON.stringify(sends['task:k1']) === '["done","doneAt","doneBy","doneDurationMs","doneNotes"]'
+            && JSON.stringify(sends['work_order:j1']) === '["doneAt","doneBy","doneDurationMs","doneNotes","status"]', JSON.stringify(sends));
       // Every week, part of the day done: only those on screen swap places
       check(file + ': Every week partway through a day keeps the rest in place',
             w.eval("mergeVisibleOrder('ABCDEFGHIJKLMNOP'.split(''), ['P','M','N','O']).join('')") === 'ABCDEFGHIJKLPMNO');
