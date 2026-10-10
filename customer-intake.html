@@ -1747,6 +1747,11 @@ input::placeholder{color:#A9BCB9;}
       </div>
       <div class="section-count" id="drainCount" style="margin:-4px 0 12px;"></div>
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">When each pool was last drained and when the next one is due. Set how often pools are drained in your area above; open a customer to change it just for them or to add drains done before. Tick customers to record a drain or put them in a group.</p>
+      <!-- Find a customer (Oct 10) -->
+      <div style="position:relative;margin:0 0 12px;">
+        <input id="drainSearch" placeholder="Search customers by name, address, phone, or email" autocomplete="off" style="padding-right:38px;">
+        <button type="button" id="drainSearchClear" title="Clear" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);height:30px;width:30px;padding:0;border:1px solid #EFC9BC;border-radius:8px;background:#fff;color:var(--rust);font-size:18px;line-height:1;cursor:pointer;">×</button>
+      </div>
       <div id="drainSelBar" style="display:none;"></div>
       <div id="drainStatusList"></div>
     </div>
@@ -7764,9 +7769,12 @@ function pdSpan(iso){
 // Only customers with a pool, still active, for the technician chosen
 function pdShownCustomers(){
   const tech = (document.getElementById('drainTech') || {}).value || '';
+  const term = String((document.getElementById('drainSearch') || {}).value || '').trim().toLowerCase();
   return customers.filter(c => c && c.active !== false && c.hasPool !== false
-    && (!tech || (tech === 'none' ? !c.technicianId : String(c.technicianId || '') === tech)));
+    && (!tech || (tech === 'none' ? !c.technicianId : String(c.technicianId || '') === tech))
+    && (!term || matchesSearch(c, term) || displayName(c.name).toLowerCase().includes(term)));
 }
+function pdSearching(){ return !!String((document.getElementById('drainSearch') || {}).value || '').trim(); }
 // A group still to be drained that this customer is in, if any
 function pdOpenGroupFor(cid){
   return drainGroups.find(g => (g.customerIds || []).indexOf(cid) !== -1 && !pdGroupDrained(g, cid));
@@ -7855,7 +7863,7 @@ function renderPoolDrains(){
   if(!container) return;
   container.innerHTML = '';
   if(!shown.length){
-    container.innerHTML = emptyState(customers.some(c => c.active !== false && c.hasPool !== false) ? 'No pools for this technician.' : 'No customers with a pool yet.');
+    container.innerHTML = emptyState(pdSearching() ? 'No customer matches.' : customers.some(c => c.active !== false && c.hasPool !== false) ? 'No pools for this technician.' : 'No customers with a pool yet.');
     pdRenderSelBar();
     renderDrainGroups();
     return;
@@ -7863,7 +7871,7 @@ function renderPoolDrains(){
 
   DRAIN_BUCKETS.forEach(b=>{
     const list = byBucket[b.key];
-    const isOpen = openDrainBuckets.has(b.key) && list.length > 0;
+    const isOpen = (openDrainBuckets.has(b.key) || pdSearching()) && list.length > 0;
     const card = document.createElement('div');
     card.style.cssText = 'border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;background:#fff;';
 
@@ -8240,7 +8248,8 @@ function openDrainHistory(c){
   const listEl = overlay.querySelector('#pdhList');
   const nextEl = overlay.querySelector('#pdhNext');
   const dateIn = overlay.querySelector('#pdhDate');
-  dateIn.value = pdToday();
+  // Empty to start (Oct 10): a date typed in is saved by Add drain or by Done
+  dateIn.value = '';
   function draw(){
     listEl.innerHTML = '';
     const list = pdDrains(c, body);
@@ -8250,7 +8259,7 @@ function openDrainHistory(c){
       r.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;';
       const g = d.groupId ? drainGroups.find(x => x.id === d.groupId) : null;
       r.innerHTML = '<span style="flex:1;font-weight:600;">' + esc(pdDate(d.date, true))
-        + '<span style="display:block;font-size:11px;font-weight:400;color:var(--muted);">' + esc(pdSpan(d.date) + (g ? ' · ' + g.name : '') + (d.jobId ? ' · in the app' : '')) + '</span></span>';
+        + '<span style="display:block;font-size:11px;font-weight:400;color:var(--muted);">' + esc(pdSpan(d.date) + (g ? ' · ' + g.name : '') + (d.jobId ? ' · in the app' + pdJobTime(d.jobId) : '')) + '</span></span>';
       const x = document.createElement('button');
       x.type = 'button';
       x.textContent = 'Remove';
@@ -8278,9 +8287,18 @@ function openDrainHistory(c){
   overlay.querySelector('#pdhAdd').addEventListener('click', ()=>{
     if(!dateIn.value){ showToast('Choose a date'); return; }
     pdRecord([c.id], dateIn.value, undefined, body);
+    dateIn.value = '';
     draw();
   });
-  overlay.querySelector('#pdhDone').addEventListener('click', ()=>{ overlay.remove(); renderPoolDrains(); });
+  overlay.querySelector('#pdhDone').addEventListener('click', ()=>{
+    // A date left in the box is a drain too (Oct 10)
+    if(dateIn.value){
+      pdRecord([c.id], dateIn.value, undefined, body);
+      showToast('Drain saved for ' + pdDate(dateIn.value));
+    }
+    overlay.remove();
+    renderPoolDrains();
+  });
 }
 
 // ---- Drain groups: like filter clean groups ----
@@ -8352,7 +8370,8 @@ function renderDrainGroups(){
     nameEl.textContent = g.name;
     const sub = document.createElement('div');
     sub.style.cssText = 'font-size:11.5px;color:var(--muted);margin-top:2px;';
-    sub.textContent = ids.length + (ids.length === 1 ? ' customer' : ' customers') + ' · ' + (technicianNameById(g.technicianId) || 'No technician')
+    sub.textContent = ({spa: 'Spa drain', fountain: 'Fountain drain', extra: 'Extra body drain'}[g.bodyKind] || 'Pool drain') + ' · '
+      + ids.length + (ids.length === 1 ? ' customer' : ' customers') + ' · ' + (technicianNameById(g.technicianId) || 'No technician')
       + (ids.length && doneCount && !allDone ? ' · ' + doneCount + ' drained' : '');
     title.appendChild(nameEl);
     title.appendChild(sub);
@@ -8449,6 +8468,17 @@ function renderDrainGroups(){
     });
     techSel.addEventListener('change', ()=>{ g.technicianId = techSel.value; saveDrainGroups(); renderDrainGroups(); });
     controls.appendChild(techSel);
+    // Which body of water this group drains (Oct 10): its name on the route,
+    // and where each drain is logged
+    const bodySel = document.createElement('select');
+    bodySel.style.cssText = 'flex:0 0 auto;width:auto;min-width:150px;';
+    bodySel.title = 'Which body of water this group drains';
+    [['pool', 'Pool drain'], ['spa', 'Spa drain'], ['fountain', 'Fountain drain'], ['extra', 'Extra body drain']].forEach(([v, t])=>{
+      const o = document.createElement('option'); o.value = v; o.textContent = t; bodySel.appendChild(o);
+    });
+    bodySel.value = g.bodyKind || 'pool';
+    bodySel.addEventListener('change', ()=>{ g.bodyKind = bodySel.value; saveDrainGroups(); renderDrainGroups(); });
+    controls.appendChild(bodySel);
     card.appendChild(controls);
 
     if(ids.length){
@@ -8527,7 +8557,10 @@ function renderDrainGroups(){
         const ok = await confirmDialog('Record a drain on ' + esc(pdDate(g.date, true)) + ' for '
           + left.length + (left.length === 1 ? ' customer' : ' customers') + ' in "' + esc(g.name) + '"?', 'Mark drained');
         if(!ok) return;
-        pdRecord(left, g.date, g.id);
+        left.forEach(cid=>{
+          const c = customers.find(x => x.id === cid);
+          if(c) pdRecord([cid], g.date, g.id, pdImportBody(c, g.bodyKind || 'pool'));
+        });
         renderPoolDrains();
         showToast('Drain recorded for ' + left.length + (left.length === 1 ? ' customer' : ' customers'));
       });
@@ -8544,6 +8577,11 @@ function renderDrainGroups(){
 // pool_drain). Done in the app, it's logged on the customer from the day it
 // was done, so the customer moves to the right list here.
 function pdScheduled(){ return lsGet('scheduledPoolDrains') || []; }
+// A drain done in the app: how long it took, for its line in the history (Oct 10)
+function pdJobTime(jobId){
+  const r = pdScheduled().find(x => x && x.id === jobId);
+  return r && r.doneDurationMs ? ' · ' + jobDurationText(r.doneDurationMs) : '';
+}
 // The pool drain's drawing (F1), as on the phone
 let poolDrainIconN = 0;
 function poolDrainIconSvg(w, h){
@@ -8597,7 +8635,8 @@ function pdSyncGroupRecords(g){
       out.push(r);
       changed = true;
     }
-    const fields = {groupName: g.name || '', technicianId: g.technicianId, date: g.date, order: i, photoRequired: g.photoRequired !== false};
+    const fields = {groupName: g.name || '', technicianId: g.technicianId, date: g.date, order: i, photoRequired: g.photoRequired !== false,
+      bodyKind: g.bodyKind || 'pool'};
     Object.keys(fields).forEach(k => { if(r[k] !== fields[k]){ r[k] = fields[k]; changed = true; } });
   });
   if(changed) lsSet('scheduledPoolDrains', out);
@@ -8621,14 +8660,17 @@ function pdReconcileDone(){
     if((c.drainJobsRemoved || []).indexOf(r.id) !== -1) return;
     const date = r.doneAt && !isNaN(new Date(r.doneAt)) ? owLocalISO(new Date(r.doneAt)) : r.date;
     if(!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return;
+    // On the body of water the drain was for (Oct 10)
+    const body = pdImportBody(c, r.bodyKind || 'pool');
     // The same day already on record (marked here too): one drain
-    const same = list.find(d => d && d.date === date && pdBodyOf(c, d) === pdFirstBody(c));
+    const same = list.find(d => d && d.date === date && pdBodyOf(c, d) === body);
     if(same){
       same.jobId = r.id;
       if(!same.groupId && r.groupId) same.groupId = r.groupId;
     } else {
       const d = {date, jobId: r.id};
       if(r.groupId) d.groupId = r.groupId;
+      if(body !== pdFirstBody(c)) d.body = body;
       list.push(d);
     }
     c.drains = list;
@@ -8835,6 +8877,13 @@ function pdImportRead(text){
   return {found, missing: Array.from(missing.entries()), noDate};
 }
 // Pressing Import drains first shows how the spreadsheet needs to be laid out (Oct 10)
+// The search box: the lists narrow as you type (Oct 10)
+(function(){
+  const box = document.getElementById('drainSearch'), clr = document.getElementById('drainSearchClear');
+  if(!box) return;
+  box.addEventListener('input', ()=>{ clr.style.display = box.value ? 'flex' : 'none'; renderPoolDrains(); });
+  clr.addEventListener('click', ()=>{ box.value = ''; clr.style.display = 'none'; renderPoolDrains(); box.focus(); });
+})();
 document.getElementById('btnImportDrains').addEventListener('click', ()=>{
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
@@ -10767,6 +10816,8 @@ const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'r
                          // Alerts seen and deleted, cleared on every office computer and
                          // phone at once (Oct 3; they were kept per computer)
                          'alertsSeen', 'alertsDismissed',
+                         // When each alert first showed up, for its place in the list (Oct 10)
+                         'alertsArrived',
                          // Emails that didn't go out, from any computer or phone (Oct 8)
                          'emailFailures',
                          // After photo's defaults given once, company-wide (Oct 3)
@@ -10989,12 +11040,14 @@ function syncApplyRecord(kind, id, data, deleted){
     if(deleted || !('value' in data)) return true;
     // Alerts seen or deleted: what arrives is added to what's here, never
     // swapped for it, so two computers clearing at once both stick (Oct 3)
-    if(id === 'alertsSeen' || id === 'alertsDismissed' || id === 'emailFailures'){
+    if(id === 'alertsSeen' || id === 'alertsDismissed' || id === 'emailFailures' || id === 'alertsArrived'){
       const here = lsGet(id) || {}, there = (data.value && typeof data.value === 'object') ? data.value : {};
       const merged = Object.assign({}, there);
       let ownExtra = false;
+      // When an alert arrived: the earliest any computer saw it
+      const better = id === 'alertsArrived' ? (a, b) => a < b : (a, b) => a > b;
       Object.keys(here).forEach(k=>{
-        if(!(k in merged) || here[k] > merged[k]){ merged[k] = here[k]; if(!(k in there)) ownExtra = true; }
+        if(!(k in merged) || better(here[k], merged[k])){ merged[k] = here[k]; if(!(k in there) || better(here[k], there[k])) ownExtra = true; }
       });
       if(!lsSet(id, merged)) return false;
       // Anything only this computer had goes back up, so the others get it too
@@ -15914,6 +15967,7 @@ function qoBody(item, customerId){
   const t = item.t;
   const doc = qoDoc('Task', [t.title || '', t.date ? 'Scheduled for ' + when(t.date) : '',
     t.done && t.doneAt ? 'Completed ' + when(t.doneAt) + (t.doneBy ? ' by ' + (tech(t.doneBy) || 'a technician') : '') : '',
+    t.done && t.doneDurationMs ? 'Time on the job ' + jobDurationText(t.doneDurationMs) : '',
     !t.done && tech(t.technicianId) ? 'Technician: ' + tech(t.technicianId) : ''], !t.done);
   if(t.details) qoSection(doc, 'Details', qoNotes(t.details));
   if(t.doneNotes) qoSection(doc, 'Technician\u2019s notes', qoNotes(t.doneNotes));
@@ -20874,7 +20928,7 @@ function twJobsFor(techId, iso){
       done: f.status === 'done', doneAt: f.doneAt});
   });
   (lsGet('scheduledPoolDrains') || []).filter(f => f && f.date === iso && mine(f)).forEach(f=>{
-    out.push({key: 'pd:' + f.id, label: 'Pool drain', drainIcon: true, title: '', customerId: f.customerId,
+    out.push({key: 'pd:' + f.id, label: ({spa: 'Spa drain', fountain: 'Fountain drain', extra: 'Extra body drain'}[f.bodyKind] || 'Pool drain'), drainIcon: true, title: '', customerId: f.customerId,
       done: f.status === 'done', doneAt: f.doneAt});
   });
   (tasks || []).filter(t => t && t.date === iso && mine(t)).forEach(t=>{
@@ -22783,6 +22837,12 @@ function renderWorkOrderReportRow(histList, customerId, customer, name, v, repKe
   if(isOpen) histList.appendChild(buildWorkOrderDoc(customerId, j));
 }
 
+// How long a job took, as the app shows it (Oct 10)
+function jobDurationText(ms){
+  const sec = Math.max(0, Math.round((Number(ms) || 0) / 1000));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s2 = sec % 60;
+  return h ? h + 'h ' + m + 'm' : m ? m + 'm ' + s2 + 's' : s2 + 's';
+}
 function buildWorkOrderDoc(customerId, j){
   const esc = escapeSyncText;
   const doc = document.createElement('div');
@@ -22810,6 +22870,7 @@ function buildWorkOrderDoc(customerId, j){
     + (j.doneAt ? ' \u00b7 Submitted ' + esc(fmtDate(j.doneAt)) + ' at '
        + esc(new Date(j.doneAt).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'})) : '') + '</div>'
     + '<div class="rdate">Submitted by ' + esc(by) + '</div>'
+    + (j.doneDurationMs ? '<div class="rdate">Time on the job ' + esc(jobDurationText(j.doneDurationMs)) + '</div>' : '')
     + '</div><div class="report-badge">Completed</div></div>'
     + (items.length ? '<div class="report-sec">Line items</div><table class="report-table">' + rows + '</table>' : '')
     + (j.notes ? '<div class="report-sec">Work order notes</div><div class="report-notes">' + esc(j.notes) + '</div>' : '')
@@ -24833,7 +24894,23 @@ function collectAlerts(){
   try{ collectReminders().forEach(r => out.push(r)); }catch(e){}
   const gone = alertsGone();
   const kept = out.filter(a => !gone[a.id]);
-  kept.sort((a, b) => b.t - a.t);
+  // Newest to arrive at the top (Oct 10): each alert's place is when it first
+  // showed up here, not the visit's or due date, so a new one always lands on
+  // top until a newer one comes. Kept for every office computer.
+  const arrived = lsGet('alertsArrived') || {};
+  const stamp = Date.now();
+  let changed = false;
+  kept.forEach(a=>{
+    if(!arrived[a.id]){ arrived[a.id] = stamp; changed = true; }
+    a.arrived = arrived[a.id];
+  });
+  // Forget ones long gone, so the list doesn't grow for ever
+  const live = new Set(kept.map(a => a.id));
+  Object.keys(arrived).forEach(id=>{
+    if(!live.has(id) && stamp - arrived[id] > 180 * 86400000){ delete arrived[id]; changed = true; }
+  });
+  if(changed) lsSet('alertsArrived', arrived);
+  kept.sort((a, b) => (b.arrived - a.arrived) || (b.t - a.t));
   return kept;
 }
 
@@ -25017,7 +25094,8 @@ function renderAlerts(){
     }
     const t2 = document.createElement('div');
     t2.style.cssText = 'font-size:12.5px;color:var(--muted);margin-top:2px;';
-    const bits = [alertWhen(a.t)];
+    // When the alert came in (Oct 10), not when the visit or due date was
+    const bits = [alertWhen(a.arrived || a.t)];
     if(a.tech) bits.push('by ' + a.tech);
     if(a.kind === 'video'){
       bits.push('Deleted after ' + new Date(a.t + ALERT_VIDEO_DAYS * 86400000)

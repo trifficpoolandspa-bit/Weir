@@ -4452,9 +4452,10 @@ const SYNC_WORK_LISTS = [
 // and the notes (snippet 16 lets a technician change exactly these on their own),
 // and a work order's photo and video (snippet 25, Oct 3)
 const SYNC_WORK_SENDABLE = ['task', 'reschedule', 'work_order', 'filter_clean', 'pool_drain'];
-const SYNC_FILTER_CLEAN_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore', 'doneReplacements'];
-const SYNC_TASK_FIELDS = ['done', 'doneAt', 'doneBy', 'doneNotes', 'doneVideo', 'doneVideoMore'];
-const SYNC_WORK_ORDER_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore', 'doneReplacements'];
+// doneDurationMs: how long the job took (Oct 10, snippet 32)
+const SYNC_FILTER_CLEAN_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore', 'doneReplacements', 'doneDurationMs'];
+const SYNC_TASK_FIELDS = ['done', 'doneAt', 'doneBy', 'doneNotes', 'doneVideo', 'doneVideoMore', 'doneDurationMs'];
+const SYNC_WORK_ORDER_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore', 'doneReplacements', 'doneDurationMs'];
 
 // A work order submitted before its photo and video went to the office (Oct 3)
 // kept them only in this phone's submissions: hang them on the visit now, so
@@ -4579,10 +4580,21 @@ async function syncPushWork(state){
     });
     if(!Object.keys(changes).length){ delete wk.edits[key]; continue; }
     const k = wk.known[key] || (state.records && state.records.known && state.records.known[key]);
-    const res = await fieldAuthed('/rest/v1/rpc/push_record_fields', {
+    let res = await fieldAuthed('/rest/v1/rpc/push_record_fields', {
       method: 'POST',
       body: JSON.stringify({p_kind: kind, p_id: id, p_changes: changes, p_base: k && k.u ? k.u : null})
     });
+    // An office that doesn't take a job's time yet (before snippet 32): the
+    // job still goes, without its time, rather than being set aside (Oct 10)
+    if((res.status === 400 || res.status === 403) && changes.doneDurationMs){
+      delete changes.doneDurationMs;
+      if(Object.keys(changes).length){
+        res = await fieldAuthed('/rest/v1/rpc/push_record_fields', {
+          method: 'POST',
+          body: JSON.stringify({p_kind: kind, p_id: id, p_changes: changes, p_base: k && k.u ? k.u : null})
+        });
+      }
+    }
     if(res.offline || res.revoked || res.status === 0) return {ok: false, offline: !!res.offline, pushed: pushed, refused: refused};
     if(res.status === 400 || res.status === 403){
       // The office does not allow this one. Keeping it would block the rest, and
@@ -9062,7 +9074,7 @@ function techRouteJobsFor(techId, iso){
       done: f.status === 'done', doneAt: f.doneAt, date: f.date, technicianId: f.technicianId});
   });
   (lsGet('scheduledPoolDrains') || []).filter(f => f && f.date === iso && mine(f)).forEach(f=>{
-    out.push({kind: 'pool drain', id: f.id, key: 'pool drain:' + f.id, report: 'pd:' + f.id, title: 'Pool drain', customerId: f.customerId,
+    out.push({kind: 'pool drain', id: f.id, key: 'pool drain:' + f.id, report: 'pd:' + f.id, title: drainTitle(f), customerId: f.customerId,
       done: f.status === 'done', doneAt: f.doneAt, date: f.date, technicianId: f.technicianId});
   });
   (lsGet('tasks') || []).filter(t => t && t.date === iso && mine(t)).forEach(t=>{
@@ -10444,7 +10456,7 @@ function routeJobsFor(customerId, dayISO, techId){
   const drains = (lsGet('scheduledPoolDrains') || [])
     .filter(s => s && s.status === 'scheduled' && s.date === dayISO && s.customerId === customerId && mine(s))
     .map(s => ({key: 'pool drain:' + s.id, kind: 'pool drain', id: s.id,
-                title: 'Pool drain', details: s.notes || '', photoRequired: s.photoRequired === true, videoRequired: false}));
+                title: drainTitle(s), details: s.notes || '', photoRequired: s.photoRequired === true, videoRequired: false}));
   return orders.concat(cleans).concat(drains).concat(tasks).filter(j => !jobSubmitted(j.key));
 }
 // The Replacements window on a filter clean (Oct 3): the usual parts to tick,
@@ -10524,6 +10536,11 @@ function jobKindIcon(kind){
 }
 function jobKindLabel(kind){
   return kind === 'task' ? 'Task' : kind === 'filter clean' ? 'Filter clean' : kind === 'pool drain' ? 'Pool drain' : 'Work order';
+}
+// Which body of water a drain is for (Oct 10): its name on the route and report
+function drainTitle(rec){
+  const k = rec && rec.bodyKind;
+  return k === 'spa' ? 'Spa drain' : k === 'fountain' ? 'Fountain drain' : k === 'extra' ? 'Extra body drain' : 'Pool drain';
 }
 // The pool drain's own drawing (Oct 10, F1): a pool, the water low, an arrow down
 let poolDrainIconN = 0;
@@ -10885,13 +10902,25 @@ function openJobPage(customer, job){
   head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;';
   const h = document.createElement('h2');
   h.style.cssText = 'margin:0;min-width:0;';
-  h.textContent = jobKindLabel(job.kind);
+  h.textContent = job.kind === 'pool drain' ? (job.title || 'Pool drain') : jobKindLabel(job.kind);
   const back = document.createElement('button');
   back.className = 'btn btn-ghost';
   back.style.cssText = 'width:auto;flex-shrink:0;padding:6px 12px;font-size:12.5px;';
   back.textContent = '\u2190 Return to route';
   head.appendChild(h); head.appendChild(back);
   card.appendChild(head);
+
+  // The time on this job, from when it was first opened, as a visit's (Oct 10).
+  // Kept on this phone until it's submitted, so leaving and coming back carries on.
+  const startedAll = lsGet('jobStartedAt') || {};
+  if(!startedAll[job.key]){ startedAll[job.key] = new Date().toISOString(); lsSet('jobStartedAt', startedAll); }
+  const jobStartedAt = startedAll[job.key];
+  const timer = document.createElement('div');
+  timer.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--teal-deep);margin:-6px 0 10px;";
+  const tick = ()=>{ if(!timer.isConnected && page.isConnected) return; timer.textContent = '\u23f1 ' + formatDuration(Date.now() - new Date(jobStartedAt).getTime()); };
+  tick();
+  const timerIv = setInterval(()=>{ if(!page.isConnected){ clearInterval(timerIv); return; } tick(); }, 1000);
+  card.appendChild(timer);
 
   const who = document.createElement('div');
   who.style.cssText = 'font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:17px;color:var(--gold);';
@@ -11118,8 +11147,11 @@ function openJobPage(customer, job){
     const storedMore = storedAll.slice(1).filter(isPhotoRef);
     const videoRef = videoRefs[0] || null;
     const videoMore = videoRefs.slice(1);
+    const durationMs = Math.max(0, Date.now() - new Date(jobStartedAt).getTime());
+    try{ const st = lsGet('jobStartedAt') || {}; delete st[job.key]; lsSet('jobStartedAt', st); }catch(e){}
     const list = jobSubmissions();
     list.push({
+      durationMs: durationMs,
       key: job.key, kind: job.kind, sourceId: job.id,
       customerId: customer ? customer.id : null, customerName: customer ? customer.name : '', title: job.title,
       notes: notes.value.trim(), photo: stored, photoMore: storedMore, video: videoRef, videoMore: videoMore, date: job.dayISO || todayDateStr(),
@@ -11155,6 +11187,9 @@ function openJobPage(customer, job){
             if(x) [x.video].concat(x.videoMore || []).forEach(v => { if(isPhotoRef(v)) vids.push(v); });
           });
           if(vids.length){ t.doneVideo = vids[0]; if(vids.length > 1) t.doneVideoMore = vids.slice(1); }
+          // Its time: every customer's part added up (Oct 10)
+          const total = who.reduce((n, k)=>{ const x = subs.find(y => y.key === k); return n + ((x && x.durationMs) || 0); }, 0);
+          if(total) t.doneDurationMs = total;
           lsSet('tasks', all);
         }
       }
@@ -11167,6 +11202,7 @@ function openJobPage(customer, job){
         fc.doneAt = stamp;
         fc.doneBy = currentUser ? currentUser.id : '';
         fc.doneNotes = noteText;
+        fc.doneDurationMs = durationMs;
         if(isPhotoRef(stored)) fc.donePhoto = stored;
         if(storedMore.length) fc.donePhotoMore = storedMore;
         if(isPhotoRef(videoRef)) fc.doneVideo = videoRef;
@@ -11185,6 +11221,7 @@ function openJobPage(customer, job){
         pd.doneAt = stamp;
         pd.doneBy = currentUser ? currentUser.id : '';
         pd.doneNotes = noteText;
+        pd.doneDurationMs = durationMs;
         if(isPhotoRef(stored)) pd.donePhoto = stored;
         if(storedMore.length) pd.donePhotoMore = storedMore;
         if(isPhotoRef(videoRef)) pd.doneVideo = videoRef;
@@ -11199,6 +11236,7 @@ function openJobPage(customer, job){
         j.doneAt = stamp;
         j.doneBy = currentUser ? currentUser.id : '';
         j.doneNotes = noteText;
+        j.doneDurationMs = durationMs;
         // The photo and video go to the office with it (Oct 3)
         if(isPhotoRef(stored)) j.donePhoto = stored;
         if(storedMore.length) j.donePhotoMore = storedMore;
@@ -12245,14 +12283,14 @@ function servicedJobsOn(iso, techId){
     .forEach(([key, kind, pre])=>{
       (lsGet(key) || []).forEach(j=>{
         if(!j || j.status !== 'done' || !j.doneAt || localDay(j.doneAt) !== iso || !whose(j)) return;
-        out.push({kind, id: j.id, report: pre + j.id, customerId: j.customerId, doneAt: j.doneAt,
-          title: kind === 'work order' ? (j.title || 'Work order') : jobKindLabel(kind)});
+        out.push({kind, id: j.id, report: pre + j.id, customerId: j.customerId, doneAt: j.doneAt, durationMs: j.doneDurationMs,
+          title: kind === 'work order' ? (j.title || 'Work order') : kind === 'pool drain' ? drainTitle(j) : jobKindLabel(kind)});
       });
     });
   (lsGet('tasks') || []).forEach(t=>{
     if(!t || !t.done || !t.doneAt || localDay(t.doneAt) !== iso || !whose(t)) return;
     const ids = (t.customerIds || []).length ? t.customerIds : (t.customerId ? [t.customerId] : ['']);
-    ids.forEach(cid => out.push({kind: 'task', id: t.id, report: cid ? 'tk:' + t.id : '', customerId: cid, doneAt: t.doneAt, title: t.title || 'Task'}));
+    ids.forEach(cid => out.push({kind: 'task', id: t.id, report: cid ? 'tk:' + t.id : '', customerId: cid, doneAt: t.doneAt, durationMs: t.doneDurationMs, title: t.title || 'Task'}));
   });
   return out;
 }
@@ -12275,7 +12313,7 @@ function servicedJobRow(job){
   meta.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
   let when = '';
   try{ when = new Date(job.doneAt).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'}); }catch(e){}
-  meta.textContent = 'Done ' + when + (customer && customer.address ? ' \u00b7 ' + customer.address : '');
+  meta.textContent = 'Done ' + when + (job.durationMs ? ' \u00b7 ' + formatDuration(job.durationMs) : '') + (customer && customer.address ? ' \u00b7 ' + customer.address : '');
   left.appendChild(name); left.appendChild(meta);
   row.appendChild(left);
   if(customer && job.report){
@@ -13105,6 +13143,7 @@ async function renderTaskReport(customerId, taskId){
     + (t.date ? '<div class="rdate">Scheduled for ' + esc(fmtDate(t.date + 'T12:00:00'))
         + (t.doneAt ? ' \u00b7 Completed ' + esc(fmtDateTime(t.doneAt)) : '') + '</div>' : '')
     + (t.doneBy ? '<div class="rdate">Completed by ' + esc(by) + '</div>' : '')
+    + (t.doneDurationMs ? '<div class="rdate">Time on the job ' + esc(formatDuration(t.doneDurationMs)) + '</div>' : '')
     + '</div><div class="report-badge">Completed</div></div>'
     + sec('Task') + '<div class="report-notes" style="white-space:pre-wrap;">' + esc(t.title || 'Task') + '</div>'
     + (t.details ? sec('Details') + '<div class="report-notes" style="white-space:pre-wrap;">' + esc(t.details) + '</div>' : '')
@@ -13181,11 +13220,12 @@ async function renderWorkOrderReport(customerId, jobId, isClean){
   }
   out.innerHTML = '<div class="report-doc">'
     + '<div class="report-head"><div>'
-    + '<h2>' + (isDrain ? 'Pool drain' : isClean ? 'Filter clean' : 'Work order ' + esc(num)) + '</h2>'
+    + '<h2>' + (isDrain ? drainTitle(j) : isClean ? 'Filter clean' : 'Work order ' + esc(num)) + '</h2>'
     + '<div class="rdate">' + esc(customer.name) + (customer.address ? ' \u2014 ' + esc(customer.address) : '') + '</div>'
     + '<div class="rdate">Scheduled for ' + esc(fmtDate(j.date + 'T12:00:00'))
     + (j.doneAt ? ' \u00b7 Submitted ' + esc(fmtDateTime(j.doneAt)) : '') + '</div>'
     + '<div class="rdate">Submitted by ' + esc(by) + '</div>'
+    + (j.doneDurationMs ? '<div class="rdate">Time on the job ' + esc(formatDuration(j.doneDurationMs)) + '</div>' : '')
     + '</div><div class="report-badge">Completed</div></div>'
     + (items.length ? sec('Line items') + '<table class="report-table">' + rows + '</table>' : '')
     + (j.notes ? sec('Work order notes') + '<div class="report-notes" style="white-space:pre-wrap;">' + esc(j.notes) + '</div>' : '')
@@ -13345,7 +13385,7 @@ async function refreshDateSelector(customerId){
     opt.textContent = d.wo
       ? fmtDate(d.ts) + '  \u2014 Work order ' + workOrderNumberText(d.wo.workOrderNumber)
       : d.fc ? fmtDate(d.ts) + '  \u2014 Filter clean'
-      : d.pd ? fmtDate(d.ts) + '  \u2014 Pool drain'
+      : d.pd ? fmtDate(d.ts) + '  \u2014 ' + drainTitle(d.pd)
       : d.task ? fmtDate(d.ts) + '  \u2014 Task'
       : fmtDate(d.ts) + (d.isRedo ? '  \u2014 redone' : '');
     sel.appendChild(opt);
@@ -13441,7 +13481,7 @@ function drawReportRows(){
     tag.style.cssText = "margin-left:0;vertical-align:middle;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;"
       + 'letter-spacing:0.07em;text-transform:uppercase;padding:3px 6px;border-radius:6px;'
       + 'color:' + tc[1] + ';background:' + (isOpen && !d.wo && !d.fc && !d.pd && !d.task ? 'var(--card)' : tc[0]) + ';';
-    tag.textContent = d.wo ? 'Work order ' + workOrderNumberText(d.wo.workOrderNumber) : d.fc ? 'Filter clean' : d.pd ? 'Pool drain' : d.task ? 'Task' : 'Service report';
+    tag.textContent = d.wo ? 'Work order ' + workOrderNumberText(d.wo.workOrderNumber) : d.fc ? 'Filter clean' : d.pd ? drainTitle(d.pd) : d.task ? 'Task' : 'Service report';
     when.appendChild(tag);
     const extra = d.wo ? (d.wo.title || '') : d.task ? (d.task.title || '') : (d.isRedo ? 'Redone' : '');
     if(extra){
