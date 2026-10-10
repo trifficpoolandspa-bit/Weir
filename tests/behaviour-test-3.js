@@ -201,9 +201,17 @@ console.log('\n=== Message all customers ===');
           tpls().join(','));
 
     // Saving a new one
-    w.eval("promptDialog = (q)=> Promise.resolve(q.indexOf('Category') !== -1 ? 'Green Pools' : 'Algae notice');");
+    // One window for the name and the category (Oct 10), with a new category made in it
     d.getElementById('wcBroadcastBody').value = 'Your pool has turned green.';
     d.getElementById('wcBroadcastSave').click();
+    {
+      const ov = d.querySelector('.confirm-overlay');
+      ov.querySelector('#ntName').value = 'Algae notice';
+      Array.from(ov.querySelectorAll('[data-cats] button')).find(b => /New category/.test(b.textContent)).click();
+      ov.querySelector('[data-newname]').value = 'Green Pools';
+      ov.querySelector('[data-newadd]').click();
+      ov.querySelector('[data-save]').click();
+    }
 
     deferred.push(()=>{
       const stored = JSON.parse(w.eval("JSON.stringify(lsGet('broadcastTemplates') || [])"));

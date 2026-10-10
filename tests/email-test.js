@@ -53,7 +53,7 @@ function boot(){
       // The mail app is opened by setting the address bar, so that is what is
       // watched here rather than anything being sent by the app
       w.eval("window.__opened = []; confirmDialog = ()=> Promise.resolve(true);"
-        + " openMailApp = (href)=> window.__opened.push(href);");
+        + " openMailApp = (href)=> window.__opened.push(href);" + " lsSet('accountEmail', lsGet('accountEmail') || 'office@example.com'); broadcastFromCheck = ()=> Promise.resolve(true);");
       w.eval("switchView('workcenter');");
       Array.from(d.querySelectorAll('#workCenterTypeControl .history-type-btn'))
         .find(b => b.dataset.type === 'broadcast').click();
@@ -386,7 +386,7 @@ function boot(){
   console.log('\n=== broadcasts: email app, Gmail and Outlook ===');
   const press = async (w, d, id, clip)=>{
     w.eval("window.__opened = []; window.__copied = []; confirmDialog = ()=> Promise.resolve(true);"
-      + " openMailApp = (href)=> window.__opened.push(href);");
+      + " openMailApp = (href)=> window.__opened.push(href);" + " lsSet('accountEmail', lsGet('accountEmail') || 'office@example.com'); broadcastFromCheck = ()=> Promise.resolve(true);");
     Object.defineProperty(w.navigator, 'clipboard', {configurable: true,
       value: {writeText: t => { w.__copied.push(t); return clip === false ? Promise.reject(new Error('no')) : Promise.resolve(); }}});
     d.getElementById(id).click();
@@ -414,7 +414,9 @@ function boot(){
     let r = await press(w, d, 'wcBroadcastGmail');
     const g = r.opened[0] || '';
     check('  Gmail opens once', r.opened.length === 1, String(r.opened.length));
-    check('  at Gmail\u2019s compose page', g.indexOf('https://mail.google.com/mail/?view=cm') === 0, g.slice(0, 50));
+    check('  at Gmail\u2019s compose page', g.indexOf('https://mail.google.com/mail/?') === 0 && g.indexOf('view=cm') !== -1, g.slice(0, 50));
+    // Opened as the business email on the Account page (Oct 10)
+    check('  as the business email\u2019s own Gmail account', g.indexOf('authuser=' + encodeURIComponent(w.eval('accountEmail()'))) !== -1 && !!w.eval('accountEmail()'), g.slice(0, 80));
     check('  with both addresses in Bcc', param(g, 'bcc') === 'alpha@x.com,bravo@x.com', param(g, 'bcc'));
     check('  and nobody in To', !param(g, 'to'));
     check('  the subject carried over', param(g, 'su') === 'Storm warning', param(g, 'su'));
@@ -490,7 +492,7 @@ function boot(){
     d.getElementById('wcRecipientAll').click();
     d.getElementById('wcBroadcastBody').value = 'Turn your system on.';
     w.eval("window.__opened = []; confirmDialog = ()=> Promise.resolve(true);"
-      + " openMailApp = (href)=> window.__opened.push(href);");
+      + " openMailApp = (href)=> window.__opened.push(href);" + " lsSet('accountEmail', lsGet('accountEmail') || 'office@example.com'); broadcastFromCheck = ()=> Promise.resolve(true);");
     d.getElementById('wcBroadcastGmail').click();
     await new Promise(r => setTimeout(r, 300));
     const more = d.getElementById('wcBroadcastMore');
@@ -564,7 +566,7 @@ function boot(){
       check('  cancelling saves no preference', !w.localStorage.getItem('weir:broadcastRoute'));
 
       // Accepting saves it and moves it to the front
-      w.eval("confirmDialog = ()=> Promise.resolve(true); openMailApp = ()=>{};");
+      w.eval("confirmDialog = ()=> Promise.resolve(true); openMailApp = ()=>{}; lsSet('accountEmail', lsGet('accountEmail') || 'office@example.com'); broadcastFromCheck = ()=> Promise.resolve(true);");
       d.getElementById('wcBroadcastOutlook').click(); await new Promise(r => setTimeout(r, 150));
       check('  the one used moves to the front', row(d)[0].id === 'wcBroadcastOutlook', row(d).map(b => b.id).join());
       check('  and becomes the filled button, the others outlined',
