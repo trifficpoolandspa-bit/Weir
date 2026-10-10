@@ -6617,14 +6617,16 @@ const BROADCAST_ROUTES = {
   },
   gmail: {
     name: 'Gmail', maxLink: 7000,
-    link: (bcc, subject, body)=> 'https://mail.google.com/mail/?view=cm&fs=1&bcc='
+    // authuser opens Gmail as the business email on the Account page (Oct 10),
+    // not whichever Google account the browser happens to be on
+    link: (bcc, subject, body)=> 'https://mail.google.com/mail/?authuser=' + encodeURIComponent(accountEmail()) + '&view=cm&fs=1&bcc='
       + encodeURIComponent(bcc)
       + '&su=' + encodeURIComponent(subject)
       + '&body=' + encodeURIComponent(body)
   },
   outlook: {
     name: 'Outlook', maxLink: 7000,
-    link: (bcc, subject, body)=> 'https://outlook.office.com/mail/deeplink/compose?bcc='
+    link: (bcc, subject, body)=> 'https://outlook.office.com/mail/deeplink/compose?login_hint=' + encodeURIComponent(accountEmail()) + '&bcc='
       + encodeURIComponent(bcc)
       + '&subject=' + encodeURIComponent(subject)
       + '&body=' + encodeURIComponent(body)
@@ -6721,6 +6723,45 @@ function arrangeBroadcastButtons(){
   });
 }
 
+// Before anything opens (Oct 10): which address it goes from. Gmail is opened
+// as that account. Outlook and the computer's email app can't be made to use
+// it, so they have to be confirmed by ticking that the From line says it.
+function broadcastFromCheck(via, from, n){
+  return new Promise(resolve=>{
+    const forced = via === 'gmail';
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = '<div class="confirm-box" style="max-width:440px;width:100%;">'
+      + '<h3 style="font-size:16px;margin:0 0 4px;">Open ' + (via === 'app' ? 'your email app' : via === 'gmail' ? 'Gmail' : 'Outlook') + '</h3>'
+      + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">' + n + (n === 1 ? ' customer' : ' customers') + ' in the Bcc line, so nobody sees anyone else\u2019s address. Nothing goes until you press send there.</p>'
+      + '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);">Sending from</div>'
+      + '<div data-from style="font-size:15px;font-weight:700;color:var(--teal-deep);margin:0 0 10px;word-break:break-all;"></div>'
+      + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;" data-what></p>'
+      + (forced ? '' : '<label class="pick-row" style="border:none;padding:4px 0;font-size:13px;font-weight:600;color:var(--rust);"><input type="checkbox" data-tick style="width:auto;margin:0;"> I\u2019ll check the From line says this address before I press send</label>')
+      + '<div class="btn-row" style="margin-top:14px;"><button type="button" class="btn btn-ghost" data-cancel>Cancel</button>'
+      + '<button type="button" class="btn btn-primary" data-go>Continue</button></div></div>';
+    overlay.querySelector('[data-from]').textContent = from;
+    overlay.querySelector('[data-what]').textContent = forced
+      ? 'Gmail opens as this account. If it isn\u2019t signed in on this computer, Google asks you to sign in to it first. The address is set on the Account page.'
+        + ' If you can\u2019t see Gmail\u2019s Send button, zoom out with Ctrl + minus (Cmd + minus on a Mac), or press Ctrl + Enter (Cmd + Enter) to send.'
+      : (via === 'app' ? 'Your computer\u2019s email app' : 'Outlook') + ' sends from whichever account it\u2019s signed in to, and Weir can\u2019t change that. '
+        + 'If its From line shows anything else, switch it to this address or use Open in Gmail. The address is set on the Account page.';
+    document.body.appendChild(overlay);
+    let done = false;
+    const watch = new MutationObserver(()=>{ if(!overlay.isConnected) finish(false); });
+    const finish = v => { if(done) return; done = true; watch.disconnect(); overlay.remove(); resolve(v); };
+    watch.observe(document.body, {childList: true});
+    const go = overlay.querySelector('[data-go]');
+    const tick = overlay.querySelector('[data-tick]');
+    if(tick){
+      go.disabled = true; go.style.opacity = '0.5';
+      tick.addEventListener('change', ()=>{ go.disabled = !tick.checked; go.style.opacity = tick.checked ? '' : '0.5'; });
+    }
+    overlay.querySelector('[data-cancel]').addEventListener('click', ()=> finish(false));
+    go.addEventListener('click', ()=>{ if(!go.disabled) finish(true); });
+  });
+}
+
 async function startBroadcast(via){
   const route = BROADCAST_ROUTES[via];
   const note = document.getElementById('wcBroadcastNote');
@@ -6747,18 +6788,16 @@ async function startBroadcast(via){
     return;
   }
 
-  const ok = await confirmDialog(
-    'Open ' + route.name + ' with ' + addresses.length + ' customer'
-    + (addresses.length === 1 ? '' : 's') + ' in the Bcc line?\n\n'
-    + 'It is sent from your own email address, and nobody sees anyone else\u2019s. '
-    + 'Nothing goes until you press send there.'
-    // Gmail's compose page can open too tall to scroll, hiding its Send button
-    + (via === 'gmail'
-      ? '\n\nIf you can\u2019t see Gmail\u2019s Send button, zoom out with Ctrl + minus '
-        + '(Cmd + minus on a Mac), or just press Ctrl + Enter (Cmd + Enter on a Mac) to send.'
-      : ''),
-    via === 'app' ? 'Open email app' : 'Open ' + route.name);
-  if(!ok) return;
+  // Only ever from the business email on the Account page (Oct 10): a send
+  // went out from a personal address without anyone noticing
+  const from = accountEmail();
+  if(!from || from.indexOf('@') === -1){
+    await confirmDialog('Add your business email on the Account page first. Emails here only go out from that address.', 'OK');
+    return;
+  }
+  // One window: who it goes to, and from which address
+  const sure = await broadcastFromCheck(via, from, addresses.length);
+  if(!sure) return;
 
   // Remembered, and moved to the front for next time
   lsSet('broadcastRoute', via);
