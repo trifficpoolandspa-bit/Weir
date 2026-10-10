@@ -1383,7 +1383,7 @@ input::placeholder{color:#A9BCB9;}
 
       <div class="field">
         <label>Category</label>
-        <div class="btn-row" id="wcBroadcastCategories" style="gap:8px;flex-wrap:wrap;"></div>
+        <div class="btn-row" id="wcBroadcastCategories" style="gap:8px;flex-wrap:wrap;align-items:center;"></div>
       </div>
 
       <div class="field">
@@ -6168,6 +6168,149 @@ async function manageBroadcastCategory(cat){
 }
 
 
+// Edit categories (Oct 10): pick a category, tick the templates that belong in
+// it. Ticking moves a template in; unticking moves it to Uncategorised.
+function openEditBroadcastCategories(startCat){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:480px;width:100%;max-height:86vh;display:flex;flex-direction:column;';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const close = ()=>{ overlay.remove(); renderBroadcast(); };
+  let pick = startCat;
+  const small = (text, extra) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn btn-ghost';
+    b.style.cssText = 'width:auto;flex:0 0 auto;padding:4px 10px;font-size:11.5px;' + (extra || '');
+    b.textContent = text;
+    return b;
+  };
+  let drawn = false;
+  function draw(){
+    // The page under the window follows each change, so a click outside to
+    // close it leaves nothing stale
+    if(drawn){ try{ renderBroadcast(); }catch(e){} }
+    drawn = true;
+    const templates = loadBroadcastTemplates();
+    const cats = broadcastCategories(templates).filter(c => c !== 'All');
+    if(!pick || cats.indexOf(pick) === -1) pick = cats[0] || '';
+    box.innerHTML = '<h3 style="font-size:16px;margin:0 0 4px;">Edit categories</h3>'
+      + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Pick a category, then tick the templates that belong in it.</p>';
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;';
+    cats.forEach(c=>{
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn ' + (c === pick ? 'btn-primary' : 'btn-ghost');
+      b.style.cssText = 'width:auto;padding:6px 12px;font-size:12.5px;';
+      b.textContent = c;
+      b.addEventListener('click', ()=>{ pick = c; draw(); });
+      row.appendChild(b);
+    });
+    const add = document.createElement('button');
+    add.type = 'button'; add.className = 'btn btn-ghost';
+    add.style.cssText = 'width:auto;padding:6px 12px;font-size:12.5px;font-weight:700;';
+    add.textContent = '+'; add.title = 'Add a category';
+    add.addEventListener('click', async ()=>{
+      const name = await promptDialog('Name the new category', 'e.g. Green Pools');
+      if(!name || !name.trim()) return;
+      const clean = name.trim();
+      if(broadcastCategories(loadBroadcastTemplates()).indexOf(clean) === -1){
+        const own = loadBroadcastCategories(); own.push(clean); saveBroadcastCategories(own);
+      }
+      pick = clean;
+      draw();
+    });
+    row.appendChild(add);
+    box.appendChild(row);
+    if(!pick){
+      box.insertAdjacentHTML('beforeend', '<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">No categories yet \u2014 press + to add one.</div>');
+    } else {
+      const head = document.createElement('div');
+      head.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;';
+      const title = document.createElement('div');
+      title.style.cssText = 'font-size:13px;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      title.textContent = 'Templates in ' + pick;
+      head.appendChild(title);
+      const ren = small('Rename', 'margin-left:auto;');
+      ren.addEventListener('click', async ()=>{
+        const name = await promptDialog('New name for "' + pick + '"', pick, pick, 'Save');
+        if(!name || !name.trim() || name.trim() === pick) return;
+        const clean = name.trim();
+        const list = loadBroadcastTemplates();
+        list.forEach(t => { if((t.category || 'Uncategorised') === pick) t.category = clean; });
+        saveBroadcastTemplates(list);
+        saveBroadcastCategories(loadBroadcastCategories().map(x => x === pick ? clean : x).filter((x, i, a) => a.indexOf(x) === i));
+        if(broadcastCategory === pick) broadcastCategory = clean;
+        pick = clean;
+        draw();
+      });
+      head.appendChild(ren);
+      const rm = small('Remove', 'color:var(--rust);border-color:#EFC9BC;');
+      rm.addEventListener('click', async ()=>{
+        const n = loadBroadcastTemplates().filter(t => (t.category || 'Uncategorised') === pick).length;
+        const ok = await confirmDialog('Remove the "' + pick + '" category?' + (n ? ' Its ' + n + (n === 1 ? ' template moves' : ' templates move') + ' to Uncategorised.' : ''), 'Remove');
+        if(!ok) return;
+        const list = loadBroadcastTemplates();
+        list.forEach(t => { if((t.category || 'Uncategorised') === pick) t.category = 'Uncategorised'; });
+        saveBroadcastTemplates(list);
+        saveBroadcastCategories(loadBroadcastCategories().filter(x => x !== pick));
+        if(broadcastCategory === pick) broadcastCategory = 'All';
+        pick = '';
+        draw();
+      });
+      head.appendChild(rm);
+      box.appendChild(head);
+      const listEl = document.createElement('div');
+      listEl.style.cssText = 'border:1px solid var(--line);border-radius:10px;padding:2px 10px;overflow-y:auto;flex:1;min-height:0;';
+      if(!templates.length) listEl.innerHTML = '<div style="padding:10px 0;font-size:12.5px;color:var(--muted);">No templates yet.</div>';
+      templates.forEach(t=>{
+        const cat = t.category || 'Uncategorised';
+        const lab = document.createElement('label');
+        lab.className = 'pick-row';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = cat === pick;
+        cb.style.cssText = 'width:auto;margin:0;';
+        cb.addEventListener('change', ()=>{
+          const list = loadBroadcastTemplates();
+          const it = list.find(x => x.id === t.id);
+          if(!it) return;
+          it.category = cb.checked ? pick : 'Uncategorised';
+          saveBroadcastTemplates(list);
+          draw();
+        });
+        lab.appendChild(cb);
+        const nm = document.createElement('span');
+        nm.style.flex = '1';
+        nm.textContent = t.name;
+        lab.appendChild(nm);
+        if(cat !== pick){
+          const where = document.createElement('span');
+          where.style.cssText = 'font-size:11.5px;color:var(--muted);';
+          where.textContent = 'in ' + cat;
+          lab.appendChild(where);
+        }
+        listEl.appendChild(lab);
+      });
+      box.appendChild(listEl);
+    }
+    const foot = document.createElement('div');
+    foot.className = 'btn-row';
+    foot.style.marginTop = '14px';
+    const done = document.createElement('button');
+    done.type = 'button'; done.className = 'btn btn-primary';
+    done.style.flex = '1';
+    done.textContent = 'Done';
+    done.addEventListener('click', close);
+    foot.appendChild(done);
+    box.appendChild(foot);
+  }
+  draw();
+}
+
 // One hover-to-delete treatment, used everywhere something is removable, so
 // the behaviour is the same wherever it appears. The x sits on the right and
 // only shows on hover, so a resting row is never cluttered with them.
@@ -6240,6 +6383,16 @@ function renderBroadcast(){
     addBtn.style.fontWeight = '700';
     addBtn.addEventListener('click', addBroadcastCategory);
     catBox.appendChild(addBtn);
+
+    // Edit, at the far right of the row (Oct 10): which templates go in which category
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'btn btn-ghost';
+    editBtn.style.cssText = 'width:auto;padding:7px 13px;font-size:12.5px;margin-left:auto;';
+    editBtn.textContent = 'Edit';
+    editBtn.title = 'Put templates into categories';
+    editBtn.addEventListener('click', ()=> openEditBroadcastCategories());
+    catBox.appendChild(editBtn);
   }
 
   // Templates in the chosen category
@@ -6322,14 +6475,92 @@ document.getElementById('wcRecipientNone').addEventListener('click', ()=>{
   updateBroadcastCount();
 });
 
+function askNewTemplateDetails(){
+  return new Promise(resolve=>{
+    const cats = broadcastCategories(loadBroadcastTemplates()).filter(c => c !== 'All');
+    let cat = broadcastCategory && broadcastCategory !== 'All' && cats.indexOf(broadcastCategory) !== -1 ? broadcastCategory : (cats[0] || '');
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = '<div class="confirm-box" style="max-width:440px;width:100%;">'
+      + '<h3 style="font-size:16px;margin:0 0 12px;">Save as a new template</h3>'
+      + '<label for="ntName" style="font-size:12.5px;font-weight:600;">Name</label>'
+      + '<input id="ntName" placeholder="e.g. Green pool notice" style="margin:4px 0 14px;">'
+      + '<div style="font-size:12.5px;font-weight:600;margin-bottom:6px;">Category</div>'
+      + '<div data-cats style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;"></div>'
+      + '<div data-new style="display:none;gap:8px;margin-bottom:8px;"><input data-newname placeholder="New category name" style="flex:1;min-width:0;">'
+      + '<button type="button" class="btn btn-ghost" data-newadd style="width:auto;flex:0 0 auto;padding:7px 14px;">Add</button></div>'
+      + '<div data-warn style="display:none;font-size:12.5px;font-weight:600;color:var(--rust);margin:4px 0 0;"></div>'
+      + '<div class="btn-row" style="margin-top:14px;"><button type="button" class="btn btn-ghost" data-cancel>Cancel</button>'
+      + '<button type="button" class="btn btn-primary" data-save>Save</button></div></div>';
+    document.body.appendChild(overlay);
+    const nameIn = overlay.querySelector('#ntName');
+    const catBox = overlay.querySelector('[data-cats]');
+    const newRow = overlay.querySelector('[data-new]');
+    const newIn = overlay.querySelector('[data-newname]');
+    const warn = overlay.querySelector('[data-warn]');
+    const say = t => { warn.textContent = t; warn.style.display = t ? 'block' : 'none'; };
+    let settled = false;
+    // A click outside closes it, as every window does: that's a cancel
+    const watch = new MutationObserver(()=>{ if(!overlay.isConnected) finish(null); });
+    const finish = v => { if(settled) return; settled = true; watch.disconnect(); overlay.remove(); resolve(v); };
+    watch.observe(document.body, {childList: true});
+    function drawCats(){
+      catBox.innerHTML = '';
+      cats.forEach(c=>{
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn ' + (c === cat ? 'btn-primary' : 'btn-ghost');
+        b.style.cssText = 'width:auto;padding:6px 12px;font-size:12.5px;';
+        b.textContent = c;
+        b.addEventListener('click', ()=>{ cat = c; say(''); drawCats(); });
+        catBox.appendChild(b);
+      });
+      const plus = document.createElement('button');
+      plus.type = 'button';
+      plus.className = 'btn btn-ghost';
+      plus.style.cssText = 'width:auto;padding:6px 12px;font-size:12.5px;font-weight:700;';
+      plus.textContent = '+ New category';
+      plus.addEventListener('click', ()=>{ newRow.style.display = 'flex'; newIn.focus(); });
+      catBox.appendChild(plus);
+    }
+    const addNew = ()=>{
+      const c = newIn.value.trim();
+      if(!c) return;
+      if(cats.indexOf(c) === -1) cats.push(c);
+      cat = c;
+      newIn.value = '';
+      newRow.style.display = 'none';
+      say('');
+      drawCats();
+    };
+    overlay.querySelector('[data-newadd]').addEventListener('click', addNew);
+    newIn.addEventListener('keydown', e=>{ if(e.key === 'Enter'){ e.preventDefault(); addNew(); } });
+    drawCats();
+    overlay.querySelector('[data-cancel]').addEventListener('click', ()=> finish(null));
+    overlay.querySelector('[data-save]').addEventListener('click', ()=>{
+      if(!nameIn.value.trim()){ say('Give the template a name.'); nameIn.focus(); return; }
+      if(newIn.value.trim()){ say('\u201c' + newIn.value.trim() + '\u201d hasn\u2019t been added yet \u2014 press Add, or clear the box.'); return; }
+      if(!cat){ say('Pick a category, or make a new one.'); return; }
+      // A new category is kept even before anything else uses it
+      if(loadBroadcastCategories().indexOf(cat) === -1 && broadcastCategories(loadBroadcastTemplates()).indexOf(cat) === -1){
+        const own = loadBroadcastCategories(); own.push(cat); saveBroadcastCategories(own);
+      }
+      finish({name: nameIn.value.trim(), category: cat});
+    });
+    nameIn.focus();
+  });
+}
+
 document.getElementById('wcBroadcastSave').addEventListener('click', async ()=>{
   const subject = document.getElementById('wcBroadcastSubject').value.trim();
   const body = document.getElementById('wcBroadcastBody').value;
   if(!body.trim()){ showToast('Write a message first'); return; }
 
-  const name = await promptDialog('Name this template', 'e.g. Green pool notice');
-  if(!name || !name.trim()) return;
-  const category = await promptDialog('Category', 'e.g. Weather, Scheduling, Announcements');
+  // One window (Oct 10): the name, and which category it goes in, picked from
+  // the ones there are or a new one made right here
+  const picked = await askNewTemplateDetails();
+  if(!picked) return;
+  const name = picked.name, category = picked.category;
 
   const list = loadBroadcastTemplates();
   const t = {
