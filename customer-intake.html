@@ -1731,14 +1731,14 @@ input::placeholder{color:#A9BCB9;}
     <div class="card" id="wcDrainsSection" style="display:none;">
       <div class="section-head">
         <h2>Pool drains</h2>
+        <!-- Drains from a spreadsheet (Oct 10), just right of the heading -->
+        <button type="button" class="btn btn-ghost" id="btnImportDrains" style="width:auto;margin-left:12px;">Import drains</button>
+        <input type="file" accept=".csv,text/csv" id="importDrainsInput" style="display:none;">
         <div style="display:flex;gap:8px;margin-left:auto;align-items:center;flex-wrap:wrap;">
           <select id="drainTech" aria-label="Technician" title="Show one technician's customers" style="width:auto;min-width:160px;"></select>
           <label for="drainEvery" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--ink);margin:0;white-space:nowrap;cursor:pointer;">Drain every
             <select id="drainEvery" title="How often pools are drained in your area" style="width:auto;"></select>
           </label>
-          <!-- Drains from a spreadsheet (Oct 10) -->
-          <button type="button" class="btn btn-ghost" id="btnImportDrains" style="width:auto;">Import drains</button>
-          <input type="file" accept=".csv,text/csv" id="importDrainsInput" style="display:none;">
         </div>
       </div>
       <div class="section-count" id="drainCount" style="margin:-4px 0 12px;"></div>
@@ -8680,16 +8680,25 @@ function pdImportDate(raw){
   return '';
 }
 function pdImportNameKey(n){ return String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
-function pdImportFindCustomer(name){
+function pdImportFindCustomer(name, address){
   const k = pdImportNameKey(name);
   if(!k) return null;
   // "Ana Rivera", "Rivera, Ana" and "Rivera Ana" all find the same customer
   const flipped = String(name).indexOf(',') !== -1
     ? pdImportNameKey(String(name).split(',').slice(1).join(' ') + ' ' + String(name).split(',')[0]) : '';
   const live = customers.filter(c => c && !c.deleted);
-  return live.find(c => pdImportNameKey(c.name) === k || (flipped && pdImportNameKey(c.name) === flipped))
-    || live.find(c => pdImportNameKey(displayName(c.name)) === k)
-    || null;
+  let hits = live.filter(c => pdImportNameKey(c.name) === k || (flipped && pdImportNameKey(c.name) === flipped));
+  if(!hits.length) hits = live.filter(c => pdImportNameKey(displayName(c.name)) === k);
+  if(hits.length < 2) return hits[0] || null;
+  // The same name at two properties: the address decides (Oct 10)
+  const street = a => pdImportNameKey(String(a || '').split(',')[0]);
+  const want = street(address);
+  if(want){
+    const byAddr = hits.find(c => street(c.address) === want)
+      || hits.find(c => street(c.address) && (street(c.address).indexOf(want) === 0 || want.indexOf(street(c.address)) === 0));
+    if(byAddr) return byAddr;
+  }
+  return hits[0];
 }
 function pdImportBody(c, kind){
   const bodies = pdBodies(c);
@@ -8714,6 +8723,10 @@ function pdImportRead(text){
   const header = hi !== -1 ? rows[hi].map(f => String(f).toLowerCase()) : [];
   const nameCol = header.findIndex(f => /customer|client/.test(f)) !== -1 ? header.findIndex(f => /customer|client/.test(f)) : header.findIndex(f => /name/.test(f));
   const dateCol = header.findIndex(f => /date/.test(f));
+  const addrCol = header.findIndex(f => /address/.test(f) && !/e-?mail/.test(f));
+  // Columns headed Pool Drain, Spa Drain… with the dates under them (Oct 10)
+  const drainCols = [];
+  header.forEach((f, i)=>{ const k = PD_IMPORT_KINDS.find(x => x.re.test(f)); if(k) drainCols.push({i, kind: k.kind}); });
   const found = [], missing = new Map();
   let noDate = 0, lastName = '';
   rows.slice(hi + 1).forEach(r=>{
@@ -8724,6 +8737,19 @@ function pdImportRead(text){
     }
     // Reports that print the customer once above their lines
     if(name) lastName = name; else name = lastName;
+    if(drainCols.length){
+      const address = addrCol !== -1 ? r[addrCol] : '';
+      drainCols.forEach(col=>{
+        const cell = String(r[col.i] || '').trim();
+        if(!cell) return;
+        const date = pdImportDate(cell);
+        if(!date){ noDate++; return; }
+        const c = pdImportFindCustomer(name, address);
+        if(!c){ missing.set(name || '(no name)', (missing.get(name || '(no name)') || 0) + 1); return; }
+        found.push({c, date, body: pdImportBody(c, col.kind), kind: col.kind});
+      });
+      return;
+    }
     const kinds = PD_IMPORT_KINDS.filter(k => r.some(f => k.re.test(String(f || ''))));
     if(!kinds.length) return;
     const date = (dateCol !== -1 && pdImportDate(r[dateCol])) || r.map(pdImportDate).find(Boolean) || '';
@@ -8734,10 +8760,38 @@ function pdImportRead(text){
   });
   return {found, missing: Array.from(missing.entries()), noDate};
 }
+// Pressing Import drains first shows how the spreadsheet needs to be laid out (Oct 10)
 document.getElementById('btnImportDrains').addEventListener('click', ()=>{
-  const inp = document.getElementById('importDrainsInput');
-  inp.value = '';
-  inp.click();
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const cell = 'padding:5px 8px;border:1px solid var(--line);font-size:12px;white-space:nowrap;';
+  const head = cell + 'background:var(--teal-pale);font-weight:700;color:var(--teal-deep);';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:520px;width:100%;">'
+    + '<h3 style="font-size:16px;margin:0 0 4px;">Import drains</h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Your spreadsheet needs a heading row, then one row per customer, like this:</p>'
+    + '<div style="overflow-x:auto;margin:0 0 12px;"><table style="border-collapse:collapse;">'
+    + '<tr><td style="' + head + '">Name</td><td style="' + head + '">Address</td><td style="' + head + '">Pool Drain</td><td style="' + head + '">Spa Drain</td></tr>'
+    + '<tr><td style="' + cell + '">Ana Rivera</td><td style="' + cell + '">123 W Main St, Goodyear, AZ</td><td style="' + cell + '">12/23</td><td style="' + cell + '"></td></tr>'
+    + '<tr><td style="' + cell + '">James Okafor</td><td style="' + cell + '">45 S Elm Dr, Buckeye, AZ</td><td style="' + cell + '">3/24</td><td style="' + cell + '">3/24</td></tr>'
+    + '</table></div>'
+    + '<ul style="font-size:12.5px;color:var(--ink);margin:0 0 14px;padding-left:18px;line-height:1.55;">'
+    + '<li><b>Name</b> matches each row to a customer here, written either way (Ana Rivera or Rivera, Ana).</li>'
+    + '<li><b>Address</b> is optional; it picks the right customer when two share a name.</li>'
+    + '<li>Drain columns headed <b>Pool Drain</b>, <b>Spa Drain</b>, <b>Fountain Drain</b> or <b>Extra Body Drain</b> &mdash; any you have.</li>'
+    + '<li>Dates as month/year (<b>12/23</b> is December 2023) or a full date (<b>12/5/23</b>). Leave a cell empty if there’s no drain.</li>'
+    + '<li>Any other columns are ignored. Save it as a <b>CSV</b> file (in Google Sheets: File → Download → Comma-separated values).</li>'
+    + '</ul>'
+    + '<div class="btn-row"><button type="button" class="btn btn-ghost" data-cancel>Cancel</button>'
+    + '<button type="button" class="btn btn-primary" data-pick>Choose file</button></div></div>';
+  document.body.appendChild(overlay);
+  const close = ()=> overlay.remove();
+  overlay.querySelector('[data-cancel]').addEventListener('click', close);
+  overlay.querySelector('[data-pick]').addEventListener('click', ()=>{
+    close();
+    const inp = document.getElementById('importDrainsInput');
+    inp.value = '';
+    inp.click();
+  });
 });
 document.getElementById('importDrainsInput').addEventListener('change', async e=>{
   const file = e.target.files && e.target.files[0];
