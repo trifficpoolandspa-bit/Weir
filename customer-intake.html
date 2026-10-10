@@ -323,6 +323,9 @@ input::placeholder{color:#A9BCB9;}
 .profile-meta-row.editable:hover{background:var(--teal-pale);}
 /* A pressable row in a list or window */
 .press-row:hover{background:var(--teal-pale);}
+/* History & billing: each customer's row lights up under the pointer (Oct 10) */
+#billingList .cust-row{border-radius:8px;transition:background-color .12s ease;}
+#billingList .cust-row:hover{background:var(--teal-pale);}
 /* WorkCenter Current and History rows light up under the pointer; the side
    padding lets the highlight reach past the text without moving it */
 .wc-row{border-radius:8px;margin-left:-8px;margin-right:-8px;padding-left:8px !important;padding-right:8px !important;transition:background-color .12s ease;}
@@ -594,7 +597,7 @@ input::placeholder{color:#A9BCB9;}
       <div class="nav-subs" id="wcNavSubs">
         <button type="button" class="nav-sub active" data-type="quotes"><span>Work orders and quotes</span></button>
         <button type="button" class="nav-sub" data-type="filters"><span>Filter cleans</span></button>
-        <button type="button" class="nav-sub" data-type="drains"><span>Pool drains</span></button>
+        <button type="button" class="nav-sub" data-type="drains"><span>Drains</span></button>
         <button type="button" class="nav-sub" data-type="broadcast"><span>Email</span></button>
       </div>
       <button class="tab" data-view="history">History / Billing</button>
@@ -1355,7 +1358,7 @@ input::placeholder{color:#A9BCB9;}
       <div class="seg-control" id="workCenterTypeControl">
         <button class="history-type-btn active" data-type="quotes">Work Orders & Quotes</button>
         <button class="history-type-btn" data-type="filters">Filter Cleans</button>
-        <button class="history-type-btn" data-type="drains">Pool Drains</button>
+        <button class="history-type-btn" data-type="drains">Drains</button>
         <button class="history-type-btn" data-type="broadcast">Email</button>
       </div>
     </div>
@@ -1704,7 +1707,11 @@ input::placeholder{color:#A9BCB9;}
         </div>
       </div>
       <!-- Customers across the groups shown, for the technician chosen (Oct 3) -->
-      <div class="section-count" id="filterGroupCount" style="margin:-4px 0 12px;"></div>
+      <!-- The counts, with Select multiple at the far right of the same line (Oct 10) -->
+      <div style="display:flex;align-items:center;gap:10px;margin:-4px 0 12px;">
+        <div class="section-count" id="filterGroupCount" style="margin:0;"></div>
+        <div id="filterGroupSelBar" style="margin-left:auto;"></div>
+      </div>
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Group customers together, give the group a date and a technician, then press Schedule to push it onto that technician's route. Customize emails to send to groups individually or all together.</p>
       <div id="filterGroupList"></div>
     </div>
@@ -1729,6 +1736,9 @@ input::placeholder{color:#A9BCB9;}
           <label for="drainEvery" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--ink);margin:0;white-space:nowrap;cursor:pointer;">Drain every
             <select id="drainEvery" title="How often pools are drained in your area" style="width:auto;"></select>
           </label>
+          <!-- Drains from a spreadsheet (Oct 10) -->
+          <button type="button" class="btn btn-ghost" id="btnImportDrains" style="width:auto;">Import drains</button>
+          <input type="file" accept=".csv,text/csv" id="importDrainsInput" style="display:none;">
         </div>
       </div>
       <div class="section-count" id="drainCount" style="margin:-4px 0 12px;"></div>
@@ -4463,6 +4473,39 @@ const DEFAULT_REPAIR_PRODUCTS = [
 function saveProductsServices(){
   lsSet('productsServices', productsServices);
 }
+// One item's change, made to what's saved now (Oct 10). The page's copy can be
+// out of date — another tab of the website, or a sync that arrived while a box
+// was being typed in — and saving that whole copy put back old prices and
+// extra charges. So only the fields changed are written, onto the saved list.
+function psSet(item, changes){
+  Object.assign(item, changes);
+  const saved = lsGet('productsServices');
+  const list = Array.isArray(saved) ? saved : productsServices.slice();
+  const at = list.findIndex(x => x && x.key === item.key);
+  if(at === -1) list.push(JSON.parse(JSON.stringify(item)));
+  else Object.keys(changes).forEach(k => { if(changes[k] === undefined) delete list[at][k]; else list[at][k] = changes[k]; });
+  lsSet('productsServices', list);
+  productsServices = list;
+}
+// Items removed or added the same way: on the saved list, not the page's copy
+function psRemove(key){
+  const saved = lsGet('productsServices');
+  const list = (Array.isArray(saved) ? saved : productsServices).filter(x => x && x.key !== key);
+  lsSet('productsServices', list);
+  productsServices = list;
+}
+function psAdd(item){
+  const saved = lsGet('productsServices');
+  const list = Array.isArray(saved) ? saved : productsServices.slice();
+  if(!list.some(x => x && x.key === item.key)) list.push(item);
+  lsSet('productsServices', list);
+  productsServices = list;
+}
+// Changed in another tab of the website: this tab picks it up (Oct 10)
+window.addEventListener('storage', e=>{
+  if(e.key !== STORAGE_PREFIX + 'productsServices') return;
+  try{ refreshSyncedWorkingCopy('productsServices'); }catch(err){}
+});
 
 let psCategory = 'all';
 let psSearchTerm = '';
@@ -4567,8 +4610,7 @@ function renderProductsServicesList(){
     const moved = keys.filter(k => pageKeys.indexOf(k) !== -1);
     const full = visible.map(x => x.key);
     full.splice(psStart, pageKeys.length, ...moved);
-    full.forEach((k, i)=>{ const it = productsServices.find(x => x.key === k); if(it) it.order = i; });
-    saveProductsServices();
+    full.forEach((k, i)=>{ const it = productsServices.find(x => x.key === k); if(it) psSet(it, {order: i}); });
     renderProductsServicesList();
   };
   pageItems.forEach(item=>{
@@ -4591,8 +4633,7 @@ function renderProductsServicesList(){
     nameInput.placeholder = 'Name (e.g. Filter replacement)';
     nameInput.style.cssText = 'flex:1 1 auto;min-width:0;';
     nameInput.addEventListener('input', ()=>{
-      item.name = nameInput.value;
-      saveProductsServices();
+      psSet(item, {name: nameInput.value});
     });
 
     const priceInput = document.createElement('input');
@@ -4610,8 +4651,7 @@ function renderProductsServicesList(){
     priceWrap.appendChild(dollar);
     priceWrap.appendChild(priceInput);
     priceInput.addEventListener('input', ()=>{
-      item.price = priceInput.value;
-      saveProductsServices();
+      psSet(item, {price: priceInput.value});
     });
 
     const removeBtn = document.createElement('button');
@@ -4622,8 +4662,7 @@ function renderProductsServicesList(){
     removeBtn.addEventListener('click', async ()=>{
       const confirmed = await confirmDialog('Remove "' + (item.name || 'this item') + '"?');
       if(!confirmed) return;
-      productsServices = productsServices.filter(i => i.key !== item.key);
-      saveProductsServices();
+      psRemove(item.key);
       renderProductsServicesList();
     });
 
@@ -4641,8 +4680,7 @@ function renderProductsServicesList(){
       catSel.appendChild(o);
     });
     catSel.addEventListener('change', ()=>{
-      item.category = catSel.value;
-      saveProductsServices();
+      psSet(item, {category: catSel.value});
       renderProductsServicesList();
     });
 
@@ -4677,16 +4715,14 @@ function renderProductsServicesList(){
         if(!ok) return;
         const u = await promptDialog('Unit for "' + (item.name || 'this item') + '"', 'gal, lb, oz, tab…');
         if(!u) return;
-        item.unit = u.trim();
-        saveProductsServices();
+        psSet(item, {unit: u.trim()});
         renderProductsServicesList();
       });
     } else {
       unitInput.placeholder = 'Unit';
       unitInput.title = 'Unit of measure — gal, lb, oz, tab…';
       unitInput.addEventListener('input', ()=>{
-        item.unit = unitInput.value;
-        saveProductsServices();
+        psSet(item, {unit: unitInput.value});
       });
     }
 
@@ -4709,8 +4745,7 @@ function renderProductsServicesList(){
       extraCb.style.cssText = 'margin:0;';
       extraCb.addEventListener('change', async ()=>{
         if(!extraCb.checked){
-          item.extraCharge = false;
-          saveProductsServices();
+          psSet(item, {extraCharge: false});
           renderProductsServicesList();
           return;
         }
@@ -4723,9 +4758,7 @@ function renderProductsServicesList(){
           extraCb.checked = false;
           return;
         }
-        item.extraCharge = true;
-        item.abbr = abbr.trim().slice(0, 4);
-        saveProductsServices();
+        psSet(item, {extraCharge: true, abbr: abbr.trim().slice(0, 4)});
         renderProductsServicesList();
       });
       extraWrap.appendChild(extraCb);
@@ -4749,8 +4782,7 @@ function renderProductsServicesList(){
           const next = await promptDialog('Billing abbreviation for "' + (item.name || 'this item')
             + '" \u2014 four characters at most', item.abbr);
           if(!next) return;
-          item.abbr = next.trim().slice(0, 4);
-          saveProductsServices();
+          psSet(item, {abbr: next.trim().slice(0, 4)});
           renderProductsServicesList();
         });
         abbrSlot.appendChild(abbrTag);
@@ -4890,8 +4922,7 @@ function openProductServiceModal(){
       extraCharge: extraEl ? extraEl.checked : false,
       category: catEl ? catEl.value : ''
     };
-    productsServices.push(item);
-    saveProductsServices();
+    psAdd(item);
     renderProductsServicesList();
     return item;
   }
@@ -5807,7 +5838,20 @@ document.getElementById('billingMonth').addEventListener('change', (e)=>{
 // ---------- Filter clean groups ----------
 let filterGroups = lsGet('filterGroups') || [];
 
-function saveFilterGroups(){ lsSet('filterGroups', filterGroups); }
+function saveFilterGroups(){
+  lsSet('filterGroups', filterGroups);
+  // Someone taken out of a scheduled group comes off the technician's route
+  // too (Oct 10): their filter clean for it, unless it's already done
+  try{
+    const all = lsGet('scheduledFilterCleans') || [];
+    const keep = all.filter(sc=>{
+      if(!sc || sc.status === 'done' || !sc.groupId) return true;
+      const g = filterGroups.find(x => x.id === sc.groupId);
+      return !g || (g.customerIds || []).indexOf(sc.customerId) !== -1;
+    });
+    if(keep.length !== all.length) lsSet('scheduledFilterCleans', keep);
+  }catch(e){}
+}
 
 let openFilterGroupIds = new Set();
 
@@ -6787,8 +6831,126 @@ function filterReplacementsList(){
   // Work orders with a filter clean report replacements too (Oct 3)
   const wos = (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'done' && partsStillNeeded(j).length)
     .map(j => Object.assign({}, j, {_wo: true}));
-  return (lsGet('scheduledFilterCleans') || []).filter(f => f && f.status === 'done' && partsStillNeeded(f).length).concat(wos)
+  // Added by the office (Oct 10): kept on the customer as c.neededParts
+  const office = [];
+  customers.forEach(c=>{
+    if(!c || c.deleted || !Array.isArray(c.neededParts)) return;
+    c.neededParts.forEach(n=>{
+      if(!n || !n.id) return;
+      const e = {_office: true, id: n.id, customerId: c.id, doneReplacements: n.items || [], replacedItems: n.replacedItems || [],
+        doneAt: n.addedAt || '', doneBy: 'office'};
+      if(partsStillNeeded(e).length) office.push(e);
+    });
+  });
+  return (lsGet('scheduledFilterCleans') || []).filter(f => f && f.status === 'done' && partsStillNeeded(f).length).concat(wos).concat(office)
     .sort((a, b) => String(b.doneAt || '').localeCompare(String(a.doneAt || '')));
+}
+// The same parts the app's Replacements window lists (Oct 10)
+const FILTER_REPLACEMENT_ITEMS = ['Cartridges', 'O-ring', 'Air relief valve', 'Drain plug', 'Clamp band', 'Spring barrel nut assembly'];
+// Add replacements: a customer, and what their filter needs (Oct 10)
+function openAddReplacements(onSaved){
+  let picked = null;
+  const ticked = new Set();
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:420px;width:100%;max-height:88vh;display:flex;flex-direction:column;">'
+    + '<h3 style="font-size:16px;margin:0 0 2px;">Add replacements</h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Pick the customer, then tick everything their filter needs.</p>'
+    + '<label for="arSearch" style="font-size:12.5px;font-weight:600;">Customer</label>'
+    + '<input id="arSearch" placeholder="Search customers" autocomplete="off" style="margin:4px 0 4px;">'
+    + '<div data-results style="border:1px solid var(--line);border-radius:9px;margin-bottom:12px;max-height:150px;overflow-y:auto;display:none;"></div>'
+    + '<div data-list style="flex:1;overflow-y:auto;min-height:0;"></div>'
+    + '<div style="display:flex;gap:8px;margin-top:10px;">'
+    + '<input data-own placeholder="Something else" style="flex:1;min-width:0;">'
+    + '<button type="button" class="btn btn-ghost" data-add style="width:auto;flex:0 0 auto;padding:7px 14px;">Add</button></div>'
+    + '<div data-warn style="display:none;font-size:12.5px;font-weight:600;color:var(--rust);margin:6px 0 0;"></div>'
+    + '<div class="btn-row" style="margin-top:14px;"><button type="button" class="btn btn-ghost" data-cancel>Cancel</button>'
+    + '<button type="button" class="btn btn-primary" data-save>Save</button></div></div>';
+  const search = overlay.querySelector('#arSearch');
+  const results = overlay.querySelector('[data-results]');
+  const list = overlay.querySelector('[data-list]');
+  const own = overlay.querySelector('[data-own]');
+  const warn = overlay.querySelector('[data-warn]');
+  const say = t => { warn.textContent = t; warn.style.display = t ? 'block' : 'none'; };
+  const active = customers.filter(c => c && !c.deleted && c.active !== false)
+    .sort((a, b) => sortKeyName(a.name).localeCompare(sortKeyName(b.name)));
+  function drawResults(){
+    const q = search.value.trim().toLowerCase();
+    results.innerHTML = '';
+    let shown = picked ? [picked] : (q ? active.filter(c => (String(c.name || '') + ' ' + displayName(c.name) + ' ' + String(c.address || '')).toLowerCase().indexOf(q) !== -1) : []);
+    shown = shown.slice(0, 30);
+    results.style.display = shown.length || q ? 'block' : 'none';
+    if(!shown.length && q){ results.innerHTML = '<div style="padding:8px 10px;font-size:12.5px;color:var(--muted);">No customer matches.</div>'; return; }
+    shown.forEach(c=>{
+      const r = document.createElement('div');
+      r.className = 'press-row';
+      r.style.cssText = 'padding:8px 10px;font-size:13.5px;font-weight:600;cursor:pointer;border-radius:8px;' + (picked === c ? 'background:var(--teal-pale);' : '');
+      r.textContent = displayName(c.name);
+      if(c.address){
+        const a = document.createElement('span');
+        a.style.cssText = 'font-weight:400;color:var(--muted);font-size:12px;';
+        a.textContent = ' \u00b7 ' + c.address;
+        r.appendChild(a);
+      }
+      r.title = picked === c ? 'Press to pick someone else' : 'Pick ' + displayName(c.name);
+      r.addEventListener('click', ()=>{
+        if(picked === c){ picked = null; search.value = ''; search.focus(); }
+        else { picked = c; search.value = displayName(c.name); }
+        say('');
+        drawResults();
+      });
+      results.appendChild(r);
+    });
+  }
+  search.addEventListener('input', ()=>{ picked = null; drawResults(); });
+  function row(name){
+    const l = document.createElement('label');
+    l.style.cssText = 'display:flex;align-items:center;gap:12px;padding:9px 2px;border-bottom:1px solid var(--line);font-size:14px;font-weight:500;margin:0;cursor:pointer;';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.style.cssText = 'width:18px;height:18px;margin:0;flex-shrink:0;';
+    cb.checked = ticked.has(name);
+    cb.addEventListener('change', ()=>{ if(cb.checked) ticked.add(name); else ticked.delete(name); say(''); });
+    l.appendChild(cb);
+    l.appendChild(document.createTextNode(name));
+    list.appendChild(l);
+  }
+  FILTER_REPLACEMENT_ITEMS.forEach(row);
+  const addOwn = ()=>{
+    const name = own.value.trim();
+    if(!name) return;
+    const labels = Array.from(list.querySelectorAll('label'));
+    let hit = labels.find(l => l.textContent.trim().toLowerCase() === name.toLowerCase());
+    if(!hit){ row(name); hit = list.lastChild; }
+    const cb = hit.querySelector('input');
+    cb.checked = true;
+    ticked.add(hit.textContent.trim());
+    own.value = '';
+    say('');
+  };
+  overlay.querySelector('[data-add]').addEventListener('click', addOwn);
+  own.addEventListener('keydown', e=>{ if(e.key === 'Enter'){ e.preventDefault(); addOwn(); } });
+  own.addEventListener('input', ()=> say(''));
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+  overlay.querySelector('[data-cancel]').addEventListener('click', close);
+  overlay.querySelector('[data-save]').addEventListener('click', ()=>{
+    if(own.value.trim()){ say('\u201c' + own.value.trim() + '\u201d hasn\u2019t been added yet \u2014 press Add, or clear the box.'); return; }
+    if(!picked){ say('Pick a customer first.'); return; }
+    // In the list's order, so it reads the same each time
+    const items = Array.from(list.querySelectorAll('label')).map(l => l.textContent.trim()).filter(n => ticked.has(n));
+    if(!items.length){ say('Tick at least one part.'); return; }
+    const c = customers.find(x => x.id === picked.id);
+    if(!c) return;
+    const parts = Array.isArray(c.neededParts) ? c.neededParts.slice() : [];
+    parts.push({id: 'np_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), items: items, replacedItems: [], addedAt: new Date().toISOString()});
+    c.neededParts = parts;
+    saveCustomers();
+    close();
+    showToast('Replacements added for ' + displayName(c.name));
+    if(onSaved) onSaved();
+  });
+  document.body.appendChild(overlay);
+  search.focus();
 }
 function updateFilterReplacementsButton(){
   const btn = document.getElementById('btnFilterReplacements');
@@ -6803,6 +6965,7 @@ function openFilterReplacements(){
   overlay.innerHTML = '<div class="confirm-box" style="max-width:520px;width:100%;max-height:82vh;display:flex;flex-direction:column;">'
     + '<h3 style="font-size:16px;margin:0 0 2px;">Replacements</h3>'
     + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;" data-sub></p>'
+    + '<button type="button" class="btn btn-ghost" data-new style="width:auto;padding:7px 12px;font-size:12.5px;align-self:flex-start;margin:0 0 4px;">+ Add replacements</button>'
     + '<div data-list style="flex:1;overflow-y:auto;"></div>'
     + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-ghost" data-close style="flex:1;">Close</button></div></div>';
   overlay.querySelector('[data-sub]').textContent = done.length
@@ -6812,14 +6975,16 @@ function openFilterReplacements(){
   // Under each group, in the order the groups are listed
   const order = filterGroups.map(g => g.id);
   const byGroup = {};
-  done.forEach(f=>{ const k = f._wo ? '__wo' : (f.groupId || ''); (byGroup[k] = byGroup[k] || []).push(f); });
-  Object.keys(byGroup).sort((a, b) => (order.indexOf(a) === -1 ? 999 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 999 : order.indexOf(b)))
+  done.forEach(f=>{ const k = f._office ? '__office' : f._wo ? '__wo' : (f.groupId || ''); (byGroup[k] = byGroup[k] || []).push(f); });
+  // Groups first, then work orders, then the office's own (Oct 10)
+  const rank = k => k === '__office' ? 1001 : k === '__wo' ? 1000 : (order.indexOf(k) === -1 ? 999 : order.indexOf(k));
+  Object.keys(byGroup).sort((a, b) => rank(a) - rank(b))
     .forEach(k=>{
       const g = filterGroups.find(x => x.id === k);
       const head = document.createElement('div');
       head.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);"
         + 'text-transform:uppercase;letter-spacing:0.07em;margin:12px 0 2px;';
-      head.textContent = k === '__wo' ? 'Work orders' : g ? g.name : (byGroup[k][0].groupName || 'No group');
+      head.textContent = k === '__office' ? 'Added by the office' : k === '__wo' ? 'Work orders' : g ? g.name : (byGroup[k][0].groupName || 'No group');
       box.appendChild(head);
       byGroup[k].forEach((f, i, all)=>{
         const c = customers.find(x => String(x.id) === String(f.customerId));
@@ -6840,6 +7005,21 @@ function openFilterReplacements(){
           cb.title = 'Replaced';
           cb.addEventListener('change', ()=>{
             if(!cb.checked) return;
+            if(f._office){
+              // One the office added: ticked off on the customer, gone once every part is done
+              const c = customers.find(x => String(x.id) === String(f.customerId));
+              const n = c && (c.neededParts || []).find(x => x && x.id === f.id);
+              if(!n) return;
+              n.replacedItems = Array.from(new Set((n.replacedItems || []).concat([part])));
+              const doneSet = new Set(n.replacedItems);
+              if((n.items || []).every(x => doneSet.has(x))) c.neededParts = c.neededParts.filter(x => x !== n);
+              saveCustomers();
+              showToast(part + ' replaced');
+              if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
+              openFilterReplacements();
+              updateFilterReplacementsButton();
+              return;
+            }
             const listKey = f._wo ? 'scheduledWorkOrders' : 'scheduledFilterCleans';
             const list = lsGet(listKey) || [];
             const rec = list.find(x => x && x.id === f.id);
@@ -6865,6 +7045,10 @@ function openFilterReplacements(){
       });
     });
   overlay.querySelector('[data-close]').addEventListener('click', ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); });
+  overlay.querySelector('[data-new]').addEventListener('click', ()=>{
+    if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    openAddReplacements(()=>{ updateFilterReplacementsButton(); openFilterReplacements(); });
+  });
   document.body.appendChild(overlay);
 }
 document.getElementById('btnFilterReplacements').addEventListener('click', openFilterReplacements);
@@ -6897,6 +7081,18 @@ function fgCleanStatus(g){
   });
   return out;
 }
+const FILTER_GROUPS_PER_PAGE = 10;
+let filterGroupPage = 1;
+// A name's state in its group (Oct 10): 'scheduled' while on the route for the
+// group's date and not done; 'done' for one month after its last filter clean
+// for this group; otherwise nothing
+function fgChipState(g, cid){
+  const recs = (lsGet('scheduledFilterCleans') || []).filter(f => f && f.groupId === g.id && f.customerId === cid);
+  if(g.finalized && recs.some(f => f.status !== 'done' && (!g.date || f.date === g.date))) return 'scheduled';
+  const monthAgo = new Date(); monthAgo.setMonth(monthAgo.getMonth() - 1);
+  const recent = recs.some(f => f.status === 'done' && new Date(f.doneAt || ((f.date || '') + 'T12:00:00')) > monthAgo);
+  return recent ? 'done' : null;
+}
 function renderFilterGroups(){
   try{ updateFilterReplacementsButton(); }catch(e){}
   setTimeout(()=>{ try{ const el = document.getElementById('filterGroupCount'); if(el) el.textContent = filterGroups.length ? fgCountText(fgShownGroups()) : ''; }catch(e){} }, 0);
@@ -6909,6 +7105,8 @@ function renderFilterGroups(){
   if(!container) return;
   if(filterGroups.length === 0){
     container.innerHTML = emptyState('No groups yet — create one to start batching filter cleans.');
+    const selHost = document.getElementById('filterGroupSelBar');
+    if(selHost) selHost.innerHTML = '';
     return;
   }
   container.innerHTML = '';
@@ -6931,8 +7129,30 @@ function renderFilterGroups(){
     const who = techMenu ? techMenu.options[techMenu.selectedIndex].textContent : '';
     container.insertAdjacentHTML('beforeend', emptyState(showTech === 'none' ? 'Every group has a technician.' : 'No groups for ' + who + '.'));
   }
+  // Ten groups to a page, paged like the customer list (Oct 10)
+  const fgShown = filterGroups.filter(shownGroup);
+  const fgPages = Math.max(1, Math.ceil(fgShown.length / FILTER_GROUPS_PER_PAGE));
+  if(filterGroupPage === 'last' || filterGroupPage > fgPages) filterGroupPage = fgPages;
+  if(filterGroupPage < 1) filterGroupPage = 1;
+  const fgOnPage = new Set(fgShown.slice((filterGroupPage - 1) * FILTER_GROUPS_PER_PAGE, filterGroupPage * FILTER_GROUPS_PER_PAGE).map(g => g.id));
+  // Select multiple, on the counts' line (Oct 10): Select all takes every
+  // group shown, on every page
+  const fgSelHost = document.getElementById('filterGroupSelBar');
+  if(fgSelHost) try{
+    fgSelHost.innerHTML = '';
+    const selRow = selectionBar('filterGroups', fgShown.map(g => g.id), 'filter clean group', ids=>{
+      const gone = new Set(ids);
+      // As deleting one group: filter cleans sent to a route and not done come off it
+      lsSet('scheduledFilterCleans', (lsGet('scheduledFilterCleans') || []).filter(sc => !(sc && gone.has(sc.groupId) && sc.status !== 'done')));
+      filterGroups = filterGroups.filter(g => !gone.has(g.id));
+      saveFilterGroups();
+    }, renderFilterGroups);
+    selRow.style.margin = '0';
+    selRow.style.display = 'flex';
+    fgSelHost.appendChild(selRow);
+  }catch(e){}   // early in start-up, before the selection helpers exist
   filterGroups.forEach(g=>{
-    if(!shownGroup(g)) return;
+    if(!shownGroup(g) || !fgOnPage.has(g.id)) return;
     const isOpen = openFilterGroupIds.has(g.id);
 
     const card = document.createElement('div');
@@ -6978,6 +7198,9 @@ function renderFilterGroups(){
     grip.title = 'Drag to reorder';
     grip.style.cssText = 'color:var(--muted);font-size:18px;flex-shrink:0;padding:0 2px;';
     grip.addEventListener('click', e => e.stopPropagation());
+    let fgTick = null;
+    try{ fgTick = selectionTick('filterGroups', g.id, renderFilterGroups); }catch(e){}
+    if(fgTick){ fgTick.style.margin = '0'; leftWrap.appendChild(fgTick); }
     leftWrap.appendChild(grip);
     attachTouchReorder(grip, card, container, ':scope > [data-reorder-key]', keys=>{
       const byId = {};
@@ -7134,7 +7357,9 @@ function renderFilterGroups(){
         chip.appendChild(cgrip);
         // On a scheduled group, each name shows where it's up to (Oct 3):
         // a clock and a dark outline while it's waiting, a green tick once done
-        const state = g.finalized ? fgCleanStatus(g)[cid] : null;
+        // Gold with a clock while scheduled and waiting; green with a tick for a
+        // month after it's done; plain teal otherwise (Oct 10)
+        const state = fgChipState(g, cid);
         if(state === 'done'){
           chip.style.background = '#E3F1E8';
           chip.style.color = 'var(--green)';
@@ -7144,7 +7369,8 @@ function renderFilterGroups(){
           tick.style.cssText = 'font-weight:800;font-size:13px;line-height:1;';
           chip.appendChild(tick);
         } else if(state === 'scheduled'){
-          chip.style.boxShadow = 'inset 0 0 0 1.5px var(--teal-deep)';
+          chip.style.background = '#FBF1DD';
+          chip.style.color = '#8A5E0B';
           chip.title = 'Scheduled \u2014 not done yet';
           const clock = document.createElement('span');
           clock.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
@@ -7225,6 +7451,15 @@ function renderFilterGroups(){
     card.appendChild(actions);
     container.appendChild(card);
   });
+  if(fgShown.length > FILTER_GROUPS_PER_PAGE){
+    const pager = buildListPager(filterGroupPage, fgPages, fgShown.length, pg=>{
+      filterGroupPage = pg;
+      renderFilterGroups();
+      const sec = document.getElementById('wcFiltersSection');
+      if(sec) sec.scrollIntoView({block: 'start'});
+    }, 'margin-top:16px;padding-top:14px;border-top:1px solid var(--line);');
+    container.appendChild(pager);
+  }
   renderStrayFilterCleans();
 }
 
@@ -7400,8 +7635,27 @@ function openGroupCustomerPicker(g, opts){
 // How often pools are drained is a company setting (3 years to start, the
 // Arizona norm), with a per-customer choice for the odd pool that differs.
 // Drain groups work like filter clean groups: customers, a date, a technician.
-const DRAIN_EVERY_CHOICES = [12, 18, 24, 36, 48, 60];
-const DRAIN_SOON_MONTHS = 6;          // "Due soon" looks this far ahead
+const DRAIN_EVERY_CHOICES = [6, 12, 18, 24, 36, 48, 60];
+const DRAIN_SOON_MONTHS = 6;
+// A Drain every menu: the usual choices, any other number already chosen, and
+// Custom… to type one (Oct 10). first: an extra first option [value, words].
+function pdFillEveryMenu(sel, current, first){
+  sel.innerHTML = '';
+  const add = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); };
+  if(first) add(first[0], first[1]);
+  const have = DRAIN_EVERY_CHOICES.slice();
+  if(Number(current) && have.indexOf(Number(current)) === -1) have.push(Number(current));
+  have.sort((a, b) => a - b).forEach(m => add(String(m), pdEveryText(m)));
+  add('custom', 'Custom\u2026');
+  sel.value = Number(current) ? String(Number(current)) : (first ? first[0] : String(DRAIN_EVERY_CHOICES[0]));
+}
+async function pdAskCustomEvery(){
+  const v = await promptDialog('Drain every how many months?', 'e.g. 30');
+  const m = Math.round(Number(String(v || '').replace(/[^0-9.]/g, '')));
+  if(!m) return 0;
+  if(m < 1 || m > 240){ showToast('Choose between 1 and 240 months'); return 0; }
+  return m;
+}          // "Due soon" looks this far ahead
 let drainGroups = lsGet('drainGroups') || [];
 function saveDrainGroups(){
   lsSet('drainGroups', drainGroups);
@@ -7422,13 +7676,41 @@ function pdEveryText(m){
   return m + ' months';
 }
 function pdCompanyEvery(){ return Number(appSettings.drainEveryMonths) || 36; }
-function pdEvery(c){ return Number(c && c.drainEveryMonths) || pdCompanyEvery(); }
-function pdDrains(c){
+// Each body of water keeps its own drains and how often (Oct 10). A drain with
+// no body on it (from before, or done in the app) is the first body's.
+function pdBodies(c){
+  try{ return orderedBodiesFor(c, bodiesForCustomer(c)); }catch(e){ return [{key: 'pool', label: 'Pool'}]; }
+}
+function pdFirstBody(c){ const b = pdBodies(c); return b.length ? b[0].key : 'pool'; }
+function pdBodyOf(c, d){ return (d && d.body) || pdFirstBody(c); }
+function pdEvery(c, body){
+  if(body === undefined) body = pdFirstBody(c);
+  const own = c && c.drainEveryByBody && Number(c.drainEveryByBody[body]);
+  if(own) return own;
+  return (body === pdFirstBody(c) && Number(c && c.drainEveryMonths)) || pdCompanyEvery();
+}
+// A body's own choice (or the customer's for their first body), if any
+function pdOwnEvery(c, body){
+  const own = c && c.drainEveryByBody && Number(c.drainEveryByBody[body]);
+  if(own) return own;
+  return body === pdFirstBody(c) ? (Number(c && c.drainEveryMonths) || 0) : 0;
+}
+function pdDrains(c, body){
   return (Array.isArray(c && c.drains) ? c.drains : [])
-    .filter(d => d && /^\d{4}-\d{2}-\d{2}$/.test(d.date || ''))
+    .filter(d => d && /^\d{4}-\d{2}-\d{2}$/.test(d.date || '') && (body === undefined || pdBodyOf(c, d) === body))
     .slice().sort((a, b) => b.date.localeCompare(a.date));
 }
-function pdLast(c){ const l = pdDrains(c); return l.length ? l[0].date : ''; }
+// The body due soonest decides where the customer is listed
+function pdSoonestBody(c){
+  const withDrains = pdBodies(c).filter(b => pdDrains(c, b.key).length);
+  if(!withDrains.length) return pdFirstBody(c);
+  return withDrains.map(b => ({k: b.key, due: pdAddMonths(pdDrains(c, b.key)[0].date, pdEvery(c, b.key))}))
+    .sort((a, b) => a.due.localeCompare(b.due))[0].k;
+}
+function pdLast(c, body){
+  if(body === undefined) body = pdSoonestBody(c);
+  const l = pdDrains(c, body); return l.length ? l[0].date : '';
+}
 // A date some months on, as YYYY-MM-DD; the 31st of a short month lands on its last day
 function pdAddMonths(iso, months){
   const [y, m, d] = iso.split('-').map(Number);
@@ -7437,7 +7719,10 @@ function pdAddMonths(iso, months){
   const last = new Date(ny, nm + 1, 0).getDate();
   return ny + '-' + String(nm + 1).padStart(2, '0') + '-' + String(Math.min(d, last)).padStart(2, '0');
 }
-function pdDue(c){ const l = pdLast(c); return l ? pdAddMonths(l, pdEvery(c)) : ''; }
+function pdDue(c, body){
+  if(body === undefined) body = pdSoonestBody(c);
+  const l = pdLast(c, body); return l ? pdAddMonths(l, pdEvery(c, body)) : '';
+}
 function pdBucket(c){
   const due = pdDue(c);
   if(!due) return 'never';
@@ -7482,17 +7767,22 @@ function pdGroupDrained(g, cid){
   const c = customers.find(x => x.id === cid);
   return !!c && pdDrains(c).some(d => d.groupId === g.id);
 }
-function pdRecord(cids, date, groupId){
+function pdRecord(cids, date, groupId, body){
   let n = 0;
   cids.forEach(cid=>{
     const c = customers.find(x => x.id === cid);
     if(!c) return;
     const list = Array.isArray(c.drains) ? c.drains.slice() : [];
-    // The same day twice is one drain
-    if(list.some(d => d && d.date === date)){
-      if(groupId) list.forEach(d => { if(d && d.date === date && !d.groupId) d.groupId = groupId; });
+    const forBody = body || pdFirstBody(c);
+    const same = d => d && d.date === date && pdBodyOf(c, d) === forBody;
+    // The same day twice is one drain (for the same body of water)
+    if(list.some(same)){
+      if(groupId) list.forEach(d => { if(same(d) && !d.groupId) d.groupId = groupId; });
     } else {
-      list.push(groupId ? {date, groupId} : {date});
+      const d = {date};
+      if(groupId) d.groupId = groupId;
+      if(body && body !== pdFirstBody(c)) d.body = body;
+      list.push(d);
     }
     c.drains = list;
     n++;
@@ -7517,10 +7807,7 @@ function pdFillMenus(){
   const every = document.getElementById('drainEvery');
   if(every){
     every.innerHTML = '';
-    const have = DRAIN_EVERY_CHOICES.slice();
-    if(have.indexOf(pdCompanyEvery()) === -1) have.push(pdCompanyEvery());
-    have.sort((a, b) => a - b).forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = pdEveryText(m); every.appendChild(o); });
-    every.value = String(pdCompanyEvery());
+    pdFillEveryMenu(every, pdCompanyEvery());
   }
 }
 
@@ -7660,7 +7947,8 @@ function pdRow(c, b){
     row.appendChild(tag);
   }
 
-  const last = pdLast(c), due = pdDue(c);
+  const rowBody = pdSoonestBody(c);
+  const last = pdLast(c, rowBody), due = pdDue(c, rowBody);
   const lastCol = document.createElement('div');
   lastCol.style.cssText = 'flex:0 0 150px;width:150px;font-size:12px;color:var(--muted);line-height:1.35;';
   lastCol.innerHTML = '<span style="display:block;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">Last drained</span>'
@@ -7670,13 +7958,15 @@ function pdRow(c, b){
 
   const dueCol = document.createElement('div');
   dueCol.style.cssText = 'flex:0 0 150px;width:150px;font-size:12px;color:var(--muted);line-height:1.35;';
-  const custom = !!Number(c.drainEveryMonths);
+  const custom = pdOwnEvery(c, rowBody);
+  const bodyName = pdBodies(c).length > 1 ? ((pdBodies(c).find(x => x.key === rowBody) || {}).label || '') : '';
   dueCol.innerHTML = '<span style="display:block;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">Next due</span>'
     + (due ? '<span style="color:' + (b.key === 'overdue' ? 'var(--rust)' : 'var(--ink)') + ';font-weight:600;">' + esc(pdDate(due)) + '</span>'
              + '<span style="display:block;font-size:11px;' + (b.key === 'overdue' ? 'color:var(--rust);' : '') + '">'
              + esc(b.key === 'overdue' ? pdSpan(due).replace(/ ago$/, ' overdue') : pdSpan(due)) + '</span>'
            : '<span>Once a drain is added</span>')
-    + (custom ? '<span style="display:block;font-size:11px;color:var(--teal-deep);font-weight:600;">Every ' + esc(pdEveryText(c.drainEveryMonths)) + '</span>' : '');
+    + (custom || bodyName ? '<span style="display:block;font-size:11px;color:var(--teal-deep);font-weight:600;">'
+        + esc([bodyName, custom ? 'every ' + pdEveryText(custom) : ''].filter(Boolean).join(' \u00b7 ').replace(/^every/, 'Every')) + '</span>' : '');
   row.appendChild(dueCol);
 
   row.addEventListener('click', e=>{
@@ -7818,8 +8108,12 @@ function openDrainHistory(c){
   overlay.className = 'confirm-overlay';
   overlay.innerHTML = `
     <div class="confirm-box" style="max-width:400px;">
-      <h3 style="font-size:15px;margin:0 0 2px;">Pool drains &mdash; ${esc(displayName(c.name))}</h3>
+      <h3 style="font-size:15px;margin:0 0 2px;">Drains &mdash; ${esc(displayName(c.name))}</h3>
       <p id="pdhAddr" style="font-size:11.5px;color:var(--muted);margin:0 0 14px;"></p>
+      <div id="pdhBodyWrap" style="display:none;">
+        <label for="pdhBody" style="font-size:12.5px;font-weight:600;">Body of water</label>
+        <select id="pdhBody" style="margin:4px 0 14px;"></select>
+      </div>
       <label for="pdhEvery" style="font-size:12.5px;font-weight:600;">Drain every</label>
       <select id="pdhEvery" style="margin:4px 0 14px;"></select>
       <div style="font-size:12.5px;font-weight:600;margin-bottom:4px;">Drains</div>
@@ -7835,14 +8129,38 @@ function openDrainHistory(c){
     </div>`;
   document.body.appendChild(overlay);
   overlay.querySelector('#pdhAddr').textContent = fullAddressFor(c) || 'No address on file';
+  // Several bodies of water: pick which one (Oct 10); the first to start
+  const bodies = pdBodies(c);
+  let body = bodies.length ? bodies[0].key : 'pool';
+  const bodySel = overlay.querySelector('#pdhBody');
+  if(bodies.length > 1){
+    overlay.querySelector('#pdhBodyWrap').style.display = 'block';
+    bodies.forEach(b => { const o = document.createElement('option'); o.value = b.key; o.textContent = b.label; bodySel.appendChild(o); });
+    bodySel.value = body;
+    bodySel.addEventListener('change', ()=>{ body = bodySel.value; fillEvery(); draw(); });
+  }
   const every = overlay.querySelector('#pdhEvery');
-  [['', 'Company setting (' + pdEveryText(pdCompanyEvery()) + ')']]
-    .concat(DRAIN_EVERY_CHOICES.map(m => [String(m), pdEveryText(m)]))
-    .forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; every.appendChild(o); });
-  every.value = Number(c.drainEveryMonths) && DRAIN_EVERY_CHOICES.indexOf(Number(c.drainEveryMonths)) !== -1 ? String(c.drainEveryMonths) : '';
-  every.addEventListener('change', ()=>{
-    if(every.value) c.drainEveryMonths = Number(every.value); else delete c.drainEveryMonths;
+  const fillEvery = ()=> pdFillEveryMenu(every, pdOwnEvery(c, body), ['', 'Company setting (' + pdEveryText(pdCompanyEvery()) + ')']);
+  fillEvery();
+  const setEvery = m=>{
+    if(body === pdFirstBody(c)){
+      if(m) c.drainEveryMonths = m; else delete c.drainEveryMonths;
+      if(c.drainEveryByBody) delete c.drainEveryByBody[body];
+    } else {
+      const own = Object.assign({}, c.drainEveryByBody || {});
+      if(m) own[body] = m; else delete own[body];
+      c.drainEveryByBody = own;
+    }
     saveCustomers();
+  };
+  every.addEventListener('change', async ()=>{
+    let m = Number(every.value) || 0;
+    if(every.value === 'custom'){
+      m = await pdAskCustomEvery();
+      if(!m){ fillEvery(); return; }
+    }
+    setEvery(m);
+    fillEvery();
     draw();
   });
   const listEl = overlay.querySelector('#pdhList');
@@ -7851,7 +8169,7 @@ function openDrainHistory(c){
   dateIn.value = pdToday();
   function draw(){
     listEl.innerHTML = '';
-    const list = pdDrains(c);
+    const list = pdDrains(c, body);
     if(!list.length) listEl.innerHTML = '<div style="padding:10px 0;font-size:12.5px;color:var(--muted);">None recorded yet.</div>';
     list.forEach(d=>{
       const r = document.createElement('div');
@@ -7865,7 +8183,7 @@ function openDrainHistory(c){
       x.className = 'btn btn-ghost';
       x.style.cssText = 'width:auto;flex:0 0 auto;padding:4px 9px;font-size:11.5px;color:var(--rust);border-color:#EFC9BC;';
       x.addEventListener('click', ()=>{
-        c.drains = (c.drains || []).filter(o => !(o && o.date === d.date));
+        c.drains = (c.drains || []).filter(o => !(o && o.date === d.date && pdBodyOf(c, o) === body));
         // One done in the app isn't logged again by the next sync (Oct 10)
         if(d.jobId){
           const gone = Array.isArray(c.drainJobsRemoved) ? c.drainJobsRemoved.slice() : [];
@@ -7878,14 +8196,14 @@ function openDrainHistory(c){
       r.appendChild(x);
       listEl.appendChild(r);
     });
-    const due = pdDue(c);
+    const due = pdDue(c, body);
     nextEl.innerHTML = due ? 'Next drain due <b style="color:' + (due < pdToday() ? 'var(--rust)' : 'var(--ink)') + ';">' + esc(pdDate(due)) + '</b> (' + esc(due < pdToday() ? pdSpan(due).replace(/ ago$/, ' overdue') : pdSpan(due)) + ')'
       : 'Add the last drain to see when the next is due.';
   }
   draw();
   overlay.querySelector('#pdhAdd').addEventListener('click', ()=>{
     if(!dateIn.value){ showToast('Choose a date'); return; }
-    pdRecord([c.id], dateIn.value);
+    pdRecord([c.id], dateIn.value, undefined, body);
     draw();
   });
   overlay.querySelector('#pdhDone').addEventListener('click', ()=>{ overlay.remove(); renderPoolDrains(); });
@@ -8230,7 +8548,7 @@ function pdReconcileDone(){
     const date = r.doneAt && !isNaN(new Date(r.doneAt)) ? owLocalISO(new Date(r.doneAt)) : r.date;
     if(!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return;
     // The same day already on record (marked here too): one drain
-    const same = list.find(d => d && d.date === date);
+    const same = list.find(d => d && d.date === date && pdBodyOf(c, d) === pdFirstBody(c));
     if(same){
       same.jobId = r.id;
       if(!same.groupId && r.groupId) same.groupId = r.groupId;
@@ -8320,14 +8638,174 @@ function openDrainGroupScheduler(){
   });
 }
 document.getElementById('btnScheduleDrainGroups').addEventListener('click', openDrainGroupScheduler);
+
+// ---- Import drains from a spreadsheet (Oct 10) ----
+// Any row naming a pool drain, spa drain, fountain drain or extra body drain
+// is logged on that customer, for that body of water, on the row's date. A
+// date of two numbers (6/24, 06/2024) is a month and a year.
+const PD_IMPORT_KINDS = [
+  {re: /pool\s*drain/i, kind: 'pool'},
+  {re: /spa\s*drain/i, kind: 'spa'},
+  {re: /fountain\s*drain/i, kind: 'fountain'},
+  {re: /extra\s*body(\s*of\s*water)?\s*drain/i, kind: 'extra'}
+];
+function pdImportDate(raw){
+  const t = String(raw || '').trim();
+  if(!t) return '';
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m) return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
+  const yr = y => y.length <= 2 ? 2000 + Number(y) : Number(y);
+  const ok = (y, mo, d) => mo >= 1 && mo <= 12 && d >= 1 && d <= 31 && y >= 1990 && y <= 2100;
+  // Month / day / year
+  m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2}|\d{4})\b/);
+  if(m){
+    const y = yr(m[3]), mo = Number(m[1]), d = Number(m[2]);
+    if(!ok(y, mo, d)) return '';
+    const last = new Date(y, mo, 0).getDate();
+    return y + '-' + String(mo).padStart(2, '0') + '-' + String(Math.min(d, last)).padStart(2, '0');
+  }
+  // Two numbers: month / year
+  m = t.match(/^(\d{1,2})[\/\-.](\d{2}|\d{4})$/);
+  if(m){
+    const y = yr(m[2]), mo = Number(m[1]);
+    if(!ok(y, mo, 1)) return '';
+    return y + '-' + String(mo).padStart(2, '0') + '-01';
+  }
+  // Words: "June 2024", "Jun 5, 2024"
+  const d = new Date(t);
+  if(!isNaN(d) && /[a-z]/i.test(t) && /\d{4}/.test(t)){
+    const y = d.getFullYear();
+    if(y >= 1990 && y <= 2100) return y + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  return '';
+}
+function pdImportNameKey(n){ return String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+function pdImportFindCustomer(name){
+  const k = pdImportNameKey(name);
+  if(!k) return null;
+  // "Ana Rivera", "Rivera, Ana" and "Rivera Ana" all find the same customer
+  const flipped = String(name).indexOf(',') !== -1
+    ? pdImportNameKey(String(name).split(',').slice(1).join(' ') + ' ' + String(name).split(',')[0]) : '';
+  const live = customers.filter(c => c && !c.deleted);
+  return live.find(c => pdImportNameKey(c.name) === k || (flipped && pdImportNameKey(c.name) === flipped))
+    || live.find(c => pdImportNameKey(displayName(c.name)) === k)
+    || null;
+}
+function pdImportBody(c, kind){
+  const bodies = pdBodies(c);
+  if(kind === 'pool' || kind === 'spa'){
+    const b = bodies.find(x => x.key === kind);
+    return b ? b.key : pdFirstBody(c);
+  }
+  const others = bodies.filter(x => x.key !== 'pool' && x.key !== 'spa');
+  if(kind === 'fountain'){
+    const f = others.find(x => /fountain/i.test(x.label || '')) || others[0];
+    return f ? f.key : pdFirstBody(c);
+  }
+  // An extra body: the first one that isn't the pool, spa or a fountain
+  const e = others.find(x => !/fountain/i.test(x.label || '')) || others[0];
+  return e ? e.key : pdFirstBody(c);
+}
+function pdImportRead(text){
+  const rows = parseCsv(String(text || '').replace(/^﻿/, ''));
+  if(!rows.length) return {found: [], missing: [], noDate: 0};
+  // A header row, if there is one: which columns hold the customer and the date
+  const hi = rows.findIndex(r => r.some(f => /customer|name|client/i.test(f)) && r.some(f => /date|drain|item|service|product|description/i.test(f)));
+  const header = hi !== -1 ? rows[hi].map(f => String(f).toLowerCase()) : [];
+  const nameCol = header.findIndex(f => /customer|client/.test(f)) !== -1 ? header.findIndex(f => /customer|client/.test(f)) : header.findIndex(f => /name/.test(f));
+  const dateCol = header.findIndex(f => /date/.test(f));
+  const found = [], missing = new Map();
+  let noDate = 0, lastName = '';
+  rows.slice(hi + 1).forEach(r=>{
+    let name = nameCol !== -1 ? String(r[nameCol] || '').trim() : '';
+    if(!name && nameCol === -1){
+      // No header: the first cell that isn't a date, a drain or a number
+      name = String((r.find(f => f && !pdImportDate(f) && !PD_IMPORT_KINDS.some(k => k.re.test(f)) && /[a-z]/i.test(f)) || '')).trim();
+    }
+    // Reports that print the customer once above their lines
+    if(name) lastName = name; else name = lastName;
+    const kinds = PD_IMPORT_KINDS.filter(k => r.some(f => k.re.test(String(f || ''))));
+    if(!kinds.length) return;
+    const date = (dateCol !== -1 && pdImportDate(r[dateCol])) || r.map(pdImportDate).find(Boolean) || '';
+    if(!date){ noDate++; return; }
+    const c = pdImportFindCustomer(name);
+    if(!c){ missing.set(name || '(no name)', (missing.get(name || '(no name)') || 0) + 1); return; }
+    kinds.forEach(k => found.push({c, date, body: pdImportBody(c, k.kind), kind: k.kind}));
+  });
+  return {found, missing: Array.from(missing.entries()), noDate};
+}
+document.getElementById('btnImportDrains').addEventListener('click', ()=>{
+  const inp = document.getElementById('importDrainsInput');
+  inp.value = '';
+  inp.click();
+});
+document.getElementById('importDrainsInput').addEventListener('change', async e=>{
+  const file = e.target.files && e.target.files[0];
+  if(!file) return;
+  let text = '';
+  try{ text = await file.text(); }catch(err){ showToast('That file couldn’t be read'); return; }
+  const res = pdImportRead(text);
+  const people = new Set(res.found.map(x => x.c.id));
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:460px;width:100%;max-height:82vh;display:flex;flex-direction:column;';
+  const kindWord = {pool: 'Pool', spa: 'Spa', fountain: 'Fountain', extra: 'Extra body'};
+  box.innerHTML = '<h3 style="font-size:16px;margin:0 0 4px;">Import drains</h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;">' + esc(file.name) + '</p>'
+    + '<div style="font-size:13.5px;margin:0 0 10px;">' + (res.found.length
+        ? '<b>' + res.found.length + (res.found.length === 1 ? ' drain' : ' drains') + '</b> for <b>' + people.size + (people.size === 1 ? ' customer' : ' customers') + '</b>.'
+        : 'No pool, spa, fountain or extra body drains with a date were found.') + '</div>'
+    + '<div data-list style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:2px 10px;' + (res.found.length ? '' : 'display:none;') + '"></div>'
+    + (res.missing.length ? '<div style="font-size:12.5px;color:var(--rust);margin:10px 0 0;"><b>No customer found for:</b> '
+        + res.missing.map(([n, k]) => esc(n) + (k > 1 ? ' (' + k + ')' : '')).join(', ') + '. These are left out.</div>' : '')
+    + (res.noDate ? '<div style="font-size:12.5px;color:var(--rust);margin:6px 0 0;">' + res.noDate + (res.noDate === 1 ? ' drain has' : ' drains have') + ' no date I could read, and ' + (res.noDate === 1 ? 'is' : 'are') + ' left out.</div>' : '')
+    + '<div class="btn-row" style="margin-top:14px;"><button type="button" class="btn btn-ghost" data-cancel>Cancel</button>'
+    + (res.found.length ? '<button type="button" class="btn btn-primary" data-go>Import</button>' : '') + '</div>';
+  const list = box.querySelector('[data-list]');
+  res.found.slice().sort((a, b) => sortKeyName(a.c.name).localeCompare(sortKeyName(b.c.name)) || b.date.localeCompare(a.date)).forEach(x=>{
+    const r = document.createElement('div');
+    r.style.cssText = 'display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px;';
+    const bodyLabel = (pdBodies(x.c).find(b => b.key === x.body) || {}).label || kindWord[x.kind];
+    r.innerHTML = '<span style="flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(displayName(x.c.name)) + '</span>'
+      + '<span style="color:var(--muted);flex-shrink:0;">' + esc(bodyLabel) + '</span>'
+      + '<span style="flex:0 0 96px;text-align:right;flex-shrink:0;">' + esc(pdDate(x.date)) + '</span>';
+    list.appendChild(r);
+  });
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const close = ()=> overlay.remove();
+  box.querySelector('[data-cancel]').addEventListener('click', close);
+  const go = box.querySelector('[data-go]');
+  if(go) go.addEventListener('click', ()=>{
+    // Drains already on record for that day and body aren't doubled
+    // One save per date and body of water, not one per row
+    const batches = new Map();
+    res.found.forEach(x=>{
+      const k = x.date + '|' + x.body;
+      if(!batches.has(k)) batches.set(k, {date: x.date, body: x.body, ids: []});
+      if(batches.get(k).ids.indexOf(x.c.id) === -1) batches.get(k).ids.push(x.c.id);
+    });
+    batches.forEach(b => pdRecord(b.ids, b.date, undefined, b.body));
+    close();
+    renderPoolDrains();
+    showToast('Imported ' + res.found.length + (res.found.length === 1 ? ' drain' : ' drains'));
+  });
+});
 setTimeout(()=>{ try{ pdReconcileDone(); }catch(e){} }, 0);
 
 document.getElementById('btnNewDrainGroup').addEventListener('click', async ()=>{
   if(await pdNewGroup()) renderPoolDrains();
 });
 document.getElementById('drainTech').addEventListener('change', renderPoolDrains);
-document.getElementById('drainEvery').addEventListener('change', e=>{
-  appSettings.drainEveryMonths = Number(e.target.value) || 36;
+document.getElementById('drainEvery').addEventListener('change', async e=>{
+  let m = Number(e.target.value);
+  if(e.target.value === 'custom'){
+    m = await pdAskCustomEvery();
+    if(!m){ pdFillEveryMenu(e.target, pdCompanyEvery()); return; }
+  }
+  appSettings.drainEveryMonths = m || 36;
   saveSettings();
   renderPoolDrains();
   showToast('Pools drained every ' + pdEveryText(appSettings.drainEveryMonths));
@@ -10498,7 +10976,7 @@ function syncScanRecords(state, now){
     const k = r.known[key];
     // Profiles and work records can disappear from this device; company
     // details, setup and settings always exist
-    const removable = ['technician', 'task', 'filter_clean', 'work_order', 'reschedule']
+    const removable = ['technician', 'task', 'filter_clean', 'pool_drain', 'work_order', 'reschedule']
       .some(kind => key.indexOf(kind + '\u0002') === 0);
     if(k.d || !removable){ delete r.edits[key]; r.seen[key] = SYNC_GONE; return; }
     const was = r.edits[key] && r.edits[key]._deleted;
@@ -10541,7 +11019,7 @@ async function syncRecords(state, companyId){
   // have, last changed before the restore, came after the backup: removed on
   // the server rather than added here
   const restoredAt = state.restoredAt || null;
-  const removableKind = kind => ['technician', 'task', 'filter_clean', 'work_order', 'reschedule'].indexOf(kind) !== -1;
+  const removableKind = kind => ['technician', 'task', 'filter_clean', 'pool_drain', 'work_order', 'reschedule'].indexOf(kind) !== -1;
   const hereRecords = restoredAt ? syncLocalRecords() : null;
   rows.forEach(row=>{
     const key = syncRecordKey(row.kind, row.id);
@@ -12204,7 +12682,7 @@ async function openFilterGroupScheduler(){
 }
 
 document.getElementById('btnScheduleFilterGroups').addEventListener('click', openFilterGroupScheduler);
-document.getElementById('filterGroupTech').addEventListener('change', ()=> renderFilterGroups());
+document.getElementById('filterGroupTech').addEventListener('change', ()=>{ filterGroupPage = 1; renderFilterGroups(); });
 
 async function openFilterGroupEmail(){
   // The groups for the technician chosen at the top of the page (Oct 3)
@@ -12360,6 +12838,7 @@ document.getElementById('btnNewFilterGroup').addEventListener('click', async ()=
     finalized: false
   });
   saveFilterGroups();
+  filterGroupPage = 'last';      // a new group is last: show its page (Oct 10)
   renderFilterGroups();
 });
 

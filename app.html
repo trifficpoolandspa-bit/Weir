@@ -12151,13 +12151,17 @@ function renderServicedList(){
     // logged before visit times were tracked has none, so it sits at the very
     // bottom rather than disappearing.
     .sort((a,b)=> (b.c.lastServicedAt || '').localeCompare(a.c.lastServicedAt || '') || String(b.day || '').localeCompare(String(a.day || '')));
-  if(servicedCustomers.length === 0){
+  // Work orders, filter cleans, pool drains and tasks finished that day, for an
+  // admin (Oct 10): they leave Today once done and are found here instead
+  const finishedJobs = isAdminUser() ? servicedJobsOn(today, me) : [];
+  if(servicedCustomers.length === 0 && finishedJobs.length === 0){
     container.innerHTML = '<div class="empty">'
       + (servicedDayOffset === 0 ? 'No one\'s been serviced yet today.' : 'Nobody was serviced that day.')
       + '</div>';
     return;
   }
   container.innerHTML = '';
+  finishedJobs.forEach(job => container.appendChild(servicedJobRow(job)));
   const showsDay = servicedCustomers.some(x => x.day);
   servicedCustomers.forEach(entry=>{
     const c = entry.c;
@@ -12181,6 +12185,7 @@ function renderServicedList(){
       reserviceCustomer(c, entry.day);
     });
     row.appendChild(reserviceBtn);
+    row.dataset.doneAt = c.lastServicedAt || '';
 
     // Tapping the row pulls up today's report for that customer.
     // Guarded so a leftover click from a previous screen can't trigger it.
@@ -12222,6 +12227,78 @@ function renderServicedList(){
 
     container.appendChild(row);
   });
+  // Jobs and services together, the most recent at the top
+  if(finishedJobs.length){
+    Array.from(container.children)
+      .sort((a, b) => String(b.dataset.doneAt || '').localeCompare(String(a.dataset.doneAt || '')))
+      .forEach(el => container.appendChild(el));
+  }
+}
+
+// Finished jobs on a day (by when they were done), for one technician or everyone
+function servicedJobsOn(iso, techId){
+  const localDay = t => { const d = new Date(t); return isNaN(d) ? '' : new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+  const whose = x => !techId || String(x.doneBy || x.technicianId || '') === String(techId)
+    || (!x.doneBy && Array.isArray(x.technicianIds) && x.technicianIds.map(String).indexOf(String(techId)) !== -1);
+  const out = [];
+  [['scheduledWorkOrders', 'work order', 'wo:'], ['scheduledFilterCleans', 'filter clean', 'fc:'], ['scheduledPoolDrains', 'pool drain', 'pd:']]
+    .forEach(([key, kind, pre])=>{
+      (lsGet(key) || []).forEach(j=>{
+        if(!j || j.status !== 'done' || !j.doneAt || localDay(j.doneAt) !== iso || !whose(j)) return;
+        out.push({kind, id: j.id, report: pre + j.id, customerId: j.customerId, doneAt: j.doneAt,
+          title: kind === 'work order' ? (j.title || 'Work order') : jobKindLabel(kind)});
+      });
+    });
+  (lsGet('tasks') || []).forEach(t=>{
+    if(!t || !t.done || !t.doneAt || localDay(t.doneAt) !== iso || !whose(t)) return;
+    const ids = (t.customerIds || []).length ? t.customerIds : (t.customerId ? [t.customerId] : ['']);
+    ids.forEach(cid => out.push({kind: 'task', id: t.id, report: cid ? 'tk:' + t.id : '', customerId: cid, doneAt: t.doneAt, title: t.title || 'Task'}));
+  });
+  return out;
+}
+// A finished job's row on Serviced: its colour and icon, when it was done;
+// pressing it opens its report
+function servicedJobRow(job){
+  const customer = job.customerId ? customers.find(c => String(c.id) === String(job.customerId)) : null;
+  const row = document.createElement('div');
+  row.className = 'cust-row';
+  row.dataset.doneAt = job.doneAt || '';
+  row.style.background = jobKindColours(job.kind)[0];
+  const left = document.createElement('div');
+  left.style.cssText = 'min-width:0;';
+  const name = document.createElement('div');
+  name.className = 'cust-name';
+  name.style.cssText = 'color:' + jobKindColours(job.kind)[1] + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  setJobNameLine(name, job.kind, (customer ? customer.name + ' \u2013 ' : '') + job.title);
+  const meta = document.createElement('div');
+  meta.className = 'cust-meta';
+  meta.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  let when = '';
+  try{ when = new Date(job.doneAt).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'}); }catch(e){}
+  meta.textContent = 'Done ' + when + (customer && customer.address ? ' \u00b7 ' + customer.address : '');
+  left.appendChild(name); left.appendChild(meta);
+  row.appendChild(left);
+  if(customer && job.report){
+    row.style.cursor = 'pointer';
+    row.addEventListener('click', async ()=>{
+      if(viewJustChanged()) return;
+      reportOpenedFrom = null;
+      const sel = document.getElementById('reportCustomerSelect');
+      if(sel){ populateCustomerSelect(sel, 'Add a customer first'); sel.value = customer.id; }
+      if(typeof syncReportCustomerSearchField === 'function') syncReportCustomerSearchField();
+      await refreshDateSelector(customer.id);
+      const dateSel = document.getElementById('reportReadingSelect');
+      if(dateSel && Array.from(dateSel.options).some(o => o.value === job.report)){
+        dateSel.value = job.report;
+        await renderDateReport(customer.id, job.report);
+      }
+      const btnReports = document.getElementById('btnReportModeReports');
+      if(btnReports && isAdminUser()) btnReports.click();
+      if(currentViewName !== 'report') switchView('report', {skipRefresh: true});
+      window.scrollTo({top: 0, behavior: 'smooth'});
+    });
+  }
+  return row;
 }
 
 // An admin's Serviced: whose services to show (everyone, or one technician;
