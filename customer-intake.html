@@ -292,6 +292,10 @@ input::placeholder{color:#A9BCB9;}
 .wc-tick-col{display:flex;flex-direction:column;gap:10px;padding-bottom:10px;}
 .alert-tag.repair{background:var(--gold-pale);color:var(--gold);}
 .alert-tag.email{background:#FBE9E5;color:var(--rust);}
+.alert-tag.reminder{background:#E4F0F8;color:#1F5E86;}
+/* A row an alert brought you to, lit for a moment (Oct 10) */
+@keyframes alertLanded{0%,60%{background:var(--gold-pale);}100%{background:transparent;}}
+.alert-landed{animation:alertLanded 2.6s ease-out;}
 .alerts-tab-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:7px;border-radius:999px;background:var(--gold);color:#fff;font-size:10.5px;font-weight:700;vertical-align:1px;}
 
 
@@ -1976,6 +1980,8 @@ input::placeholder{color:#A9BCB9;}
         <button type="button" class="history-type-btn" data-kind="repair">Repairs</button>
         <!-- Emails that didn't go out (Oct 8) -->
         <button type="button" class="history-type-btn" data-kind="email">Emails</button>
+        <!-- Drains and filter cleans coming due (Oct 10) -->
+        <button type="button" class="history-type-btn" data-kind="reminder">Reminders</button>
       </div>
       <div id="alertsList"></div>
     </div>
@@ -7724,6 +7730,8 @@ function pdDue(c, body){
   const l = pdLast(c, body); return l ? pdAddMonths(l, pdEvery(c, body)) : '';
 }
 function pdBucket(c){
+  // The customer drains it themselves (Oct 10): their own list, no reminders
+  if(c && c.drainsSelf) return 'self';
   const due = pdDue(c);
   if(!due) return 'never';
   const today = pdToday();
@@ -7815,20 +7823,22 @@ const DRAIN_BUCKETS = [
   {key: 'overdue', label: 'Overdue',              tone: 'var(--rust)'},
   {key: 'soon',    label: 'Due in the next 6 months', tone: 'var(--gold)'},
   {key: 'never',   label: 'No drain on record',   tone: 'var(--muted)'},
-  {key: 'later',   label: 'Up to date',           tone: 'var(--green)'}
+  {key: 'later',   label: 'Up to date',           tone: 'var(--green)'},
+  {key: 'self',    label: 'Drain it themselves',  tone: '#9AA9A6'}
 ];
 
 function renderPoolDrains(){
   try{ pdReconcileDone(); }catch(e){}
   pdFillMenus();
   const shown = pdShownCustomers();
-  const byBucket = {overdue: [], soon: [], never: [], later: []};
+  const byBucket = {overdue: [], soon: [], never: [], later: [], self: []};
   shown.forEach(c => byBucket[pdBucket(c)].push(c));
   // Most overdue first; due soonest first; never and up-to-date by name / due
   byBucket.overdue.sort((a, b) => pdDue(a).localeCompare(pdDue(b)));
   byBucket.soon.sort((a, b) => pdDue(a).localeCompare(pdDue(b)));
   byBucket.later.sort((a, b) => pdDue(a).localeCompare(pdDue(b)));
   byBucket.never.sort((a, b) => sortKeyName(a.name).localeCompare(sortKeyName(b.name)));
+  byBucket.self.sort((a, b) => sortKeyName(a.name).localeCompare(sortKeyName(b.name)));
   // Ticks only on customers still on screen
   const shownIds = new Set(shown.map(c => c.id));
   Array.from(drainPicked).forEach(id => { if(!shownIds.has(id)) drainPicked.delete(id); });
@@ -7917,6 +7927,7 @@ function pdRow(c, b){
   row.className = 'press-row';
   row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:9px 6px;border-top:1px solid var(--line);cursor:pointer;border-radius:6px;';
   row.title = 'Open ' + displayName(c.name) + '’s drains';
+  row.dataset.pdCustomer = c.id;
   const box = document.createElement('input');
   box.type = 'checkbox';
   box.style.cssText = 'width:auto;margin:0;flex-shrink:0;';
@@ -8000,12 +8011,66 @@ function pdRenderSelBar(){
   grp.textContent = 'Add to group';
   grp.addEventListener('click', ()=> pdPickGroup(Array.from(drainPicked)));
   bar.appendChild(grp);
+  // Delete the ticked customers' drains (Oct 10): the bin, then what to delete
+  const bin = document.createElement('button');
+  bin.type = 'button';
+  bin.innerHTML = WEIR_BIN_SVG;
+  bin.title = 'Delete drains for the ticked customers';
+  bin.setAttribute('aria-label', bin.title);
+  bin.style.cssText = 'flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid #EFC9BC;'
+    + 'border-radius:8px;background:#fff;color:var(--rust);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;';
+  bin.addEventListener('click', ()=> pdAskDelete(Array.from(drainPicked)));
+  bar.appendChild(bin);
   const clr = document.createElement('button');
   clr.type = 'button'; clr.className = 'btn btn-ghost';
   clr.style.cssText = 'width:auto;padding:7px 12px;font-size:12.5px;background:#fff;';
   clr.textContent = 'Clear';
   clr.addEventListener('click', ()=>{ drainPicked.clear(); renderPoolDrains(); });
   bar.appendChild(clr);
+}
+
+// Deleting drains for several customers at once (Oct 10)
+function pdAskDelete(cids){
+  const people = cids.map(id => customers.find(c => c.id === id)).filter(Boolean);
+  const withDrains = people.filter(c => pdDrains(c).length);
+  if(!withDrains.length){ showToast('None of them have a drain on record'); return; }
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:400px;">'
+    + '<h3 style="font-size:15px;margin:0 0 4px;">Delete drains</h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">For ' + withDrains.length + (withDrains.length === 1 ? ' customer' : ' customers') + ' with drains on record.</p>'
+    + '<label class="pick-row" style="border-bottom:1px solid var(--line);"><input type="radio" name="pdDelWhich" value="last" checked style="width:auto;margin:0;"> Their most recent drain <span style="color:var(--muted);font-size:12px;">(each body of water)</span></label>'
+    + '<label class="pick-row"><input type="radio" name="pdDelWhich" value="all" style="width:auto;margin:0;"> Every drain on record</label>'
+    + '<div class="btn-row" style="margin-top:14px;"><button type="button" class="btn btn-ghost" data-cancel>Cancel</button>'
+    + '<button type="button" class="btn btn-primary" data-go style="background:var(--rust);border-color:var(--rust);">Delete</button></div></div>';
+  document.body.appendChild(overlay);
+  const close = ()=> overlay.remove();
+  overlay.querySelector('[data-cancel]').addEventListener('click', close);
+  overlay.querySelector('[data-go]').addEventListener('click', ()=>{
+    const which = overlay.querySelector('input[name="pdDelWhich"]:checked').value;
+    let n = 0;
+    withDrains.forEach(c=>{
+      const all = Array.isArray(c.drains) ? c.drains : [];
+      let goes;
+      if(which === 'all') goes = all.slice();
+      else goes = pdBodies(c).map(b => pdDrains(c, b.key)[0]).filter(Boolean);
+      if(!goes.length) return;
+      // Ones done in the app aren't logged again by the next sync
+      const jobs = goes.map(d => d.jobId).filter(Boolean);
+      if(jobs.length){
+        const gone = Array.isArray(c.drainJobsRemoved) ? c.drainJobsRemoved.slice() : [];
+        jobs.forEach(j => { if(gone.indexOf(j) === -1) gone.push(j); });
+        c.drainJobsRemoved = gone;
+      }
+      c.drains = all.filter(d => goes.indexOf(d) === -1);
+      n += goes.length;
+    });
+    saveCustomers();
+    close();
+    drainPicked.clear();
+    renderPoolDrains();
+    showToast('Deleted ' + n + (n === 1 ? ' drain' : ' drains'));
+  });
 }
 
 // When was it drained? Today unless changed.
@@ -8114,6 +8179,7 @@ function openDrainHistory(c){
         <label for="pdhBody" style="font-size:12.5px;font-weight:600;">Body of water</label>
         <select id="pdhBody" style="margin:4px 0 14px;"></select>
       </div>
+      <label class="pick-row" style="padding:4px 0 12px;border:none;font-weight:600;font-size:13px;"><input type="checkbox" id="pdhSelf" style="width:auto;margin:0;"> They drain it themselves</label>
       <label for="pdhEvery" style="font-size:12.5px;font-weight:600;">Drain every</label>
       <select id="pdhEvery" style="margin:4px 0 14px;"></select>
       <div style="font-size:12.5px;font-weight:600;margin-bottom:4px;">Drains</div>
@@ -8139,6 +8205,14 @@ function openDrainHistory(c){
     bodySel.value = body;
     bodySel.addEventListener('change', ()=>{ body = bodySel.value; fillEvery(); draw(); });
   }
+  // Drains it themselves (Oct 10): kept in their own list, with no reminders
+  const selfBox = overlay.querySelector('#pdhSelf');
+  selfBox.checked = !!c.drainsSelf;
+  selfBox.addEventListener('change', ()=>{
+    if(selfBox.checked) c.drainsSelf = true; else delete c.drainsSelf;
+    saveCustomers();
+    showToast(selfBox.checked ? displayName(c.name) + ' drains it themselves' : displayName(c.name) + ' is back on your drain lists');
+  });
   const every = overlay.querySelector('#pdhEvery');
   const fillEvery = ()=> pdFillEveryMenu(every, pdOwnEvery(c, body), ['', 'Company setting (' + pdEveryText(pdCompanyEvery()) + ')']);
   fillEvery();
@@ -24755,10 +24829,85 @@ function collectAlerts(){
       notes: (f.event === 'bounced' ? 'Bounced' : f.event === 'complained' ? 'Marked as spam' : 'Not sent')
         + (f.to ? (f.event === 'complained' ? ' by ' : ' to ') + f.to : '') + (f.reason ? ' \u2014 ' + f.reason : '')});
   });
+  // Reminders (Oct 10): drains now due, and filter clean groups coming up
+  try{ collectReminders().forEach(r => out.push(r)); }catch(e){}
   const gone = alertsGone();
   const kept = out.filter(a => !gone[a.id]);
   kept.sort((a, b) => b.t - a.t);
   return kept;
+}
+
+// A pool, fountain or extra body drain, or a spa drain, once its due date has
+// come; and a filter clean group whose date is within a week (or just passed)
+// and isn't scheduled yet. Each is its own alert for that due date, so the next
+// time round comes up new again.
+const REMINDER_GROUP_DAYS = 7;
+function collectReminders(){
+  const out = [];
+  if(typeof pdBodies !== 'function') return out;
+  const today = pdToday();
+  (customers || []).forEach(c=>{
+    if(!c || !c.id || c.deleted || c.active === false || c.drainsSelf) return;
+    pdBodies(c).forEach(b=>{
+      const due = pdDue(c, b.key);
+      if(!due || due > today) return;
+      const isSpa = b.key === 'spa';
+      out.push({id: 'remdrain:' + c.id + ':' + b.key + ':' + due, kind: 'reminder', remind: 'drain', body: b.key,
+        customerId: c.id, name: displayName(c.name), t: new Date(due + 'T08:00:00').getTime(),
+        tech: '', notes: (isSpa ? 'Spa drain' : b.key === 'pool' ? 'Pool drain' : b.label + ' drain') + ' due '
+          + pdDate(due) + ' \u2014 last drained ' + pdDate(pdLast(c, b.key)),
+        bodyLabel: isSpa ? 'Spa drain' : b.key === 'pool' ? 'Pool drain' : b.label + ' drain'});
+    });
+  });
+  const soon = pdAddDays(today, REMINDER_GROUP_DAYS), back = pdAddDays(today, -30);
+  (typeof filterGroups !== 'undefined' ? filterGroups : []).forEach(g=>{
+    if(!g || !g.date || g.finalized || !(g.customerIds || []).length) return;
+    if(g.date > soon || g.date < back) return;
+    const n = (g.customerIds || []).length;
+    out.push({id: 'remfc:' + g.id + ':' + g.date, kind: 'reminder', remind: 'filters', groupId: g.id,
+      customerId: '', name: g.name || 'Filter clean group', t: new Date(g.date + 'T08:00:00').getTime(), tech: '',
+      notes: 'Filter cleans ' + (g.date < today ? 'were due ' : 'due ') + pdDate(g.date, true) + ' for ' + n + (n === 1 ? ' customer' : ' customers') + ' \u2014 not scheduled yet',
+      bodyLabel: 'Filter cleans'});
+  });
+  return out;
+}
+function pdAddDays(iso, n){
+  const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+// Pressing a reminder: the Drains page with the customer in their list, or the
+// filter clean group opened, lit up for a moment
+function openReminder(a){
+  const land = el=>{
+    if(!el) return;
+    el.scrollIntoView({block: 'center'});
+    el.classList.remove('alert-landed'); void el.offsetWidth; el.classList.add('alert-landed');
+  };
+  switchView('workcenter');
+  if(a.remind === 'drain'){
+    const c = (customers || []).find(x => x && String(x.id) === String(a.customerId));
+    if(!c){ showToast('This customer is no longer on file'); return; }
+    applyWorkCenterMode('drains');
+    const tech = document.getElementById('drainTech');
+    if(tech && tech.value && (tech.value === 'none' ? c.technicianId : String(c.technicianId || '') !== tech.value)) tech.value = '';
+    openDrainBuckets.add(pdBucket(c));
+    renderPoolDrains();
+    setTimeout(()=> land(document.querySelector('#drainStatusList [data-pd-customer="' + CSS.escape(String(c.id)) + '"]')), 60);
+    return;
+  }
+  if(a.remind === 'filters'){
+    const g = filterGroups.find(x => x.id === a.groupId);
+    if(!g){ showToast('This group is no longer here'); return; }
+    applyWorkCenterMode('filters');
+    const tech = document.getElementById('filterGroupTech');
+    if(tech) tech.value = '';
+    openFilterGroupIds.add(g.id);
+    // The page the group is on
+    const at = filterGroups.indexOf(g);
+    filterGroupPage = at === -1 ? 1 : Math.floor(at / FILTER_GROUPS_PER_PAGE) + 1;
+    renderFilterGroups();
+    setTimeout(()=> land(document.querySelector('#filterGroupList > [data-reorder-key="' + CSS.escape(String(g.id)) + '"]')), 60);
+  }
 }
 
 function alertWhen(t){
@@ -24852,12 +25001,12 @@ function renderAlerts(){
     if(tick){ tick.style.marginTop = '4px'; row.appendChild(tick); }
     const tag = document.createElement('span');
     tag.className = 'alert-tag ' + a.kind;
-    tag.textContent = a.kind === 'video' ? 'Video' : (a.kind === 'repair' ? 'Repair' : (a.kind === 'email' ? 'Email' : 'Note'));
+    tag.textContent = a.kind === 'video' ? 'Video' : (a.kind === 'repair' ? 'Repair' : (a.kind === 'email' ? 'Email' : a.kind === 'reminder' ? 'Reminder' : 'Note'));
     const body = document.createElement('div');
     body.style.cssText = 'flex:1;min-width:0;';
     const t1 = document.createElement('div');
     t1.style.cssText = 'font-size:14px;font-weight:600;';
-    t1.textContent = a.name + ' \u2013 ' + a.body;
+    t1.textContent = a.name + ' \u2013 ' + (a.kind === 'reminder' ? a.bodyLabel : a.body);
     // NEW until it's opened, watched or marked seen
     if(!seen[a.id]){
       const isNew = document.createElement('span');
@@ -24913,6 +25062,7 @@ function renderAlerts(){
         s[a.id] = Date.now();
         saveAlertsSeen(s);
       }
+      if(a.kind === 'reminder'){ openReminder(a); return; }
       if(!a.customerId){ try{ renderAlerts(); }catch(e){} return; }   // a task with no customer
       if(a.kind === 'email'){
         // An email that didn't go out: the customer, to check their address
@@ -24924,7 +25074,7 @@ function renderAlerts(){
     // Pressing the row opens the report (Open report and Mark seen buttons
     // gone, Oct 3); while selecting, it ticks the row instead
     row.style.cursor = 'pointer';
-    row.title = selSt.on ? 'Tick this alert' : (a.kind === 'email' ? 'Open the customer' : 'Open the report');
+    row.title = selSt.on ? 'Tick this alert' : (a.kind === 'email' ? 'Open the customer' : a.kind === 'reminder' ? (a.remind === 'filters' ? 'Open the group' : 'Open Drains') : 'Open the report');
     row.addEventListener('click', e=>{
       if(e.target.closest('button, a, input')) return;
       if(selSt.on){ toggleSelected(selKey, a.id, redrawSel); return; }
