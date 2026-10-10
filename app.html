@@ -1146,6 +1146,7 @@ select#customerSelect{font-weight:600;}
             <option value="report">Reports</option>
             <option value="wo">Work orders</option>
             <option value="fc">Filter cleans</option>
+            <option value="pd">Pool drains</option>
             <option value="task">Tasks</option>
           </select>
         </div>
@@ -3121,7 +3122,7 @@ function lsSet(key, value){
     // Finishing a work order or filter clean is sent straight away too (Oct 3;
     // it used to wait for the once-a-minute sync)
     if(key === 'customers' || key === 'tasks' || key === 'rescheduledVisits'
-     || key === 'scheduledWorkOrders' || key === 'scheduledFilterCleans' || key === 'jobSubmissions'
+     || key === 'scheduledWorkOrders' || key === 'scheduledFilterCleans' || key === 'scheduledPoolDrains' || key === 'jobSubmissions'
      || key.indexOf('readings:') === 0 || key.indexOf('spaReadings:') === 0
      || key.indexOf('fountainReadings:') === 0 || key.indexOf('skippedVisits:') === 0){
       try{ if(typeof fieldNoteLocalChange === 'function') fieldNoteLocalChange(); }catch(e){}
@@ -4443,13 +4444,14 @@ async function syncPushVisits(state){
 const SYNC_WORK_LISTS = [
   ['tasks', 'task'],
   ['scheduledFilterCleans', 'filter_clean'],
+  ['scheduledPoolDrains', 'pool_drain'],
   ['scheduledWorkOrders', 'work_order'],
   ['rescheduledVisits', 'reschedule']
 ];
 // Finishing a task or a work order visit goes back too: done, when, by whom
 // and the notes (snippet 16 lets a technician change exactly these on their own),
 // and a work order's photo and video (snippet 25, Oct 3)
-const SYNC_WORK_SENDABLE = ['task', 'reschedule', 'work_order', 'filter_clean'];
+const SYNC_WORK_SENDABLE = ['task', 'reschedule', 'work_order', 'filter_clean', 'pool_drain'];
 const SYNC_FILTER_CLEAN_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore', 'doneReplacements'];
 const SYNC_TASK_FIELDS = ['done', 'doneAt', 'doneBy', 'doneNotes', 'doneVideo', 'doneVideoMore'];
 const SYNC_WORK_ORDER_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore', 'doneReplacements'];
@@ -4513,6 +4515,7 @@ function syncScanWork(state, now){
       if(key.indexOf('task\u0002') === 0 && SYNC_TASK_FIELDS.indexOf(field) === -1) return;
       if(key.indexOf('work_order\u0002') === 0 && SYNC_WORK_ORDER_FIELDS.indexOf(field) === -1) return;
       if(key.indexOf('filter_clean\u0002') === 0 && SYNC_FILTER_CLEAN_FIELDS.indexOf(field) === -1) return;
+      if(key.indexOf('pool_drain\u0002') === 0 && SYNC_FILTER_CLEAN_FIELDS.indexOf(field) === -1) return;
       const noticed = prev && prev[field] === f[field];
       if(!noticed || !e[field]) e[field] = stamp;
     });
@@ -4953,7 +4956,7 @@ function syncPhotosHere(){
   // the work order visit, so the office shows them in Service reports; the
   // video is office only and kept 7 days, like a visit's.
   (lsGet('jobSubmissions') || []).forEach(sub=>{
-    if(!sub || (sub.kind !== 'work order' && sub.kind !== 'filter clean' && sub.kind !== 'task') || !sub.customerId || !sub.sourceId) return;
+    if(!sub || (sub.kind !== 'work order' && sub.kind !== 'filter clean' && sub.kind !== 'pool drain' && sub.kind !== 'task') || !sub.customerId || !sub.sourceId) return;
     const when = sub.submittedAt || new Date().toISOString();
     add(sub.photo, {customerId: String(sub.customerId), kind: 'custom', visitId: String(sub.sourceId), takenAt: when});
     add(sub.video, {customerId: String(sub.customerId), kind: 'video', visitId: String(sub.sourceId), takenAt: when});
@@ -9058,6 +9061,10 @@ function techRouteJobsFor(techId, iso){
     out.push({kind: 'filter clean', id: f.id, key: 'filter clean:' + f.id, report: 'fc:' + f.id, title: 'Filter clean', customerId: f.customerId,
       done: f.status === 'done', doneAt: f.doneAt, date: f.date, technicianId: f.technicianId});
   });
+  (lsGet('scheduledPoolDrains') || []).filter(f => f && f.date === iso && mine(f)).forEach(f=>{
+    out.push({kind: 'pool drain', id: f.id, key: 'pool drain:' + f.id, report: 'pd:' + f.id, title: 'Pool drain', customerId: f.customerId,
+      done: f.status === 'done', doneAt: f.doneAt, date: f.date, technicianId: f.technicianId});
+  });
   (lsGet('tasks') || []).filter(t => t && t.date === iso && mine(t)).forEach(t=>{
     const ids = (t.customerIds || []).length ? t.customerIds : [''];
     ids.forEach(cid => out.push({kind: 'task', id: t.id, key: 'task:' + t.id + ':' + cid, report: '', title: t.title || 'Task', customerId: cid,
@@ -9089,8 +9096,7 @@ function techRouteJobRow(job, iso, onReorder){
   name.className = 'cust-name';
   name.style.cssText = "font-family:'Space Grotesk',sans-serif;font-weight:700;color:" + jobKindColours(job.kind)[1] + ';'
     + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-  name.textContent = jobKindIcon(job.kind) + ' '
-    + (customer ? customer.name + ' \u2013 ' : '') + job.title;
+  setJobNameLine(name, job.kind, (customer ? customer.name + ' \u2013 ' : '') + job.title);
   if(job.done){
     const tag = document.createElement('span');
     tag.style.cssText = 'background:var(--green);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:5px;vertical-align:middle;margin-left:6px;';
@@ -9174,8 +9180,8 @@ function openJobRescheduleModal(job){
     const toISO = dateEl.value;
     const tech = techEl.value !== ownId ? techEl.value : null;
     if(!toISO && !tech){ showToast('Pick a date or another technician first'); return; }
-    const listKey = job.kind === 'task' ? 'tasks' : job.kind === 'filter clean' ? 'scheduledFilterCleans' : 'scheduledWorkOrders';
-    const syncKind = job.kind === 'task' ? 'task' : job.kind === 'filter clean' ? 'filter_clean' : 'work_order';
+    const listKey = job.kind === 'task' ? 'tasks' : job.kind === 'filter clean' ? 'scheduledFilterCleans' : job.kind === 'pool drain' ? 'scheduledPoolDrains' : 'scheduledWorkOrders';
+    const syncKind = job.kind === 'task' ? 'task' : job.kind === 'filter clean' ? 'filter_clean' : job.kind === 'pool drain' ? 'pool_drain' : 'work_order';
     const list = lsGet(listKey) || [];
     const rec = list.find(x => x && String(x.id) === String(job.id));
     if(!rec){ close(); showToast('This ' + label + ' is no longer here'); return; }
@@ -10434,7 +10440,12 @@ function routeJobsFor(customerId, dayISO, techId){
     .map(s => ({key: 'filter clean:' + s.id, kind: 'filter clean', id: s.id,
                 // Only when the group's Photo required was ticked (Oct 3)
                 title: 'Filter clean', details: '', photoRequired: s.photoRequired === true, videoRequired: false}));
-  return orders.concat(cleans).concat(tasks).filter(j => !jobSubmitted(j.key));
+  // Pool drains, sent from the website's Pool drains page (Oct 10)
+  const drains = (lsGet('scheduledPoolDrains') || [])
+    .filter(s => s && s.status === 'scheduled' && s.date === dayISO && s.customerId === customerId && mine(s))
+    .map(s => ({key: 'pool drain:' + s.id, kind: 'pool drain', id: s.id,
+                title: 'Pool drain', details: s.notes || '', photoRequired: s.photoRequired === true, videoRequired: false}));
+  return orders.concat(cleans).concat(drains).concat(tasks).filter(j => !jobSubmitted(j.key));
 }
 // The Replacements window on a filter clean (Oct 3): the usual parts to tick,
 // any number of them, and a box for anything else. Done (or a tap outside)
@@ -10504,14 +10515,38 @@ function openReplacementsPicker(current, onDone){
 function jobKindColours(kind){
   return kind === 'task' ? ['#E8F1E4', '#4D6B3C']
     : kind === 'filter clean' ? ['#FBF1DD', '#8A5E0B']
+    : kind === 'pool drain' ? ['#E4F0F8', '#1F5E86']
     : ['#E9EEF0', '#3E5560'];
 }
 // Each kind's icon (Oct 3): work order 🛠, filter clean 🚿, task 📋
 function jobKindIcon(kind){
-  return kind === 'task' ? '\ud83d\udccb' : kind === 'filter clean' ? '\ud83d\udebf' : '\ud83d\udee0';
+  return kind === 'task' ? '\ud83d\udccb' : kind === 'filter clean' ? '\ud83d\udebf' : kind === 'pool drain' ? '' : '\ud83d\udee0';
 }
 function jobKindLabel(kind){
-  return kind === 'task' ? 'Task' : (kind === 'filter clean' ? 'Filter clean' : 'Work order');
+  return kind === 'task' ? 'Task' : kind === 'filter clean' ? 'Filter clean' : kind === 'pool drain' ? 'Pool drain' : 'Work order';
+}
+// The pool drain's own drawing (Oct 10, F1): a pool, the water low, an arrow down
+let poolDrainIconN = 0;
+function poolDrainIconSvg(w, h){
+  const id = 'pdIco' + (++poolDrainIconN);
+  return '<svg viewBox="0 0 32 28" width="' + (w || 24) + '" height="' + (h || 22) + '" aria-hidden="true" style="vertical-align:-5px;flex-shrink:0;">'
+    + '<defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A9D8F2"/><stop offset="1" stop-color="#2F7FB3"/></linearGradient></defs>'
+    + '<path d="M3 6v15a4 4 0 0 0 4 4h18a4 4 0 0 0 4-4V6" fill="#fff" stroke="#1F5E86" stroke-width="1.8" stroke-linecap="round"/>'
+    + '<path d="M4 17.5c2.5 0 2.5-1.2 5-1.2s2.5 1.2 5 1.2 2.5-1.2 5-1.2 2.5 1.2 5 1.2 2.5-1.2 4-1.2V21a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z" fill="url(#' + id + ')"/>'
+    + '<path d="M16 8v7m-2.6-2.6L16 15l2.6-2.6" fill="none" stroke="#1F5E86" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+// A job's name line: its icon, then the words (the pool drain's icon is a drawing)
+function setJobNameLine(el, kind, text){
+  el.textContent = '';
+  if(kind === 'pool drain'){
+    const ico = document.createElement('span');
+    ico.innerHTML = poolDrainIconSvg();
+    ico.style.cssText = 'display:inline-block;margin-right:5px;';
+    el.appendChild(ico);
+    el.appendChild(document.createTextNode(text));
+  } else {
+    el.textContent = jobKindIcon(kind) + ' ' + text;
+  }
 }
 // Tasks with no customer that day, as jobs of their own
 function routeLooseTasks(dayISO, techId){
@@ -10539,6 +10574,9 @@ function routeJobCustomerIds(dayISO, techId){
   (lsGet('scheduledFilterCleans') || []).filter(s => s && s.status === 'scheduled' && s.date === dayISO && mine(s))
     .sort((a, b) => (typeof a.order === 'number' ? a.order : 9999) - (typeof b.order === 'number' ? b.order : 9999))
     .forEach(s => { if(!jobSubmitted('filter clean:' + s.id)) ids.add(s.customerId); });
+  (lsGet('scheduledPoolDrains') || []).filter(s => s && s.status === 'scheduled' && s.date === dayISO && mine(s))
+    .sort((a, b) => (typeof a.order === 'number' ? a.order : 9999) - (typeof b.order === 'number' ? b.order : 9999))
+    .forEach(s => { if(!jobSubmitted('pool drain:' + s.id)) ids.add(s.customerId); });
   return ids;
 }
 // How many jobs a day holds: every work order and every task counts as one,
@@ -10616,8 +10654,7 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
     const nameLine = document.createElement('div');
     nameLine.className = 'cust-name';
     nameLine.style.cssText = 'color:' + jobKindColours(job.kind)[1] + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-    nameLine.textContent = jobKindIcon(job.kind) + ' '
-      + (customer ? customer.name + ' \u2013 ' + job.title : job.title);
+    setJobNameLine(nameLine, job.kind, customer ? customer.name + ' \u2013 ' + job.title : job.title);
     const metaLine = document.createElement('div');
     metaLine.className = 'cust-meta';
     metaLine.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
@@ -10676,7 +10713,7 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
       if(customer && customer.gateCode) line('\ud83d\udd11 Yard gate', customer.gateCode);
       const dogNames = ((customer && customer.dogs) || []).map(d => d.name).filter(Boolean);
       if(dogNames.length) line(dogNames.length === 1 ? '\ud83d\udc15 Dog' : '\ud83d\udc15 Dogs', dogNames.join(', '));
-      line(jobKindIcon(job.kind) + ' ' + jobKindLabel(job.kind), job.title);
+      line((jobKindIcon(job.kind) ? jobKindIcon(job.kind) + ' ' : '') + jobKindLabel(job.kind), job.title);
       if(job.details) line('Details', job.details);
       // Photo and video requirements are shown on the job screen itself (Oct 3)
 
@@ -10738,8 +10775,7 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
     const nameLine = document.createElement('div');
     nameLine.className = 'cust-name';
     nameLine.style.cssText = 'color:' + jobKindColours(job.kind)[1] + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-    nameLine.textContent = jobKindIcon(job.kind) + ' '
-      + (customer ? customer.name + ' \u2013 ' + job.title : job.title);
+    setJobNameLine(nameLine, job.kind, customer ? customer.name + ' \u2013 ' + job.title : job.title);
     const metaLine = document.createElement('div');
     metaLine.className = 'cust-meta';
     metaLine.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
@@ -10798,7 +10834,7 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
       if(customer && customer.gateCode) line('\ud83d\udd11 Yard gate', customer.gateCode);
       const dogNames = ((customer && customer.dogs) || []).map(d => d.name).filter(Boolean);
       if(dogNames.length) line(dogNames.length === 1 ? '\ud83d\udc15 Dog' : '\ud83d\udc15 Dogs', dogNames.join(', '));
-      line(jobKindIcon(job.kind) + ' ' + jobKindLabel(job.kind), job.title);
+      line((jobKindIcon(job.kind) ? jobKindIcon(job.kind) + ' ' : '') + jobKindLabel(job.kind), job.title);
       if(job.details) line('Details', job.details);
       // Photo and video requirements are shown on the job screen itself (Oct 3)
 
@@ -10868,7 +10904,7 @@ function openJobPage(customer, job){
   card.appendChild(where);
   // A filter clean starts straight at its photos: no customer name or address
   // under "Filter clean" (Oct 3)
-  if(job.kind === 'filter clean'){ who.style.display = 'none'; where.style.display = 'none'; }
+  if(job.kind === 'filter clean' || job.kind === 'pool drain'){ who.style.display = 'none'; where.style.display = 'none'; }
   // A work order shows its line items and a task its name, in black, with no
   // customer name or address (Oct 3)
   const lineChecks = [];       // a work order's line items, all ticked before Submit
@@ -11138,6 +11174,22 @@ function openJobPage(customer, job){
         if(replacements.length) fc.doneReplacements = replacements.slice();
         lsSet('scheduledFilterCleans', cleans);
         if(customer) queueJobEmail(customer, Object.assign({kind: 'filter clean'}, fc));
+      }
+    } else if(job.kind === 'pool drain'){
+      // Done, with the photos and notes, back to the office (Oct 10). The
+      // website logs the drain on the customer from doneAt.
+      const drains = lsGet('scheduledPoolDrains') || [];
+      const pd = drains.find(x => x.id === job.id);
+      if(pd){
+        pd.status = 'done';
+        pd.doneAt = stamp;
+        pd.doneBy = currentUser ? currentUser.id : '';
+        pd.doneNotes = noteText;
+        if(isPhotoRef(stored)) pd.donePhoto = stored;
+        if(storedMore.length) pd.donePhotoMore = storedMore;
+        if(isPhotoRef(videoRef)) pd.doneVideo = videoRef;
+        if(videoMore.length) pd.doneVideoMore = videoMore;
+        lsSet('scheduledPoolDrains', drains);
       }
     } else {
       const jobs = lsGet('scheduledWorkOrders') || [];
@@ -12931,6 +12983,11 @@ async function getCustomerServiceDates(customerId){
     out.push({dateStr: 'fc:' + f.id, ts: f.doneAt || (f.date + 'T12:00:00'), isRedo: false,
               day: f.doneAt ? localDateOfStamp(f.doneAt) : f.date, fc: f});
   });
+  // Pool drains (Oct 10)
+  poolDrainVisitsFor(customerId).forEach(f=>{
+    out.push({dateStr: 'pd:' + f.id, ts: f.doneAt || (f.date + 'T12:00:00'), isRedo: false,
+              day: f.doneAt ? localDateOfStamp(f.doneAt) : f.date, pd: f});
+  });
   // Finished tasks for this customer (Oct 3)
   finishedTasksFor(customerId).forEach(t=>{
     out.push({dateStr: 'tk:' + t.id, ts: t.doneAt || ((t.date || '') + 'T12:00:00'), isRedo: false,
@@ -12983,6 +13040,11 @@ function filterCleanVisitsFor(customerId){
   return (lsGet('scheduledFilterCleans') || [])
     .filter(s => s && s.status === 'done' && String(s.customerId) === String(customerId));
 }
+// Pool drains submitted on the job screen (Oct 10), shown the same way
+function poolDrainVisitsFor(customerId){
+  return (lsGet('scheduledPoolDrains') || [])
+    .filter(s => s && s.status === 'done' && String(s.customerId) === String(customerId));
+}
 function workOrderNumberText(n){ return n ? '#' + String(n).padStart(4, '0') : ''; }
 function workOrderMoney(n){ return '$' + (Number(n) || 0).toFixed(2); }
 
@@ -13008,14 +13070,17 @@ async function workOrderVideoSource(ref){
 }
 
 async function renderWorkOrderReport(customerId, jobId, isClean){
+  // isClean: true for a filter clean, 'drain' for a pool drain (Oct 10)
+  const isDrain = isClean === 'drain';
+  const jobWord = isDrain ? 'pool drain' : isClean ? 'filter clean' : 'work order';
   const out = document.getElementById('reportOutput');
   document.getElementById('reportActions').style.display = 'none';
   document.getElementById('btnDownloadPhoto').style.display = 'none';
   document.getElementById('btnSharePhoto').style.display = 'none';
   const customer = customers.find(c => c.id === customerId);
-  const j = (isClean ? filterCleanVisitsFor(customerId) : workOrderVisitsFor(customerId)).find(x => String(x.id) === String(jobId));
+  const j = (isDrain ? poolDrainVisitsFor(customerId) : isClean ? filterCleanVisitsFor(customerId) : workOrderVisitsFor(customerId)).find(x => String(x.id) === String(jobId));
   if(!customer || !j){
-    out.innerHTML = '<div class="empty">This ' + (isClean ? 'filter clean' : 'work order') + ' is no longer here.</div>';
+    out.innerHTML = '<div class="empty">This ' + jobWord + ' is no longer here.</div>';
     return;
   }
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -13039,7 +13104,7 @@ async function renderWorkOrderReport(customerId, jobId, isClean){
   }
   out.innerHTML = '<div class="report-doc">'
     + '<div class="report-head"><div>'
-    + '<h2>' + (isClean ? 'Filter clean' : 'Work order ' + esc(num)) + '</h2>'
+    + '<h2>' + (isDrain ? 'Pool drain' : isClean ? 'Filter clean' : 'Work order ' + esc(num)) + '</h2>'
     + '<div class="rdate">' + esc(customer.name) + (customer.address ? ' \u2014 ' + esc(customer.address) : '') + '</div>'
     + '<div class="rdate">Scheduled for ' + esc(fmtDate(j.date + 'T12:00:00'))
     + (j.doneAt ? ' \u00b7 Submitted ' + esc(fmtDateTime(j.doneAt)) : '') + '</div>'
@@ -13102,22 +13167,22 @@ async function renderWorkOrderReport(customerId, jobId, isClean){
     del.type = 'button';
     del.className = 'btn btn-ghost';
     del.style.cssText = 'width:auto;color:var(--rust);border-color:#EFC9BC;';
-    del.textContent = isClean ? 'Delete this filter clean' : 'Delete this work order';
+    del.textContent = isClean ? 'Delete this ' + jobWord : 'Delete this work order';
     del.addEventListener('click', async ()=>{
-      const ok = await confirmDialog('Delete ' + (isClean ? 'this filter clean' : 'work order ' + num) + ' from ' + fmtDate(j.date + 'T12:00:00') + '?\n\n'
+      const ok = await confirmDialog('Delete ' + (isClean ? 'this ' + jobWord : 'work order ' + num) + ' from ' + fmtDate(j.date + 'T12:00:00') + '?\n\n'
         + 'It is removed for good from Service reports' + (isClean ? '' : ' and WorkCenter History') + ', on every device, and cannot be brought back.',
         'Delete for good');
       if(!ok) return;
-      const listKey = isClean ? 'scheduledFilterCleans' : 'scheduledWorkOrders';
+      const listKey = isDrain ? 'scheduledPoolDrains' : isClean ? 'scheduledFilterCleans' : 'scheduledWorkOrders';
       const jobs = lsGet(listKey) || [];
-      if(jobs.some(x => x && String(x.id) === String(j.id))) queueOfficeWork(isClean ? 'filter_clean' : 'work_order', j.id, true);
+      if(jobs.some(x => x && String(x.id) === String(j.id))) queueOfficeWork(isDrain ? 'pool_drain' : isClean ? 'filter_clean' : 'work_order', j.id, true);
       lsSet(listKey, jobs.filter(x => !(x && String(x.id) === String(j.id))));
-      lsSet('jobSubmissions', (lsGet('jobSubmissions') || []).filter(x => !(x && x.kind === (isClean ? 'filter clean' : 'work order')
+      lsSet('jobSubmissions', (lsGet('jobSubmissions') || []).filter(x => !(x && x.kind === jobWord
         && String(x.sourceId) === String(j.id))));
       fieldNoteLocalChange();
       try{ if(typeof awcRenderHistory === 'function' && document.getElementById('awcHistList')) awcRenderHistory(); }catch(e){}
       await refreshDateSelector(customerId);
-      showToast(isClean ? 'Filter clean deleted' : 'Work order deleted');
+      showToast(isDrain ? 'Pool drain deleted' : isClean ? 'Filter clean deleted' : 'Work order deleted');
     });
     footer.appendChild(del);
     doc.appendChild(footer);
@@ -13133,6 +13198,7 @@ async function renderDateReport(customerId, dateStr){
   // A work order (Oct 3)
   if(dateStr.indexOf('wo:') === 0){ await renderWorkOrderReport(customerId, dateStr.slice(3)); return; }
   if(dateStr.indexOf('fc:') === 0){ await renderWorkOrderReport(customerId, dateStr.slice(3), true); return; }
+  if(dateStr.indexOf('pd:') === 0){ await renderWorkOrderReport(customerId, dateStr.slice(3), 'drain'); return; }
   if(dateStr.indexOf('tk:') === 0){ await renderTaskReport(customerId, dateStr.slice(3)); return; }
   const wantRedo = dateStr.indexOf('|redo') !== -1;
   const plainDate = dateStr.replace('|redo', '');
@@ -13202,6 +13268,7 @@ async function refreshDateSelector(customerId){
     opt.textContent = d.wo
       ? fmtDate(d.ts) + '  \u2014 Work order ' + workOrderNumberText(d.wo.workOrderNumber)
       : d.fc ? fmtDate(d.ts) + '  \u2014 Filter clean'
+      : d.pd ? fmtDate(d.ts) + '  \u2014 Pool drain'
       : d.task ? fmtDate(d.ts) + '  \u2014 Task'
       : fmtDate(d.ts) + (d.isRedo ? '  \u2014 redone' : '');
     sel.appendChild(opt);
@@ -13270,10 +13337,10 @@ function drawReportRows(){
   // Only the kind chosen beside the date bar (Oct 3)
   const kindSel = document.getElementById('reportKindFilter');
   const kind = kindSel ? kindSel.value : '';
-  const kindOf = d => d.wo ? 'wo' : d.fc ? 'fc' : d.task ? 'task' : 'report';
+  const kindOf = d => d.wo ? 'wo' : d.fc ? 'fc' : d.pd ? 'pd' : d.task ? 'task' : 'report';
   const shownList = kind ? reportRowsList.filter(d => kindOf(d) === kind) : reportRowsList;
   if(!shownList.length){
-    const name = {report: 'reports', wo: 'work orders', fc: 'filter cleans', task: 'tasks'}[kind] || 'reports';
+    const name = {report: 'reports', wo: 'work orders', fc: 'filter cleans', pd: 'pool drains', task: 'tasks'}[kind] || 'reports';
     box.innerHTML = '<div class="empty" style="margin-top:8px;">No ' + name + ' yet.</div>';
     return;
   }
@@ -13292,12 +13359,12 @@ function drawReportRows(){
     dateCell.textContent = fmtDate(d.ts);
     when.appendChild(dateCell);
     const tag = document.createElement('span');
-    const tc = d.wo ? jobKindColours('work order') : d.fc ? jobKindColours('filter clean') : d.task ? jobKindColours('task')
+    const tc = d.wo ? jobKindColours('work order') : d.fc ? jobKindColours('filter clean') : d.pd ? jobKindColours('pool drain') : d.task ? jobKindColours('task')
       : ['var(--teal-pale)', 'var(--teal-deep)'];
     tag.style.cssText = "margin-left:0;vertical-align:middle;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;"
       + 'letter-spacing:0.07em;text-transform:uppercase;padding:3px 6px;border-radius:6px;'
-      + 'color:' + tc[1] + ';background:' + (isOpen && !d.wo && !d.fc && !d.task ? 'var(--card)' : tc[0]) + ';';
-    tag.textContent = d.wo ? 'Work order ' + workOrderNumberText(d.wo.workOrderNumber) : d.fc ? 'Filter clean' : d.task ? 'Task' : 'Service report';
+      + 'color:' + tc[1] + ';background:' + (isOpen && !d.wo && !d.fc && !d.pd && !d.task ? 'var(--card)' : tc[0]) + ';';
+    tag.textContent = d.wo ? 'Work order ' + workOrderNumberText(d.wo.workOrderNumber) : d.fc ? 'Filter clean' : d.pd ? 'Pool drain' : d.task ? 'Task' : 'Service report';
     when.appendChild(tag);
     const extra = d.wo ? (d.wo.title || '') : d.task ? (d.task.title || '') : (d.isRedo ? 'Redone' : '');
     if(extra){

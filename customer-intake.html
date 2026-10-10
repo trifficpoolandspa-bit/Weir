@@ -1740,10 +1740,13 @@ input::placeholder{color:#A9BCB9;}
     <div class="card" id="wcDrainGroupsCard" style="display:none;">
       <div class="section-head">
         <h2>Drain groups</h2>
-        <button class="btn btn-ghost" id="btnNewDrainGroup" style="width:auto;margin-left:auto;">+ New group</button>
+        <div style="display:flex;gap:8px;margin-left:auto;align-items:center;">
+          <button class="btn btn-ghost" id="btnNewDrainGroup" style="width:auto;">+ New group</button>
+          <button class="btn btn-primary" id="btnScheduleDrainGroups" style="width:auto;">Schedule</button>
+        </div>
       </div>
       <div class="section-count" id="drainGroupCount" style="margin:-4px 0 12px;"></div>
-      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Group customers to drain together and give the group a date and a technician. Once the work is done, press Mark drained &mdash; each customer&rsquo;s next drain is worked out from that date.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Group customers to drain together and give the group a date and a technician. Schedule puts each pool drain on the technician&rsquo;s route in the app; once it&rsquo;s done there, the drain is logged here from that day and the customer moves to the right list. Mark drained records ones done without the app.</p>
       <div id="drainGroupList"></div>
     </div>
   </div>
@@ -2580,7 +2583,7 @@ function makeRoomForSave(){
 // Saves of anything the phones need are noticed here, whichever screen made
 // them, so nothing has to remember to tell sync about a change.
 const SYNCED_RECORD_KEYS = ['technicians', 'settings', 'tasks', 'rescheduledVisits',
-  'scheduledFilterCleans', 'scheduledWorkOrders', 'chemConfig', 'customChemConfig',
+  'scheduledFilterCleans', 'scheduledPoolDrains', 'scheduledWorkOrders', 'chemConfig', 'customChemConfig',
   'customBodyOrder', 'routeOrders', 'reportEmailStyle', 'companyName', 'ownerName',
   'licenseNumber', 'serviceArea', 'accountEmail', 'accountPhone', 'businessAddress',
   'businessCity', 'businessState', 'businessZip', 'businessWebsite', 'quoteCounter', 'workOrderCounter'];
@@ -7400,7 +7403,11 @@ function openGroupCustomerPicker(g, opts){
 const DRAIN_EVERY_CHOICES = [12, 18, 24, 36, 48, 60];
 const DRAIN_SOON_MONTHS = 6;          // "Due soon" looks this far ahead
 let drainGroups = lsGet('drainGroups') || [];
-function saveDrainGroups(){ lsSet('drainGroups', drainGroups); }
+function saveDrainGroups(){
+  lsSet('drainGroups', drainGroups);
+  // A scheduled group's route follows every change to it (Oct 10)
+  try{ drainGroups.forEach(g => { if(g.finalized) pdSyncGroupRecords(g); }); }catch(e){}
+}
 let openDrainBuckets = new Set(['overdue']);
 let openDrainGroupIds = new Set();
 const drainPicked = new Set();        // customers ticked in the lists above
@@ -7491,6 +7498,8 @@ function pdRecord(cids, date, groupId){
     n++;
   });
   if(n) saveCustomers();
+  // Drained here: off the technician's route too (Oct 10)
+  if(n){ try{ drainGroups.forEach(g => { if(g.finalized) pdSyncGroupRecords(g); }); }catch(e){} }
   return n;
 }
 
@@ -7523,6 +7532,7 @@ const DRAIN_BUCKETS = [
 ];
 
 function renderPoolDrains(){
+  try{ pdReconcileDone(); }catch(e){}
   pdFillMenus();
   const shown = pdShownCustomers();
   const byBucket = {overdue: [], soon: [], never: [], later: []};
@@ -7848,7 +7858,7 @@ function openDrainHistory(c){
       r.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;';
       const g = d.groupId ? drainGroups.find(x => x.id === d.groupId) : null;
       r.innerHTML = '<span style="flex:1;font-weight:600;">' + esc(pdDate(d.date, true))
-        + '<span style="display:block;font-size:11px;font-weight:400;color:var(--muted);">' + esc(pdSpan(d.date) + (g ? ' · ' + g.name : '')) + '</span></span>';
+        + '<span style="display:block;font-size:11px;font-weight:400;color:var(--muted);">' + esc(pdSpan(d.date) + (g ? ' · ' + g.name : '') + (d.jobId ? ' · in the app' : '')) + '</span></span>';
       const x = document.createElement('button');
       x.type = 'button';
       x.textContent = 'Remove';
@@ -7856,6 +7866,12 @@ function openDrainHistory(c){
       x.style.cssText = 'width:auto;flex:0 0 auto;padding:4px 9px;font-size:11.5px;color:var(--rust);border-color:#EFC9BC;';
       x.addEventListener('click', ()=>{
         c.drains = (c.drains || []).filter(o => !(o && o.date === d.date));
+        // One done in the app isn't logged again by the next sync (Oct 10)
+        if(d.jobId){
+          const gone = Array.isArray(c.drainJobsRemoved) ? c.drainJobsRemoved.slice() : [];
+          if(gone.indexOf(d.jobId) === -1) gone.push(d.jobId);
+          c.drainJobsRemoved = gone;
+        }
         saveCustomers();
         draw();
       });
@@ -7958,11 +7974,30 @@ function renderDrainGroups(){
       badge.style.cssText = 'background:var(--green);color:#fff;font-size:10.5px;font-weight:700;padding:4px 9px;border-radius:7px;flex-shrink:0;';
       badge.textContent = 'DRAINED';
       headRight.appendChild(badge);
+    } else if(g.finalized){
+      // On the technician's route (Oct 10)
+      const badge = document.createElement('span');
+      badge.style.cssText = 'background:var(--green);color:#fff;font-size:10.5px;font-weight:700;padding:4px 9px;border-radius:7px;flex-shrink:0;';
+      badge.textContent = 'SCHEDULED';
+      headRight.appendChild(badge);
     }
     const dateCol = document.createElement('div');
     dateCol.style.cssText = 'flex:0 0 112px;width:112px;font-size:13px;font-weight:600;color:var(--teal-deep);white-space:nowrap;';
     dateCol.textContent = g.date ? new Date(g.date + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'}) : 'No date';
     headRight.appendChild(dateCol);
+    // Photo required, per group, on unless unticked, as filter cleans (Oct 10)
+    const photoReq = document.createElement('label');
+    photoReq.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer;flex-shrink:0;';
+    photoReq.title = 'The technician must take a photo before submitting each pool drain';
+    const photoBox = document.createElement('input');
+    photoBox.type = 'checkbox';
+    photoBox.checked = g.photoRequired !== false;
+    photoBox.style.cssText = 'margin:0;';
+    photoReq.appendChild(photoBox);
+    photoReq.appendChild(document.createTextNode('Photo required'));
+    photoReq.addEventListener('click', e => e.stopPropagation());
+    photoBox.addEventListener('change', ()=>{ g.photoRequired = photoBox.checked; saveDrainGroups(); });
+    headRight.appendChild(photoReq);
     const renameBtn = document.createElement('button');
     renameBtn.type = 'button';
     renameBtn.className = 'btn btn-ghost';
@@ -7984,8 +8019,10 @@ function renderDrainGroups(){
     delBtn.textContent = 'Delete group';
     delBtn.addEventListener('click', async e=>{
       e.stopPropagation();
-      const ok = await confirmDialog('Delete "' + esc(g.name) + '"? Drains already recorded stay on each customer.');
+      const ok = await confirmDialog('Delete "' + esc(g.name) + '"? Drains already recorded stay on each customer'
+        + (g.finalized ? '; pool drains sent to a route and not done yet are taken off it.' : '.'));
       if(!ok) return;
+      pdUnscheduleGroup(g);
       drainGroups = drainGroups.filter(x => x.id !== g.id);
       saveDrainGroups();
       renderPoolDrains();
@@ -8043,6 +8080,14 @@ function renderDrainGroups(){
           tick.textContent = '✓';
           tick.style.cssText = 'font-weight:800;font-size:13px;line-height:1;';
           chip.appendChild(tick);
+        } else if(g.finalized && pdScheduledFor(g, cid)){
+          // On the route, not done yet (Oct 10): a clock and a dark outline
+          chip.style.boxShadow = 'inset 0 0 0 1.5px var(--teal-deep)';
+          chip.title = 'Scheduled \u2014 not drained yet';
+          const clock = document.createElement('span');
+          clock.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
+          clock.style.cssText = 'display:inline-flex;line-height:1;';
+          chip.appendChild(clock);
         }
         chip.appendChild(document.createTextNode(displayName(cust.name)));
         attachTouchReorder(cgrip, chip, members, ':scope > [data-reorder-key]', keys=>{
@@ -8100,6 +8145,182 @@ function renderDrainGroups(){
     container.appendChild(card);
   });
 }
+
+// ---- Pool drains on the technicians' routes (Oct 10) ----
+// A scheduled drain group puts one pool drain per customer on its
+// technician's phone for the group's date (scheduledPoolDrains, synced as
+// pool_drain). Done in the app, it's logged on the customer from the day it
+// was done, so the customer moves to the right list here.
+function pdScheduled(){ return lsGet('scheduledPoolDrains') || []; }
+// The pool drain's drawing (F1), as on the phone
+let poolDrainIconN = 0;
+function poolDrainIconSvg(w, h){
+  const id = 'pdIco' + (++poolDrainIconN);
+  return '<svg viewBox="0 0 32 28" width="' + (w || 24) + '" height="' + (h || 22) + '" aria-hidden="true" style="vertical-align:-4px;">'
+    + '<defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A9D8F2"/><stop offset="1" stop-color="#2F7FB3"/></linearGradient></defs>'
+    + '<path d="M3 6v15a4 4 0 0 0 4 4h18a4 4 0 0 0 4-4V6" fill="#fff" stroke="#1F5E86" stroke-width="1.8" stroke-linecap="round"/>'
+    + '<path d="M4 17.5c2.5 0 2.5-1.2 5-1.2s2.5 1.2 5 1.2 2.5-1.2 5-1.2 2.5 1.2 5 1.2 2.5-1.2 4-1.2V21a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z" fill="url(#' + id + ')"/>'
+    + '<path d="M16 8v7m-2.6-2.6L16 15l2.6-2.6" fill="none" stroke="#1F5E86" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+function pdScheduledFor(g, cid){
+  return pdScheduled().some(r => r && r.groupId === g.id && r.customerId === cid && r.status !== 'done');
+}
+// Still to drain in a group: not drained in it, and none done for it in the app
+function pdGroupLeft(g){
+  const doneHere = new Set(pdScheduled().filter(r => r && r.groupId === g.id && r.status === 'done').map(r => r.customerId));
+  return (g.customerIds || []).filter(cid => customers.some(c => c.id === cid) && !pdGroupDrained(g, cid) && !doneHere.has(cid));
+}
+function pdGroupBlockers(g){
+  const out = [];
+  const left = pdGroupLeft(g);
+  if(!(g.customerIds || []).length) out.push('no customers');
+  else if(!left.length) out.push('a customer not drained yet');
+  if(!g.date) out.push('no date');
+  if(!g.technicianId) out.push('no technician');
+  return out;
+}
+// The group's route, matched to the group: one drain for each customer not
+// yet drained in it, on its date, with its technician and order. Ones done
+// in the app are left alone.
+function pdSyncGroupRecords(g){
+  const all = pdScheduled();
+  if(pdGroupBlockers(g).length){
+    // Nothing left to send, or no date or technician: off the route
+    const keep = all.filter(r => !(r && r.groupId === g.id && r.status !== 'done'));
+    if(keep.length !== all.length) lsSet('scheduledPoolDrains', keep);
+    if(g.finalized){ g.finalized = false; lsSet('drainGroups', drainGroups); }
+    return;
+  }
+  const want = pdGroupLeft(g);
+  let changed = false;
+  const out = all.filter(r=>{
+    if(!r || r.groupId !== g.id || r.status === 'done') return true;
+    if(want.indexOf(r.customerId) === -1){ changed = true; return false; }
+    return true;
+  });
+  want.forEach((cid, i)=>{
+    let r = out.find(x => x && x.groupId === g.id && x.customerId === cid && x.status !== 'done');
+    if(!r){
+      r = {id: 'pd_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), groupId: g.id, customerId: cid, status: 'scheduled'};
+      out.push(r);
+      changed = true;
+    }
+    const fields = {groupName: g.name || '', technicianId: g.technicianId, date: g.date, order: i, photoRequired: g.photoRequired !== false};
+    Object.keys(fields).forEach(k => { if(r[k] !== fields[k]){ r[k] = fields[k]; changed = true; } });
+  });
+  if(changed) lsSet('scheduledPoolDrains', out);
+}
+function pdScheduleGroup(g){ g.finalized = true; pdSyncGroupRecords(g); }
+function pdUnscheduleGroup(g){
+  const all = pdScheduled();
+  const keep = all.filter(r => !(r && r.groupId === g.id && r.status !== 'done'));
+  if(keep.length !== all.length) lsSet('scheduledPoolDrains', keep);
+  g.finalized = false;
+}
+// Drains done in the app, logged on their customers. True if any were new.
+function pdReconcileDone(){
+  let n = 0;
+  pdScheduled().forEach(r=>{
+    if(!r || r.status !== 'done' || !r.id) return;
+    const c = customers.find(x => x && String(x.id) === String(r.customerId));
+    if(!c) return;
+    const list = Array.isArray(c.drains) ? c.drains.slice() : [];
+    if(list.some(d => d && d.jobId === r.id)) return;
+    if((c.drainJobsRemoved || []).indexOf(r.id) !== -1) return;
+    const date = r.doneAt && !isNaN(new Date(r.doneAt)) ? owLocalISO(new Date(r.doneAt)) : r.date;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return;
+    // The same day already on record (marked here too): one drain
+    const same = list.find(d => d && d.date === date);
+    if(same){
+      same.jobId = r.id;
+      if(!same.groupId && r.groupId) same.groupId = r.groupId;
+    } else {
+      const d = {date, jobId: r.id};
+      if(r.groupId) d.groupId = r.groupId;
+      list.push(d);
+    }
+    c.drains = list;
+    n++;
+  });
+  if(n) saveCustomers();
+  // A scheduled group with everyone drained goes back to plain (as filter cleans)
+  let gChanged = false;
+  drainGroups.forEach(g=>{
+    if(!g.finalized) return;
+    if((g.customerIds || []).length && !pdGroupLeft(g).length){ g.finalized = false; gChanged = true; }
+  });
+  if(gChanged) lsSet('drainGroups', drainGroups);
+  return n > 0;
+}
+
+// Schedule: tick the groups to put on their technician's route; unticking one
+// already scheduled takes it back off
+function openDrainGroupScheduler(){
+  if(!drainGroups.length){ showToast('Create a group first'); return; }
+  const picked = new Set(drainGroups.filter(g => g.finalized).map(g => g.id));
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const card = document.createElement('div');
+  card.className = 'confirm-box';
+  card.style.cssText = 'max-width:520px;width:100%;max-height:82vh;overflow-y:auto;';
+  card.innerHTML = '<h3 style="font-size:15px;margin:0 0 4px;">Schedule pool drains</h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Ticked groups go onto their technician’s route. '
+    + 'Unticking one that is already scheduled pulls it back off — the group itself stays here either way.</p>';
+  drainGroups.forEach(g=>{
+    const blockers = pdGroupBlockers(g);
+    const row = document.createElement('label');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px;'
+      + (blockers.length && !g.finalized ? 'opacity:0.55;' : 'cursor:pointer;');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.style.cssText = 'width:auto;margin:0;';
+    cb.checked = picked.has(g.id);
+    cb.disabled = blockers.length > 0 && !g.finalized;
+    cb.addEventListener('change', ()=>{ if(cb.checked) picked.add(g.id); else picked.delete(g.id); });
+    row.appendChild(cb);
+    const left = pdGroupLeft(g).length;
+    const label = document.createElement('span');
+    label.style.flex = '1';
+    label.innerHTML = '<strong>' + esc(g.name || 'Untitled group') + '</strong>'
+      + (g.finalized ? ' <span style="font-size:10.5px;color:var(--green);font-weight:700;">ON ROUTE</span>' : '')
+      + '<br><span style="font-size:11.5px;color:var(--muted);">'
+      + esc(blockers.length ? 'Needs ' + blockers.join(', ')
+        : left + (left === 1 ? ' customer' : ' customers') + '  ·  ' + pdDate(g.date, true) + '  ·  ' + (technicianNameById(g.technicianId) || ''))
+      + '</span>';
+    row.appendChild(label);
+    card.appendChild(row);
+  });
+  const btnRow = document.createElement('div');
+  btnRow.className = 'btn-row';
+  btnRow.style.marginTop = '16px';
+  btnRow.innerHTML = '<button class="btn btn-ghost" data-cancel>Cancel</button><button class="btn btn-primary" data-go>Apply</button>';
+  card.appendChild(btnRow);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  const close = ()=> overlay.remove();
+  btnRow.querySelector('[data-cancel]').addEventListener('click', close);
+  btnRow.querySelector('[data-go]').addEventListener('click', async ()=>{
+    const toAdd = drainGroups.filter(g => picked.has(g.id) && !g.finalized && !pdGroupBlockers(g).length);
+    const toRemove = drainGroups.filter(g => !picked.has(g.id) && g.finalized);
+    if(!toAdd.length && !toRemove.length){ showToast('Nothing changed'); close(); return; }
+    if(toRemove.length){
+      const ok = await confirmDialog('Take ' + toRemove.map(g => '"' + esc(g.name) + '"').join(', ')
+        + ' off the route? The group stays here so you can schedule it again.', 'Take off route');
+      if(!ok) return;
+    }
+    toAdd.forEach(pdScheduleGroup);
+    toRemove.forEach(pdUnscheduleGroup);
+    saveDrainGroups();
+    close();
+    renderPoolDrains();
+    const bits = [];
+    if(toAdd.length) bits.push(toAdd.length + ' scheduled');
+    if(toRemove.length) bits.push(toRemove.length + ' taken off');
+    showToast(bits.join('  ·  '));
+  });
+}
+document.getElementById('btnScheduleDrainGroups').addEventListener('click', openDrainGroupScheduler);
+setTimeout(()=>{ try{ pdReconcileDone(); }catch(e){} }, 0);
 
 document.getElementById('btnNewDrainGroup').addEventListener('click', async ()=>{
   if(await pdNewGroup()) renderPoolDrains();
@@ -9961,6 +10182,7 @@ function syncRecordKey(kind, id){ return kind + '\u0002' + id; }
 const SYNC_RECORD_LISTS = [
   ['tasks', 'task'],
   ['scheduledFilterCleans', 'filter_clean'],
+  ['scheduledPoolDrains', 'pool_drain'],
   ['scheduledWorkOrders', 'work_order'],
   ['rescheduledVisits', 'reschedule']
 ];
@@ -10222,6 +10444,11 @@ function syncApplyRecord(kind, id, data, deleted){
     if(kind === 'task'){
       try{ if(typeof tasks !== 'undefined') tasks = lsGet('tasks') || []; }catch(e){}
       try{ if(typeof renderTaskList === 'function') renderTaskList(); }catch(e){}
+    }
+    // A pool drain finished in the app: logged on the customer once the pull
+    // is through, so they move to the right list (Oct 10)
+    if(kind === 'pool_drain' && !deleted && data && data.status === 'done'){
+      setTimeout(()=>{ try{ if(pdReconcileDone()) renderPoolDrains(); }catch(e){} }, 0);
     }
     return true;
   }
@@ -20039,6 +20266,10 @@ function twJobsFor(techId, iso){
     out.push({key: 'fc:' + f.id, label: '\ud83d\udebf Filter clean', title: '', customerId: f.customerId,
       done: f.status === 'done', doneAt: f.doneAt});
   });
+  (lsGet('scheduledPoolDrains') || []).filter(f => f && f.date === iso && mine(f)).forEach(f=>{
+    out.push({key: 'pd:' + f.id, label: 'Pool drain', drainIcon: true, title: '', customerId: f.customerId,
+      done: f.status === 'done', doneAt: f.doneAt});
+  });
   (tasks || []).filter(t => t && t.date === iso && mine(t)).forEach(t=>{
     const ids = (t.customerIds || []).length ? t.customerIds : [''];
     ids.forEach(cid=>{
@@ -20058,6 +20289,12 @@ function twJobRow(job, withCustomer){
   name.className = 'tw-name';
   name.style.cssText = 'color:var(--gold);font-weight:600;';
   name.textContent = job.label + (job.title ? ': ' + job.title : '');
+  if(job.drainIcon){
+    const ico = document.createElement('span');
+    ico.innerHTML = poolDrainIconSvg(18, 16);
+    ico.style.cssText = 'display:inline-block;margin-right:5px;';
+    name.insertBefore(ico, name.firstChild);
+  }
   row.appendChild(name);
   const addr = document.createElement('span');
   addr.className = 'tw-addr';
@@ -20072,7 +20309,10 @@ function twJobRow(job, withCustomer){
   row.appendChild(status);
   row.appendChild(document.createElement('span'));
   // Opens in the customer's Quotes & Orders
-  if(c){
+  if(c && job.drainIcon){
+    row.title = 'Open ' + displayName(c.name) + '\u2019s pool drains';
+    row.addEventListener('click', ()=> openDrainHistory(c));
+  } else if(c){
     row.title = 'Open it in ' + displayName(c.name) + '\u2019s Quotes & Orders';
     row.addEventListener('click', ()=> openJobReport(c.id, job.key));
   }
