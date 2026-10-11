@@ -496,6 +496,7 @@ input::placeholder{color:#A9BCB9;}
   align-items:center;gap:10px;padding:9px 8px;border-bottom:1px solid var(--line);font-size:13.5px;}
 .tw-row:last-child{border-bottom:none;}
 .tw-row.tw-stop{cursor:pointer;transition:background-color .12s ease;}
+.tw-row.tw-job{background:var(--tw-job-bg);}
 .tw-row.tw-stop:hover{background:var(--teal-pale);}
 .tw-head{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;
   padding-top:0;cursor:default;}
@@ -6944,6 +6945,8 @@ function applyWorkCenterMode(mode){
   if(cameFrom === 'filters' && mode !== 'filters') filtersLeftAt = Date.now();
   if(cameFrom === 'quotes' && mode !== 'quotes') leaveWcForm();
   if(mode === 'quotes' && cameFrom !== 'quotes'){ resetScheduleDates(); wcView = 'main'; }
+  // Arriving on Drains: every list starts closed (Oct 11)
+  if(mode === 'drains' && cameFrom !== 'drains'){ try{ openDrainBuckets.clear(); Object.keys(drainBucketPage).forEach(k => delete drainBucketPage[k]); }catch(e){} }
   // Coming into Email from anywhere else starts with nobody chosen, so a list
   // picked for an earlier message can't be sent a new one by mistake.
   // Pressing Email while already on it keeps the choices.
@@ -7375,13 +7378,29 @@ let filterGroupPage = 1;
 // for this group; otherwise nothing
 function fgChipState(g, cid){
   const recs = (lsGet('scheduledFilterCleans') || []).filter(f => f && f.groupId === g.id && f.customerId === cid);
-  if(g.finalized && recs.some(f => f.status !== 'done' && (!g.date || f.date === g.date))) return 'scheduled';
+  // Scheduled whatever date it's on: the group's date carries onto its cleans
+  // (Oct 11), so a changed date never turns the names back to teal
+  if(g.finalized && recs.some(f => f.status !== 'done')) return 'scheduled';
   const monthAgo = new Date(); monthAgo.setMonth(monthAgo.getMonth() - 1);
   const recent = recs.some(f => f.status === 'done' && new Date(f.doneAt || ((f.date || '') + 'T12:00:00')) > monthAgo);
   return recent ? 'done' : null;
 }
+// Scheduled cleans not yet done always sit on their group's date (Oct 11).
+// Puts right any that were left on an older date before that.
+function fgAlignDates(){
+  const sched = lsGet('scheduledFilterCleans') || [];
+  let changed = false;
+  filterGroups.forEach(g=>{
+    if(!g || !g.finalized || !g.date) return;
+    sched.forEach(sc=>{
+      if(sc && sc.groupId === g.id && sc.status !== 'done' && sc.date !== g.date){ sc.date = g.date; changed = true; }
+    });
+  });
+  if(changed) lsSet('scheduledFilterCleans', sched);
+}
 function renderFilterGroups(){
   try{ updateFilterReplacementsButton(); }catch(e){}
+  try{ fgAlignDates(); }catch(e){}
   setTimeout(()=>{ try{ const el = document.getElementById('filterGroupCount'); if(el) el.textContent = filterGroups.length ? fgCountText(fgShownGroups()) : ''; }catch(e){} }, 0);
   // Back after more than a minute away: every group starts closed
   if(onFilterGroupsPage()) closeGroupsIfAway();
@@ -7641,6 +7660,18 @@ function renderFilterGroups(){
     dateInput.addEventListener('change', ()=>{
       g.date = dateInput.value;
       saveFilterGroups();
+      // Filter cleans already sent to the route move to the new date, until
+      // they're done (Oct 11). An emptied box leaves them where they are.
+      if(g.date){
+        const sched = lsGet('scheduledFilterCleans') || [];
+        let changed = false;
+        sched.forEach(sc=>{
+          if(sc && sc.groupId === g.id && sc.status !== 'done' && sc.date !== g.date){
+            sc.date = g.date; changed = true;
+          }
+        });
+        if(changed) lsSet('scheduledFilterCleans', sched);
+      }
       fillSub();
     });
     controls.appendChild(dateInput);
@@ -7983,7 +8014,7 @@ function saveDrainGroups(){
   // A scheduled group's route follows every change to it (Oct 10)
   try{ drainGroups.forEach(g => { if(g.finalized) pdSyncGroupRecords(g); }); }catch(e){}
 }
-let openDrainBuckets = new Set(['overdue']);
+let openDrainBuckets = new Set();   // all closed on arrival (Oct 11)
 const drainBucketPage = {};          // each list's page, ten to a page (Oct 11)
 let openDrainGroupIds = new Set();
 const drainPicked = new Set();        // customers ticked in the lists above
@@ -8148,7 +8179,10 @@ const DRAIN_BUCKETS = [
   {key: 'self',    label: 'Drained by customer',  tone: '#9AA9A6'}
 ];
 
+let pdKeepHeight = false;
 function renderPoolDrains(){
+  // Any other redraw lets the list take its own height again
+  if(!pdKeepHeight){ const l = document.getElementById('drainStatusList'); if(l) l.style.minHeight = ''; }
   try{ pdReconcileDone(); }catch(e){}
   pdFillMenus();
   const shown = pdShownCustomers();
@@ -8210,7 +8244,8 @@ function renderPoolDrains(){
     if(list.length){
       head.addEventListener('click', e=>{
         if(e.target.closest('button, input, select, label')) return;
-        if(openDrainBuckets.has(b.key)) openDrainBuckets.delete(b.key); else openDrainBuckets.add(b.key);
+        // Closing a list puts it back on its first page for next time (Oct 11)
+        if(openDrainBuckets.has(b.key)){ openDrainBuckets.delete(b.key); delete drainBucketPage[b.key]; } else openDrainBuckets.add(b.key);
         renderPoolDrains();
       });
     }
@@ -8243,12 +8278,17 @@ function renderPoolDrains(){
       card.appendChild(rows);
       if(list.length > 10){
         card.appendChild(buildListPager(pg, pages, list.length, n=>{
+          // The page stays exactly where it is (Oct 11): no scrolling to the
+          // list, and a shorter last page doesn't pull everything up
+          const keep = [document.scrollingElement || document.documentElement].concat(Array.from(document.querySelectorAll('.main-col, main')));
+          const at = keep.map(el => el.scrollTop);
+          const list0 = document.getElementById('drainStatusList');
+          if(list0) list0.style.minHeight = list0.offsetHeight + 'px';
           drainBucketPage[b.key] = n;
+          pdKeepHeight = true;
           renderPoolDrains();
-          card.isConnected || setTimeout(()=>{
-            const again = Array.from(document.querySelectorAll('#drainStatusList > div')).find(x => x.querySelector('.fg-head') && x.querySelector('.fg-head').textContent.indexOf(b.label) !== -1);
-            if(again) again.scrollIntoView({block: 'start'});
-          }, 0);
+          pdKeepHeight = false;
+          keep.forEach((el, i) => { el.scrollTop = at[i]; });
         }, 'margin-top:12px;padding-top:12px;border-top:1px solid var(--line);'));
       }
     }
@@ -9168,6 +9208,9 @@ function openDrainCalendar(startDay){
       selBtn.title = 'Pick days to send to the app';
       selBtn.addEventListener('click', ()=>{ selecting = true; picked.clear(); draw(); });
       right.appendChild(selBtn);
+      const closeBtn = smallBtn('Close');
+      closeBtn.addEventListener('click', ()=> overlay.remove());
+      right.appendChild(closeBtn);
     } else {
       const hint = document.createElement('span');
       hint.style.cssText = 'font-size:12.5px;font-weight:600;color:var(--teal-deep);';
@@ -9288,9 +9331,30 @@ function openDrainCalendar(startDay){
           draw();
         });
         row.appendChild(kind);
+        // Which technician this drain goes to (Oct 11): theirs to start with
+        const techSel = document.createElement('select');
+        techSel.style.cssText = 'width:auto;padding:4px 8px;font-size:12px;';
+        techSel.title = 'Which technician gets this drain in the app';
+        const ownOpt = document.createElement('option');
+        ownOpt.value = '';
+        ownOpt.textContent = 'Their technician (' + techName(c.technicianId) + ')';
+        techSel.appendChild(ownOpt);
+        technicians.forEach(t => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.name; techSel.appendChild(o); });
+        techSel.value = e.technicianId || '';
+        techSel.addEventListener('change', ()=>{
+          const all = pdCal(); const it = all.find(x => x.id === e.id); if(!it) return;
+          if(techSel.value) it.technicianId = techSel.value; else delete it.technicianId;
+          pdCalSave(all);
+          // Already in the app and not done: it moves to that technician
+          const recs = pdScheduled(); const rr = recs.find(x => x.id === it.pushedId);
+          const to = it.technicianId || c.technicianId || '';
+          if(rr && rr.status !== 'done' && to){ rr.technicianId = to; lsSet('scheduledPoolDrains', recs); }
+          draw();
+        });
+        row.appendChild(techSel);
         const who = document.createElement('span');
         who.style.cssText = 'font-size:11.5px;color:var(--muted);white-space:nowrap;';
-        who.textContent = r ? techName(r.technicianId) + (r.status === 'done' ? ' · done' : ' · in the app') : techName(c.technicianId);
+        who.textContent = r ? (r.status === 'done' ? 'done' : 'in the app') : '';
         if(r) who.style.color = 'var(--green)';
         row.appendChild(who);
         const x = document.createElement('button');
@@ -9316,7 +9380,8 @@ function openDrainCalendar(startDay){
     days.forEach(day=>{
       all.filter(e => e.date === day && custOf(e.customerId)).forEach((e, i)=>{
         const c = custOf(e.customerId);
-        const tech = pushTech || c.technicianId || '';
+        // Its own technician first, then the one picked for this push, then theirs
+        const tech = e.technicianId || pushTech || c.technicianId || '';
         if(!tech){ noTech++; return; }
         let r = e.pushedId ? recs.find(x => x.id === e.pushedId) : null;
         if(r && r.status === 'done') return;
@@ -21506,25 +21571,32 @@ function twJobsFor(techId, iso){
     || (Array.isArray(x.technicianIds) && x.technicianIds.map(String).indexOf(String(techId)) !== -1);
   const out = [];
   (lsGet('scheduledWorkOrders') || []).filter(j => j && j.date === iso && mine(j)).forEach(j=>{
-    out.push({key: 'wo:' + j.id, label: '\ud83d\udee0 Work order', title: j.title || '', customerId: j.customerId,
+    out.push({key: 'wo:' + j.id, label: '\ud83d\udee0 Work order', kind: 'work order', title: j.title || '', customerId: j.customerId,
       done: j.status === 'done', doneAt: j.doneAt});
   });
   (lsGet('scheduledFilterCleans') || []).filter(f => f && f.date === iso && mine(f)).forEach(f=>{
-    out.push({key: 'fc:' + f.id, label: '\ud83d\udebf Filter clean', title: '', customerId: f.customerId,
+    out.push({key: 'fc:' + f.id, label: '\ud83d\udebf Filter clean', kind: 'filter clean', title: '', customerId: f.customerId,
       done: f.status === 'done', doneAt: f.doneAt});
   });
   (lsGet('scheduledPoolDrains') || []).filter(f => f && f.date === iso && mine(f)).forEach(f=>{
-    out.push({key: 'pd:' + f.id, label: ({spa: 'Spa drain', fountain: 'Fountain drain', extra: 'Extra body drain'}[f.bodyKind] || 'Pool drain'), drainIcon: true, title: '', customerId: f.customerId,
+    out.push({key: 'pd:' + f.id, label: ({spa: 'Spa drain', fountain: 'Fountain drain', extra: 'Extra body drain'}[f.bodyKind] || 'Pool drain'), drainIcon: true, kind: 'pool drain', title: '', customerId: f.customerId,
       done: f.status === 'done', doneAt: f.doneAt});
   });
   (tasks || []).filter(t => t && t.date === iso && mine(t)).forEach(t=>{
     const ids = (t.customerIds || []).length ? t.customerIds : [''];
     ids.forEach(cid=>{
-      out.push({key: 'tk:' + t.id, label: '\ud83d\udccb Task', title: t.title || '', customerId: cid,
+      out.push({key: 'tk:' + t.id, label: '\ud83d\udccb Task', kind: 'task', title: t.title || '', customerId: cid,
         done: !!t.done, doneAt: t.doneAt});
     });
   });
   return out;
+}
+// Each kind's colours, as the app shows them (Oct 11). [pale background, text]
+function twJobColours(kind){
+  return kind === 'task' ? ['#E8F1E4', '#4D6B3C']
+    : kind === 'filter clean' ? ['#FBF1DD', '#8A5E0B']
+    : kind === 'pool drain' ? ['#E4F0F8', '#1F5E86']
+    : ['#E9EEF0', '#3E5560'];
 }
 function twJobRow(job, withCustomer){
   const c = job.customerId ? customers.find(x => String(x.id) === String(job.customerId)) : null;
@@ -21534,18 +21606,26 @@ function twJobRow(job, withCustomer){
   row.appendChild(document.createElement('span'));
   const name = document.createElement('span');
   name.className = 'tw-name';
-  name.style.cssText = 'color:var(--gold);font-weight:600;';
-  name.textContent = job.label + (job.title ? ': ' + job.title : '');
+  // The customer's name first, then what the job is in a small tag, in the
+  // app's colour for that kind of job (Oct 11)
+  const [pale, ink] = twJobColours(job.kind);
+  row.classList.add('tw-job');
+  row.style.setProperty('--tw-job-bg', 'color-mix(in srgb, ' + pale + ' 45%, #fff)');
+  name.textContent = c ? displayName(c.name) : 'No customer';
+  const tag = document.createElement('span');
+  tag.style.cssText = 'display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;margin-left:8px;vertical-align:1px;background:' + pale + ';color:' + ink + ';';
+  tag.textContent = job.label;
   if(job.drainIcon){
     const ico = document.createElement('span');
-    ico.innerHTML = poolDrainIconSvg(18, 16);
-    ico.style.cssText = 'display:inline-block;margin-right:5px;';
-    name.insertBefore(ico, name.firstChild);
+    ico.innerHTML = poolDrainIconSvg(14, 12);
+    ico.style.cssText = 'display:inline-block;margin-right:4px;vertical-align:-2px;';
+    tag.insertBefore(ico, tag.firstChild);
   }
+  name.appendChild(tag);
   row.appendChild(name);
   const addr = document.createElement('span');
   addr.className = 'tw-addr';
-  addr.textContent = withCustomer ? (c ? displayName(c.name) + (c.address ? ' \u00b7 ' + c.address : '') : 'No customer') : '';
+  addr.textContent = [job.title, c && c.address].filter(Boolean).join(' \u00b7 ');
   row.appendChild(addr);
   const status = document.createElement('span');
   let when = '';
@@ -25960,6 +26040,10 @@ function switchView(view){
     billingPage = 1;
     openBillingIds.clear();
     renderBilling();
+  }
+  // Back on WorkCenter's Drains from another page: every list closed again (Oct 11)
+  if(view === 'workcenter' && keep && workCenterMode === 'drains'){
+    try{ openDrainBuckets.clear(); Object.keys(drainBucketPage).forEach(k => delete drainBucketPage[k]); renderPoolDrains(); }catch(e){}
   }
   if(view === 'workcenter' && keep){
     // As it was: what was typed on the form comes back (it was held on the way out)
