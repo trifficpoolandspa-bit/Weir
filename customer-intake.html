@@ -5869,6 +5869,7 @@ function saveFilterGroups(){
     });
     if(keep.length !== all.length) lsSet('scheduledFilterCleans', keep);
   }catch(e){}
+  try{ fgSyncScheduled(); }catch(e){}
 }
 
 let openFilterGroupIds = new Set();
@@ -7385,22 +7386,52 @@ function fgChipState(g, cid){
   const recent = recs.some(f => f.status === 'done' && new Date(f.doneAt || ((f.date || '') + 'T12:00:00')) > monthAgo);
   return recent ? 'done' : null;
 }
-// Scheduled cleans not yet done always sit on their group's date (Oct 11).
-// Puts right any that were left on an older date before that.
-function fgAlignDates(){
-  const sched = lsGet('scheduledFilterCleans') || [];
+// A scheduled group and its filter cleans on the technicians' phones always
+// match (Oct 11): everyone in the group has one, on the group's date, with its
+// technician, order and ticks. Not-done ones follow every change; done ones
+// are left as they were. Runs on every save and whenever the page is drawn,
+// so cleans left behind by older changes are put right too.
+function fgSyncScheduled(){
+  let sched = lsGet('scheduledFilterCleans') || [];
   let changed = false;
   filterGroups.forEach(g=>{
-    if(!g || !g.finalized || !g.date) return;
-    sched.forEach(sc=>{
-      if(sc && sc.groupId === g.id && sc.status !== 'done' && sc.date !== g.date){ sc.date = g.date; changed = true; }
+    if(!g || !g.finalized) return;
+    const live = fgLiveIds(g);
+    // Paused (or taken out): off the route until they're back
+    const before = sched.length;
+    sched = sched.filter(sc => !(sc && sc.groupId === g.id && sc.status !== 'done' && live.indexOf(sc.customerId) === -1));
+    if(sched.length !== before) changed = true;
+    live.forEach((cid, i)=>{
+      // This round's: still to do, or done since the group was last sent (one
+      // done in an earlier round doesn't count)
+      const mine = sched.filter(sc => sc && sc.groupId === g.id && sc.customerId === cid
+        && (sc.status !== 'done' || !g.scheduledAt || String(sc.doneAt || sc.date || '') >= g.scheduledAt.slice(0, 10)));
+      if(!mine.length){
+        // Added to the group after it was scheduled: onto the route too
+        if(!g.date || !g.technicianId) return;
+        sched.push({
+          id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+          groupId: g.id, groupName: g.name, customerId: cid, technicianId: g.technicianId,
+          date: g.date, order: i, photoRequired: g.photoRequired !== false,
+          emailCustomer: g.emailCustomer !== false, status: 'scheduled'
+        });
+        changed = true;
+        return;
+      }
+      mine.forEach(sc=>{
+        if(sc.status === 'done') return;
+        const want = {groupName: g.name, order: i, photoRequired: g.photoRequired !== false, emailCustomer: g.emailCustomer !== false};
+        if(g.date) want.date = g.date;
+        if(g.technicianId) want.technicianId = g.technicianId;
+        Object.keys(want).forEach(k=>{ if(sc[k] !== want[k]){ sc[k] = want[k]; changed = true; } });
+      });
     });
   });
   if(changed) lsSet('scheduledFilterCleans', sched);
 }
 function renderFilterGroups(){
   try{ updateFilterReplacementsButton(); }catch(e){}
-  try{ fgAlignDates(); }catch(e){}
+  try{ fgSyncScheduled(); }catch(e){}
   setTimeout(()=>{ try{ const el = document.getElementById('filterGroupCount'); if(el) el.textContent = filterGroups.length ? fgCountText(fgShownGroups()) : ''; }catch(e){} }, 0);
   // Back after more than a minute away: every group starts closed
   if(onFilterGroupsPage()) closeGroupsIfAway();
@@ -7848,6 +7879,7 @@ async function finalizeFilterGroup(g){
   lsSet('scheduledFilterCleans', sched);
 
   g.finalized = true;
+  g.scheduledAt = new Date().toISOString();   // when this round was sent (Oct 11)
   saveFilterGroups();
   renderFilterGroups();
   showToast('Filter cleans sent to ' + (tech ? tech.name : 'technician'));
@@ -9164,12 +9196,119 @@ function pdAddToDay(cids){
     openDrainCalendar(day.value);
   });
 }
+// Add customers to a day on the drain calendar (Oct 11): sorted into the same
+// lists as the Drains page, each with when it's due. Overdue and due soon
+// start open; a search looks through every list.
+function pdOpenDayPicker(iso, currentIds, onSave){
+  const picked = new Set(currentIds || []);
+  const active = customers.filter(c => c && c.active !== false && !c.deleted);
+  if(!active.length){ showToast('No customers yet'); return; }
+  const byBucket = {overdue: [], soon: [], never: [], later: [], self: []};
+  active.forEach(c => { try{ byBucket[pdBucket(c)].push(c); }catch(e){ byBucket.never.push(c); } });
+  const byDue = (a, b) => pdDue(a).localeCompare(pdDue(b));
+  const byName = (a, b) => sortKeyName(a.name).localeCompare(sortKeyName(b.name));
+  byBucket.overdue.sort(byDue); byBucket.soon.sort(byDue); byBucket.later.sort(byDue);
+  byBucket.never.sort(byName); byBucket.self.sort(byName);
+  const open = new Set(['overdue', 'soon']);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-box" style="max-width:520px;max-height:84vh;display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 4px;">
+        <h3 style="font-size:15px;margin:0;"></h3>
+        <span class="pdp-count" style="flex:0 0 auto;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--teal-deep);white-space:nowrap;"></span>
+      </div>
+      <p class="pdp-hint" style="font-size:11.5px;color:var(--muted);margin:0 0 12px;"></p>
+      <input class="pdp-search" placeholder="Search by name, address, phone, or email" autocomplete="off" style="margin-bottom:10px;">
+      <div class="pdp-list" style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:2px 8px;margin-bottom:14px;"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary pdp-done" style="flex:1;">Done</button>
+        <button class="btn btn-ghost pdp-cancel" style="width:auto;">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('h3').textContent = 'Add customers to ' + pdDate(iso, true);
+  overlay.querySelector('.pdp-hint').textContent = 'Tick everyone to drain on ' + pdDate(iso, true) + '.';
+  const listEl = overlay.querySelector('.pdp-list');
+  const search = overlay.querySelector('.pdp-search');
+  const countEl = overlay.querySelector('.pdp-count');
+  const drawCount = ()=>{ const n = picked.size; countEl.textContent = n + (n === 1 ? ' customer' : ' customers'); };
+  const hay = c => [c.name, c.address, c.phone, c.email].filter(Boolean).join(' ').toLowerCase();
+  const bodyName = (c, key) => ((pdBodies(c).find(b => b.key === key) || {}).label) || 'Pool';
+  const monthYear = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', year: 'numeric'});
+
+  function draw(){
+    const t = search.value.trim().toLowerCase();
+    const keepScroll = listEl.scrollTop;
+    listEl.innerHTML = '';
+    let any = 0;
+    DRAIN_BUCKETS.forEach(b=>{
+      const list = byBucket[b.key].filter(c => !t || hay(c).includes(t) || displayName(c.name).toLowerCase().includes(t));
+      if(t && !list.length) return;
+      any += list.length;
+      const isOpen = list.length > 0 && (t ? true : open.has(b.key));
+      const head = document.createElement('div');
+      head.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px 4px;font-size:13px;font-weight:700;border-bottom:1px solid var(--line);' + (list.length ? 'cursor:pointer;' : '');
+      head.innerHTML = '<span style="width:9px;height:9px;border-radius:50%;flex-shrink:0;background:' + b.tone + ';"></span><span></span>'
+        + '<span style="font-size:12px;font-weight:600;color:var(--muted);">' + list.length + '</span>'
+        + '<span style="margin-left:auto;color:var(--muted);font-size:13px;' + (list.length ? '' : 'visibility:hidden;') + '">' + (isOpen ? '‹' : '›') + '</span>';
+      head.children[1].textContent = b.label;
+      if(list.length && !t){
+        head.addEventListener('click', ()=>{ if(open.has(b.key)) open.delete(b.key); else open.add(b.key); draw(); });
+      }
+      listEl.appendChild(head);
+      if(!isOpen) return;
+      list.forEach(c=>{
+        const lbl = document.createElement('label');
+        lbl.className = 'press-row';
+        lbl.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 6px 8px 18px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px;border-radius:6px;';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.style.width = 'auto';
+        cb.checked = picked.has(c.id);
+        cb.addEventListener('change', ()=>{ if(cb.checked) picked.add(c.id); else picked.delete(c.id); drawCount(); });
+        lbl.appendChild(cb);
+        const txt = document.createElement('span');
+        txt.style.cssText = 'min-width:0;flex:1;';
+        nameWithAddress(txt, c);
+        lbl.appendChild(txt);
+        const due = document.createElement('span');
+        due.style.cssText = 'margin-left:auto;text-align:right;font-size:11.5px;white-space:nowrap;flex-shrink:0;color:' + b.tone + ';';
+        if(b.key === 'self'){
+          due.textContent = 'Drained by customer';
+        } else if(b.key === 'never'){
+          due.textContent = 'No drain on record';
+        } else {
+          const body = pdSoonestBody(c), d = pdDue(c, body);
+          due.innerHTML = '<b style="display:block;font-size:12px;"></b><span></span>';
+          due.children[0].textContent = 'Due ' + monthYear(d);
+          due.children[1].textContent = pdSpan(d) + ' · ' + bodyName(c, body);
+        }
+        lbl.appendChild(due);
+        listEl.appendChild(lbl);
+      });
+    });
+    if(t && !any) listEl.innerHTML = '<div style="padding:12px 4px;font-size:12.5px;color:var(--muted);">No customers match that search.</div>';
+    listEl.scrollTop = keepScroll;
+  }
+  search.addEventListener('input', draw);
+  // Clicking back into the search empties it (the rule for every search box)
+  const emptyForFresh = ()=>{ if(document.activeElement === search || !search.value) return; search.value = ''; draw(); };
+  search.addEventListener('mousedown', emptyForFresh);
+  search.addEventListener('touchstart', emptyForFresh, {passive: true});
+  setTimeout(()=>{ try{ search.focus(); }catch(e){} }, 60);
+  draw(); drawCount();
+  overlay.querySelector('.pdp-done').addEventListener('click', ()=>{ overlay.remove(); onSave(Array.from(picked)); });
+  overlay.querySelector('.pdp-cancel').addEventListener('click', ()=> overlay.remove());
+}
+
 function openDrainCalendar(startDay){
   let month = (startDay || pdToday()).slice(0, 7);       // YYYY-MM
   let sel = startDay || '';
   let selecting = false;
   const picked = new Set();
   let pushTech = '';
+  let monthPick = false, pickYear = 0;   // the month and year chooser (Oct 11)
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
   const box = document.createElement('div');
@@ -9200,6 +9339,12 @@ function openDrainCalendar(startDay){
     prev.addEventListener('click', ()=>{ const d = new Date(yy, mm - 2, 1); month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); draw(); });
     next.addEventListener('click', ()=>{ const d = new Date(yy, mm, 1); month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); draw(); });
     nav.appendChild(prev); nav.appendChild(label); nav.appendChild(next);
+    // A little calendar: pick any month and year (Oct 11)
+    const pickBtn = smallBtn('', 'btn-ghost', 'width:32px;padding:4px 0;display:inline-flex;align-items:center;justify-content:center;' + (monthPick ? 'background:var(--teal-pale);' : ''));
+    pickBtn.title = 'Pick a month and year';
+    pickBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
+    pickBtn.addEventListener('click', ()=>{ monthPick = !monthPick; pickYear = yy; draw(); });
+    nav.appendChild(pickBtn);
     head.appendChild(nav);
     const right = document.createElement('div');
     right.style.cssText = 'display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap;';
@@ -9237,6 +9382,31 @@ function openDrainCalendar(startDay){
     }
     head.appendChild(right);
     box.appendChild(head);
+    if(monthPick){
+      const mp = document.createElement('div');
+      mp.style.cssText = 'border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:-4px 0 12px;max-width:340px;background:#fff;';
+      const yr = document.createElement('div');
+      yr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;';
+      const yPrev = smallBtn('\u2039', 'btn-ghost', 'width:30px;padding:3px 0;');
+      const yNext = smallBtn('\u203a', 'btn-ghost', 'width:30px;padding:3px 0;');
+      const yLab = document.createElement('b');
+      yLab.style.cssText = 'font-size:14px;';
+      yLab.textContent = String(pickYear);
+      yPrev.addEventListener('click', ()=>{ pickYear--; draw(); });
+      yNext.addEventListener('click', ()=>{ pickYear++; draw(); });
+      yr.appendChild(yPrev); yr.appendChild(yLab); yr.appendChild(yNext);
+      mp.appendChild(yr);
+      const mg = document.createElement('div');
+      mg.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:6px;';
+      for(let i = 0; i < 12; i++){
+        const here = pickYear === yy && i === mm - 1;
+        const mb = smallBtn(new Date(2000, i, 1).toLocaleDateString(undefined, {month: 'short'}), here ? 'btn-primary' : 'btn-ghost', 'width:100%;');
+        mb.addEventListener('click', ()=>{ month = pickYear + '-' + String(i + 1).padStart(2, '0'); monthPick = false; draw(); });
+        mg.appendChild(mb);
+      }
+      mp.appendChild(mg);
+      box.appendChild(mp);
+    }
     // The month
     const grid = document.createElement('div');
     grid.style.cssText = 'display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;';
@@ -9289,22 +9459,19 @@ function openDrainCalendar(startDay){
       ph.children[1].textContent = ents.length + (ents.length === 1 ? ' customer' : ' customers');
       const add = smallBtn('+ Add customers', 'btn-ghost', 'margin-left:auto;');
       add.addEventListener('click', ()=>{
-        const holder = {name: pdDate(sel, true), customerIds: ents.map(e => e.customerId)};
-        openGroupCustomerPicker(holder, {
-          hint: 'Tick everyone to drain on ' + pdDate(sel, true) + '.',
-          save: ()=>{
-            let all = pdCal();
-            const want = new Set(holder.customerIds);
-            all.filter(e => e.date === sel && !want.has(e.customerId)).forEach(pdCalUnpush);
-            all = all.filter(e => e.date !== sel || want.has(e.customerId));
-            holder.customerIds.forEach(cid=>{
-              if(!all.some(e => e.date === sel && e.customerId === cid)){
-                all.push({id: 'dc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), date: sel, customerId: cid, bodyKind: 'pool'});
-              }
-            });
-            pdCalSave(all);
-          },
-          done: ()=>{ if(overlay.isConnected) draw(); else openDrainCalendar(sel); }
+        // Grouped like the Drains page: overdue, due soon, never... (Oct 11)
+        pdOpenDayPicker(sel, ents.map(e => e.customerId), (ids)=>{
+          let all = pdCal();
+          const want = new Set(ids);
+          all.filter(e => e.date === sel && !want.has(e.customerId)).forEach(pdCalUnpush);
+          all = all.filter(e => e.date !== sel || want.has(e.customerId));
+          ids.forEach(cid=>{
+            if(!all.some(e => e.date === sel && e.customerId === cid)){
+              all.push({id: 'dc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), date: sel, customerId: cid, bodyKind: 'pool'});
+            }
+          });
+          pdCalSave(all);
+          if(overlay.isConnected) draw(); else openDrainCalendar(sel);
         });
       });
       ph.appendChild(add);
@@ -13389,6 +13556,7 @@ function scheduleFilterGroup(g){
   });
   lsSet('scheduledFilterCleans', sched);
   g.finalized = true;
+  g.scheduledAt = new Date().toISOString();   // when this round was sent (Oct 11)
 }
 
 function unscheduleFilterGroup(g){
@@ -21543,7 +21711,9 @@ function twRouteFor(techId, iso){
   const movedTo = new Map();
   moves.forEach(r => { if(r && r.toDate === iso) movedTo.set(r.customerId, r.technicianId || null); });
   const base = customers.filter(c => c && c.active !== false && String(c.technicianId || '') === String(techId)
-    && customerServicedOn(c, day) && !movedAway.has(c.id));
+    && customerServicedOn(c, day) && !movedAway.has(c.id)
+    // Off weeks and every-other-week customers, as the app leaves them off (Oct 11)
+    && !skipsThisDay(c, iso));
   const movedIn = customers.filter(c => c && c.active !== false && movedTo.has(c.id)
     && String(movedTo.get(c.id) || c.technicianId || '') === String(techId) && !base.some(b => b.id === c.id));
   const all = base.concat(movedIn);
