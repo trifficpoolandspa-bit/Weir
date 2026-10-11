@@ -1748,6 +1748,8 @@ input::placeholder{color:#A9BCB9;}
           <label for="drainEvery" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--ink);margin:0;white-space:nowrap;cursor:pointer;">Drain every
             <select id="drainEvery" title="How often pools are drained in your area" style="width:auto;"></select>
           </label>
+          <!-- Drain emails (Oct 11): coming up, and scheduled -->
+          <button type="button" class="btn btn-primary" id="btnDrainEmail" style="width:auto;">Email</button>
           <!-- The drain calendar (Oct 11), in place of drain groups -->
           <button type="button" class="btn btn-primary" id="btnDrainCalendar" style="width:auto;">Schedule</button>
         </div>
@@ -5060,6 +5062,7 @@ function emailWhatFromSubject(subject){
   if(/quote/i.test(s)) return 'Quote';
   if(/work order/i.test(s)) return 'Work order email';
   if(/filter clean/i.test(s)) return 'Filter clean email';
+  if(/drain/i.test(s)) return 'Pool drain email';
   if(/on my way/i.test(s)) return 'On my way';
   return s || 'Email';
 }
@@ -5898,6 +5901,84 @@ function companyName(){
 const DEFAULT_BROADCAST_TEMPLATES = [
   {
     id: 'bt_storm', category: 'Weather', name: 'Storm warning',
+    subject: 'Storm warning — a quick favour for your pool',
+    body: 'Hi there,\n\n'
+      + 'The weather coming through is putting an unusual amount of debris into pools, '
+      + 'which can pull the chemistry out of balance quickly.\n\n'
+      + 'If you have a moment before your next service, please do two things:\n\n'
+      + '1. Turn your system on and leave it running. The skimmer catches most debris '
+      + 'while it is still floating.\n'
+      + '2. Empty your skimmer and pump baskets. A full basket stops the skimmer working '
+      + 'at all, and anything that sinks has to be vacuumed or skimmed out by hand.\n\n'
+      + 'This makes a real difference to how clear your water stays and keeps the '
+      + 'chemistry where it should be.\n\n'
+      + 'Thank you,\n' + '{company}'
+  },
+  {
+    id: 'bt_freeze', category: 'Weather', name: 'Freeze warning',
+    subject: 'Freezing weather — please leave your system running',
+    body: 'Hi there,\n\n'
+      + 'Temperatures are expected to drop below freezing, so please leave your pump running '
+      + 'continuously until the cold passes. Moving water is far less likely to freeze, '
+      + 'and a frozen line or pump can be an expensive repair.\n\n'
+      + 'If you have a heater, setting it low will also help protect your equipment.\n\n'
+      + 'Thank you,\n' + '{company}'
+  },
+  {
+    id: 'bt_winterize', category: 'Seasonal', name: 'Winterizing',
+    subject: 'Getting your pool ready for winter',
+    body: 'Hi there,\n\n'
+      + 'As the season turns, we wanted to reach out about winterizing your pool.\n\n'
+      + 'A pool that is properly closed down costs less to run and comes back far more '
+      + 'easily in the spring. Left as it is through the cold months, water sitting in '
+      + 'the lines and equipment can freeze and crack them, and that’s a repair '
+      + 'we’d like to help you avoid.\n\n'
+      + 'Winterizing covers the things that protect your equipment and keep the water '
+      + 'healthy over the winter — balancing the chemistry so it holds, clearing '
+      + 'the lines and equipment of water, and getting the pool covered.\n\n'
+      + 'If you’d like us to take care of this, please reply to this email and we’ll find a time '
+      + 'that suits you. If you’d rather keep the pool running through winter, that’s '
+      + 'completely fine — please just let us know and we’ll carry on as normal.\n\n'
+      + 'Thank you,\n' + '{company}'
+  },
+  {
+    id: 'bt_openpool', category: 'Seasonal', name: 'Opening for the season',
+    subject: 'Ready to open your pool for the season?',
+    body: 'Hi there,\n\n'
+      + 'The weather is warming up, which means it’s almost time to open your pool back up.\n\n'
+      + 'Opening usually goes more smoothly when it’s done a little earlier than feels '
+      + 'necessary. Water that has sat covered all winter takes time to clear, and '
+      + 'starting a couple of weeks before you want to swim means it’s ready '
+      + 'and waiting for you.\n\n'
+      + 'Please reply to this email whenever it’s convenient, and we’ll get you scheduled.\n\n'
+      + 'Thank you,\n' + '{company}'
+  },
+  {
+    id: 'bt_holiday', category: 'Scheduling', name: 'Holiday schedule',
+    subject: 'Service schedule over the holiday',
+    body: 'Hi there,\n\n'
+      + 'Please note that your regular service day may shift '
+      + 'slightly over the coming holiday. We’ll still take care of your pool, just possibly a day before or after '
+      + 'the usual.\n\n'
+      + 'Thank you for your patience,\n' + '{company}'
+  },
+  {
+    id: 'bt_priceincrease', category: 'Announcements', name: 'Rate change',
+    subject: 'A note about your service rate',
+    body: 'Hi there,\n\n'
+      + 'We wanted to let you know about a change to your service rate, effective from '
+      + '[date]. Your new rate will be [amount] per month.\n\n'
+      + '[Reason for the change.]\n\n'
+      + 'If you have any questions, please don’t hesitate to reach out.\n\n'
+      + 'Thank you for your business,\n' + '{company}'
+  }
+];
+// The wording these shipped with before (Oct 11). A saved template still
+// word-for-word the same takes the new, friendlier default; any the
+// business has edited are left exactly as they are.
+const OLD_BROADCAST_DEFAULTS = [
+  {
+    id: 'bt_storm', category: 'Weather', name: 'Storm warning',
     subject: 'Storm warning \u2014 a quick favour for your pool',
     body: 'Hi there,\n\n'
       + 'The weather coming through is putting an unusual amount of debris into pools, '
@@ -5984,7 +6065,13 @@ function loadBroadcastTemplates(){
   });
 
   const saved = lsGet('broadcastTemplates');
-  if(Array.isArray(saved) && saved.length) return saved.map(fill);
+  if(Array.isArray(saved) && saved.length) return saved.map(t=>{
+    const was = t && OLD_BROADCAST_DEFAULTS.find(o => o.id === t.id);
+    const now = t && DEFAULT_BROADCAST_TEMPLATES.find(o => o.id === t.id);
+    // Compared after {company} is filled, so a copy saved with the name in it still matches
+    if(was && now && fill(t).body === fill(was).body && fill(t).subject === fill(was).subject) return fill(Object.assign({}, t, {subject: now.subject, body: now.body}));
+    return fill(t);
+  });
   return DEFAULT_BROADCAST_TEMPLATES.map(fill);
 }
 
@@ -9209,7 +9296,7 @@ function pdOpenDayPicker(iso, currentIds, onSave){
   const byName = (a, b) => sortKeyName(a.name).localeCompare(sortKeyName(b.name));
   byBucket.overdue.sort(byDue); byBucket.soon.sort(byDue); byBucket.later.sort(byDue);
   byBucket.never.sort(byName); byBucket.self.sort(byName);
-  const open = new Set(['overdue', 'soon']);
+  const open = new Set();   // every list starts closed (Oct 11)
 
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
@@ -9572,6 +9659,474 @@ function openDrainCalendar(startDay){
 }
 document.getElementById('btnDrainCalendar').addEventListener('click', ()=> openDrainCalendar());
 
+// ---------- Pool drain emails (Oct 11) ----------
+// Two emails, written like the filter clean one: "drain coming up", sent to
+// customers picked from the Drains page's lists, and "drain scheduled", sent
+// to customers picked on the drain calendar. {body} is the body of water,
+// {due} the month it's due, {date} the day they're on, {company} the company.
+const DRAIN_EMAIL_DEFAULTS = {
+  soon: {
+    subject: 'A friendly reminder: your {body} drain is coming up',
+    body: 'Hi there,\n\n'
+      + 'Please note that your {body} is due for a drain and refill around {due}.\n\n'
+      + 'Over time, minerals and dissolved solids slowly build up in the water until it becomes hard to keep balanced. '
+      + 'A fresh drain and refill keeps your water clear, comfortable, and gentle on your equipment.\n\n'
+      + 'Please reply to this email at your convenience, and we’ll find a day that works best for you.\n\n'
+      + 'Thank you,\n{company}'
+  },
+  sched: {
+    subject: 'Your {body} drain is scheduled for {date}',
+    body: 'Hi there,\n\n'
+      + 'Your {body} drain is scheduled for {date}.\n\n'
+      + 'On that day, we’ll drain the water, clean the surfaces, and refill. To help everything go smoothly, '
+      + 'please make sure any gates are unlocked and the hose bib is easy to reach.\n\n'
+      + 'If that day isn’t convenient for you, please reply to this email and we’ll find another time.\n\n'
+      + 'Thank you,\n{company}'
+  }
+};
+const DRAIN_EMAIL_KEYS = {soon: 'drainEmailSoon', sched: 'drainEmailScheduled'};
+function loadDrainEmail(kind){
+  const saved = lsGet(DRAIN_EMAIL_KEYS[kind]);
+  if(saved && saved.body) return saved;
+  return Object.assign({}, DRAIN_EMAIL_DEFAULTS[kind]);
+}
+function fillDrainEmail(text, vals){
+  return String(text || '')
+    .split('{body}').join(vals.body || '')
+    .split('{due}').join(vals.due || '')
+    .split('{date}').join(vals.date || '')
+    .split('{company}').join(companyName());
+}
+// A body of water as it reads in a sentence: "pool", "spa", "fountain"
+function pdBodyWord(c, key){
+  const b = pdBodies(c).find(x => x.key === key);
+  const word = (b && b.label) || ({pool: 'Pool', spa: 'Spa', fountain: 'Fountain', extra: 'Extra body'}[key] || 'Pool');
+  return String(word).toLowerCase();
+}
+function pdMonthYear(iso){
+  return new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {month: 'long', year: 'numeric'});
+}
+function pdLongDate(iso){
+  return new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
+}
+
+function openDrainEmailEditor(kind){
+  const t = loadDrainEmail(kind);
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,46,46,0.45);'
+    + 'display:flex;align-items:center;justify-content:center;z-index:210;padding:18px;';
+  const card = document.createElement('div');
+  card.style.cssText = 'background:#fff;border-radius:14px;padding:20px;max-width:560px;width:100%;max-height:86vh;overflow-y:auto;';
+  card.innerHTML = kind === 'soon'
+    ? '<h2 style="margin:0 0 6px;">Edit the drain coming up email</h2>'
+      + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">Write <strong>{due}</strong> where the month it’s due should go, '
+      + '<strong>{body}</strong> for the body of water, and <strong>{company}</strong> for your company name. If a customer has several bodies ticked, '
+      + '{body} becomes all of them (“pool and spa”) and {due} lists each one’s month.</p>'
+    : '<h2 style="margin:0 0 6px;">Edit the drain scheduled email</h2>'
+      + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">Write <strong>{date}</strong> where their scheduled day should go, '
+      + '<strong>{body}</strong> for the body of water, and <strong>{company}</strong> for your company name. If a customer has several bodies ticked '
+      + 'or is on several days, {body} and {date} list them all in one sentence.</p>';
+  const subWrap = document.createElement('div');
+  subWrap.className = 'field';
+  subWrap.innerHTML = '<label>Subject</label>';
+  const sub = document.createElement('input');
+  sub.value = t.subject;
+  subWrap.appendChild(sub);
+  card.appendChild(subWrap);
+  const bodyWrap = document.createElement('div');
+  bodyWrap.className = 'field';
+  bodyWrap.innerHTML = '<label>Message</label>';
+  const body = document.createElement('textarea');
+  body.rows = 14;
+  body.style.minHeight = '240px';
+  body.value = t.body;
+  bodyWrap.appendChild(body);
+  card.appendChild(bodyWrap);
+  const row = document.createElement('div');
+  row.className = 'btn-row';
+  row.style.marginTop = '16px';
+  const mk = (txt, cls) => { const b = document.createElement('button'); b.className = 'btn ' + cls; b.style.width = 'auto'; b.textContent = txt; row.appendChild(b); return b; };
+  const save = mk('Save', 'btn-primary'), reset = mk('Reset to default', 'btn-ghost'), cancel = mk('Cancel', 'btn-ghost');
+  card.appendChild(row);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+  cancel.addEventListener('click', close);
+  reset.addEventListener('click', ()=>{ sub.value = DRAIN_EMAIL_DEFAULTS[kind].subject; body.value = DRAIN_EMAIL_DEFAULTS[kind].body; });
+  save.addEventListener('click', ()=>{
+    if(!body.value.trim()){ showToast('The message cannot be empty'); return; }
+    const need = kind === 'soon' ? '{due}' : '{date}';
+    if(body.value.indexOf(need) === -1){
+      showToast('Keep ' + need + ' somewhere in the message, or nobody is told when');
+      return;
+    }
+    lsSet(DRAIN_EMAIL_KEYS[kind], {subject: sub.value.trim(), body: body.value});
+    close();
+    showToast('Email saved');
+  });
+}
+
+function openDrainEmail(){
+  let tab = 'soon';
+  const hasEmail = c => !!(c && (c.email || '').trim());
+  const custOf = id => customers.find(c => c.id === id);
+  // Coming up: customer → the bodies ticked for them
+  const soonPick = new Map();
+  const soonOpen = new Set();
+  // Scheduled: calendar lines ticked, and the month and day on screen
+  const schedPick = new Set();
+  let calMonth = pdToday().slice(0, 7);
+  let calDay = '';
+
+  const active = customers.filter(c => c && c.active !== false && !c.deleted);
+  const byBucket = {overdue: [], soon: [], never: [], later: []};
+  active.forEach(c => { let b; try{ b = pdBucket(c); }catch(e){ b = 'never'; } if(byBucket[b]) byBucket[b].push(c); });
+  const byDue = (a, b) => pdDue(a).localeCompare(pdDue(b));
+  const byName = (a, b) => sortKeyName(a.name).localeCompare(sortKeyName(b.name));
+  byBucket.overdue.sort(byDue); byBucket.soon.sort(byDue); byBucket.later.sort(byDue); byBucket.never.sort(byName);
+  const soonEdge = pdAddMonths(pdToday(), DRAIN_SOON_MONTHS);
+  // Ticking a customer ticks the bodies that are due (or every body if none is)
+  const defaultBodies = c=>{
+    const keys = pdBodies(c).map(b => b.key);
+    const due = keys.filter(k => { const d = pdDue(c, k); return d && d <= soonEdge; });
+    return new Set(due.length ? due : keys);
+  };
+  const bodyTone = (c, k)=>{
+    const d = pdDue(c, k);
+    if(!d) return 'var(--muted)';
+    if(d < pdToday()) return 'var(--rust)';
+    return d <= soonEdge ? 'var(--gold)' : 'var(--green)';
+  };
+  const bodyDueText = (c, k)=>{ const d = pdDue(c, k); return d ? 'Due ' + pdDate(d).replace(/^\w+ \d+, /, m => m) : 'No drain on record'; };
+
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:640px;width:100%;max-height:90vh;display:flex;flex-direction:column;';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+
+  // Who gets an email, and for what
+  function soonPeople(){
+    return Array.from(soonPick.entries()).map(([cid, set]) => ({c: custOf(cid), bodies: Array.from(set)}))
+      .filter(p => p.c && hasEmail(p.c) && p.bodies.length);
+  }
+  function schedPeople(){
+    const by = new Map();
+    pdCal().forEach(e=>{
+      if(!schedPick.has(e.id)) return;
+      const c = custOf(e.customerId);
+      if(!c || !hasEmail(c)) return;
+      const p = by.get(c.id) || {c, lines: []};
+      p.lines.push(e);
+      by.set(c.id, p);
+    });
+    return Array.from(by.values()).map(p => { p.lines.sort((a, b) => a.date.localeCompare(b.date)); return p; });
+  }
+
+  function summary(){
+    const wrap = document.createElement('div');
+    const head = document.createElement('div');
+    head.style.cssText = 'font-size:13px;font-weight:700;margin-bottom:8px;';
+    let rows = [];
+    if(tab === 'soon'){
+      const ppl = soonPeople();
+      const n = ppl.reduce((s, p) => s + p.bodies.length, 0);
+      head.innerHTML = ppl.length ? ppl.length + (ppl.length === 1 ? ' email' : ' emails') + ' will go out <span style="font-size:12px;font-weight:600;color:var(--muted);">· ' + n + (n === 1 ? ' body of water' : ' bodies of water') + '</span>' : 'Nobody ticked yet';
+      rows = ppl.sort((a, b) => byName(a.c, b.c)).map(p => [displayName(p.c.name), p.bodies.map(k => '✓ ' + pdBodyWord(p.c, k).replace(/^./, x => x.toUpperCase())).join(' ')]);
+    } else {
+      const ppl = schedPeople();
+      const n = ppl.reduce((s, p) => s + p.lines.length, 0);
+      head.innerHTML = ppl.length ? ppl.length + (ppl.length === 1 ? ' email' : ' emails') + ' will go out <span style="font-size:12px;font-weight:600;color:var(--muted);">· ' + n + (n === 1 ? ' body of water' : ' bodies of water') + '</span>' : 'Nobody ticked yet';
+      rows = ppl.sort((a, b) => byName(a.c, b.c)).map(p => [displayName(p.c.name), p.lines.map(e => '✓ ' + pdBodyWord(p.c, e.bodyKind || 'pool').replace(/^./, x => x.toUpperCase()) + ' · ' + pdDate(e.date, true).replace(/, \d{4}$/, '')).join(' ')]);
+    }
+    wrap.appendChild(head);
+    if(rows.length){
+      const list = document.createElement('div');
+      list.style.cssText = 'border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin-bottom:10px;font-size:12px;background:#FAFCFB;max-height:120px;overflow-y:auto;';
+      rows.forEach(([who, what])=>{
+        const r = document.createElement('div');
+        r.style.cssText = 'display:flex;justify-content:space-between;gap:10px;padding:3px 0;';
+        r.innerHTML = '<span></span><span style="color:var(--muted);text-align:right;"></span>';
+        r.children[0].textContent = who; r.children[1].textContent = what;
+        list.appendChild(r);
+      });
+      wrap.appendChild(list);
+    }
+    return wrap;
+  }
+
+  function drawSoon(body){
+    const list = document.createElement('div');
+    list.style.cssText = 'border:1px solid var(--line);border-radius:10px;padding:2px 8px;';
+    DRAIN_BUCKETS.filter(b => byBucket[b.key]).forEach(b=>{
+      const all = byBucket[b.key];
+      const mailable = all.filter(hasEmail);
+      const ticked = all.filter(c => soonPick.has(c.id)).length;
+      const isOpen = soonOpen.has(b.key) && all.length > 0;
+      const head = document.createElement('div');
+      head.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px 4px;font-size:13px;font-weight:700;border-bottom:1px solid var(--line);' + (all.length ? 'cursor:pointer;' : '');
+      const hcb = document.createElement('input');
+      hcb.type = 'checkbox'; hcb.style.cssText = 'margin:0;width:auto;';
+      hcb.disabled = !mailable.length;
+      hcb.checked = mailable.length > 0 && mailable.every(c => soonPick.has(c.id));
+      hcb.indeterminate = !hcb.checked && mailable.some(c => soonPick.has(c.id));
+      hcb.addEventListener('click', e => e.stopPropagation());
+      hcb.addEventListener('change', ()=>{
+        if(hcb.checked) mailable.forEach(c => { if(!soonPick.has(c.id)) soonPick.set(c.id, defaultBodies(c)); });
+        else mailable.forEach(c => soonPick.delete(c.id));
+        draw();
+      });
+      head.appendChild(hcb);
+      head.insertAdjacentHTML('beforeend', '<span style="width:9px;height:9px;border-radius:50%;flex-shrink:0;background:' + b.tone + ';"></span><span></span>'
+        + '<span style="font-size:12px;font-weight:600;color:var(--muted);">' + (ticked ? ticked + ' of ' + all.length + ' ticked' : all.length) + '</span>'
+        + '<span style="margin-left:auto;color:var(--muted);' + (all.length ? '' : 'visibility:hidden;') + '">' + (isOpen ? '‹' : '›') + '</span>');
+      head.children[2].textContent = b.label;
+      if(all.length) head.addEventListener('click', ()=>{ if(soonOpen.has(b.key)) soonOpen.delete(b.key); else soonOpen.add(b.key); draw(); });
+      list.appendChild(head);
+      if(!isOpen) return;
+      all.forEach(c=>{
+        const ok = hasEmail(c);
+        const lbl = document.createElement('label');
+        lbl.className = 'press-row';
+        lbl.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 6px 8px 26px;border-bottom:1px solid var(--line);font-size:13px;border-radius:6px;' + (ok ? 'cursor:pointer;' : 'opacity:.55;');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.style.width = 'auto';
+        cb.disabled = !ok;
+        cb.checked = soonPick.has(c.id);
+        cb.addEventListener('change', ()=>{ if(cb.checked) soonPick.set(c.id, defaultBodies(c)); else soonPick.delete(c.id); draw(); });
+        lbl.appendChild(cb);
+        const txt = document.createElement('span');
+        txt.style.cssText = 'min-width:0;flex:1;';
+        nameWithAddress(txt, c);
+        if(!ok) txt.insertAdjacentHTML('beforeend', '<span style="display:block;font-size:11.5px;color:var(--rust);">No email on file</span>');
+        lbl.appendChild(txt);
+        const due = document.createElement('span');
+        due.style.cssText = 'margin-left:auto;text-align:right;font-size:11.5px;white-space:nowrap;flex-shrink:0;color:' + b.tone + ';';
+        if(b.key === 'never') due.textContent = 'No drain on record';
+        else {
+          const k = pdSoonestBody(c), d = pdDue(c, k);
+          due.innerHTML = '<b style="display:block;font-size:12px;"></b><span></span>';
+          due.children[0].textContent = 'Due ' + pdMonthYear(d).replace(/^(\w{3})\w*/, '$1');
+          due.children[1].textContent = pdSpan(d) + ' · ' + pdBodyWord(c, k).replace(/^./, x => x.toUpperCase());
+        }
+        lbl.appendChild(due);
+        list.appendChild(lbl);
+        // More than one body of water: a tick for each, under their name
+        const bodies = pdBodies(c);
+        if(ok && bodies.length > 1){
+          bodies.forEach(bd=>{
+            const bl = document.createElement('label');
+            bl.className = 'press-row';
+            bl.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 6px 6px 52px;border-bottom:1px solid var(--line);font-size:12.5px;border-radius:6px;cursor:pointer;';
+            const bcb = document.createElement('input');
+            bcb.type = 'checkbox'; bcb.style.width = 'auto';
+            bcb.checked = !!(soonPick.get(c.id) && soonPick.get(c.id).has(bd.key));
+            bcb.addEventListener('change', ()=>{
+              const set = soonPick.get(c.id) || new Set();
+              if(bcb.checked) set.add(bd.key); else set.delete(bd.key);
+              if(set.size) soonPick.set(c.id, set); else soonPick.delete(c.id);
+              draw();
+            });
+            bl.appendChild(bcb);
+            const bn = document.createElement('span');
+            bn.style.flex = '1';
+            bn.textContent = bd.label || pdBodyWord(c, bd.key);
+            bl.appendChild(bn);
+            const bdue = document.createElement('span');
+            bdue.style.cssText = 'font-size:11.5px;white-space:nowrap;color:' + bodyTone(c, bd.key) + ';';
+            const d = pdDue(c, bd.key);
+            bdue.textContent = d ? 'Due ' + pdMonthYear(d).replace(/^(\w{3})\w*/, '$1') + ' · ' + pdSpan(d) : 'No drain on record';
+            bl.appendChild(bdue);
+            list.appendChild(bl);
+          });
+        }
+      });
+    });
+    body.appendChild(list);
+    body.insertAdjacentHTML('beforeend', '<p style="font-size:11.5px;color:var(--muted);margin:8px 0 0;">The box on a heading ticks or unticks everyone in it; clicking the rest of the heading opens its customers. A customer with more than one body of water has a tick for each — the email only mentions the ones ticked.</p>');
+  }
+
+  function drawSched(body){
+    const cal = pdCal().filter(e => custOf(e.customerId));
+    const [yy, mm] = calMonth.split('-').map(Number);
+    const inMonth = cal.filter(e => e.date.slice(0, 7) === calMonth);
+    const mailOk = e => hasEmail(custOf(e.customerId));
+    const top = document.createElement('div');
+    top.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;';
+    const nb = t => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-ghost'; b.style.cssText = 'width:30px;flex:0 0 auto;padding:4px 0;'; b.textContent = t; return b; };
+    const prev = nb('‹'), next = nb('›');
+    const lab = document.createElement('b');
+    lab.style.cssText = 'min-width:130px;text-align:center;font-size:14px;';
+    lab.textContent = new Date(yy, mm - 1, 1).toLocaleDateString(undefined, {month: 'long', year: 'numeric'});
+    prev.addEventListener('click', ()=>{ const d = new Date(yy, mm - 2, 1); calMonth = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); calDay = ''; draw(); });
+    next.addEventListener('click', ()=>{ const d = new Date(yy, mm, 1); calMonth = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); calDay = ''; draw(); });
+    top.appendChild(prev); top.appendChild(lab); top.appendChild(next);
+    // Whole month
+    const ml = document.createElement('label');
+    ml.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;margin:0 0 0 6px;cursor:pointer;';
+    const mcb = document.createElement('input');
+    mcb.type = 'checkbox'; mcb.style.cssText = 'margin:0;width:auto;';
+    const mOk = inMonth.filter(mailOk);
+    mcb.disabled = !mOk.length;
+    mcb.checked = mOk.length > 0 && mOk.every(e => schedPick.has(e.id));
+    mcb.indeterminate = !mcb.checked && mOk.some(e => schedPick.has(e.id));
+    mcb.addEventListener('change', ()=>{ mOk.forEach(e => { if(mcb.checked) schedPick.add(e.id); else schedPick.delete(e.id); }); draw(); });
+    ml.appendChild(mcb);
+    ml.appendChild(document.createTextNode('Whole month (' + inMonth.length + (inMonth.length === 1 ? ' drain)' : ' drains)')));
+    top.appendChild(ml);
+    body.appendChild(top);
+
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;';
+    ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => grid.insertAdjacentHTML('beforeend', '<div style="font-size:10.5px;font-weight:700;color:var(--muted);text-align:center;padding:2px 0;">' + d + '</div>'));
+    const first = new Date(yy, mm - 1, 1).getDay(), daysIn = new Date(yy, mm, 0).getDate();
+    for(let i = 0; i < first; i++) grid.appendChild(document.createElement('div'));
+    for(let d = 1; d <= daysIn; d++){
+      const iso = calMonth + '-' + String(d).padStart(2, '0');
+      const ents = inMonth.filter(e => e.date === iso);
+      const ok = ents.filter(mailOk);
+      const all = ok.length > 0 && ok.every(e => schedPick.has(e.id));
+      const some = !all && ok.some(e => schedPick.has(e.id));
+      const cell = document.createElement('div');
+      cell.style.cssText = 'min-height:58px;border:1px solid ' + (all ? '#9FCFC9' : some ? '#BFDCD8' : 'var(--line)') + ';border-radius:8px;padding:4px 5px;font-size:11px;position:relative;'
+        + 'background:' + (all ? '#DCEFEC' : some ? '#F1F8F7' : '#fff') + ';' + (ents.length ? 'cursor:pointer;' : 'color:var(--muted);')
+        + (calDay === iso ? 'outline:2px solid var(--teal-deep);' : '');
+      cell.innerHTML = '<b style="font-size:11.5px;">' + d + '</b>';
+      if(ents.length){
+        const cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.style.cssText = 'position:absolute;top:4px;right:4px;margin:0;width:auto;';
+        cb.disabled = !ok.length;
+        cb.checked = all; cb.indeterminate = some;
+        cb.title = 'Tick everyone this day';
+        cb.addEventListener('click', e => e.stopPropagation());
+        cb.addEventListener('change', ()=>{ ok.forEach(e => { if(cb.checked) schedPick.add(e.id); else schedPick.delete(e.id); }); draw(); });
+        cell.appendChild(cb);
+        cell.insertAdjacentHTML('beforeend', '<span style="display:block;margin-top:4px;font-size:10.5px;font-weight:700;color:#1F5E86;background:#E4F0F8;border-radius:5px;padding:1px 4px;">'
+          + ents.length + (ents.length === 1 ? ' drain' : ' drains') + '</span>');
+        const n = ents.filter(e => schedPick.has(e.id)).length;
+        if(some) cell.insertAdjacentHTML('beforeend', '<span style="font-size:10px;color:var(--muted);">' + n + ' ticked</span>');
+        cell.addEventListener('click', ()=>{ calDay = calDay === iso ? '' : iso; draw(); });
+      }
+      grid.appendChild(cell);
+    }
+    body.appendChild(grid);
+
+    if(calDay && calDay.slice(0, 7) === calMonth){
+      const ents = inMonth.filter(e => e.date === calDay)
+        .sort((a, b) => byName(custOf(a.customerId), custOf(b.customerId)));
+      const panel = document.createElement('div');
+      panel.style.cssText = 'border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:10px;';
+      const n = ents.filter(e => schedPick.has(e.id)).length;
+      panel.innerHTML = '<div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;margin-bottom:4px;"><span></span><span style="font-size:12px;font-weight:600;color:var(--muted);"></span></div>';
+      panel.firstChild.children[0].textContent = pdDate(calDay, true);
+      panel.firstChild.children[1].textContent = n + ' of ' + ents.length + ' ticked';
+      ents.forEach(e=>{
+        const c = custOf(e.customerId), ok = hasEmail(c);
+        const lbl = document.createElement('label');
+        lbl.className = 'press-row';
+        lbl.style.cssText = 'display:flex;align-items:center;gap:10px;padding:7px 4px;border-top:1px solid var(--line);font-size:13px;border-radius:6px;' + (ok ? 'cursor:pointer;' : 'opacity:.55;');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.style.width = 'auto';
+        cb.disabled = !ok;
+        cb.checked = schedPick.has(e.id);
+        cb.addEventListener('change', ()=>{ if(cb.checked) schedPick.add(e.id); else schedPick.delete(e.id); draw(); });
+        lbl.appendChild(cb);
+        const txt = document.createElement('span');
+        txt.style.cssText = 'min-width:0;flex:1;';
+        nameWithAddress(txt, c);
+        if(!ok) txt.insertAdjacentHTML('beforeend', '<span style="display:block;font-size:11.5px;color:var(--rust);">No email on file</span>');
+        lbl.appendChild(txt);
+        const bk = document.createElement('span');
+        bk.style.cssText = 'font-size:11.5px;color:var(--muted);white-space:nowrap;';
+        bk.textContent = pdBodyWord(c, e.bodyKind || 'pool').replace(/^./, x => x.toUpperCase());
+        lbl.appendChild(bk);
+        panel.appendChild(lbl);
+      });
+      body.appendChild(panel);
+    }
+    body.insertAdjacentHTML('beforeend', '<p style="font-size:11.5px;color:var(--muted);margin:8px 0 0;">The box on a day ticks everyone that day; clicking the day shows its customers below to tick one by one. Whole month ticks every drain in the month on screen.</p>');
+  }
+
+  function draw(){
+    const keepScroll = scroller ? scroller.scrollTop : 0;
+    box.innerHTML = '';
+    box.insertAdjacentHTML('beforeend', '<h3 style="font-size:16px;margin:0 0 8px;">Email about pool drains</h3>');
+    const tabs = document.createElement('div');
+    tabs.style.cssText = 'display:flex;gap:6px;margin-bottom:10px;';
+    [['soon', 'Drain coming up'], ['sched', 'Drain scheduled']].forEach(([k, t])=>{
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn btn-ghost';
+      b.style.cssText = 'width:auto;flex:0 0 auto;padding:6px 12px;font-size:12.5px;font-weight:700;'
+        + (tab === k ? 'background:var(--teal-pale);color:var(--teal-deep);border-color:#BFDCD8;' : 'color:var(--muted);');
+      b.textContent = t;
+      b.addEventListener('click', ()=>{ tab = k; draw(); });
+      tabs.appendChild(b);
+    });
+    box.appendChild(tabs);
+    box.insertAdjacentHTML('beforeend', '<p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;">'
+      + (tab === 'soon' ? 'Each customer gets one email with their own due date and body of water.' : 'Each customer is told the day they’re on in the drain calendar.') + '</p>');
+    box.appendChild(summary());
+    scroller = document.createElement('div');
+    scroller.style.cssText = 'flex:1;overflow-y:auto;min-height:0;';
+    if(tab === 'soon') drawSoon(scroller); else drawSched(scroller);
+    box.appendChild(scroller);
+    const row = document.createElement('div');
+    row.className = 'btn-row';
+    row.style.marginTop = '14px';
+    const mk = (txt, cls) => { const b = document.createElement('button'); b.className = 'btn ' + cls; b.style.width = 'auto'; b.textContent = txt; row.appendChild(b); return b; };
+    const go = mk('Send emails', 'btn-primary'), edit = mk('Edit email', 'btn-ghost'), cancel = mk('Cancel', 'btn-ghost');
+    edit.addEventListener('click', ()=> openDrainEmailEditor(tab));
+    cancel.addEventListener('click', close);
+    go.addEventListener('click', ()=> send(go));
+    box.appendChild(row);
+    scroller.scrollTop = keepScroll;
+  }
+  let scroller = null;
+
+  async function send(go){
+    const t = loadDrainEmail(tab);
+    let jobs;
+    if(tab === 'soon'){
+      jobs = soonPeople().map(p=>{
+        const words = p.bodies.map(k => pdBodyWord(p.c, k));
+        const dues = p.bodies.map(k => { const d = pdDue(p.c, k); return (!d || d < pdToday()) ? 'now' : pdMonthYear(d); });
+        const same = dues.every(x => x === dues[0]);
+        return {c: p.c, vals: {body: joinDates(words), due: same ? dues[0] : joinDates(dues.map((d, i) => d + ' (' + words[i] + ')'))}};
+      });
+    } else {
+      jobs = schedPeople().map(p=>{
+        const words = [], dates = [];
+        p.lines.forEach(e=>{ const w = pdBodyWord(p.c, e.bodyKind || 'pool'); if(words.indexOf(w) === -1) words.push(w); });
+        const days = Array.from(new Set(p.lines.map(e => e.date)));
+        let date;
+        if(days.length === 1 || words.length === 1) date = joinDates(days.map(pdLongDate));
+        else date = joinDates(p.lines.map(e => pdLongDate(e.date) + ' (' + pdBodyWord(p.c, e.bodyKind || 'pool') + ')'));
+        return {c: p.c, vals: {body: joinDates(words), date}};
+      });
+    }
+    if(!jobs.length){ showToast('Tick at least one customer first'); return; }
+    if(!accountEmail()){ showToast('Add your business email on the Account page first'); return; }
+    go.disabled = true;
+    go.textContent = 'Sending…';
+    let sent = 0, failed = 0;
+    for(const j of jobs){
+      const ok = await sendCustomerEmail(j.c.email.trim(), fillDrainEmail(t.subject, j.vals), fillDrainEmail(t.body, j.vals), j.c, 'Pool drain email');
+      if(ok) sent++; else failed++;
+    }
+    close();
+    showToast(sent + ' email' + (sent === 1 ? '' : 's') + ' sent' + (failed ? '  ·  ' + failed + ' failed' : ''));
+  }
+
+  draw();
+}
+document.getElementById('btnDrainEmail').addEventListener('click', openDrainEmail);
+
+
 // ---- Import drains from a spreadsheet (Oct 10) ----
 // Any row naming a pool drain, spa drain, fountain drain or extra body drain
 // is logged on that customer, for that body of water, on the row's date. A
@@ -9822,6 +10377,18 @@ function filterGroupDateText(g){
 const FILTER_EMAIL_PLACEHOLDER = '{dates}';
 
 const DEFAULT_FILTER_EMAIL = {
+  subject: 'A friendly reminder: your filter clean is coming up',
+  body: 'Hi there,\n\n'
+    + 'Please note that your filter clean is scheduled for {dates}.\n\n'
+    + 'A clean filter keeps your water clear and helps your pump run easily, '
+    + 'so it’s well worth having done on time.\n\n'
+    + 'Nothing is needed from you, but if you could please make sure the equipment pad is '
+    + 'easy to reach and any gates are unlocked, it would help the visit go smoothly.\n\n'
+    + 'Thank you,\n{company}'
+};
+// The wording it shipped with before (Oct 11): a saved copy still exactly
+// that takes the friendlier default
+const OLD_FILTER_EMAIL = {
   subject: 'Your filter clean is coming up',
   body: 'Hi there,\n\n'
     + 'Your filter clean is scheduled for {dates}.\n\n'
@@ -9834,7 +10401,7 @@ const DEFAULT_FILTER_EMAIL = {
 
 function loadFilterEmail(){
   const saved = lsGet('filterCleanEmail');
-  if(saved && saved.body) return saved;
+  if(saved && saved.body && !(saved.body === OLD_FILTER_EMAIL.body && saved.subject === OLD_FILTER_EMAIL.subject)) return saved;
   return Object.assign({}, DEFAULT_FILTER_EMAIL);
 }
 
