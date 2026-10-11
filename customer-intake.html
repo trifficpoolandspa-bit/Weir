@@ -9613,9 +9613,13 @@ function openDrainCalendar(startDay){
         row.appendChild(who);
         const x = document.createElement('button');
         x.type = 'button';
-        x.textContent = '×';
+        // A small bin, not an × (Tyrus, Oct 11)
+        x.innerHTML = WEIR_BIN_SVG;
+        x.dataset.xDrawn = 'bin';
+        x.dataset.binSize = 's';
         x.title = 'Take off this day';
-        x.style.cssText = 'border:none;background:none;color:var(--rust);cursor:pointer;font-size:16px;line-height:1;padding:0 2px;';
+        x.setAttribute('aria-label', x.title);
+        x.style.cssText = 'cursor:pointer;';
         x.addEventListener('click', ()=>{
           pdCalUnpush(e);
           pdCalSave(pdCal().filter(y => y.id !== e.id));
@@ -9711,6 +9715,8 @@ function pdLongDate(iso){
 }
 
 function openDrainEmailEditor(kind){
+  // Opened from the drain email window (200): sits just above it, as the
+  // filter clean editor does, and below any confirmation (300)
   const t = loadDrainEmail(kind);
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
@@ -9806,6 +9812,7 @@ function openDrainEmail(){
   box.className = 'confirm-box';
   // The same size as the Schedule drains calendar (Oct 11)
   box.style.cssText = 'max-width:980px;width:100%;max-height:92vh;display:flex;flex-direction:column;';
+  overlay.style.zIndex = '200';   // its Edit email window opens above it (Oct 11)
   overlay.appendChild(box);
   document.body.appendChild(overlay);
   const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
