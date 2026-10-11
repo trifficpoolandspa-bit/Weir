@@ -11209,7 +11209,8 @@ function openJobPage(customer, job){
         if(videoMore.length) fc.doneVideoMore = videoMore;
         if(replacements.length) fc.doneReplacements = replacements.slice();
         lsSet('scheduledFilterCleans', cleans);
-        if(customer) queueJobEmail(customer, Object.assign({kind: 'filter clean'}, fc));
+        // Unless the office unticked Email customer on its group (Oct 11)
+        if(customer && fc.emailCustomer !== false) queueJobEmail(customer, Object.assign({kind: 'filter clean'}, fc));
       }
     } else if(job.kind === 'pool drain'){
       // Done, with the photos and notes, back to the office (Oct 10). The
