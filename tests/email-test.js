@@ -552,14 +552,16 @@ function boot(){
             row(d).filter(b => b.classList.contains('btn-primary')).map(b => b.id).join() === 'wcBroadcastOpen');
 
       // What the confirmation says for each
-      w.eval("window.__asks = []; confirmDialog = (msg, label)=>{ window.__asks.push({msg: msg, label: label}); return Promise.resolve(false); };");
+      // Since Oct 10 the one window is broadcastFromCheck, and only with a
+      // business email set: read its heading and wording, then cancel it
+      w.eval("lsSet('accountEmail', 'office@example.com'); window.__asks = []; (function(){ const real = broadcastFromCheck; broadcastFromCheck = (via, from, n)=>{ const p = real(via, from, n); const ov = Array.from(document.querySelectorAll('.confirm-overlay')).pop(); window.__asks.push({label: ov.querySelector('h3').textContent, msg: ov.querySelector('[data-what]').textContent}); ov.querySelector('[data-cancel]').click(); return p; }; })();");
       d.getElementById('wcRecipientAll').click();
       d.getElementById('wcBroadcastGmail').click(); await new Promise(r => setTimeout(r, 100));
       d.getElementById('wcBroadcastOutlook').click(); await new Promise(r => setTimeout(r, 100));
       d.getElementById('wcBroadcastOpen').click(); await new Promise(r => setTimeout(r, 100));
       const asks = JSON.parse(w.eval("JSON.stringify(window.__asks)"));
-      check('  the confirmation button says Open Gmail, Open Outlook or Open email app',
-            asks.map(a => a.label).join('|') === 'Open Gmail|Open Outlook|Open email app', asks.map(a => a.label).join('|'));
+      check('  the window says Open Gmail, Open Outlook or Open your email app',
+            asks.map(a => a.label).join('|') === 'Open Gmail|Open Outlook|Open your email app', asks.map(a => a.label).join('|'));
       check('  Gmail\u2019s confirmation says how to send if Send is off screen',
             /zoom out with Ctrl \+ minus/.test(asks[0].msg) && /Ctrl \+ Enter/.test(asks[0].msg) && /Cmd \+ Enter/.test(asks[0].msg));
       check('  and only Gmail\u2019s', !/Ctrl \+ Enter/.test(asks[1].msg) && !/Ctrl \+ Enter/.test(asks[2].msg));
