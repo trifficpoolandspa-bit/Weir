@@ -1015,7 +1015,11 @@ select#customerSelect{font-weight:600;}
     </div>
     <div id="custPaneList">
     <div class="card" id="newCustomerCard" style="display:none;">
-      <h2 id="newCustomerHeading">New customer</h2>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <h2 id="newCustomerHeading" style="margin-right:auto;">New customer</h2>
+        <!-- Admins only (Oct 12): send this customer's address or contact on -->
+        <button type="button" class="btn btn-ghost" id="ncShareBtn" style="display:none;width:auto;padding:7px 14px;font-size:13px;">Share</button>
+      </div>
       <div class="field"><label>Name</label><input id="ncName" placeholder="Jordan Ellis"></div>
       <div class="field" style="position:relative;">
         <label>Address</label>
@@ -2855,10 +2859,8 @@ var tabScrollAt = {};
 var tabHiddenAt = 0, viewEnteredAt = Date.now();
 document.addEventListener('visibilitychange', ()=>{
   if(document.hidden){ tabHiddenAt = Date.now(); return; }
-  // Back on the Customer tab itself after 30 seconds away: Customers again
-  if(currentViewName === 'customers' && tabHiddenAt > viewEnteredAt && Date.now() - tabHiddenAt >= TAB_KEEP_MS){
-    try{ if(typeof showCustomerPane === 'function') showCustomerPane('list'); }catch(e){}
-  }
+  // Oct 12: coming back to the app leaves every page exactly as it was (the
+  // Customer tab used to go back to its list after 30 seconds away)
 });
 function switchView(view, opts){
   opts = opts || {};
@@ -7375,6 +7377,7 @@ function resetCustomerForm(){
   ncFountains = []; renderNcFountainFields();
   ncDogs = []; renderNcDogFields();
   document.getElementById('newCustomerHeading').textContent = 'New customer';
+  { const sb = document.getElementById('ncShareBtn'); if(sb) sb.style.display = 'none'; }
   document.getElementById('btnSaveCustomer').textContent = 'Save customer';
 }
 
@@ -11700,6 +11703,15 @@ function adminVersion_renderHomeList(){
         openDirections(c);
       });
       btnRow.appendChild(directionsBtn);
+      // Share their address or contact (Oct 12): admins only
+      if(isAdminUser()){
+        const shareBtn = document.createElement('button');
+        shareBtn.className = 'btn btn-ghost';
+        shareBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+        shareBtn.textContent = 'Share';
+        shareBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openShareCustomer(c); });
+        btnRow.appendChild(shareBtn);
+      }
 
       const skipBtn2 = document.createElement('button');
       skipBtn2.className = 'btn btn-ghost';
@@ -12946,6 +12958,127 @@ async function renderCustomerList(){
 
 let editingCustomerId = null;
 
+// ---------- Share a customer's address or contact (Oct 12, admins only) ----------
+// Tick what to send, then the phone's own share list (Messages, Gmail,
+// WhatsApp...) or Copy. Gate codes go only when ticked.
+function shareCustomerAddress(c){
+  const line2 = [c.city, [c.state, c.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  return [c.address, line2].filter(Boolean).join(', ');
+}
+function shareCustomerText(c, pick){
+  const lines = [String(c.name || '')];
+  const addr = shareCustomerAddress(c);
+  if(pick.address && addr){
+    lines.push(addr);
+    lines.push('https://maps.google.com/?q=' + encodeURIComponent(addr));
+  }
+  if(pick.phone && c.phone) lines.push('Phone: ' + c.phone);
+  if(pick.email && c.email) lines.push('Email: ' + c.email);
+  if(pick.gates){
+    if(c.neighborhoodGateCode) lines.push('Neighborhood gate: ' + c.neighborhoodGateCode);
+    if(c.gateCode) lines.push('Yard gate: ' + c.gateCode);
+  }
+  return lines.join('\n');
+}
+function shareCustomerVcard(c, pick){
+  const esc = v => String(v || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/[,;]/g, m => '\\' + m);
+  const out = ['BEGIN:VCARD', 'VERSION:3.0', 'FN:' + esc(c.name)];
+  if(pick.phone && c.phone) out.push('TEL;TYPE=CELL:' + esc(c.phone));
+  if(pick.email && c.email) out.push('EMAIL:' + esc(c.email));
+  if(pick.address && c.address) out.push('ADR;TYPE=HOME:;;' + esc(c.address) + ';' + esc(c.city) + ';' + esc(c.state) + ';' + esc(c.zip) + ';');
+  out.push('END:VCARD');
+  return out.join('\r\n');
+}
+function openShareCustomer(c){
+  if(!c || !isAdminUser()) return;
+  const name = String(c.name || '');
+  const addr = shareCustomerAddress(c);
+  const gates = [c.neighborhoodGateCode ? 'Neighborhood gate ' + c.neighborhoodGateCode : '', c.gateCode ? 'Yard gate ' + c.gateCode : ''].filter(Boolean).join(' \u00b7 ');
+  const items = [
+    ['address', 'Address', addr ? addr + ' \u00b7 with a map link' : '', !!addr],
+    ['phone', 'Phone', c.phone || '', !!c.phone],
+    ['email', 'Email', c.email || '', false],
+    ['gates', 'Gate codes', gates ? gates + ' \u00b7 off unless ticked' : '', false],
+    ['card', 'Save as a contact', 'Adds a contact card they can tap to save', false]
+  ].filter(it => it[0] === 'card' || it[2]);
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.style.alignItems = 'flex-end';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:520px;width:100%;border-radius:18px 18px 0 0;';
+  box.innerHTML = '<h3 style="font-size:17px;margin:0 0 4px;"></h3><p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;">Tick what to send, then pick how to send it.</p>';
+  box.querySelector('h3').textContent = 'Share ' + name;
+  const boxes = {};
+  items.forEach(([key, label, detail, on])=>{
+    const row = document.createElement('label');
+    row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:14.5px;font-weight:600;cursor:pointer;';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = on; cb.style.cssText = 'width:auto;margin:3px 0 0;';
+    boxes[key] = cb;
+    row.appendChild(cb);
+    const txt = document.createElement('span');
+    txt.textContent = label;
+    const sm = document.createElement('small');
+    sm.style.cssText = 'display:block;font-weight:400;font-size:12.5px;color:var(--muted);';
+    sm.textContent = detail;
+    txt.appendChild(sm);
+    row.appendChild(txt);
+    box.appendChild(row);
+  });
+  if(!addr && !c.phone && !c.email){
+    box.insertAdjacentHTML('beforeend', '<p style="font-size:13px;color:var(--rust);margin:10px 0 0;">There\u2019s no address, phone or email on file to share yet.</p>');
+  }
+  const btns = document.createElement('div');
+  btns.className = 'btn-row';
+  btns.style.cssText = 'margin-top:14px;gap:8px;';
+  const mk = (t, cls) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn ' + cls; b.textContent = t; btns.appendChild(b); return b; };
+  const share = mk('Share\u2026', 'btn-primary'), copy = mk('Copy', 'btn-ghost'), cancel = mk('Cancel', 'btn-ghost');
+  share.style.flex = '1'; copy.style.width = 'auto'; cancel.style.width = 'auto';
+  box.appendChild(btns);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const close = ()=> overlay.remove();
+  const picked = ()=>{
+    const p = {}; Object.keys(boxes).forEach(k => p[k] = boxes[k].checked);
+    return p;
+  };
+  const nothing = p => !(p.address || p.phone || p.email || p.gates || p.card);
+  cancel.addEventListener('click', close);
+  copy.addEventListener('click', async ()=>{
+    const p = picked();
+    if(nothing(p)){ showToast('Tick something to send first'); return; }
+    const text = shareCustomerText(c, p);
+    try{ await navigator.clipboard.writeText(text); showToast('Copied'); close(); }
+    catch(e){ showToast('Couldn\u2019t copy on this phone'); }
+  });
+  share.addEventListener('click', async ()=>{
+    const p = picked();
+    if(nothing(p)){ showToast('Tick something to send first'); return; }
+    const text = shareCustomerText(c, p);
+    const data = {title: name, text: text};
+    if(p.card){
+      try{
+        const file = new File([shareCustomerVcard(c, p)], (String(c.name || 'contact').replace(/[^\w ]+/g, '').trim() || 'contact') + '.vcf', {type: 'text/vcard'});
+        if(navigator.canShare && navigator.canShare({files: [file]})) data.files = [file];
+      }catch(e){}
+    }
+    if(navigator.share){
+      try{ await navigator.share(data); close(); }
+      catch(e){ if(e && e.name === 'AbortError') return; showToast('Couldn\u2019t open sharing \u2014 try Copy'); }
+      return;
+    }
+    // No share list (a computer): copy instead
+    try{ await navigator.clipboard.writeText(text); showToast('Sharing isn\u2019t available here \u2014 copied instead'); close(); }
+    catch(e){ showToast('Sharing isn\u2019t available here'); }
+  });
+}
+document.getElementById('ncShareBtn').addEventListener('click', ()=>{
+  const c = customers.find(x => x && x.id === editingCustomerId);
+  if(c) openShareCustomer(c);
+});
+
+
 function openCustomerEditor(customer){
   editingCustomerId = customer.id;
   document.getElementById('ncName').value = customer.name || '';
@@ -12976,6 +13109,7 @@ function openCustomerEditor(customer){
   ncDogs = (customer.dogs || []).map(d => ({...d}));
   renderNcDogFields();
   document.getElementById('newCustomerHeading').textContent = 'Edit customer';
+  { const sb = document.getElementById('ncShareBtn'); if(sb) sb.style.display = isAdminUser() ? '' : 'none'; }
   document.getElementById('btnSaveCustomer').textContent = 'Save changes';
   switchView('customers');
   showCustomerForm();
@@ -20762,8 +20896,8 @@ function guardAdminSession(){
     hideLogin();
     applyRoleUI();
     if(isAdminUser()) adminStartOnOwnRoute();
-    // Whoever signs in lands on Today, on today's list
-    try{ openOnToday(); }catch(e){}
+    // Already signed in: the page it was on before the phone closed it (Oct 12)
+    try{ openWhereLeft(); }catch(e){ try{ openOnToday(); }catch(e2){} }
     watchAdminAccount();
     startFieldSync();
   } else {
@@ -21232,14 +21366,34 @@ function busyForOpenOnToday(){
   let who = null; try{ who = currentUser; }catch(e){}
   return !who;
 }
-document.addEventListener('visibilitychange', ()=>{
-  if(document.hidden || busyForOpenOnToday()) return;
-  // A report left open for another tab: back into the report, not the list
-  if(reportLeftOpen()){
-    try{ openVisit(visitLeftOpenFor); return; }catch(e){}
+// Oct 12: coming back to the app (from another app or the home screen) stays
+// on the page it was on; it used to jump to Today. Where it was is also kept,
+// so if the phone closed the app in the background it opens there again.
+function rememberLastPage(){
+  try{
+    if(busyForOpenOnToday() && currentViewName !== 'visit') return;
+    localStorage.setItem('weir:lastPage', JSON.stringify({view: currentViewName,
+      day: selectedHomeDay, weekOffset: weekOffset, date: todayDateStr()}));
+  }catch(e){}
+}
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden) rememberLastPage(); });
+window.addEventListener('pagehide', rememberLastPage);
+// On opening again the same day: the page it was on. A report can't be
+// brought back once the phone has closed the app, so that opens on Today.
+function openWhereLeft(){
+  let last = null;
+  try{ last = JSON.parse(localStorage.getItem('weir:lastPage') || 'null'); }catch(e){}
+  const pages = ['home', 'serviced', 'technicians', 'customers', 'report', 'options'];
+  if(!last || last.date !== todayDateStr() || pages.indexOf(last.view) === -1){ openOnToday(); return; }
+  if(last.view === 'technicians' && !isAdminUser()){ openOnToday(); return; }
+  if(last.view === 'home'){
+    if(last.day) selectedHomeDay = last.day;
+    weekOffset = Number(last.weekOffset) || 0;
+    if(currentViewName !== 'home') switchView('home'); else renderHomeList();
+    return;
   }
-  openOnToday();
-});
+  switchView(last.view);
+}
 // A report was open when another tab was pressed, and hasn't been finished,
 // cancelled, or left for the route since
 function reportLeftOpen(){

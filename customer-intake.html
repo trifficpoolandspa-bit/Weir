@@ -589,6 +589,7 @@ input::placeholder{color:#A9BCB9;}
       <!-- Technicians' sections in the sidebar (Oct 2); they press the page's own tabs -->
       <div class="nav-subs" id="techNavSubs">
         <button type="button" class="nav-sub active" data-techmain="list"><span>Technicians</span></button>
+        <button type="button" class="nav-sub" data-techmain="route"><span>Today's Route</span></button>
         <button type="button" class="nav-sub" data-techmain="photos"><span>Photo requirements</span></button>
       </div>
       <button class="tab" data-view="customerconfig">Customer Customization</button>
@@ -894,7 +895,65 @@ input::placeholder{color:#A9BCB9;}
     <div class="card" style="padding:12px;">
       <div class="seg-control" id="techMainTabs" style="margin-bottom:0;">
         <button class="history-type-btn active" data-techmain="list" type="button">Technicians</button>
+        <button class="history-type-btn" data-techmain="route" type="button">Today's Route</button>
         <button class="history-type-btn" data-techmain="photos" type="button">Photo requirements</button>
+      </div>
+    </div>
+
+    <!-- Today's Route (Oct 12: its own tab on the Technicians page, with a
+         technician menu; it was a tab on each technician's page) -->
+    <div class="card" id="techRouteWebCard" style="display:none;">
+      <!-- A desk layout: the day and its count on the left, the date controls on the right, then a table -->
+      <!-- The count on the left, the date in the exact middle, the date controls on the right -->
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:12px;margin-bottom:26px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0;">
+          <!-- Whose route to show; remembers the last one picked on this computer -->
+          <select id="twTechSel" aria-label="Technician" title="Whose route to show" style="width:auto;min-width:170px;font-weight:600;padding:6px 8px;font-size:13px;"></select>
+          <span id="twCounts" style="font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;"></span>
+        </div>
+        <!-- The same font as the site's other headings (Space Grotesk), 18px -->
+        <h2 id="twDayLabel" style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:18px;text-align:center;white-space:nowrap;"></h2>
+        <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;min-width:0;">
+          <input type="date" id="twDateInput" title="Jump to a date" style="width:140px;flex:0 1 auto;min-width:0;padding:6px 8px;font-size:13px;">
+          <!-- Back to today in one press -->
+          <button class="btn btn-primary" id="twToday" type="button" title="Go to today" style="width:auto;flex:0 0 auto;padding:6px 12px;font-size:13px;">Today</button>
+          <button class="btn btn-ghost" id="twPrev" type="button" title="Previous day" style="width:auto;padding:6px 12px;font-size:16px;line-height:1;">&lsaquo;</button>
+          <button class="btn btn-ghost" id="twNext" type="button" title="Next day" style="width:auto;padding:6px 12px;font-size:16px;line-height:1;">&rsaquo;</button>
+        </div>
+      </div>
+      <div id="twOrderBar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;background:var(--gold-pale);border:1px solid #E0B877;border-radius:10px;padding:10px 12px;margin:0 0 12px;">
+        <span id="twOrderText" style="flex:1 1 auto;font-size:13px;color:var(--ink);"></span>
+        <button class="btn btn-ghost" id="twOrderToday" type="button" style="width:auto;padding:6px 12px;font-size:12.5px;">Just today</button>
+        <button class="btn btn-primary" id="twOrderWeek" type="button" style="width:auto;padding:6px 12px;font-size:12.5px;">Every week</button>
+        <button class="btn btn-ghost" id="twOrderUndo" type="button" style="width:auto;padding:6px 12px;font-size:12.5px;color:var(--rust);border-color:#EFC9BC;">Remove changes</button>
+      </div>
+      <div class="tw-row tw-head"><span></span><span>#</span><span>Customer</span><span>Address</span><span>Status</span><span></span></div>
+      <div id="twList"></div>
+    </div>
+
+    <!-- Reservice a stop: back on the chosen technician's Today, just for today -->
+    <div id="twReserviceOverlay" style="display:none;position:fixed;inset:0;z-index:260;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
+      <div style="background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);">
+        <h2 id="twReserviceHeading" style="font-size:18px;margin:0 0 4px;">Reservice</h2>
+        <p id="twReserviceIntro" style="font-size:12.5px;color:var(--muted);margin:0 0 14px;"></p>
+        <div class="field"><label>Technician</label><select id="twReserviceTech"></select></div>
+        <button class="btn btn-primary" id="twReserviceGo" type="button" style="width:100%;">Reservice</button>
+        <button class="btn btn-ghost" id="twReserviceCancel" type="button" style="width:100%;margin-top:8px;">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Move one customer from Today's Route: another date, another technician, or both -->
+    <!-- Below the confirm question (300), which it asks: above it, the question hid behind it -->
+    <div id="twMoveOverlay" style="display:none;position:fixed;inset:0;z-index:260;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
+      <div style="background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);">
+        <h2 id="twMoveHeading" style="font-size:18px;margin:0 0 4px;">Move</h2>
+        <p id="twMoveIntro" style="font-size:12.5px;color:var(--muted);margin:0 0 14px;"></p>
+        <div class="field"><label>New date</label><input type="date" id="twMoveDate"></div>
+        <div class="field"><label>Technician</label><select id="twMoveTech"></select></div>
+        <p id="twMoveError" style="display:none;font-size:12.5px;color:var(--rust);margin:0 0 10px;"></p>
+        <button class="btn btn-primary" id="twMoveOnce" type="button" style="width:100%;">Just this once</button>
+        <button class="btn btn-ghost" id="twMoveAlways" type="button" style="width:100%;margin-top:8px;">Change their regular day</button>
+        <button class="btn btn-ghost" id="twMoveCancel" type="button" style="width:100%;margin-top:8px;">Cancel</button>
       </div>
     </div>
 
@@ -980,7 +1039,6 @@ input::placeholder{color:#A9BCB9;}
       <h2 id="techDetailHeading" style="margin:0 0 14px;color:var(--teal-deep);font-size:26px;line-height:1.2;"></h2>
       <div class="seg-control" id="techTabControl">
         <button class="history-type-btn active" data-techtab="profile" type="button">Profile</button>
-        <button class="history-type-btn" data-techtab="route" type="button">Today's Route</button>
         <button class="history-type-btn" data-techtab="customers" type="button">Customers</button>
       </div>
     </div>
@@ -992,58 +1050,6 @@ input::placeholder{color:#A9BCB9;}
       </div>
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Tap any field to edit it.</p>
       <div id="techProfileMeta"></div>
-    </div>
-
-    <!-- Today's Route: the technician's route for a day, as their phone has it -->
-    <div class="card" id="techRouteWebCard" style="display:none;">
-      <!-- A desk layout: the day and its count on the left, the date controls on the right, then a table -->
-      <!-- The count on the left, the date in the exact middle, the date controls on the right -->
-      <div style="display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:12px;margin-bottom:26px;">
-        <span id="twCounts" style="font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;"></span>
-        <!-- The same font as the site's other headings (Space Grotesk), 18px -->
-        <h2 id="twDayLabel" style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:18px;text-align:center;white-space:nowrap;"></h2>
-        <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;min-width:0;">
-          <input type="date" id="twDateInput" title="Jump to a date" style="width:140px;flex:0 1 auto;min-width:0;padding:6px 8px;font-size:13px;">
-          <!-- Back to today in one press -->
-          <button class="btn btn-primary" id="twToday" type="button" title="Go to today" style="width:auto;flex:0 0 auto;padding:6px 12px;font-size:13px;">Today</button>
-          <button class="btn btn-ghost" id="twPrev" type="button" title="Previous day" style="width:auto;padding:6px 12px;font-size:16px;line-height:1;">&lsaquo;</button>
-          <button class="btn btn-ghost" id="twNext" type="button" title="Next day" style="width:auto;padding:6px 12px;font-size:16px;line-height:1;">&rsaquo;</button>
-        </div>
-      </div>
-      <div id="twOrderBar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;background:var(--gold-pale);border:1px solid #E0B877;border-radius:10px;padding:10px 12px;margin:0 0 12px;">
-        <span id="twOrderText" style="flex:1 1 auto;font-size:13px;color:var(--ink);"></span>
-        <button class="btn btn-ghost" id="twOrderToday" type="button" style="width:auto;padding:6px 12px;font-size:12.5px;">Just today</button>
-        <button class="btn btn-primary" id="twOrderWeek" type="button" style="width:auto;padding:6px 12px;font-size:12.5px;">Every week</button>
-        <button class="btn btn-ghost" id="twOrderUndo" type="button" style="width:auto;padding:6px 12px;font-size:12.5px;color:var(--rust);border-color:#EFC9BC;">Remove changes</button>
-      </div>
-      <div class="tw-row tw-head"><span></span><span>#</span><span>Customer</span><span>Address</span><span>Status</span><span></span></div>
-      <div id="twList"></div>
-    </div>
-
-    <!-- Reservice a stop: back on the chosen technician's Today, just for today -->
-    <div id="twReserviceOverlay" style="display:none;position:fixed;inset:0;z-index:260;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
-      <div style="background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);">
-        <h2 id="twReserviceHeading" style="font-size:18px;margin:0 0 4px;">Reservice</h2>
-        <p id="twReserviceIntro" style="font-size:12.5px;color:var(--muted);margin:0 0 14px;"></p>
-        <div class="field"><label>Technician</label><select id="twReserviceTech"></select></div>
-        <button class="btn btn-primary" id="twReserviceGo" type="button" style="width:100%;">Reservice</button>
-        <button class="btn btn-ghost" id="twReserviceCancel" type="button" style="width:100%;margin-top:8px;">Cancel</button>
-      </div>
-    </div>
-
-    <!-- Move one customer from Today's Route: another date, another technician, or both -->
-    <!-- Below the confirm question (300), which it asks: above it, the question hid behind it -->
-    <div id="twMoveOverlay" style="display:none;position:fixed;inset:0;z-index:260;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
-      <div style="background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);">
-        <h2 id="twMoveHeading" style="font-size:18px;margin:0 0 4px;">Move</h2>
-        <p id="twMoveIntro" style="font-size:12.5px;color:var(--muted);margin:0 0 14px;"></p>
-        <div class="field"><label>New date</label><input type="date" id="twMoveDate"></div>
-        <div class="field"><label>Technician</label><select id="twMoveTech"></select></div>
-        <p id="twMoveError" style="display:none;font-size:12.5px;color:var(--rust);margin:0 0 10px;"></p>
-        <button class="btn btn-primary" id="twMoveOnce" type="button" style="width:100%;">Just this once</button>
-        <button class="btn btn-ghost" id="twMoveAlways" type="button" style="width:100%;margin-top:8px;">Change their regular day</button>
-        <button class="btn btn-ghost" id="twMoveCancel" type="button" style="width:100%;margin-top:8px;">Cancel</button>
-      </div>
     </div>
 
     <div class="card" id="techCustomersCard" style="display:none;">
@@ -20576,11 +20582,18 @@ document.addEventListener('DOMContentLoaded', ()=>{
         .forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const photos = btn.dataset.techmain === 'photos';
+      const route = btn.dataset.techmain === 'route';
       const list = document.getElementById('techListPane');
       const card = document.getElementById('photoRequireCard');
-      if(list) list.style.display = photos ? 'none' : '';
+      const routeCard = document.getElementById('techRouteWebCard');
+      const signIn = document.getElementById('techSignInCard');
+      if(list) list.style.display = (photos || route) ? 'none' : '';
       if(card) card.style.display = photos ? 'block' : 'none';
+      if(routeCard) routeCard.style.display = route ? 'block' : 'none';
+      // Today's Route is about the day, not signing in (Oct 12)
+      if(signIn) signIn.style.display = route ? 'none' : '';
       if(photos) renderPhotoRequirements();
+      if(route){ twFillTechMenu(); renderTechRouteWeb(); }
     });
   });
 });
@@ -21640,8 +21653,6 @@ function applyTechTab(){
   const tab = active ? active.dataset.techtab : 'profile';
   document.getElementById('techProfileCard').style.display = tab === 'profile' ? 'block' : 'none';
   document.getElementById('techCustomersCard').style.display = tab === 'customers' ? 'block' : 'none';
-  document.getElementById('techRouteWebCard').style.display = tab === 'route' ? 'block' : 'none';
-  if(tab === 'route') renderTechRouteWeb();
   if(tab !== 'customers'){
     const assignCard = document.getElementById('techAssignCard');
     if(assignCard) assignCard.style.display = 'none';
@@ -22391,10 +22402,42 @@ function twJobRow(job, withCustomer){
   return row;
 }
 
+// Whose route Today's Route shows (Oct 12): picked from its own menu,
+// remembered on this computer, the first technician to start with
+let twTechId = null;
+function twFillTechMenu(){
+  const sel = document.getElementById('twTechSel');
+  if(!sel) return;
+  const list = technicians.filter(t => t && t.id);
+  if(!twTechId){ try{ twTechId = localStorage.getItem('weir:twTechId'); }catch(e){} }
+  if(!list.some(t => String(t.id) === String(twTechId))) twTechId = list.length ? String(list[0].id) : null;
+  sel.innerHTML = '';
+  if(!list.length){
+    const o = document.createElement('option'); o.value = ''; o.textContent = 'No technicians yet'; sel.appendChild(o);
+  }
+  list.forEach(t=>{
+    const o = document.createElement('option');
+    o.value = String(t.id);
+    o.textContent = t.name || 'Technician';
+    sel.appendChild(o);
+  });
+  sel.value = twTechId || '';
+}
+document.getElementById('twTechSel').addEventListener('change', e=>{
+  twTechId = e.target.value || null;
+  try{ localStorage.setItem('weir:twTechId', twTechId || ''); }catch(err){}
+  twEndOrder();
+  renderTechRouteWeb();
+});
 function renderTechRouteWeb(){
-  const techId = currentTechDetailId;
+  const techId = twTechId;
   const box = document.getElementById('twList');
-  if(!box || !techId) return;
+  if(!box) return;
+  if(!techId){
+    box.innerHTML = emptyState('Add a technician to see their route.');
+    document.getElementById('twCounts').textContent = '';
+    return;
+  }
   if(!twDateISO) twDateISO = twLocalISO(new Date());
   if(twPending && (twPending.techId !== techId || twPending.iso !== twDateISO)) twEndOrder();
   const d = new Date(twDateISO + 'T12:00:00');
@@ -22505,7 +22548,7 @@ function twOpenReservice(c){
     + ' stays as it is. Whose Today list should they go on, just for today?';
   const sel = document.getElementById('twReserviceTech');
   sel.innerHTML = '';
-  const routeTech = String(currentTechDetailId || c.technicianId || '');
+  const routeTech = String(twTechId || c.technicianId || '');
   technicians.forEach(t=>{
     if(!t || !t.id) return;
     const o = document.createElement('option');
