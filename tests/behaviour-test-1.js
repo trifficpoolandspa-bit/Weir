@@ -1954,26 +1954,38 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
       check('technicians are always alphabetical', w.eval("technicians.map(t => t.name).join()") === 'amy,Bob,Zed', w.eval("technicians.map(t => t.name).join()"));
       w.eval("switchView('technicians')");
       check('the technician list has no drag grip', !d.querySelector('#technicianList .tech-handle'));
+      // Oct 12: Today's Route is a tab on the Technicians page, with a
+      // technician menu; a technician's own page has Profile and Customers
       w.eval("openTechDetail(technicians.find(t => t.id === 't2'))");
       const tabs = Array.from(d.querySelectorAll('#techTabControl .history-type-btn')).map(b => b.dataset.techtab).join();
-      check('Today\u2019s Route sits between Profile and Customers', tabs === 'profile,route,customers', tabs);
-      d.querySelector('#techTabControl .history-type-btn[data-techtab="route"]').click();
+      check('a technician\u2019s page has two tabs: Profile and Customers', tabs === 'profile,customers', tabs);
+      w.eval("switchView('technicians')");
+      const mainTabs = Array.from(d.querySelectorAll('#techMainTabs .history-type-btn')).map(b => b.dataset.techmain).join();
+      check('the Technicians page has Technicians, Today\u2019s Route and Photo requirements', mainTabs === 'list,route,photos', mainTabs);
+      check('and so does the sidebar', Array.from(d.querySelectorAll('#techNavSubs .nav-sub')).map(b => b.dataset.techmain).join() === 'list,route,photos');
+      d.querySelector('#techMainTabs .history-type-btn[data-techmain="route"]').click();
+      check('Today\u2019s Route shows its card and hides the list', d.getElementById('techRouteWebCard').style.display === 'block' && d.getElementById('techListPane').style.display === 'none');
+      const techSel = d.getElementById('twTechSel');
+      check('it has a technician menu listing every technician', Array.from(techSel.options).map(o => o.textContent).join() === 'amy,Bob,Zed', Array.from(techSel.options).map(o => o.textContent).join());
+      techSel.value = 't2'; techSel.dispatchEvent(new w.Event('change', {bubbles: true}));
+      check('picking one is remembered', w.localStorage.getItem('weir:twTechId') === 't2');
       const rows = () => Array.from(d.querySelectorAll('#twList .tw-row'));
       check('it lists their stops for today, as a table', rows().length === 3 && !!d.querySelector('#techRouteWebCard .tw-head'), rows().map(r => r.textContent).join('|'));
       check('done ones say Done', rows().some(r => /Bravo/.test(r.textContent) && /Done/.test(r.textContent)));
       check('moved-in ones say Just today', rows().some(r => /Delta/.test(r.textContent) && /Just today/.test(r.textContent)));
-      check('the count sits left of the date, which is in the middle', d.getElementById('twCounts').nextElementSibling === d.getElementById('twDayLabel')
-            && /grid-template-columns:minmax\(0,1fr\) auto minmax\(0,1fr\)/.test(d.getElementById('twCounts').parentElement.getAttribute('style')));
+      check('the menu and count sit left of the date, which is in the middle', d.getElementById('twCounts').parentElement.nextElementSibling === d.getElementById('twDayLabel')
+            && d.getElementById('twTechSel').parentElement === d.getElementById('twCounts').parentElement
+            && /grid-template-columns:minmax\(0,1fr\) auto minmax\(0,1fr\)/.test(d.getElementById('twCounts').parentElement.parentElement.getAttribute('style')));
       check('a stop still to do says Reschedule; a done one says Reservice', rows().every(r => Array.from(r.querySelectorAll('button')).some(b =>
             /Done/.test(r.textContent) ? b.textContent === 'Reservice' : b.textContent === 'Reschedule')));
       check('the Reschedule window sits below the confirm question', /z-index:260/.test(d.getElementById('twMoveOverlay').getAttribute('style')));
-      // Previous / Next keep the date
+      // Another technician from the menu keeps the date
       d.getElementById('twNext').click();
       const shown = w.eval('twDateISO');
-      // Zed is last alphabetically: step back to Bob and forward again
-      w.eval("stepToTechnician(-1)");
-      check('Previous / Next technician keep the date showing', w.eval('twDateISO') === shown);
-      w.eval("stepToTechnician(1); twDateISO = '" + todayISO + "'; renderTechRouteWeb();");
+      techSel.value = 't1'; techSel.dispatchEvent(new w.Event('change', {bubbles: true}));
+      check('another technician from the menu keeps the date showing', w.eval('twDateISO') === shown);
+      techSel.value = 't2'; techSel.dispatchEvent(new w.Event('change', {bubbles: true}));
+      w.eval("twDateISO = '" + todayISO + "'; renderTechRouteWeb();");
       // Just today badge: put back
       w.eval("confirmDialog = () => Promise.resolve(true);");
       rows().find(r => /Delta/.test(r.textContent)).querySelector('.tw-pill.moved').click();
