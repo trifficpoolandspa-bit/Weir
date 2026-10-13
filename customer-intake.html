@@ -526,6 +526,11 @@ input::placeholder{color:#A9BCB9;}
 .hist-val.low{color:var(--gold);}
 .hist-val.high{color:var(--rust);}
 .hist-val.ideal{color:var(--green);}
+/* Text cut off in its box slides across, pauses and starts over (Oct 13) */
+@keyframes weirMarquee{0%,18%{transform:translateX(0);}82%,100%{transform:translateX(var(--marquee-shift,0px));}}
+.marquee-inner{display:inline-block;white-space:nowrap;will-change:transform;}
+.marquee-on{-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent);mask-image:linear-gradient(90deg,#000 85%,transparent);}
+.marquee-on .marquee-inner{animation:weirMarquee var(--marquee-time,6s) ease-in-out infinite;}
 </style>
 </head>
 <body class="sidebar-subtabs">
@@ -9181,7 +9186,7 @@ function pdReconcileDone(){
     const date = r.doneAt && !isNaN(new Date(r.doneAt)) ? owLocalISO(new Date(r.doneAt)) : r.date;
     if(!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return;
     // On the body of water the drain was for (Oct 10)
-    const body = pdImportBody(c, r.bodyKind || 'pool');
+    const body = (r.bodyKey && pdBodies(c).some(b => b.key === r.bodyKey)) ? r.bodyKey : pdImportBody(c, r.bodyKind || 'pool');
     // The same day already on record (marked here too): one drain
     const same = list.find(d => d && d.date === date && pdBodyOf(c, d) === body);
     if(same){
@@ -9284,13 +9289,29 @@ document.getElementById('btnScheduleDrainGroups').addEventListener('click', open
 const PD_KIND_LABEL = {pool: 'Pool drain', spa: 'Spa drain', fountain: 'Fountain drain', extra: 'Extra body drain'};
 // The kinds of drain a customer can have: their pool, spa, fountain or other
 // extra body of water, as set on their profile (Oct 13)
+// Oct 13 (later): each of the customer's bodies of water, by its own key, so
+// an extra body shows the name saved on the customer ("Koi pond")
 function pdKindsFor(c){
-  const out = [];
-  pdBodies(c || {}).forEach(b=>{
-    const k = b.key === 'pool' || b.key === 'spa' ? b.key : (/fountain/i.test(b.label || '') ? 'fountain' : 'extra');
-    if(out.indexOf(k) === -1) out.push(k);
-  });
+  const out = pdBodies(c || {}).map(b => b.key);
   return out.length ? out : ['pool'];
+}
+// A stored value as one of the customer's bodies: older entries saved the
+// kind (pool, spa, fountain, extra) rather than the body itself
+function pdBodyKeyOf(c, v){
+  const bodies = pdBodies(c || {});
+  if(bodies.some(b => b.key === v)) return v;
+  if(v === 'pool' || v === 'spa' || v === 'fountain' || v === 'extra') return pdImportBody(c || {}, v);
+  return v;
+}
+function pdBodyLabel(c, key){
+  const b = pdBodies(c || {}).find(x => x.key === key);
+  if(b && b.label) return b.label;
+  return ({pool: 'Pool', spa: 'Spa', fountain: 'Fountain', extra: 'Extra'})[key] || 'Pool';
+}
+// The kind the phone app knows a body by
+function pdBodyCategory(c, key){
+  if(key === 'pool' || key === 'spa') return key;
+  return /fountain/i.test(pdBodyLabel(c, key)) ? 'fountain' : 'extra';
 }
 function pdCal(){ return lsGet('drainCalendar') || []; }
 function pdCalSave(list){ lsSet('drainCalendar', list); try{ renderPoolDrains(); }catch(e){} }   // rows show the scheduled day (Oct 13)
@@ -9300,16 +9321,40 @@ function pdEntryKinds(e){
   if(e && Array.isArray(e.bodyKinds) && e.bodyKinds.length) return e.bodyKinds.slice();
   return [(e && e.bodyKind) || 'pool'];
 }
+// The entry's bodies of water, as the customer's own body keys
+function pdEntryBodies(e){
+  const c = e ? customers.find(x => x && x.id === e.customerId) : null;
+  const out = [];
+  pdEntryKinds(e).forEach(v => { const k = pdBodyKeyOf(c, v); if(out.indexOf(k) === -1) out.push(k); });
+  return out;
+}
+// Older entries brought to the new shape: body keys, and each sent job filed
+// under its body
+function pdEntryNormalize(it){
+  const recs = pdEntryRecords(it);
+  const pushed = {};
+  recs.forEach(x => { if(x.rec) pushed[x.kind] = x.rec.id; });
+  it.bodyKinds = recs.map(x => x.kind);
+  it.bodyKind = it.bodyKinds[0];
+  it.pushed = pushed;
+  delete it.pushedId;
+}
 // The app's drain job for each of the entry's bodies, where one was sent
 function pdEntryRecords(e){
   if(!e) return [];
   const recs = pdScheduled();
-  const kinds = pdEntryKinds(e);
-  return kinds.map((k, i)=>{
-    let id = e.pushed && e.pushed[k];
+  const c = customers.find(x => x && x.id === e.customerId);
+  const seen = [];
+  const out = [];
+  pdEntryKinds(e).forEach((v, i)=>{
+    const k = pdBodyKeyOf(c, v);
+    if(seen.indexOf(k) !== -1) return;
+    seen.push(k);
+    let id = e.pushed && (e.pushed[k] || e.pushed[v]);
     if(!id && i === 0 && e.pushedId && !e.pushed) id = e.pushedId;   // sent before Oct 13
-    return {kind: k, rec: id ? recs.find(r => r && r.id === id) || null : null};
+    out.push({kind: k, rec: id ? recs.find(r => r && r.id === id) || null : null});
   });
+  return out;
 }
 // Where the entry is up to: done once every body's job is done, in the app
 // once any has been sent, otherwise nothing yet
@@ -9326,7 +9371,94 @@ function pdCalUnpush(e){
 }
 // What an entry drains, in a few words: "Pool + Spa"
 function pdEntryKindsText(e){
-  return pdEntryKinds(e).map(k => (PD_KIND_LABEL[k] || 'Pool drain').replace(/ drain$/, '').replace(/^Extra body$/, 'Extra')).join(' + ');
+  const c = e ? customers.find(x => x && x.id === e.customerId) : null;
+  return pdEntryBodies(e).map(k => pdBodyLabel(c, k)).join(' + ');
+}
+// ---------- Extra work on a drain (Oct 13) ----------
+// Items the office adds to a customer's drain on the calendar: acid wash, a
+// light gasket... They go to the app on the drain job, each with a box to
+// tick, like a work order's items. With several bodies of water drained, they
+// ride on the first job still to do, so the technician sees them once.
+function pdExtraOf(e){
+  return (e && Array.isArray(e.extraWork) ? e.extraWork : []).filter(li => li && String(li.description || '').trim());
+}
+// Puts the entry's extra work on its app jobs. Recs is the scheduledPoolDrains
+// list being changed; done jobs keep what they had.
+function pdApplyExtra(e, recs){
+  const items = pdExtraOf(e).map(li => ({description: String(li.description).trim(), qty: Number(li.qty) || 1, price: li.price === undefined ? '' : li.price}));
+  const ids = [];
+  pdEntryKinds(e).forEach(v => { const id = e.pushed && e.pushed[v]; if(id && ids.indexOf(id) === -1) ids.push(id); });
+  let placed = false;
+  ids.forEach(id=>{
+    const r = recs.find(x => x && x.id === id);
+    if(!r || r.status === 'done') return;
+    if(!placed && items.length){ r.lineItems = items.map(li => Object.assign({}, li)); placed = true; }
+    else if(Array.isArray(r.lineItems) && r.lineItems.length) r.lineItems = [];
+  });
+}
+// The Extra work window: pick from Products & Services or type your own
+function pdOpenExtraWork(e, name, onDone){
+  let items = pdExtraOf(e).map(li => Object.assign({}, li));
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:440px;text-align:left;';
+  box.innerHTML = '<h3 style="font-size:16px;margin:0 0 4px;"></h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;">Each item shows on the drain job in the app with a box to tick, like a work order\u2019s items.</p>'
+    + '<div data-list></div>'
+    + '<div style="display:flex;gap:8px;margin-top:12px;"><input type="text" data-new placeholder="Search Products & Services or type a new item\u2026" style="flex:1;" autocomplete="off">'
+    + '<button type="button" class="btn btn-ghost" data-add style="width:auto;flex:0 0 auto;padding:6px 12px;font-size:12.5px;">Add</button></div>'
+    + '<datalist id="pdExtraSuggestions"></datalist>'
+    + '<div class="btn-row" style="margin-top:14px;"><button type="button" class="btn btn-primary" data-done>Done</button><button type="button" class="btn btn-ghost" data-cancel>Cancel</button></div>';
+  box.querySelector('h3').textContent = 'Extra work for ' + name;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const listEl = box.querySelector('[data-list]');
+  const input = box.querySelector('[data-new]');
+  const dl = box.querySelector('datalist');
+  (productsServices || []).filter(p => p && String(p.name || '').trim() && (p.category || '') !== 'chemicals')
+    .slice().sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, {sensitivity: 'base'}))
+    .forEach(p => { const o = document.createElement('option'); o.value = p.name; dl.appendChild(o); });
+  input.setAttribute('list', 'pdExtraSuggestions');
+  const money = v => { const n = parseFloat(v); return isFinite(n) && String(v).trim() !== '' ? '$' + (Math.round(n * 100) / 100).toLocaleString(undefined, {minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2}) : ''; };
+  const draw = ()=>{
+    listEl.innerHTML = '';
+    if(!items.length){ listEl.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:6px 0;">Nothing added yet.</div>'; return; }
+    items.forEach((li, i)=>{
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13.5px;';
+      const t = document.createElement('span'); t.style.cssText = 'flex:1;min-width:0;'; t.textContent = li.description;
+      const pr = document.createElement('span'); pr.style.cssText = 'font-size:12px;color:var(--muted);white-space:nowrap;'; pr.textContent = money(li.price);
+      const bin = document.createElement('button');
+      bin.type = 'button'; bin.innerHTML = WEIR_BIN_SVG; bin.dataset.xDrawn = 'bin'; bin.dataset.binSize = 's';
+      bin.title = 'Take this off'; bin.setAttribute('aria-label', bin.title); bin.style.cssText = 'cursor:pointer;';
+      bin.addEventListener('click', ()=>{ items.splice(i, 1); draw(); });
+      row.appendChild(t); row.appendChild(pr); row.appendChild(bin);
+      listEl.appendChild(row);
+    });
+  };
+  const add = ()=>{
+    const v = input.value.trim();
+    if(!v) return;
+    const m = (productsServices || []).find(p => p && String(p.name || '').trim().toLowerCase() === v.toLowerCase());
+    items.push(m ? {description: m.name, qty: 1, price: m.price === undefined || m.price === null ? '' : m.price, key: m.key} : {description: v, qty: 1, price: ''});
+    input.value = '';
+    draw();
+    input.focus();
+  };
+  box.querySelector('[data-add]').addEventListener('click', add);
+  input.addEventListener('keydown', ev => { if(ev.key === 'Enter'){ ev.preventDefault(); add(); } });
+  // Picking a suggestion adds it straight away
+  input.addEventListener('change', ()=>{ if((productsServices || []).some(p => p && p.name === input.value)) add(); });
+  box.querySelector('[data-cancel]').addEventListener('click', ()=> overlay.remove());
+  box.querySelector('[data-done]').addEventListener('click', ()=>{
+    if(input.value.trim()) add();
+    overlay.remove();
+    onDone(items);
+  });
+  draw();
+  setTimeout(()=> input.focus(), 0);
 }
 // Ticked customers onto a day, from the list (Add to a day)
 function pdAddToDay(cids){
@@ -9463,6 +9595,26 @@ function pdOpenDayPicker(iso, currentIds, onSave){
 
 // The clock on a name that's in the app but not done yet, as on the filter
 // clean groups (Oct 13)
+// Text cut off in its box slides across to show the rest, pauses and starts
+// over, as in the app (Oct 13)
+function webMarqueeIfCut(el){
+  if(!el) return;
+  let inner = el.querySelector(':scope > .marquee-inner');
+  if(!inner){
+    inner = document.createElement('span');
+    inner.className = 'marquee-inner';
+    while(el.firstChild) inner.appendChild(el.firstChild);
+    el.appendChild(inner);
+  }
+  requestAnimationFrame(()=>{
+    const over = inner.scrollWidth - el.clientWidth + 24;
+    if(el.clientWidth && inner.scrollWidth > el.clientWidth + 1 && over > 0){
+      el.style.setProperty('--marquee-shift', (-over) + 'px');
+      el.style.setProperty('--marquee-time', Math.max(4, over / 40 / 0.64).toFixed(1) + 's');
+      el.classList.add('marquee-on');
+    } else el.classList.remove('marquee-on');
+  });
+}
 function calClockSvg(size){
   size = size || 11;
   return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" aria-hidden="true" style="flex-shrink:0;"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
@@ -9695,7 +9847,8 @@ function openDrainCalendar(startDay){
       panel.appendChild(ph);
       if(!ents.length) panel.insertAdjacentHTML('beforeend', '<div style="font-size:12.5px;color:var(--muted);padding:6px 0;">Nobody on this day yet.</div>');
       // Every column a fixed width, so nothing staggers down the list (Oct 13)
-      const COLS = 'display:grid;grid-template-columns:130px minmax(160px,1fr) 210px 230px 100px 28px;gap:10px;align-items:center;min-width:860px;';
+      // The technician menu is narrow (just the name), so the drain buttons get the room (Oct 13)
+      const COLS = 'display:grid;grid-template-columns:125px minmax(150px,1fr) 300px 140px 90px 28px;gap:10px;align-items:center;min-width:860px;';
       const listWrap = document.createElement('div');
       listWrap.style.cssText = 'overflow-x:auto;';
       if(ents.length){
@@ -9728,7 +9881,9 @@ function openDrainCalendar(startDay){
         phLab.appendChild(document.createTextNode('Photo required'));
         row.appendChild(phLab);
         const nm = document.createElement('span');
-        nm.style.cssText = 'font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        // A name too long for the column scrolls across (Oct 13)
+        nm.className = 'pd-scroll-name';
+        nm.style.cssText = 'font-weight:600;min-width:0;overflow:hidden;white-space:nowrap;';
         nm.textContent = displayName(c.name);
         nm.title = displayName(c.name);
         // Done in the app: the name goes green with a tick (Oct 13)
@@ -9740,7 +9895,7 @@ function openDrainCalendar(startDay){
         // A button for each body of water this customer has; as many on as
         // they like (Oct 13). At least one stays on: the bin takes them off.
         const kinds = pdKindsFor(c);
-        const onKinds = pdEntryKinds(e);
+        const onKinds = pdEntryBodies(e);
         onKinds.forEach(k => { if(kinds.indexOf(k) === -1) kinds.push(k); });
         const kindWrap = document.createElement('span');
         kindWrap.style.cssText = 'display:inline-flex;gap:5px;flex-wrap:wrap;';
@@ -9748,15 +9903,14 @@ function openDrainCalendar(startDay){
           const on = onKinds.indexOf(k) !== -1;
           const b = document.createElement('button');
           b.type = 'button';
-          b.textContent = (PD_KIND_LABEL[k] || k).replace(/ drain$/, '').replace(/^Extra body$/, 'Extra');
+          b.textContent = pdBodyLabel(c, k);   // an extra body by the name saved on the customer
           b.style.cssText = 'width:auto;padding:3px 10px;font-size:12px;font-weight:600;border-radius:999px;cursor:pointer;'
             + (on ? 'background:var(--teal-deep);color:#fff;border:1.5px solid var(--teal-deep);' : 'background:#fff;color:var(--teal-deep);border:1.5px solid #BFDCD8;');
           b.title = on ? 'Draining this day \u2014 tap to leave it out' : 'Tap to drain this too';
           b.addEventListener('click', ()=>{
             const all = pdCal(); const it = all.find(x => x.id === e.id); if(!it) return;
-            // Older entries carry their one sent job over to the new shape first
-            if(it.pushedId && !it.pushed){ it.pushed = {}; it.pushed[it.bodyKind || 'pool'] = it.pushedId; }
-            delete it.pushedId;
+            // Older entries brought to the new shape first
+            pdEntryNormalize(it);
             let list = pdEntryKinds(it);
             if(list.indexOf(k) !== -1){
               if(list.length === 1){ showToast('At least one stays on \u2014 use the bin to take them off this day'); return; }
@@ -9769,6 +9923,8 @@ function openDrainCalendar(startDay){
             // Kept in the customer's own order
             list.sort((a, b2) => kinds.indexOf(a) - kinds.indexOf(b2));
             it.bodyKinds = list; it.bodyKind = list[0];
+            // Extra work moves to a job still in the app if its one came off (Oct 13)
+            if(pdExtraOf(it).length && it.pushed && Object.keys(it.pushed).length){ const recs = pdScheduled(); pdApplyExtra(it, recs); lsSet('scheduledPoolDrains', recs); }
             pdCalSave(all);
             draw();
           });
@@ -9779,15 +9935,15 @@ function openDrainCalendar(startDay){
         const techSel = document.createElement('select');
         techSel.style.cssText = 'width:100%;padding:4px 8px;font-size:12px;';
         techSel.title = 'Which technician gets this drain in the app';
-        const ownOpt = document.createElement('option');
-        ownOpt.value = '';
-        ownOpt.textContent = 'Their technician (' + techName(c.technicianId) + ')';
-        techSel.appendChild(ownOpt);
-        technicians.forEach(t => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.name; techSel.appendChild(o); });
-        techSel.value = e.technicianId || '';
+        // Just the names, A–Z, starting on the customer's own technician (Oct 13)
+        if(!c.technicianId){ const o = document.createElement('option'); o.value = ''; o.textContent = 'No technician'; techSel.appendChild(o); }
+        technicians.slice().sort((a, b2) => String(a.name || '').localeCompare(String(b2.name || ''), undefined, {sensitivity: 'base'}))
+          .forEach(t => { const o = document.createElement('option'); o.value = String(t.id); o.textContent = t.name; techSel.appendChild(o); });
+        techSel.value = String(e.technicianId || c.technicianId || '');
         techSel.addEventListener('change', ()=>{
           const all = pdCal(); const it = all.find(x => x.id === e.id); if(!it) return;
-          if(techSel.value) it.technicianId = techSel.value; else delete it.technicianId;
+          // Their own technician is the default, not a choice to keep
+          if(techSel.value && String(techSel.value) !== String(c.technicianId || '')) it.technicianId = techSel.value; else delete it.technicianId;
           pdCalSave(all);
           // Already in the app and not done: they move to that technician
           const to = it.technicianId || c.technicianId || '';
@@ -9818,8 +9974,44 @@ function openDrainCalendar(startDay){
           draw();
         });
         row.appendChild(x);
+        // Extra work under the customer (Oct 13): what's added, and a button to
+        // add more. It goes to the app on the same drain job.
+        const extra = document.createElement('div');
+        extra.style.cssText = 'grid-column:2 / 6;display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:0 0 2px;';
+        const exItems = pdExtraOf(e);
+        exItems.forEach(li=>{
+          const tag = document.createElement('span');
+          tag.style.cssText = 'background:#E9EEF0;color:#3E5560;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:7px;';
+          tag.textContent = li.description;
+          extra.appendChild(tag);
+        });
+        if(!(r && r.status === 'done')){
+          const addX = document.createElement('button');
+          addX.type = 'button';
+          addX.textContent = exItems.length ? 'Edit extra work' : '+ Extra work';
+          addX.style.cssText = 'width:auto;border:1px dashed #BFDCD8;color:var(--teal-deep);background:#fff;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:700;cursor:pointer;';
+          addX.addEventListener('click', ()=>{
+            pdOpenExtraWork(e, displayName(c.name), (items)=>{
+              const all = pdCal(); const it = all.find(y => y.id === e.id); if(!it) return;
+              it.extraWork = items;
+              if(!items.length) delete it.extraWork;
+              // Already in the app and not done: it follows
+              if(it.pushed && Object.keys(it.pushed).length){
+                pdEntryNormalize(it);
+                const recs = pdScheduled();
+                pdApplyExtra(it, recs);
+                lsSet('scheduledPoolDrains', recs);
+              }
+              pdCalSave(all);
+              draw();
+            });
+          });
+          extra.appendChild(addX);
+        }
+        if(extra.children.length) row.appendChild(extra);
         listWrap.appendChild(row);
       });
+      setTimeout(()=> listWrap.querySelectorAll('.pd-scroll-name').forEach(webMarqueeIfCut), 0);
       box.appendChild(panel);
     }
   }
@@ -9834,8 +10026,7 @@ function openDrainCalendar(startDay){
         const tech = e.technicianId || pushTech || c.technicianId || '';
         if(!tech){ noTech++; return; }
         // One job in the app for each body of water ticked (Oct 13)
-        if(e.pushedId && !e.pushed){ e.pushed = {}; e.pushed[e.bodyKind || 'pool'] = e.pushedId; }
-        delete e.pushedId;
+        pdEntryNormalize(e);
         e.pushed = e.pushed || {};
         pdEntryKinds(e).forEach(k=>{
           let r = e.pushed[k] ? recs.find(x => x.id === e.pushed[k]) : null;
@@ -9845,10 +10036,13 @@ function openDrainCalendar(startDay){
             recs.push(r);
             e.pushed[k] = r.id;
           }
-          r.date = day; r.technicianId = tech; r.bodyKind = k; r.order = i;
+          // The kind the app knows, and the body's own name for its title
+          r.date = day; r.technicianId = tech; r.bodyKind = pdBodyCategory(c, k); r.bodyKey = k; r.bodyName = pdBodyLabel(c, k); r.order = i;
           r.photoRequired = e.photoRequired !== false;   // the row's Photo required (Oct 13)
           n++;
         });
+        // Extra work on the first of them still to do (Oct 13)
+        pdApplyExtra(e, recs);
       });
     });
     lsSet('scheduledPoolDrains', recs);
@@ -10049,7 +10243,7 @@ function openDrainEmail(){
       const ppl = schedPeople();
       const n = ppl.reduce((s, p) => s + p.lines.length, 0);
       head.innerHTML = ppl.length ? ppl.length + (ppl.length === 1 ? ' email' : ' emails') + ' will go out <span style="font-size:12px;font-weight:600;color:var(--muted);">· ' + n + (n === 1 ? ' body of water' : ' bodies of water') + '</span>' : 'Nobody ticked yet';
-      rows = ppl.sort((a, b) => byName(a.c, b.c)).map(p => [displayName(p.c.name), p.lines.map(e => '✓ ' + pdEntryKinds(e).map(k => pdBodyWord(p.c, k).replace(/^./, x => x.toUpperCase())).join(' + ') + ' · ' + pdDate(e.date, true).replace(/, \d{4}$/, '')).join(' ')]);
+      rows = ppl.sort((a, b) => byName(a.c, b.c)).map(p => [displayName(p.c.name), p.lines.map(e => '✓ ' + pdEntryBodies(e).map(k => pdBodyWord(p.c, k).replace(/^./, x => x.toUpperCase())).join(' + ') + ' · ' + pdDate(e.date, true).replace(/, \d{4}$/, '')).join(' ')]);
     }
     wrap.appendChild(head);
     if(rows.length){
@@ -10250,7 +10444,7 @@ function openDrainEmail(){
         lbl.appendChild(txt);
         const bk = document.createElement('span');
         bk.style.cssText = 'font-size:11.5px;color:var(--muted);white-space:nowrap;';
-        bk.textContent = pdEntryKinds(e).map(k => pdBodyWord(c, k).replace(/^./, x => x.toUpperCase())).join(' + ');
+        bk.textContent = pdEntryBodies(e).map(k => pdBodyLabel(c, k)).join(' + ');
         lbl.appendChild(bk);
         panel.appendChild(lbl);
       });
@@ -10309,11 +10503,11 @@ function openDrainEmail(){
     } else {
       jobs = schedPeople().map(p=>{
         const words = [], dates = [];
-        p.lines.forEach(e => pdEntryKinds(e).forEach(k=>{ const w = pdBodyWord(p.c, k); if(words.indexOf(w) === -1) words.push(w); }));
+        p.lines.forEach(e => pdEntryBodies(e).forEach(k=>{ const w = pdBodyWord(p.c, k); if(words.indexOf(w) === -1) words.push(w); }));
         const days = Array.from(new Set(p.lines.map(e => e.date)));
         let date;
         if(days.length === 1 || words.length === 1) date = joinDates(days.map(pdLongDate));
-        else date = joinDates(p.lines.map(e => pdLongDate(e.date) + ' (' + joinDates(pdEntryKinds(e).map(k => pdBodyWord(p.c, k))) + ')'));
+        else date = joinDates(p.lines.map(e => pdLongDate(e.date) + ' (' + joinDates(pdEntryBodies(e).map(k => pdBodyWord(p.c, k))) + ')'));
         return {c: p.c, vals: {body: joinDates(words), date}};
       });
     }
@@ -22779,7 +22973,7 @@ function twJobsFor(techId, iso){
       done: f.status === 'done', doneAt: f.doneAt});
   });
   (lsGet('scheduledPoolDrains') || []).filter(f => f && f.date === iso && mine(f)).forEach(f=>{
-    out.push({key: 'pd:' + f.id, label: ({spa: 'Spa drain', fountain: 'Fountain drain', extra: 'Extra body drain'}[f.bodyKind] || 'Pool drain'), drainIcon: true, kind: 'pool drain', title: '', customerId: f.customerId,
+    out.push({key: 'pd:' + f.id, label: f.bodyName ? f.bodyName + ' drain' : ({spa: 'Spa drain', fountain: 'Fountain drain', extra: 'Extra body drain'}[f.bodyKind] || 'Pool drain'), drainIcon: true, kind: 'pool drain', title: '', customerId: f.customerId,
       done: f.status === 'done', doneAt: f.doneAt});
   });
   (tasks || []).filter(t => t && t.date === iso && mine(t)).forEach(t=>{

@@ -10518,7 +10518,9 @@ function routeJobsFor(customerId, dayISO, techId){
   const drains = (lsGet('scheduledPoolDrains') || [])
     .filter(s => s && s.status === 'scheduled' && s.date === dayISO && s.customerId === customerId && mine(s))
     .map(s => ({key: 'pool drain:' + s.id, kind: 'pool drain', id: s.id,
-                title: drainTitle(s), details: s.notes || '', photoRequired: s.photoRequired === true, videoRequired: false}));
+                title: drainTitle(s), details: s.notes || '', photoRequired: s.photoRequired === true, videoRequired: false,
+                // Extra work the office added on the drain calendar, ticked off like a work order's items (Oct 13)
+                lineItems: Array.isArray(s.lineItems) ? s.lineItems : []}));
   return orders.concat(cleans).concat(drains).concat(tasks).filter(j => !jobSubmitted(j.key));
 }
 // The Replacements window on a filter clean (Oct 3): the usual parts to tick,
@@ -10601,6 +10603,8 @@ function jobKindLabel(kind){
 }
 // Which body of water a drain is for (Oct 10): its name on the route and report
 function drainTitle(rec){
+  // The body's own name when the office sent it ("Koi pond drain", Oct 13)
+  if(rec && rec.bodyName) return rec.bodyName + ' drain';
   const k = rec && rec.bodyKind;
   return k === 'spa' ? 'Spa drain' : k === 'fountain' ? 'Fountain drain' : k === 'extra' ? 'Extra body drain' : 'Pool drain';
 }
@@ -11026,6 +11030,33 @@ function openJobPage(customer, job){
       who.textContent = job.title || jobKindLabel(job.kind);
     }
   }
+  // A pool drain's extra work from the office (Oct 13): each item with a box to
+  // tick, all ticked before Submit, like a work order's items
+  if(job.kind === 'pool drain'){
+    const extra = (job.lineItems || []).map(li => String((li && li.description) || '').trim()).filter(Boolean);
+    if(extra.length){
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'margin:2px 0 14px;';
+      const hd = document.createElement('div');
+      hd.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;margin:4px 0 2px;";
+      hd.textContent = 'Extra work';
+      wrap.appendChild(hd);
+      extra.forEach((t, i)=>{
+        const line = document.createElement('label');
+        line.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px 2px;cursor:pointer;font-size:15px;color:var(--ink);'
+          + (i < extra.length - 1 ? 'border-bottom:1px solid var(--line);' : '');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.style.cssText = 'width:22px;height:22px;margin:0;flex-shrink:0;';
+        lineChecks.push(cb);
+        const span = document.createElement('span');
+        span.textContent = t;
+        line.appendChild(cb); line.appendChild(span);
+        wrap.appendChild(line);
+      });
+      card.appendChild(wrap);
+    }
+  }
   if(job.details){
     const said = document.createElement('div');
     said.style.cssText = 'background:var(--teal-pale);border-radius:10px;padding:12px 14px;font-size:14px;margin-bottom:16px;';
@@ -11285,6 +11316,8 @@ function openJobPage(customer, job){
         pd.doneBy = currentUser ? currentUser.id : '';
         pd.doneNotes = noteText;
         pd.doneDurationMs = durationMs;
+        // Every extra work item was ticked to get here (Oct 13)
+        if(Array.isArray(pd.lineItems) && pd.lineItems.length) pd.doneExtraWork = pd.lineItems.map(li => String((li && li.description) || '').trim()).filter(Boolean);
         if(isPhotoRef(stored)) pd.donePhoto = stored;
         if(storedMore.length) pd.donePhotoMore = storedMore;
         if(isPhotoRef(videoRef)) pd.doneVideo = videoRef;
