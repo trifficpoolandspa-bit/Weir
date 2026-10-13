@@ -1881,6 +1881,16 @@ console.log('\n=== One phone app: what a technician and an admin each see ===');
       // Reservice from an old copy of the customer still works, and goes on the admin's Today
       const stale = JSON.parse(w.eval("JSON.stringify(customers.find(c => c.id === 'c2'))"));
       w.eval("customers = customers.map(c => Object.assign({}, c));");
+      // Oct 13: an admin's Reservice first asks whose Today it goes on
+      w.eval("reserviceCustomer(customers.find(c => c.id === 'c1'), '" + todayISO + "')");
+      await new Promise(r => setTimeout(r, 50));
+      const ask = Array.from(d.querySelectorAll('.confirm-overlay')).find(o => /Whose Today list/.test(o.textContent));
+      check('an admin\u2019s Reservice asks which technician, starting on them', !!ask && ask.querySelector('select').value === 't9',
+            ask ? ask.querySelector('select').value : 'no window');
+      if(ask) Array.from(ask.querySelectorAll('button')).find(b => b.textContent === 'Cancel').click();
+      await new Promise(r => setTimeout(r, 50));
+      check('cancelling it changes nothing', !(JSON.parse(w.localStorage.getItem('weir:rescheduledVisits') || '[]')).some(r => r.customerId === 'c1' && r.reservice));
+      w.eval("window.__realPick = pickReserviceTech; pickReserviceTech = () => Promise.resolve(String((currentUser && currentUser.id) || 't1')); ");
       await w.reserviceCustomer(stale, todayISO);
       check('Reservice works on the first press, even after a sync swapped the customers', !w.eval("(customers.find(c => c.id === 'c2').servicedFor || []).some(x => x.day === '" + todayISO + "')"));
       check('an admin\u2019s Reservice puts it on their own Today, just for today', JSON.parse(w.localStorage.getItem('weir:rescheduledVisits'))

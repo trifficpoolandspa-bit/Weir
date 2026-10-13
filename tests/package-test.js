@@ -230,7 +230,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
         check('  the first report went out',
               JSON.parse(w6.eval("JSON.stringify(lsGet('readings:a') || [])")).length === 1);
 
-        await w6.eval("reserviceCustomer(customers.find(c=>c.id==='a'))");
+        await w6.eval("pickReserviceTech = () => Promise.resolve(String((currentUser && currentUser.id) || 't1')); reserviceCustomer(customers.find(c=>c.id==='a'))");
         await wait(400);
         check('  the customer is flagged for a redo',
               w6.eval("!!customers.find(c=>c.id==='a').pendingRedo"));

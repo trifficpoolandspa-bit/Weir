@@ -2115,8 +2115,10 @@ async function serverTechniciansTab(){
     console.log('\n=== Photo requirements live on the Technicians page ===');
     {
       const tabs = Array.from(d.querySelectorAll('#techMainTabs .history-type-btn'));
-      check('there are two tabs', tabs.length === 2 && /Technicians/.test(tabs[0].textContent)
-            && /Photo requirements/.test(tabs[1].textContent), tabs.map(t => t.textContent).join(' | '));
+      // Oct 12: Today's Route sits between them
+      check('there are three tabs: Technicians, Today\u2019s Route, Photo requirements', tabs.length === 3 && /Technicians/.test(tabs[0].textContent)
+            && /Today's Route/.test(tabs[1].textContent) && /Photo requirements/.test(tabs[2].textContent), tabs.map(t => t.textContent).join(' | '));
+      const photosTab = tabs.find(t => t.dataset.techmain === 'photos');
       const css = fs.readFileSync('customer-intake.html', 'utf8');
       const activeStyle = (css.match(/\.history-type-btn\.active\{[^}]*\}/) || [''])[0];
       check('the chosen tab has a shadow you can see', /box-shadow:0 2px 5px/.test(activeStyle), activeStyle);
@@ -2137,7 +2139,7 @@ async function serverTechniciansTab(){
       });
       check('the technician list is what shows first', d.getElementById('techListPane').style.display !== 'none');
       // Leaving and coming back lands on the technician list again
-      tabs[1].click(); await sleep(200);
+      photosTab.click(); await sleep(200);
       w.eval("switchView('customers')"); await sleep(200);
       w.eval("webLeftAt = {}; switchView('technicians')"); await sleep(250);  // past its 30 seconds (Sept 29)
       check('coming back opens the Technicians tab, not Photo requirements',
@@ -2151,7 +2153,7 @@ async function serverTechniciansTab(){
       // Someone to set requirements for
       // Added alongside whoever already exists, and taken away again at the end
       w.eval("technicians.push({id:'tp1', name:'Pat Tech'}, {id:'tp2', name:'Sal Tech'}); saveTechnicians();");
-      tabs[1].click(); await sleep(250);
+      photosTab.click(); await sleep(250);
       check('Photo requirements opens its own page', d.getElementById('photoRequireCard').style.display === 'block'
             && d.getElementById('techListPane').style.display === 'none');
 
@@ -2312,7 +2314,7 @@ async function serverTechniciansTab(){
             (JSON.parse(w.localStorage.getItem('weir:technicians') || '[]')
               .find(t => t.id === 'tp1') || {}).requireGatePhoto !== true,
             w.localStorage.getItem('weir:technicians'));
-      tabs[1].click(); await sleep(250);
+      photosTab.click(); await sleep(250);
       rowHeads()[3].click(); await sleep(200);
 
       // Your own photos: added in a window, listed with the built-in rows

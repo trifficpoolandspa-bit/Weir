@@ -227,51 +227,53 @@ function boot(){
       check('  Schedule is in the heading', labels.indexOf('Schedule') !== -1, labels.join(','));
       check('  New group comes first',
             labels.indexOf('+ New group') === 0, labels.join(','));
-      check('  then Schedule, then Email',
-            labels.indexOf('+ New group') < labels.indexOf('Schedule')
-            && labels.indexOf('Schedule') < labels.indexOf('Email'), labels.join(','));
+      // Oct 13: Replacements, then Email, then Schedule at the far right
+      check('  then Replacements, Email, and Schedule last',
+            labels.indexOf('+ New group') < labels.indexOf('Replacements')
+            && labels.indexOf('Replacements') < labels.indexOf('Email')
+            && labels.indexOf('Email') < labels.indexOf('Schedule')
+            && labels.indexOf('Schedule') === labels.length - 1, labels.join(','));
 
       const inCard = Array.from(d.querySelectorAll('#filterGroupList button')).map(b => b.textContent);
       check('  no Schedule button inside a group', inCard.indexOf('Schedule') === -1, inCard.join(','));
       check('  no Unschedule button either', inCard.indexOf('Unschedule') === -1, inCard.join(','));
 
+      // Oct 13: Schedule opens a calendar, like the drain one
       d.getElementById('btnScheduleFilterGroups').click();
-      await new Promise(r => setTimeout(r, 300));
-
-      const ov = d.querySelector('.confirm-overlay');
-      check('  the picker opens', !!ov);
-      const rows = Array.from(ov.querySelectorAll('label'));
-      check('  every group is listed', rows.length === 4, rows.length + ' listed');
-      check('  a group already on route starts ticked',
-            rows[1].querySelector('input').checked === true);
-      check('  and is marked as on route', rows[1].textContent.indexOf('ON ROUTE') !== -1);
-      check('  a group missing a technician cannot be ticked',
-            rows[2].querySelector('input').disabled === true);
-      check('  and says what it needs', rows[2].textContent.indexOf('no technician') !== -1);
-      check('  a group missing a date cannot be ticked either',
-            rows[3].querySelector('input').disabled === true);
-
-      // Tick one, untick the other
-      rows[0].querySelector('input').click();
-      rows[1].querySelector('input').click();
+      await new Promise(r => setTimeout(r, 200));
+      const cal = () => Array.from(d.querySelectorAll('.confirm-overlay')).pop();
+      check('  the calendar opens', !!cal() && /Schedule filter cleans/.test(cal().textContent));
+      const menu = cal().querySelector('select');
+      check('  with a technician menu, All technicians first',
+            menu && menu.options[0].textContent === 'All technicians' && menu.value === '', menu ? menu.options[0].textContent : 'none');
+      const goMonth = iso => { w.eval("void 0"); for(let i = 0; i < 24; i++){
+        const lbl = cal().querySelector('b').textContent;
+        const want = new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {month: 'long', year: 'numeric'});
+        if(lbl === want) return;
+        const nowM = new Date(lbl + ' 1'), wantM = new Date(iso + 'T12:00:00');
+        Array.from(cal().querySelectorAll('button')).find(b => b.textContent === (wantM > nowM ? '›' : '‹')).click(); } };
+      const cellFor = iso => { goMonth(iso); return Array.from(cal().querySelectorAll('.press-row')).find(c => c.firstChild && c.firstChild.textContent === String(Number(iso.slice(8)))); };
+      const sep = cellFor('2026-09-22');
+      check('  a group’s day shows its customers’ names', /Alpha/.test(sep.textContent) && /Bravo/.test(sep.textContent), sep.textContent);
+      const oct = cellFor('2026-10-06');
+      check('  a group on the route shows gold with a clock', !!oct.querySelector('svg') && /251, 241, 221|FBF1DD/i.test(oct.querySelector('div[style*="background"]').getAttribute('style')));
+      oct.click();
+      check('  pressing a day lists its customers underneath', /Already on route/.test(cal().textContent) && /in the app/.test(cal().textContent));
+      // Take the one on the route off
       w.eval("confirmDialog = ()=> Promise.resolve(true);");
-      Array.from(ov.querySelectorAll('button')).find(b => b.textContent === 'Apply').click();
-      await new Promise(r => setTimeout(r, 400));
+      Array.from(cal().querySelectorAll('button')).find(b => b.textContent === 'Take off route').click();
+      await new Promise(r => setTimeout(r, 200));
+      // Select the first group's day and push it
+      Array.from(cal().querySelectorAll('button')).find(b => b.textContent === 'Select').click();
+      cellFor('2026-09-22').click();
+      const push = Array.from(cal().querySelectorAll('button')).find(b => /^Push to app/.test(b.textContent));
+      check('  Push to app counts the cleans', /1 day, 2 cleans/.test(push.textContent), push.textContent);
+      push.click();
+      await new Promise(r => setTimeout(r, 200));
 
-      // The confirmation must be visible, not hidden behind the picker
-      const overlays = Array.from(d.querySelectorAll('.confirm-overlay'));
-      const conf = overlays.find(o => o.querySelector('.confirm-box'));
-      if(conf){
-        const pick = overlays.find(o => !o.querySelector('.confirm-box'));
-        const zOf = el => el.style.zIndex ? parseInt(el.style.zIndex) : 300;
-        check('  the confirmation sits above the picker',
-              !pick || zOf(conf) > zOf(pick),
-              'confirmation ' + zOf(conf) + ' vs picker ' + (pick ? zOf(pick) : 'none'));
-      }
-
-      check('  ticking schedules the group',
+      check('  pushing schedules the group',
             w.eval("filterGroups.find(g=>g.id==='g1').finalized") === true);
-      check('  unticking takes the other off',
+      check('  Take off route takes the other off',
             w.eval("filterGroups.find(g=>g.id==='g2').finalized") === false);
 
       const sched = JSON.parse(w.localStorage.getItem('weir:scheduledFilterCleans'));

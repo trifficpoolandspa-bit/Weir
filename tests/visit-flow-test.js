@@ -201,7 +201,7 @@ async function walkVisit(w, d, maxPresses){
       w.eval("discardVisitInProgress();"); await wait(300);
 
       // Sent back with Reservice: starts unpressed, and shows when it was last done
-      w.eval("reserviceCustomer(customers.find(c => c.id === 'a'));"); await wait(400);
+      w.eval("pickReserviceTech = () => Promise.resolve(String((currentUser && currentUser.id) || 't1')); reserviceCustomer(customers.find(c => c.id === 'a'));"); await wait(400);
       w.eval("openVisit('a');"); await wait(700);
       check('  reopened, the buttons start unpressed', d.getElementById('chkSaltCell') && !on('chkSaltCell') && !on('chkBackwashed'));
       const note = d.getElementById('chkSaltCell').parentNode.lastChild.textContent;
@@ -1859,7 +1859,7 @@ async function walkVisit(w, d, maxPresses){
       // Serviced for Thursday (as a finished visit records it)
       w.eval("visitRouteDay = '" + thu + "'; const c = customers[0]; c.lastServicedDate = todayDateStr(); noteServicedFor(c);");
       check(file + ': servicing one day\u2019s visit keeps the other day', shows('Wednesday') && !shows('Thursday'));
-      await w.eval("reserviceCustomer(customers[0])");
+      await w.eval("pickReserviceTech = () => Promise.resolve(String((currentUser && currentUser.id) || 't1')); reserviceCustomer(customers[0])");
       check(file + ': Reservice brings back only that day', shows('Wednesday') && shows('Thursday'));
       // A weekly customer caught up on a day that isn't theirs is done for the missed day
       w.eval("customers[0].extraDays = []; customers[0].servicedFor = [{day: '" + thu + "', on: '" + thu + "'}];");
@@ -1888,7 +1888,7 @@ async function walkVisit(w, d, maxPresses){
       check(file + ': a skip takes the customer off the skipped day', !on(SKIP));
       check(file + ': but not off their other day', on(KEEP));
       check(file + ': and puts them under Serviced today', w.eval("customers[0].lastServicedDate") === w.eval("todayDateStr()"));
-      await w.eval("reserviceCustomer(customers[0])");
+      await w.eval("pickReserviceTech = () => Promise.resolve(String((currentUser && currentUser.id) || 't1')); reserviceCustomer(customers[0])");
       check(file + ': Reservice brings back the skipped day', on(SKIP));
     }catch(e){ check(file + ': skip service', false, e.message); }
     w.close();
