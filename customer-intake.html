@@ -2199,6 +2199,8 @@ input::placeholder{color:#A9BCB9;}
         <button class="history-type-btn active" data-pscat="all" type="button">All</button>
         <button class="history-type-btn" data-pscat="repairs" type="button">Repairs</button>
         <button class="history-type-btn" data-pscat="chemicals" type="button">Chemicals</button>
+        <button class="history-type-btn" data-pscat="products" type="button">Products</button>
+        <button class="history-type-btn" data-pscat="services" type="button">Services</button>
       </div>
       <!-- Search, with Add product or service at the far right of the same line (Oct 2) -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
@@ -2206,7 +2208,7 @@ input::placeholder{color:#A9BCB9;}
         <input id="psSearch" placeholder="Search products and services" autocomplete="off" style="padding-right:38px;">
         <button type="button" id="psSearchClear" style="display:none;position:absolute;right:8px;bottom:4px;height:30px;width:30px;padding:0;border:1px solid #EFC9BC;border-radius:8px;background:#fff;color:var(--rust);font-size:18px;line-height:1;cursor:pointer;align-items:center;justify-content:center;">×</button>
       </div>
-      <button class="btn btn-ghost" id="btnAddProductService" style="width:auto;flex:0 0 auto;white-space:nowrap;">+ Add product or service</button>
+      <button class="btn btn-primary" id="btnAddProductService" style="width:auto;flex:0 0 auto;white-space:nowrap;">+ Add product or service</button>
       </div>
       <!-- What each column is (Oct 2) -->
       <div id="psColumnLabels" style="display:flex;align-items:center;gap:8px;padding:0 0 6px;border-bottom:1px solid var(--line);margin-bottom:6px;">
@@ -4578,7 +4580,10 @@ document.getElementById('psSearchClear').addEventListener('click', ()=>{
 
 const PS_CATEGORIES = [
   {key:'repairs', label:'Repair'},
-  {key:'chemicals', label:'Chemical'}
+  {key:'chemicals', label:'Chemical'},
+  // Oct 13: their own tabs too
+  {key:'products', label:'Product'},
+  {key:'services', label:'Service'}
 ];
 
 document.querySelectorAll('#psCategoryControl .history-type-btn').forEach(btn=>{
@@ -4605,8 +4610,8 @@ function renderProductsServicesList(){
     .filter(i => !term || (i.name || '').toLowerCase().includes(term))
     .slice()
     .sort((a,b)=>{
-      // Repairs, then Chemicals, then Uncategorised — alphabetical within each
-      const rank = i => i.category === 'repairs' ? 0 : (i.category === 'chemicals' ? 1 : 2);
+      // Repairs, Chemicals, Products, Services, then Uncategorised (Oct 13)
+      const rank = i => { const n = ['repairs', 'chemicals', 'products', 'services'].indexOf(i.category || ''); return n === -1 ? 4 : n; };
       const ra = rank(a), rb = rank(b);
       if(ra !== rb) return ra - rb;
       // The order they were dragged into (Oct 3), else alphabetical
@@ -4619,7 +4624,7 @@ function renderProductsServicesList(){
     if(term){
       container.innerHTML = emptyState('Nothing matches "' + psSearchTerm.trim() + '".');
     } else {
-      const label = psCategory === 'repairs' ? 'repairs' : 'chemicals';
+      const label = ({repairs: 'repairs', chemicals: 'chemicals', products: 'products', services: 'services'})[psCategory] || psCategory;
       container.innerHTML = emptyState('Nothing filed under ' + label + ' yet.');
     }
     return;
@@ -4923,6 +4928,8 @@ function openProductServiceModal(){
           <option value="">Uncategorised</option>
           <option value="repairs">Repair</option>
           <option value="chemicals">Chemical</option>
+          <option value="products">Product</option>
+          <option value="services">Service</option>
         </select>
       </div>
       <div class="btn-row">
