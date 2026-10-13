@@ -203,6 +203,10 @@ textarea{min-height:52px;resize:vertical;}
 .recent-table tr.rt-group td{background:var(--surface-alt);color:var(--muted);font-weight:600;text-align:left;font-size:11.5px;}
 .recent-table tr.rt-group td.rt-name{background:var(--surface-alt);color:var(--muted);}
 .recent-table .rt-name{position:sticky;left:0;text-align:left;background:var(--card);font-weight:600;color:var(--ink);min-width:92px;}
+/* The name column keeps one width (Oct 13): a name too long for it scrolls
+   across, as the cut-off names on Photo requirements do */
+.recent-table .rt-nm{width:116px;max-width:116px;overflow:hidden;white-space:nowrap;}
+.recent-table .rt-nm.marquee-on{-webkit-mask-image:linear-gradient(90deg,#000 82%,transparent);mask-image:linear-gradient(90deg,#000 82%,transparent);}
 .recent-table th.rt-name{background:var(--teal-pale);color:var(--teal-deep);}
 .recent-table td.rt-val{font-family:'JetBrains Mono',monospace;color:var(--ink);}
 .recent-table td.rt-none{color:var(--muted);}
@@ -2025,6 +2029,29 @@ function isChlorineProduct(doseKey, lists){
   return /\b(tab|tabs|chlorine|bleach|hypochlorite|trichlor|dichlor|cal-hypo)\b/.test(text);
 }
 
+// A dosage's name, looked up on every standard list
+function doseNameAnywhere(doseKey){
+  for(const t of ['pool', 'spa', 'fountain']){
+    const d = (((chemConfig[t] || {}).dosages) || []).find(x => x && x.key === doseKey);
+    if(d) return d.label || d.key;
+  }
+  return '';
+}
+// The key of a rule's dosage on THIS list: the same key if it's here,
+// otherwise the dosage here with the same name (Oct 13)
+function ruleDoseKeyHere(doseKey, chem, type, lists){
+  const here = (lists && lists.dosages) || [];
+  if(here.some(d => d && d.key === doseKey)) return doseKey;
+  const norm = v => String(v || '').trim().toLowerCase();
+  let name = '';
+  const from = [chem && chem.doseRulesFrom, type, 'pool', 'spa', 'fountain'].filter(Boolean);
+  for(const t of from){
+    const d = (((chemConfig[t] || {}).dosages) || []).find(x => x && x.key === doseKey);
+    if(d){ name = d.label; break; }
+  }
+  const match = name && here.find(d => d && norm(d.label) === norm(name));
+  return match ? match.key : doseKey;
+}
 function applyDoseRules(type){
   const cid = currentVisitCustomerId;
   const lists = cid
@@ -2049,11 +2076,17 @@ function applyDoseRules(type){
     if(!readEl) return;
     const reading = readEl.value;
 
-    rules.forEach(rule=>{
-      if(!rule || !rule.doseKey){
+    rules.forEach(rule0=>{
+      if(!rule0 || !rule0.doseKey){
         noteRuleProblem((chem.label || chem.key) + ': a rule has no dosage chosen');
         return;
       }
+      // Borrowed rules (Extra following Spa, a custom setup following the
+      // standard list) name the other list's dosage. Each list gives its
+      // dosages their own key, so the same product here is matched by name
+      // (Oct 13: Extra's pH followed Spa's "add Sodium bicarbonate" rule, and
+      // Extra's own Sodium bicarbonate has a different key).
+      const rule = Object.assign({}, rule0, {doseKey: ruleDoseKeyHere(rule0.doseKey, chem, type, lists)});
       // A salt pool makes its own chlorine, so rules adding a chlorine product
       // are skipped. Turned off per reading (and per customer) where the office
       // still wants them to fire — a failing cell, or a pool that gets both.
@@ -2074,8 +2107,9 @@ function applyDoseRules(type){
 
       const doseId = fieldId(type, 'dose', rule.doseKey);
       if(!document.getElementById(doseId)){
-        noteRuleProblem((chem.label || chem.key)
-          + ': rule points at a dosage not on this list');
+        const nm = doseNameAnywhere(rule.doseKey);
+        noteRuleProblem((chem.label || chem.key) + ': a rule adds '
+          + (nm ? nm : 'a dosage') + ', which is not on this list');
         return;
       }
 
@@ -2539,6 +2573,11 @@ function listsForBody(customerId, bodyKey, fallbackType){
 // as the fields below). Swipes sideways; the reading names stay put. Nothing
 // shows when there were no visits in that time.
 const RECENT_READINGS_DAYS = 91;      // 3 months (Sept 30; was 4 weeks)
+// Re-measures the history table's names once its box has a width (Oct 13)
+function runMarqueeFor(box){
+  if(!box || !box.offsetWidth) return;
+  box.querySelectorAll('.rt-nm').forEach(el => { try{ marqueeIfCut(el); }catch(e){} });
+}
 async function renderRecentReadings(type, chemList, doseList){
   const box = document.getElementById(type + 'RecentReadings');
   const cid = currentVisitCustomerId;
@@ -2577,11 +2616,11 @@ async function renderRecentReadings(type, chemList, doseList){
   let html = '<div style="display:flex;align-items:baseline;justify-content:space-between;margin:0 0 6px;">'
     + '<span style="font-size:13px;font-weight:700;color:var(--teal-deep);">Last 3 months</span>'
     + '<span style="font-size:11px;color:var(--muted);">scroll for more</span>'
-    + '</div><div class="recent-wrap fixed"><table class="recent-table"><thead><tr><th class="rt-name">Reading</th>';
+    + '</div><div class="recent-wrap fixed"><table class="recent-table"><thead><tr><th class="rt-name"><div class="rt-nm">Reading</div></th>';
   visits.forEach(v => { html += '<th>' + esc(day(v.date)) + (v.skipped ? ' <span style="font-size:10.5px;color:var(--rust);font-weight:600;">\u00b7 Skipped</span>' : '') + '</th>'; });
   html += '</tr></thead><tbody>';
   chemList.forEach(ch=>{
-    html += '<tr><td class="rt-name">' + esc(ch.label || ch.key) + '</td>';
+    html += '<tr><td class="rt-name"><div class="rt-nm">' + esc(ch.label || ch.key) + '</div></td>';
     visits.forEach(v=>{
       const val = v[ch.key];
       html += shown(val) ? '<td class="rt-val">' + esc(String(val)) + '</td>' : '<td class="rt-none">\u2014</td>';
@@ -2591,11 +2630,11 @@ async function renderRecentReadings(type, chemList, doseList){
   // What was put in at each of those visits, when the company has it on
   const doses = (appSettings && appSettings.showRecentDosages !== false && Array.isArray(doseList)) ? doseList : [];
   if(doses.length){
-    html += '<tr class="rt-group"><td class="rt-name">Chemicals added</td>' + visits.map(()=> '<td></td>').join('') + '</tr>';
+    html += '<tr class="rt-group"><td class="rt-name"><div class="rt-nm">Chemicals added</div></td>' + visits.map(()=> '<td></td>').join('') + '</tr>';
     const builtIn = key => { for(const b of ['pool', 'spa', 'fountain']){ const f = ((DEFAULT_CHEM_CONFIG[b] || {}).dosages || []).find(x => x.key === key); if(f && f.unit) return f.unit; } return ''; };
     doses.forEach(d=>{
       const unit = d.unit || builtIn(d.key);
-      html += '<tr><td class="rt-name">' + esc(d.label || d.key) + '</td>';
+      html += '<tr><td class="rt-name"><div class="rt-nm">' + esc(d.label || d.key) + '</div></td>';
       visits.forEach(v=>{
         const val = v[d.key];
         const has = shown(val) && parseFloat(val) !== 0;
@@ -2607,6 +2646,13 @@ async function renderRecentReadings(type, chemList, doseList){
   html += '</tbody></table></div>';
   box.style.marginBottom = '14px';
   box.innerHTML = html;
+  // Names too long for the column scroll across (Oct 13). A body of water not
+  // on screen yet has no width to measure, so it's measured again once it shows.
+  setTimeout(()=> runMarqueeFor(box), 0);
+  if(!box._rtWatch && typeof ResizeObserver === 'function'){
+    box._rtWatch = new ResizeObserver(()=> runMarqueeFor(box));
+    box._rtWatch.observe(box);
+  }
 }
 
 function renderAllConfigFields(){
@@ -5859,10 +5905,22 @@ function photoBodyType(type){
   return singleBodyVisit() ? 'pool' : type;
 }
 
+// The signed-in technician's profile as it is now: their photo ticks can be
+// changed on the website at any time, and the copy made at sign-in kept the
+// old ones until the app was restarted (Oct 13)
+function liveMe(){
+  if(!currentUser) return null;
+  try{
+    const t = (lsGet('technicians') || []).find(x => x && String(x.id) === String(currentUser.id));
+    if(t) return t;
+  }catch(e){}
+  return currentUser;
+}
 function techWantsPhoto(step, type){
   type = photoBodyType(type);
   const key = type === 'spa' ? 'spa' : (type === 'pool' ? 'pool' : 'fountain');
-  const rules = currentUser && currentUser.photoRules;
+  const me = liveMe();
+  const rules = me && me.photoRules !== undefined ? me.photoRules : (currentUser && currentUser.photoRules);
   // Asked of them by name, or of everyone
   if(rules && rules[step] && rules[step][key] === true) return true;
   if(photoEveryoneOn(step, key)) return true;
@@ -5876,7 +5934,8 @@ function techOptionalPhoto(step){
   // The after photo is always on a service report's last page, optional
   // unless a tick makes it required for that body of water (Oct 3)
   if(step === 'after') return true;
-  const opt = currentUser && currentUser.photoOptional;
+  const me = liveMe();
+  const opt = me && me.photoOptional !== undefined ? me.photoOptional : (currentUser && currentUser.photoOptional);
   return !!(opt && opt[step] === true) || photoEveryoneOn(step, 'optional');
 }
 
@@ -12378,10 +12437,57 @@ document.getElementById('servicedTechSel').addEventListener('change', (e)=>{
   renderServicedList();
 });
 
+// Admins choose whose Today list a reserviced customer goes on (Oct 13).
+// Resolves with that technician's id, or null if the window is cancelled.
+function pickReserviceTech(customer){
+  return new Promise(resolve=>{
+    let who = null; try{ who = currentUser; }catch(e){}
+    const techs = techniciansInOrder().filter(t => t && t.id);
+    if(who && who.id && !techs.some(t => String(t.id) === String(who.id))) techs.unshift({id: who.id, name: who.name || 'Me'});
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    const box = document.createElement('div');
+    box.className = 'confirm-box';
+    box.style.maxWidth = '420px';
+    box.innerHTML = '<h3 style="font-size:16px;margin:0 0 4px;"></h3>'
+      + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Their report stays as it is. Whose Today list should they go on, just for today?</p>'
+      + '<div class="field"><label>Technician</label><select></select></div>'
+      + '<div class="btn-row" style="margin-top:6px;"><button type="button" class="btn btn-ghost" data-no>Cancel</button><button type="button" class="btn btn-primary" data-go>Reservice</button></div>';
+    box.querySelector('h3').textContent = 'Reservice ' + (customer.name || '');
+    const sel = box.querySelector('select');
+    techs.forEach(t=>{
+      const o = document.createElement('option');
+      o.value = String(t.id);
+      o.textContent = (t.name || 'Technician')
+        + (who && String(t.id) === String(who.id) ? ' (me)' : '')
+        + (String(t.id) === String(customer.technicianId || '') ? ' (assigned)' : '');
+      sel.appendChild(o);
+    });
+    // Starts on whoever pressed it, as Reservice always did
+    if(who && who.id) sel.value = String(who.id);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    let done = false;
+    const finish = v => { if(done) return; done = true; overlay.remove(); resolve(v); };
+    box.querySelector('[data-no]').addEventListener('click', ()=> finish(null));
+    box.querySelector('[data-go]').addEventListener('click', ()=> finish(sel.value || null));
+    // Closed some other way (a tap outside): nothing happens
+    new MutationObserver((m, obs)=>{ if(!overlay.isConnected){ obs.disconnect(); finish(null); } })
+      .observe(document.body, {childList: true});
+  });
+}
+
 async function reserviceCustomer(customer, forDay){
   // The customer as they are in the list right now, not the copy the row was
   // drawn with (a sync in between replaces every customer with a fresh copy)
   customer = customers.find(x => x && x.id === customer.id) || customer;
+  // An admin picks whose Today it goes on first; cancelling changes nothing
+  let toTech = null;
+  if(isAdminUser()){
+    toTech = await pickReserviceTech(customer);
+    if(!toTech) return;
+    customer = customers.find(x => x && x.id === customer.id) || customer;
+  }
   // The original report stays exactly as it was. This flag marks the NEXT
   // report as a redo so the two can be told apart.
   customer.pendingRedo = true;
@@ -12418,13 +12524,16 @@ async function reserviceCustomer(customer, forDay){
   // Always a "just today" move to the admin who pressed it, whoever's
   // customer it is (their own included), replacing any move touching today,
   // and marked as a reservice so it shows JUST TODAY even on their own customer
-  if(isAdminUser() && who && who.id){
-    saveMoveJustOnce(customer.id, today, today, String(who.id));
+  if(isAdminUser() && (toTech || (who && who.id))){
+    const target = String(toTech || who.id);
+    saveMoveJustOnce(customer.id, today, today, target);
     const moves = loadReschedules();
     moves.forEach(r => { if(r && r.customerId === customer.id && r.toDate === today
-      && String(r.technicianId || '') === String(who.id)) r.reservice = true; });
+      && String(r.technicianId || '') === target) r.reservice = true; });
     lsSet('rescheduledVisits', moves);
-    showToast(customer.name + ' moved to your Today list');
+    const t = techniciansInOrder().find(x => x && String(x.id) === target);
+    showToast(customer.name + (who && String(who.id) === target ? ' moved to your Today list'
+      : ' moved to ' + ((t && t.name) || 'their') + '\u2019s Today list'));
   } else {
     showToast(customer.name + ' moved back to Today\'s list');
   }
