@@ -11033,7 +11033,9 @@ function openJobPage(customer, job){
   // A pool drain's extra work from the office (Oct 13): each item with a box to
   // tick, all ticked before Submit, like a work order's items
   if(job.kind === 'pool drain'){
-    const extra = (job.lineItems || []).map(li => String((li && li.description) || '').trim()).filter(Boolean);
+    // With how many after the name when it's more than one (Oct 13)
+    const extra = (job.lineItems || []).filter(li => li && String(li.description || '').trim())
+      .map(li => String(li.description).trim() + ((Number(li.qty) || 1) > 1 ? ' \u00d7 ' + Number(li.qty) : ''));
     if(extra.length){
       const wrap = document.createElement('div');
       wrap.style.cssText = 'margin:2px 0 14px;';

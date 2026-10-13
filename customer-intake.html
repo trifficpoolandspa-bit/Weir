@@ -531,6 +531,8 @@ input::placeholder{color:#A9BCB9;}
 .marquee-inner{display:inline-block;white-space:nowrap;will-change:transform;}
 .marquee-on{-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent);mask-image:linear-gradient(90deg,#000 85%,transparent);}
 .marquee-on .marquee-inner{animation:weirMarquee var(--marquee-time,6s) ease-in-out infinite;}
+/* The extra work counter's number, without the browser's own arrows (Oct 13) */
+.pd-qty::-webkit-outer-spin-button,.pd-qty::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 </style>
 </head>
 <body class="sidebar-subtabs">
@@ -737,10 +739,13 @@ input::placeholder{color:#A9BCB9;}
       <!-- As on Service Reports (Oct 3) -->
       <div class="field">
         <label>Jump to a date</label>
-        <input type="date" id="qoDateFilter">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;min-height:28px;">
+        <!-- The same narrow date box and Clear date as Service reports, all on one line (Oct 13) -->
+        <div style="display:flex;align-items:center;gap:8px;min-height:32px;">
+          <input type="date" id="qoDateFilter" style="width:170px;flex:0 0 170px;padding:6px 8px;font-size:13px;">
+          <button type="button" class="btn btn-ghost" id="qoDateClear" style="display:none;width:auto;flex:0 0 auto;padding:6px 10px;font-size:12px;color:var(--rust);border-color:#EFC9BC;">Clear date</button>
+          <span style="flex:1;"></span>
           <!-- Which kind to show, All records to start (Oct 3) -->
-          <select id="qoKindFilter" style="width:auto;padding:6px 10px;font-size:13px;">
+          <select id="qoKindFilter" style="width:auto;flex:0 0 auto;padding:6px 10px;font-size:13px;">
             <option value="">All records</option>
             <option value="quote">Quotes</option>
             <option value="workorder">Work orders</option>
@@ -4614,10 +4619,8 @@ function renderProductsServicesList(){
       const rank = i => { const n = ['repairs', 'chemicals', 'products', 'services'].indexOf(i.category || ''); return n === -1 ? 4 : n; };
       const ra = rank(a), rb = rank(b);
       if(ra !== rb) return ra - rb;
-      // The order they were dragged into (Oct 3), else alphabetical
-      const oa = typeof a.order === 'number' ? a.order : Infinity, ob = typeof b.order === 'number' ? b.order : Infinity;
-      if(oa !== ob) return oa - ob;
-      return (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
+      // A–Z on every tab; no dragging (Oct 13)
+      return String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity: 'base', numeric: true});
     });
 
   if(visible.length === 0){
@@ -4641,7 +4644,7 @@ function renderProductsServicesList(){
 
   // Drag a line to move it (Oct 3); the new order is kept. Not while searching,
   // when only some lines show.
-  const canDrag = !term;
+  const canDrag = false;   // no dragging: always A–Z (Oct 13)
   const onReorderPs = keys=>{
     const pageKeys = pageItems.map(x => x.key);
     const moved = keys.filter(k => pageKeys.indexOf(k) !== -1);
@@ -9436,12 +9439,36 @@ function pdOpenExtraWork(e, name, onDone){
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13.5px;';
       const t = document.createElement('span'); t.style.cssText = 'flex:1;min-width:0;'; t.textContent = li.description;
-      const pr = document.createElement('span'); pr.style.cssText = 'font-size:12px;color:var(--muted);white-space:nowrap;'; pr.textContent = money(li.price);
+      // How many (Oct 13): − and + by one, never below 1, or type your own.
+      // The price is the line's total: each price × how many.
+      const pr = document.createElement('span'); pr.style.cssText = 'font-size:12px;color:var(--muted);white-space:nowrap;min-width:62px;text-align:right;';
+      const showPrice = ()=>{ const each = parseFloat(li.price); pr.textContent = isFinite(each) && String(li.price).trim() !== '' ? money(each * (Number(li.qty) || 1)) : ''; };
+      const step = document.createElement('span');
+      step.style.cssText = 'display:inline-flex;align-items:center;border:1px solid var(--teal-deep);border-radius:8px;overflow:hidden;flex-shrink:0;';
+      const stepBtn = txt => { const b = document.createElement('button'); b.type = 'button'; b.textContent = txt;
+        b.style.cssText = 'width:26px;height:28px;border:0;border-radius:0;background:var(--teal-deep);color:#fff;font-size:15px;font-weight:700;cursor:pointer;padding:0;margin:0;flex:0 0 auto;'; return b; };
+      const minus = stepBtn('\u2212'), plus = stepBtn('+');
+      minus.title = 'One fewer'; plus.title = 'One more';
+      const qty = document.createElement('input');
+      qty.type = 'number'; qty.min = '1'; qty.step = '1';
+      qty.value = String(Number(li.qty) || 1);
+      qty.setAttribute('aria-label', 'How many');
+      qty.className = 'pd-qty';
+      qty.style.cssText = 'width:42px;height:28px;border:0;border-radius:0;text-align:center;font-size:13px;font-weight:600;padding:0;margin:0;-moz-appearance:textfield;';
+      const setQty = n => { li.qty = Math.max(1, Math.round(Number(n)) || 1); qty.value = String(li.qty); showPrice(); };
+      minus.addEventListener('click', ()=> setQty((Number(li.qty) || 1) - 1));
+      plus.addEventListener('click', ()=> setQty((Number(li.qty) || 1) + 1));
+      qty.addEventListener('focus', ()=>{ try{ qty.select(); }catch(err){} });
+      qty.addEventListener('input', ()=>{ const n = parseInt(qty.value, 10); if(n >= 1){ li.qty = n; showPrice(); } });
+      qty.addEventListener('change', ()=> setQty(parseInt(qty.value, 10)));
+      qty.addEventListener('keydown', ev => { if(ev.key === 'Enter'){ ev.preventDefault(); qty.blur(); } });
+      step.appendChild(minus); step.appendChild(qty); step.appendChild(plus);
+      showPrice();
       const bin = document.createElement('button');
       bin.type = 'button'; bin.innerHTML = WEIR_BIN_SVG; bin.dataset.xDrawn = 'bin'; bin.dataset.binSize = 's';
       bin.title = 'Take this off'; bin.setAttribute('aria-label', bin.title); bin.style.cssText = 'cursor:pointer;';
       bin.addEventListener('click', ()=>{ items.splice(i, 1); draw(); });
-      row.appendChild(t); row.appendChild(pr); row.appendChild(bin);
+      row.appendChild(t); row.appendChild(step); row.appendChild(pr); row.appendChild(bin);
       listEl.appendChild(row);
     });
   };
@@ -9984,19 +10011,29 @@ function openDrainCalendar(startDay){
         // Extra work under the customer (Oct 13): what's added, and a button to
         // add more. It goes to the app on the same drain job.
         const extra = document.createElement('div');
-        extra.style.cssText = 'grid-column:2 / 6;display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:0 0 2px;';
+        // One line (Oct 13): tags that run past the end tuck away behind the
+        // button, which always stays in view. Every item still goes to the app.
+        extra.style.cssText = 'grid-column:2 / 6;display:flex;gap:6px;flex-wrap:nowrap;align-items:center;padding:0 0 2px;min-width:0;';
+        const tagsWrap = document.createElement('div');
+        // Takes the room up to the button; what doesn't fit fades out before it
+        tagsWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:nowrap;align-items:center;flex:1 1 auto;min-width:0;overflow:hidden;'
+          + '-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);';
+        extra.appendChild(tagsWrap);
         const exItems = pdExtraOf(e);
         exItems.forEach(li=>{
           const tag = document.createElement('span');
-          tag.style.cssText = 'background:#E9EEF0;color:#3E5560;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:7px;';
-          tag.textContent = li.description;
-          extra.appendChild(tag);
+          // A fixed 75px; words too long for it scroll across (Oct 13)
+          tag.className = 'pd-scroll-name';
+          tag.style.cssText = 'background:#E9EEF0;color:#3E5560;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:7px;width:75px;flex:0 0 75px;overflow:hidden;white-space:nowrap;box-sizing:border-box;';
+          tag.textContent = li.description + ((Number(li.qty) || 1) > 1 ? ' \u00d7 ' + Number(li.qty) : '');
+          tag.title = tag.textContent;
+          tagsWrap.appendChild(tag);
         });
         if(!(r && r.status === 'done')){
           const addX = document.createElement('button');
           addX.type = 'button';
           addX.textContent = exItems.length ? 'Edit extra work' : '+ Extra work';
-          addX.style.cssText = 'width:auto;border:1px dashed #BFDCD8;color:var(--teal-deep);background:#fff;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:700;cursor:pointer;';
+          addX.style.cssText = 'width:auto;flex:0 0 auto;white-space:nowrap;border:1px dashed #BFDCD8;color:var(--teal-deep);background:#fff;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:700;cursor:pointer;';
           addX.addEventListener('click', ()=>{
             pdOpenExtraWork(e, displayName(c.name), (items)=>{
               const all = pdCal(); const it = all.find(y => y.id === e.id); if(!it) return;
@@ -10015,6 +10052,7 @@ function openDrainCalendar(startDay){
           });
           extra.appendChild(addX);
         }
+        if(!tagsWrap.children.length) tagsWrap.remove();
         if(extra.children.length) row.appendChild(extra);
         listWrap.appendChild(row);
       });
@@ -14813,9 +14851,10 @@ function openFilterCalendar(startDay){
         if(selecting){
           if(!gs.length) return;
           if(picked.has(iso)) picked.delete(iso); else picked.add(iso);
-        } else sel = iso;
+        } else sel = (sel === iso ? '' : iso);   // the chosen day again: closed (Oct 13)
         draw();
       });
+      cell.dataset.calDay = iso;
       grid.appendChild(cell);
     }
     box.appendChild(grid);
@@ -14823,6 +14862,7 @@ function openFilterCalendar(startDay){
     if(!selecting && sel && sel.slice(0, 7) === month){
       const gs = byDay[sel] || [];
       const panel = document.createElement('div');
+      panel.dataset.calPanel = '1';
       panel.style.cssText = 'border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-top:12px;';
       const ph = document.createElement('div');
       ph.style.cssText = 'display:flex;align-items:baseline;gap:10px;margin-bottom:4px;';
@@ -14853,11 +14893,31 @@ function openFilterCalendar(startDay){
         }
         panel.appendChild(gh);
         const done = fgCleanStatus(g);
+        // Drag a name by its grip to move it (Oct 13): the group takes the same
+        // order, and so does the route in the app
+        const listEl = document.createElement('div');
+        panel.appendChild(listEl);
+        const onReorder = keys=>{
+          const it = filterGroups.find(x => x && x.id === g.id); if(!it) return;
+          const ids = it.customerIds || [];
+          const moved = keys.filter(k => ids.indexOf(k) !== -1);
+          // Paused customers keep their places; the rest fill in, in the new order
+          let n = 0;
+          it.customerIds = ids.map(id => moved.indexOf(id) !== -1 ? moved[n++] : id);
+          saveFilterGroups(); renderFilterGroups(); draw();
+        };
         fgLiveIds(g).forEach(cid=>{
           const c = custOf(cid); if(!c) return;
           const st = stateOf(g, cid, done);
           const row = document.createElement('div');
-          row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line);font-size:13px;';
+          row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line);font-size:13px;background:#fff;';
+          row.dataset.reorderKey = cid;
+          const grip = document.createElement('div');
+          grip.textContent = '\u2261';
+          grip.title = 'Drag to move';
+          grip.style.cssText = 'color:var(--muted);font-size:19px;flex-shrink:0;padding:0 4px 0 2px;cursor:grab;touch-action:none;line-height:1;';
+          attachTouchReorder(grip, row, listEl, '[data-reorder-key]', onReorder);
+          row.appendChild(grip);
           const nm = document.createElement('span');
           nm.style.cssText = 'flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
           nm.textContent = displayName(c.name);
@@ -14867,12 +14927,46 @@ function openFilterCalendar(startDay){
           if(st === 'done'){ stEl.style.color = 'var(--green)'; stEl.textContent = '✓ done'; }
           else if(st === 'app'){ stEl.style.color = '#8A5E0B'; stEl.innerHTML = calClockSvg(12) + '<span>in the app</span>'; }
           row.appendChild(stEl);
-          panel.appendChild(row);
+          // A bin at the far right (Oct 13): out of the group for this day and
+          // off the app. Not on a clean that's already done.
+          if(st !== 'done'){
+            const bin = document.createElement('button');
+            bin.type = 'button';
+            bin.innerHTML = WEIR_BIN_SVG;
+            bin.dataset.xDrawn = 'bin';
+            bin.dataset.binSize = 's';
+            bin.title = 'Take off this day';
+            bin.setAttribute('aria-label', bin.title);
+            bin.style.cssText = 'cursor:pointer;flex-shrink:0;';
+            bin.addEventListener('click', async ()=>{
+              const ok = await confirmDialog('Take ' + displayName(c.name) + ' off ' + (g.name || 'this group') + (g.finalized ? '? Their filter clean comes off the app.' : '?'), 'Take off');
+              if(!ok) return;
+              const it = filterGroups.find(x => x && x.id === g.id); if(!it) return;
+              it.customerIds = (it.customerIds || []).filter(id => id !== cid);
+              saveFilterGroups(); renderFilterGroups(); draw();
+              showToast(displayName(c.name) + ' taken off');
+            });
+            row.appendChild(bin);
+          } else {
+            const pad = document.createElement('span');
+            pad.style.cssText = 'width:24px;flex-shrink:0;';
+            row.appendChild(pad);
+          }
+          listEl.appendChild(row);
         });
       });
       box.appendChild(panel);
     }
   }
+  // A click anywhere in the window that isn't a day, a button or a menu closes
+  // the chosen day (Oct 13)
+  box.addEventListener('click', ev=>{
+    if(!sel || selecting) return;
+    const t = ev.target;
+    if(!t || !t.isConnected) return;
+    if(t.closest('[data-cal-day],[data-cal-panel],button,select,input,label,a')) return;
+    sel = ''; draw();
+  });
   function pushDays(days){
     const byDay = groupsOn();
     let sent = 0, cleans = 0, blocked = 0;
@@ -18340,7 +18434,19 @@ document.getElementById('qoKindFilter').addEventListener('change', ()=>{
   qoOpenId = null;
   if(qoCustomerId) renderCustomerWorkOrders(qoCustomerId);
 });
+// Clear date shows only while a date is in the box, as on Service reports (Oct 13)
+function syncQoDateClear(){
+  const b = document.getElementById('qoDateClear'), i = document.getElementById('qoDateFilter');
+  if(b && i) b.style.display = i.value ? '' : 'none';
+}
+document.getElementById('qoDateClear').addEventListener('click', ()=>{
+  const i = document.getElementById('qoDateFilter');
+  i.value = '';
+  i.dispatchEvent(new Event('change'));
+});
+document.getElementById('qoDateFilter').addEventListener('input', syncQoDateClear);
 document.getElementById('qoDateFilter').addEventListener('change', e=>{
+  syncQoDateClear();
   qoDateFilter = e.target.value || '';
   qoOpenId = null;
   if(qoCustomerId) renderCustomerWorkOrders(qoCustomerId);
@@ -18359,6 +18465,7 @@ function renderCustomerWorkOrders(customerId){
   if(countEl) countEl.textContent = all.length ? all.length + (all.length === 1 ? ' record' : ' records') : '';
   const box = document.getElementById('qoDateFilter');
   if(box && box.value !== qoDateFilter) box.value = qoDateFilter;
+  try{ syncQoDateClear(); }catch(e){}
   const kindSel = document.getElementById('qoKindFilter');
   const kind = kindSel ? kindSel.value : '';
   const list = all.filter(x => (!qoDateFilter || qoDay(x) === qoDateFilter) && (!kind || x.kind === kind));
