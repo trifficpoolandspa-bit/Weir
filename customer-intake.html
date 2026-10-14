@@ -747,8 +747,7 @@ input::placeholder{color:#A9BCB9;}
         <div style="display:flex;align-items:center;gap:8px;min-height:32px;">
           <input type="date" id="qoDateFilter" style="width:170px;flex:0 0 170px;padding:6px 8px;font-size:13px;">
           <button type="button" class="btn btn-ghost" id="qoDateClear" style="display:none;width:auto;flex:0 0 auto;padding:6px 10px;font-size:12px;color:var(--rust);border-color:#EFC9BC;">Clear date</button>
-          <span style="flex:1;"></span>
-          <!-- Which kind to show, All records to start (Oct 3) -->
+          <!-- Which kind to show, All records to start (Oct 3); right beside the date (Oct 13) -->
           <select id="qoKindFilter" style="width:auto;flex:0 0 auto;padding:6px 10px;font-size:13px;">
             <option value="">All records</option>
             <option value="quote">Quotes</option>
@@ -756,6 +755,7 @@ input::placeholder{color:#A9BCB9;}
             <option value="clean">Filter cleans</option>
             <option value="task">Tasks</option>
           </select>
+          <span style="flex:1;"></span>
           <div id="qoSelectSlot"></div>
         </div>
       </div>
@@ -7575,7 +7575,8 @@ function fgSyncScheduled(){
   let changed = false;
   filterGroups.forEach(g=>{
     if(!g || !g.finalized) return;
-    const live = fgLiveIds(g);
+    // Customers held off the app on their own (Oct 13) are left off it
+    const live = fgLiveIds(g).filter(cid => !(g.custHold && g.custHold[cid]));
     // Paused (or taken out): off the route until they're back
     const before = sched.length;
     sched = sched.filter(sc => !(sc && sc.groupId === g.id && sc.status !== 'done' && live.indexOf(sc.customerId) === -1));
@@ -9799,6 +9800,48 @@ function calNameChip(text, state, title){
   return chip;
 }
 // Whose calendar to show: All technicians, then everyone A–Z (Oct 13)
+// The calendars' top lines in the same sizes as the Groups and Records tabs
+// (Oct 13): the same heading, full-size buttons and the same technician menu
+function calHeadToPageStyle(head){
+  head.style.marginBottom = '14px';
+  const h2 = head.querySelector('h2'); if(h2) h2.style.cssText = 'margin:0;';
+  head.querySelectorAll('b').forEach(x => { x.style.fontSize = '15px'; });
+  head.querySelectorAll('button').forEach(b=>{
+    const t = (b.textContent || '').trim();
+    const icon = t === '\u2039' || t === '\u203a' || !t;
+    if(icon){ b.style.width = '40px'; b.style.height = '40px'; b.style.padding = '0'; b.style.fontSize = '16px'; }
+    else { b.style.padding = '11px 16px'; b.style.fontSize = '14px'; }
+  });
+  head.querySelectorAll('select').forEach(sel=>{ sel.style.padding = ''; sel.style.fontSize = ''; sel.style.fontWeight = ''; sel.style.minWidth = '160px'; });
+  head.querySelectorAll('span').forEach(sp=>{ if(/Tap the days/.test(sp.textContent || '')) sp.style.fontSize = '13px'; });
+}
+// A day window's status badge (Oct 13), in the style of the customer's Quotes &
+// orders badges: done green, in the app gold, not sent yet blue, as on the
+// calendar. With onPick it's a menu: pick another status for just that one.
+function calStatusBadge(state, onPick){
+  const LOOK = {'': ['NOT SENT', '#1F5E86'], app: ['IN THE APP', '#B07D1A'], done: ['DONE', 'var(--green)']};
+  const look = LOOK[state || ''] || LOOK[''];
+  const css = 'display:inline-flex;align-items:center;justify-content:center;width:92px;padding:4px 0;border-radius:7px;border:0;margin:0;'
+    + 'font-size:10.5px;font-weight:700;letter-spacing:.04em;color:#fff;white-space:nowrap;background:' + look[1] + ';';
+  if(!onPick){
+    const b = document.createElement('span');
+    b.style.cssText = css;
+    b.textContent = look[0];
+    return b;
+  }
+  const sel = document.createElement('select');
+  sel.className = 'cal-status-pick';
+  sel.style.cssText = css + 'text-align:center;text-align-last:center;cursor:pointer;-webkit-appearance:none;-moz-appearance:none;appearance:none;font-family:inherit;';
+  sel.title = 'Change the status';
+  [['', 'NOT SENT'], ['app', 'IN THE APP'], ['done', 'DONE']].forEach(([v, t])=>{
+    const o = document.createElement('option'); o.value = v; o.textContent = t;
+    o.style.cssText = 'color:var(--ink);background:#fff;';
+    sel.appendChild(o);
+  });
+  sel.value = state || '';
+  sel.addEventListener('change', ()=> onPick(sel.value));
+  return sel;
+}
 function calTechMenu(value, onChange){
   const sel = document.createElement('select');
   sel.style.cssText = 'width:auto;padding:6px 8px;font-size:12.5px;font-weight:600;min-width:150px;';
@@ -9907,15 +9950,47 @@ function openDrainCalendar(startDay){
       const cancel = smallBtn('Cancel');
       cancel.addEventListener('click', ()=>{ selecting = false; picked.clear(); draw(); });
       right.appendChild(cancel);
+      // Select all (Oct 13): every day this month with something on it; once
+      // they're all picked it clears them instead
+      const monthDays = Object.keys(byDay).filter(d => d.slice(0, 7) === month && (byDay[d] || []).length);
+      const allOn = monthDays.length && monthDays.every(d => picked.has(d));
+      const selAll = smallBtn(allOn ? 'Clear all' : 'Select all');
+      selAll.addEventListener('click', ()=>{ if(allOn) picked.clear(); else monthDays.forEach(d => picked.add(d)); draw(); });
+      if(!monthDays.length){ selAll.disabled = true; selAll.style.opacity = '0.5'; }
+      right.appendChild(selAll);
       const days = Array.from(picked);
       const drains = days.reduce((n, d) => n + (byDay[d] || []).length, 0);
       const push = smallBtn(days.length ? 'Push to app (' + days.length + (days.length === 1 ? ' day, ' : ' days, ') + drains + (drains === 1 ? ' drain)' : ' drains)') : 'Push to app', 'btn-primary');
       push.disabled = !days.length;
+      // Remove from route (Oct 13): the picked days' drains come off the app,
+      // except ones already done. Days with nothing sent are skipped.
+      const sentEnts = days.reduce((a, d) => a.concat((byDay[d] || []).filter(e => pdEntryRecords(e).some(x => x.rec && x.rec.status !== 'done'))), []);
+      const off = smallBtn(sentEnts.length ? 'Remove from route (' + sentEnts.length + (sentEnts.length === 1 ? ' drain)' : ' drains)') : 'Remove from route', 'btn-ghost', 'color:var(--rust);border-color:#EFC9BC;');
+      off.disabled = !sentEnts.length;
+      if(!sentEnts.length) off.style.opacity = '0.5';
+      off.addEventListener('click', async ()=>{
+        const ok = await confirmDialog('Take ' + sentEnts.length + (sentEnts.length === 1 ? ' drain' : ' drains') + ' off the route? They come off the app, except any already done. The customers stay on their days.', 'Remove');
+        if(!ok) return;
+        const all = pdCal();
+        sentEnts.forEach(e=>{
+          const it = all.find(x => x.id === e.id); if(!it) return;
+          pdEntryNormalize(it);
+          pdCalUnpush(it);
+          // Only done jobs stay filed on the day
+          const recs = pdScheduled();
+          Object.keys(it.pushed || {}).forEach(k => { if(!recs.some(r => r.id === it.pushed[k])) delete it.pushed[k]; });
+        });
+        pdCalSave(all);
+        selecting = false; picked.clear(); draw();
+        showToast(sentEnts.length + (sentEnts.length === 1 ? ' drain' : ' drains') + ' taken off the route');
+      });
+      right.appendChild(off);
       if(!days.length) push.style.opacity = '0.5';
       push.addEventListener('click', ()=> pushDays(days));
       right.appendChild(push);
     }
     head.appendChild(right);
+    calHeadToPageStyle(head);
     box.appendChild(head);
     if(monthPick){
       const mp = document.createElement('div');
@@ -10029,13 +10104,13 @@ function openDrainCalendar(startDay){
       if(!ents.length) panel.insertAdjacentHTML('beforeend', '<div style="font-size:12.5px;color:var(--muted);padding:6px 0;">Nobody on this day yet.</div>');
       // Every column a fixed width, so nothing staggers down the list (Oct 13)
       // The technician menu is narrow (just the name), so the drain buttons get the room (Oct 13)
-      const COLS = 'display:grid;grid-template-columns:125px minmax(150px,1fr) 300px 140px 90px 28px;gap:10px;align-items:center;min-width:860px;';
+      const COLS = 'display:grid;grid-template-columns:125px 190px 300px 100px 140px minmax(0,1fr) 28px;gap:10px;align-items:center;min-width:930px;';   // Drain moved left, Status before Technician (Oct 13)
       const listWrap = document.createElement('div');
       listWrap.style.cssText = 'overflow-x:auto;';
       if(ents.length){
         const hd = document.createElement('div');
         hd.style.cssText = COLS + 'font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:4px 0;';
-        hd.innerHTML = '<span>Photo</span><span>Customer</span><span>Drain</span><span>Technician</span><span></span><span></span>';
+        hd.innerHTML = '<span>Photo</span><span>Customer</span><span>Drain</span><span>Status</span><span>Technician</span><span></span><span></span>';
         listWrap.appendChild(hd);
       }
       panel.appendChild(listWrap);
@@ -10132,14 +10207,14 @@ function openDrainCalendar(startDay){
           if(ids.size && to){ const recs = pdScheduled(); recs.forEach(rr => { if(ids.has(rr.id)) rr.technicianId = to; }); lsSet('scheduledPoolDrains', recs); }
           draw();
         });
-        row.appendChild(techSel);
-        const who = document.createElement('span');
-        who.style.cssText = 'font-size:11.5px;color:var(--muted);white-space:nowrap;';
-        who.style.display = 'inline-flex'; who.style.alignItems = 'center'; who.style.gap = '4px';
-        if(r && r.status !== 'done') who.innerHTML = calClockSvg(12) + '<span>in the app</span>';
-        else who.textContent = r ? 'done' : '';
-        if(r) who.style.color = r.status === 'done' ? 'var(--green)' : '#8A5E0B';
+        // (the technician menu goes after the status now, Oct 13)
+        // Status as a badge, like the customer's Quotes & orders; press it to
+        // change just this customer's (Oct 13)
+        const who = calStatusBadge(r ? (r.status === 'done' ? 'done' : 'app') : '', want => setDrainStatus(e.id, want));
         row.appendChild(who);
+        // Status in its own column just left of Technician (Oct 13)
+        row.appendChild(techSel);
+        row.appendChild(document.createElement('span'));
         const x = document.createElement('button');
         x.type = 'button';
         // A small bin, not an × (Tyrus, Oct 11)
@@ -10160,7 +10235,7 @@ function openDrainCalendar(startDay){
         const extra = document.createElement('div');
         // One line (Oct 13): tags that run past the end tuck away behind the
         // button, which always stays in view. Every item still goes to the app.
-        extra.style.cssText = 'grid-column:2 / 6;display:flex;gap:6px;flex-wrap:nowrap;align-items:center;padding:0 0 2px;min-width:0;';
+        extra.style.cssText = 'grid-column:2 / 7;display:flex;gap:6px;flex-wrap:nowrap;align-items:center;padding:0 0 2px;min-width:0;';
         const tagsWrap = document.createElement('div');
         // Takes the room up to the button; what doesn't fit fades out before it
         tagsWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:nowrap;align-items:center;flex:0 1 auto;min-width:0;overflow:hidden;';   // the button follows the tags (Oct 13)
@@ -10218,6 +10293,45 @@ function openDrainCalendar(startDay){
     if(t.closest('[data-cal-day],[data-cal-panel],button,select,input,label,a')) return;
     sel = ''; draw();
   });
+  // One customer's drain to another status from the day window (Oct 13):
+  // not sent (off the app), in the app (sent, or back to not done), or done
+  function setDrainStatus(entryId, want){
+    const all = pdCal();
+    const e = all.find(x => x.id === entryId); if(!e) return;
+    const c = custOf(e.customerId); if(!c) return;
+    let recs = pdScheduled();
+    pdEntryNormalize(e);
+    e.pushed = e.pushed || {};
+    if(want === ''){
+      const ids = new Set(Object.values(e.pushed));
+      recs = recs.filter(x => !ids.has(x.id));
+      e.pushed = {};
+    } else {
+      const tech = e.technicianId || c.technicianId || '';
+      if(!tech){ showToast('Give ' + displayName(c.name) + ' a technician first'); draw(); return; }
+      const order = all.filter(x => x.date === e.date).findIndex(x => x.id === e.id);
+      pdEntryKinds(e).forEach(k=>{
+        let r = e.pushed[k] ? recs.find(x => x.id === e.pushed[k]) : null;
+        if(!r){
+          r = {id: 'pd_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), calendarId: e.id, customerId: e.customerId, status: 'scheduled'};
+          recs.push(r);
+          e.pushed[k] = r.id;
+        }
+        r.date = e.date; r.technicianId = tech; r.bodyKind = pdBodyCategory(c, k); r.bodyKey = k; r.bodyName = pdBodyLabel(c, k); r.order = Math.max(0, order);
+        r.photoRequired = e.photoRequired !== false;
+        if(want === 'done'){
+          if(r.status !== 'done'){ r.status = 'done'; r.doneAt = new Date().toISOString(); r.doneBy = 'office'; }
+        } else if(r.status === 'done'){
+          r.status = 'scheduled'; delete r.doneAt; delete r.doneBy;
+        }
+      });
+      pdApplyExtra(e, recs);
+    }
+    lsSet('scheduledPoolDrains', recs);
+    pdCalSave(all);
+    draw();
+    showToast(displayName(c.name) + ': ' + (want === 'done' ? 'done' : want === 'app' ? 'in the app' : 'not sent'));
+  }
   function pushDays(days){
     const all = pdCal();
     const recs = pdScheduled();
@@ -14739,6 +14853,7 @@ function unscheduleFilterGroup(g){
   const sched = (lsGet('scheduledFilterCleans') || []).filter(s => s.groupId !== g.id || s.status === 'done');
   lsSet('scheduledFilterCleans', sched);
   g.finalized = false;
+  g.custHold = {};
 }
 
 async function openFilterGroupScheduler(){
@@ -14971,7 +15086,8 @@ function openFilterCalendar(startDay){
   const techName = id => (technicians.find(t => String(t.id) === String(id)) || {}).name || 'No technician';
   const smallBtn = (text, cls, extra) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn ' + (cls || 'btn-ghost'); b.style.cssText = 'width:auto;flex:0 0 auto;padding:6px 12px;font-size:12.5px;' + (extra || ''); b.textContent = text; return b; };
   // Where each customer in a group is up to
-  const stateOf = (g, cid, done) => done[cid] === 'done' ? 'done' : (g.finalized ? 'app' : '');
+  // A customer held off the app on their own (Oct 13) shows as not sent
+  const stateOf = (g, cid, done) => done[cid] === 'done' ? 'done' : (g.finalized && !(g.custHold && g.custHold[cid]) ? 'app' : '');
   function groupsOn(){
     const by = {};
     filterGroups.forEach(g=>{
@@ -15029,15 +15145,39 @@ function openFilterCalendar(startDay){
       const cancel = smallBtn('Cancel');
       cancel.addEventListener('click', ()=>{ selecting = false; picked.clear(); draw(); });
       right.appendChild(cancel);
+      // Select all (Oct 13): every day this month with something on it; once
+      // they're all picked it clears them instead
+      const monthDays = Object.keys(byDay).filter(d => d.slice(0, 7) === month && (byDay[d] || []).length);
+      const allOn = monthDays.length && monthDays.every(d => picked.has(d));
+      const selAll = smallBtn(allOn ? 'Clear all' : 'Select all');
+      selAll.addEventListener('click', ()=>{ if(allOn) picked.clear(); else monthDays.forEach(d => picked.add(d)); draw(); });
+      if(!monthDays.length){ selAll.disabled = true; selAll.style.opacity = '0.5'; }
+      right.appendChild(selAll);
       const days = Array.from(picked);
       const n = days.reduce((t, d) => t + count((byDay[d] || []).filter(g => !g.finalized)), 0);
       const push = smallBtn(days.length ? 'Push to app (' + days.length + (days.length === 1 ? ' day, ' : ' days, ') + n + (n === 1 ? ' clean)' : ' cleans)') : 'Push to app', 'btn-primary');
       push.disabled = !days.length;
+      // Remove from route (Oct 13): the picked days' groups come off the app,
+      // except cleans already done. Days with nothing sent are skipped.
+      const sentGroups = days.reduce((a, d) => a.concat((byDay[d] || []).filter(g => g.finalized)), []);
+      const off = smallBtn(sentGroups.length ? 'Remove from route (' + sentGroups.length + (sentGroups.length === 1 ? ' group)' : ' groups)') : 'Remove from route', 'btn-ghost', 'color:var(--rust);border-color:#EFC9BC;');
+      off.disabled = !sentGroups.length;
+      if(!sentGroups.length) off.style.opacity = '0.5';
+      off.addEventListener('click', async ()=>{
+        const ok = await confirmDialog('Take ' + sentGroups.length + (sentGroups.length === 1 ? ' group' : ' groups') + ' off the route? Their filter cleans come off the app, except any already done. The groups stay on their days.', 'Remove');
+        if(!ok) return;
+        sentGroups.forEach(g => { const it = filterGroups.find(x => x && x.id === g.id); if(it) unscheduleFilterGroup(it); });
+        saveFilterGroups(); renderFilterGroups();
+        selecting = false; picked.clear(); draw();
+        showToast(sentGroups.length + (sentGroups.length === 1 ? ' group' : ' groups') + ' taken off the route');
+      });
+      right.appendChild(off);
       if(!days.length) push.style.opacity = '0.5';
       push.addEventListener('click', ()=> pushDays(days));
       right.appendChild(push);
     }
     head.appendChild(right);
+    calHeadToPageStyle(head);
     box.appendChild(head);
     if(monthPick){
       const mp = document.createElement('div');
@@ -15128,7 +15268,7 @@ function openFilterCalendar(startDay){
       ph.appendChild(closeDay);
       panel.appendChild(ph);
       // Every column a fixed width, as on the drain window
-      const COLS = 'display:grid;grid-template-columns:22px 125px minmax(150px,1fr) 140px 90px 28px;gap:10px;align-items:center;min-width:760px;';
+      const COLS = 'display:grid;grid-template-columns:22px 125px minmax(150px,1fr) 100px 140px 28px;gap:10px;align-items:center;min-width:760px;';   // Status before Technician (Oct 13)
       const sortedTechs = technicians.slice().sort((a, b2) => String(a.name || '').localeCompare(String(b2.name || ''), undefined, {sensitivity: 'base'}));
       // Changes to one customer's clean, saved on the group (fgSyncScheduled
       // carries them to the app)
@@ -15178,7 +15318,7 @@ function openFilterCalendar(startDay){
         listWrap.style.cssText = 'overflow-x:auto;';
         const hd = document.createElement('div');
         hd.style.cssText = COLS + 'font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:6px 0 4px;';
-        hd.innerHTML = '<span></span><span>Photo</span><span>Customer</span><span>Technician</span><span></span><span></span>';
+        hd.innerHTML = '<span></span><span>Photo</span><span>Customer</span><span>Status</span><span>Technician</span><span></span>';
         listWrap.appendChild(hd);
         panel.appendChild(listWrap);
         // Drag a name by its grip to move it (Oct 13): the group takes the same
@@ -15238,12 +15378,13 @@ function openFilterCalendar(startDay){
             // The group's own technician is the default, not a choice to keep
             if(techSel.value && String(techSel.value) !== String(it.technicianId || '')) it.custTech[cid] = techSel.value; else delete it.custTech[cid];
           }));
-          row.appendChild(techSel);
-          const stEl = document.createElement('span');
-          stEl.style.cssText = 'font-size:11.5px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;';
-          if(st === 'done'){ stEl.style.color = 'var(--green)'; stEl.textContent = '✓ done'; }
-          else if(st === 'app'){ stEl.style.color = '#8A5E0B'; stEl.innerHTML = calClockSvg(12) + '<span>in the app</span>'; }
+          // (the technician menu goes after the status now, Oct 13)
+          // Status as a badge, like the customer's Quotes & orders; press it to
+          // change just this customer's (Oct 13)
+          const stEl = calStatusBadge(st, want => setCleanStatus(g.id, cid, want));
           row.appendChild(stEl);
+          // Status in its own column just left of Technician (Oct 13)
+          row.appendChild(techSel);
           // A bin at the far right (Oct 13): out of the group for this day and
           // off the app. Not on a clean that's already done.
           if(st !== 'done'){
@@ -15317,6 +15458,39 @@ function openFilterCalendar(startDay){
     if(t.closest('[data-cal-day],[data-cal-panel],button,select,input,label,a')) return;
     sel = ''; draw();
   });
+  // One customer's filter clean to another status from the day window (Oct 13):
+  // not sent (held off the app), in the app, or done
+  function setCleanStatus(gid, cid, want){
+    const g = filterGroups.find(x => x && x.id === gid); if(!g) return;
+    const c = custOf(cid);
+    const mine = ()=> (lsGet('scheduledFilterCleans') || []);
+    const recOf = list => list.find(sc => sc && sc.groupId === g.id && sc.customerId === cid && (!g.date || sc.date === g.date));
+    g.custHold = g.custHold || {};
+    if(want === ''){
+      // Off the app, done or not
+      lsSet('scheduledFilterCleans', mine().filter(sc => !(sc && sc.groupId === g.id && sc.customerId === cid && (!g.date || sc.date === g.date))));
+      if(g.finalized) g.custHold[cid] = true;
+    } else {
+      if(!g.finalized){
+        const blockers = filterGroupBlockers(g);
+        if(blockers.length){ showToast((g.name || 'This group') + ' needs ' + blockers.join(', ') + ' first'); draw(); return; }
+        // Sent on its own: everyone else in the group stays not sent
+        fgLiveIds(g).forEach(id => { if(id !== cid) g.custHold[id] = true; });
+        scheduleFilterGroup(g);
+      }
+      delete g.custHold[cid];
+      saveFilterGroups();   // puts their clean on the app
+      const list = mine();
+      const r = recOf(list);
+      if(r){
+        if(want === 'done'){ if(r.status !== 'done'){ r.status = 'done'; r.doneAt = new Date().toISOString(); r.doneBy = 'office'; } }
+        else if(r.status === 'done'){ r.status = 'scheduled'; delete r.doneAt; delete r.doneBy; }
+        lsSet('scheduledFilterCleans', list);
+      }
+    }
+    saveFilterGroups(); renderFilterGroups(); draw();
+    showToast((c ? displayName(c.name) : 'Customer') + ': ' + (want === 'done' ? 'done' : want === 'app' ? 'in the app' : 'not sent'));
+  }
   function pushDays(days){
     const byDay = groupsOn();
     let sent = 0, cleans = 0, blocked = 0;
@@ -15324,6 +15498,7 @@ function openFilterCalendar(startDay){
       (byDay[day] || []).forEach(g=>{
         if(g.finalized) return;
         if(filterGroupBlockers(g).length){ blocked++; return; }
+        g.custHold = {};   // a push sends everyone in the group (Oct 13)
         scheduleFilterGroup(g);
         sent++; cleans += fgLiveIds(g).length;
       });
@@ -30499,7 +30674,8 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
   const WORD = /^(delete|remove)(\s|$)/i;
   // Buttons that keep their words: Remove changes, and Delete selected (Oct 3),
   // which deletes everything ticked rather than one row
-  const KEEP_WORDS = /^(remove changes|delete selected( \(\d+\))?)$/i;
+  // Remove from route on the calendars keeps its words too (Oct 13)
+  const KEEP_WORDS = /^(remove changes|delete selected( \(\d+\))?|remove from route( \(.*\))?)$/i;
   const filled = btn=>{
     try{
       const bg = getComputedStyle(btn).backgroundColor;
