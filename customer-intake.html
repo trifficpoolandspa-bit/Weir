@@ -1719,17 +1719,28 @@ input::placeholder{color:#A9BCB9;}
       <div id="serviceCallsList"></div>
     </div>
 
+    <!-- Filter cleans in two tabs (Oct 13): Schedules (the calendar) and Groups -->
+    <div class="card" id="wcFilterTabsCard" style="display:none;padding:12px;">
+      <div class="seg-control" id="fcTabControl" style="margin-bottom:0;">
+        <button class="history-type-btn active" data-fctab="schedules" type="button">Schedule</button>
+        <button class="history-type-btn" data-fctab="groups" type="button">Groups</button>
+      </div>
+    </div>
+    <!-- The filter clean calendar (Oct 13) -->
+    <div class="card" id="wcFilterCalCard" style="display:none;"></div>
+    <!-- Replacements lives on the calendar's top line; this is where it waits
+         while the calendar is redrawn -->
+    <div id="fcReplHome" style="display:none;">
+      <!-- Who needs parts replaced, from their filter cleans (Oct 3) -->
+      <button class="btn btn-primary" id="btnFilterReplacements" style="width:auto;">Replacements</button>
+    </div>
     <div class="card" id="wcFiltersSection" style="display:none;">
       <div class="section-head">
         <h2>Filter clean groups</h2>
         <div style="display:flex;gap:8px;margin-left:auto;align-items:center;">
           <select id="filterGroupTech" aria-label="Technician" title="Show one technician's groups" style="width:auto;min-width:160px;"></select>
           <button class="btn btn-ghost" id="btnNewFilterGroup" style="width:auto;">+ New group</button>
-          <!-- Replacements, Email, then Schedule at the far right (Oct 13) -->
-          <!-- Who needs parts replaced, from their filter cleans (Oct 3) -->
-          <button class="btn btn-primary" id="btnFilterReplacements" style="width:auto;">Replacements</button>
           <button class="btn btn-primary" id="btnEmailFilterGroups" style="width:auto;">Email</button>
-          <button class="btn btn-primary" id="btnScheduleFilterGroups" style="width:auto;">Schedule</button>
         </div>
       </div>
       <!-- Customers across the groups shown, for the technician chosen (Oct 3) -->
@@ -1738,7 +1749,7 @@ input::placeholder{color:#A9BCB9;}
         <div class="section-count" id="filterGroupCount" style="margin:0;"></div>
         <div id="filterGroupSelBar" style="margin-left:auto;"></div>
       </div>
-      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Group customers together, give the group a date and a technician, then press Schedule to push it onto that technician's route. Customize emails to send to groups individually or all together.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Group customers together and give the group a technician. Put groups on days from the Schedules tab, then press Select there to push them onto the technician's route. Customize emails to send to groups individually or all together.</p>
       <div id="filterGroupList"></div>
     </div>
 
@@ -1754,6 +1765,15 @@ input::placeholder{color:#A9BCB9;}
 
     <!-- Pool drains (Oct 8): when each pool was last drained, when the next is
          due, and groups to drain together -->
+    <!-- Drains in two tabs (Oct 13): Schedule (the calendar) and Records -->
+    <div class="card" id="wcDrainTabsCard" style="display:none;padding:12px;">
+      <div class="seg-control" id="pdTabControl" style="margin-bottom:0;">
+        <button class="history-type-btn active" data-pdtab="schedule" type="button">Schedule</button>
+        <button class="history-type-btn" data-pdtab="records" type="button">Records</button>
+      </div>
+    </div>
+    <!-- The drain calendar (Oct 13) -->
+    <div class="card" id="wcDrainCalCard" style="display:none;"></div>
     <div class="card" id="wcDrainsSection" style="display:none;">
       <div class="section-head">
         <h2>Pool drains</h2>
@@ -1767,12 +1787,10 @@ input::placeholder{color:#A9BCB9;}
           </label>
           <!-- Drain emails (Oct 11): coming up, and scheduled -->
           <button type="button" class="btn btn-primary" id="btnDrainEmail" style="width:auto;">Email</button>
-          <!-- The drain calendar (Oct 11), in place of drain groups -->
-          <button type="button" class="btn btn-primary" id="btnDrainCalendar" style="width:auto;">Schedule</button>
         </div>
       </div>
       <div class="section-count" id="drainCount" style="margin:-4px 0 12px;"></div>
-      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">When each pool was last drained and when the next one is due. Set how often pools are drained in your area above; open a customer to change it just for them or to add drains done before. Tick customers to record a drain or put them on a day. Schedule opens the drain calendar, where days are filled and sent to the technicians&rsquo; app.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">When each pool was last drained and when the next one is due. Set how often pools are drained in your area above; open a customer to change it just for them or to add drains done before. Tick customers to record a drain or put them on a day. The Schedule tab's calendar is where days are filled and sent to the technicians&rsquo; app.</p>
       <!-- Find a customer (Oct 10) -->
       <div style="position:relative;margin:0 0 12px;">
         <input id="drainSearch" placeholder="Search customers by name, address, phone, or email" autocomplete="off" style="padding-right:38px;">
@@ -7076,8 +7094,9 @@ function applyWorkCenterMode(mode){
   const sections = {
     quotes:    ['wcQuotesSection', 'wcQuotesHistoryCard'],
     calls:     ['wcCallsSection', 'wcCallsListCard'],
-    filters:   ['wcFiltersSection', 'wcFilterStrayCard'],
-    drains:    ['wcDrainsSection'],          // drain groups gave way to the calendar (Oct 11)
+    // Each calendar at the top of its tab (Oct 13)
+    filters:   ['wcFilterTabsCard', 'wcFilterCalCard', 'wcFiltersSection', 'wcFilterStrayCard'],
+    drains:    ['wcDrainTabsCard', 'wcDrainCalCard', 'wcDrainsSection'],          // drain groups gave way to the calendar (Oct 11)
     broadcast: ['wcBroadcastSection']
   };
 
@@ -7088,8 +7107,9 @@ function applyWorkCenterMode(mode){
     });
   });
 
-  if(mode === 'filters') renderFilterGroups();
-  if(mode === 'drains') renderPoolDrains();
+  // The calendar drawn the first time the tab shows, then kept up to date
+  if(mode === 'filters'){ applyFcTab(); const h = document.getElementById('wcFilterCalCard'); if(h && !h._refresh) openFilterCalendar(); renderFilterGroups(); }
+  if(mode === 'drains'){ applyPdTab(); const h = document.getElementById('wcDrainCalCard'); if(h && !h._refresh) openDrainCalendar(); renderPoolDrains(); }
   if(mode === 'broadcast') renderBroadcast();
 
   // The task form lives inside the quotes mode, so its own visibility is
@@ -7138,13 +7158,43 @@ function strayFilterCleans(){
   });
 }
 
+// Filter cleans' two tabs (Oct 13): Schedules first, then Groups
+var fcTab = 'schedules';   // var: read by renderStrayFilterCleans, which can run before this line
+function applyFcTab(){
+  const on = workCenterMode === 'filters';
+  const show = (id, yes) => { const el = document.getElementById(id); if(el) el.style.display = (on && yes) ? 'block' : 'none'; };
+  show('wcFilterTabsCard', true);
+  show('wcFilterCalCard', fcTab === 'schedules');
+  show('wcFiltersSection', fcTab === 'groups');
+  document.querySelectorAll('#fcTabControl .history-type-btn').forEach(b => b.classList.toggle('active', b.dataset.fctab === fcTab));
+  try{ renderStrayFilterCleans(); }catch(e){}
+  if(on && fcTab === 'schedules'){ const h = document.getElementById('wcFilterCalCard'); if(h && h._refresh) h._refresh(); }
+}
+document.querySelectorAll('#fcTabControl .history-type-btn').forEach(b=>{
+  b.addEventListener('click', ()=>{ fcTab = b.dataset.fctab; applyFcTab(); });
+});
+// Drains' two tabs (Oct 13): Schedule first, then Records (the lists)
+var pdTab = 'schedule';
+function applyPdTab(){
+  const on = workCenterMode === 'drains';
+  const show = (id, yes) => { const el = document.getElementById(id); if(el) el.style.display = (on && yes) ? 'block' : 'none'; };
+  show('wcDrainTabsCard', true);
+  show('wcDrainCalCard', pdTab === 'schedule');
+  show('wcDrainsSection', pdTab === 'records');
+  document.querySelectorAll('#pdTabControl .history-type-btn').forEach(b => b.classList.toggle('active', b.dataset.pdtab === pdTab));
+  if(on && pdTab === 'schedule'){ const h = document.getElementById('wcDrainCalCard'); if(h && h._refresh) h._refresh(); }
+  if(on && pdTab === 'records'){ try{ renderPoolDrains(); }catch(e){} }
+}
+document.querySelectorAll('#pdTabControl .history-type-btn').forEach(b=>{
+  b.addEventListener('click', ()=>{ pdTab = b.dataset.pdtab; applyPdTab(); });
+});
 function renderStrayFilterCleans(){
   const card = document.getElementById('wcFilterStrayCard');
   const box = document.getElementById('wcFilterStrayList');
   if(!card || !box) return;
   const stray = strayFilterCleans().sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
   // Only shown when there's something to tidy, and only on the Filters tab
-  card.style.display = (stray.length && workCenterMode === 'filters') ? '' : 'none';
+  card.style.display = (stray.length && workCenterMode === 'filters' && fcTab === 'schedules') ? '' : 'none';
   box.innerHTML = '';
   stray.forEach((sc, i)=>{
     const c = customers.find(x => x.id === sc.customerId);
@@ -7543,6 +7593,8 @@ function fgSyncScheduled(){
 function renderFilterGroups(){
   try{ updateFilterReplacementsButton(); }catch(e){}
   try{ fgSyncScheduled(); }catch(e){}
+  // The calendar at the top of the tab follows (Oct 13)
+  try{ const h = document.getElementById('wcFilterCalCard'); if(h && h._refresh && h.offsetParent) h._refresh(); }catch(e){}
   setTimeout(()=>{ try{ const el = document.getElementById('filterGroupCount'); if(el) el.textContent = filterGroups.length ? fgCountText(fgShownGroups()) : ''; }catch(e){} }, 0);
   // Back after more than a minute away: every group starts closed
   if(onFilterGroupsPage()) closeGroupsIfAway();
@@ -7731,7 +7783,7 @@ function renderFilterGroups(){
       });
       if(changed) lsSet('scheduledFilterCleans', sched);
     });
-    headRight.appendChild(dateCol);
+    // No date on the groups list (Oct 13): days are set on the Schedules calendar
     headRight.appendChild(photoReq);
     // Email customer, per group, on unless unticked (Oct 11): off, the filter
     // clean report isn't emailed to the customer. Between Photo required and Rename.
@@ -7816,7 +7868,7 @@ function renderFilterGroups(){
       }
       fillSub();
     });
-    controls.appendChild(dateInput);
+    // No date box here (Oct 13): groups go on days from the Schedules calendar
 
     const techSel = document.createElement('select');
     techSel.style.cssText = 'flex:1;min-width:150px;';
@@ -8337,6 +8389,8 @@ function renderPoolDrains(){
   // Any other redraw lets the list take its own height again
   if(!pdKeepHeight){ const l = document.getElementById('drainStatusList'); if(l) l.style.minHeight = ''; }
   try{ pdReconcileDone(); }catch(e){}
+  // The calendar at the top of the tab follows (Oct 13)
+  try{ const h = document.getElementById('wcDrainCalCard'); if(h && h._refresh && h.offsetParent) h._refresh(); }catch(e){}
   pdFillMenus();
   const shown = pdShownCustomers();
   const byBucket = {overdue: [], soon: [], never: [], later: [], self: []};
@@ -9682,20 +9736,25 @@ function calTechMenu(value, onChange){
 }
 
 function openDrainCalendar(startDay){
-  let month = (startDay || pdToday()).slice(0, 7);       // YYYY-MM
+  // Opened at a day from the Records tab: over to the Schedule tab (Oct 13)
+  if(startDay && workCenterMode === 'drains' && pdTab !== 'schedule'){ pdTab = 'schedule'; applyPdTab(); }
+  const keepMonth = (document.getElementById('wcDrainCalCard') || {})._month;
+  let month = (startDay || keepMonth || pdToday()).slice(0, 7);       // YYYY-MM
   let sel = startDay || '';
   let selecting = false;
   const picked = new Set();
   let pushTech = '';
   let viewTech = '';                     // whose drains to show; all to start (Oct 13)
   let monthPick = false, pickYear = 0;   // the month and year chooser (Oct 11)
+  // On the page now, at the top of the tab, not in a window (Oct 13)
+  const host = document.getElementById('wcDrainCalCard');
+  if(!host) return;
+  if(host._calKey) document.removeEventListener('keydown', host._calKey, true);
+  host.innerHTML = '';
   const overlay = document.createElement('div');
-  overlay.className = 'confirm-overlay';
+  host.appendChild(overlay);
   const box = document.createElement('div');
-  box.className = 'confirm-box';
-  box.style.cssText = 'max-width:980px;width:100%;max-height:92vh;overflow-y:auto;';
   overlay.appendChild(box);
-  document.body.appendChild(overlay);
   // Left and right arrow keys step between months (Oct 13), unless typing
   // in a box or another window is open on top
   const onCalKey = e=>{
@@ -9704,8 +9763,8 @@ function openDrainCalendar(startDay){
     if(e.metaKey || e.ctrlKey || e.altKey) return;
     const el = document.activeElement;
     if(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
-    const layers = document.querySelectorAll('.confirm-overlay');
-    if(layers[layers.length - 1] !== overlay) return;
+    // Not while a window is open, or the tab isn't showing
+    if(document.querySelector('.confirm-overlay') || !host.offsetParent) return;
     e.preventDefault(); e.stopPropagation();
     const [y, m] = month.split('-').map(Number);
     const d = new Date(y, m - 1 + (e.key === 'ArrowRight' ? 1 : -1), 1);
@@ -9713,10 +9772,12 @@ function openDrainCalendar(startDay){
     draw();
   };
   document.addEventListener('keydown', onCalKey, true);
+  host._calKey = onCalKey;
   const custOf = id => customers.find(c => c.id === id);
   const techName = id => technicianNameById(id) || 'No technician';
   const smallBtn = (text, cls, extra) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn ' + (cls || 'btn-ghost'); b.style.cssText = 'width:auto;flex:0 0 auto;padding:6px 12px;font-size:12.5px;' + (extra || ''); b.textContent = text; return b; };
   function draw(){
+    host._month = month;
     const list = pdCal();
     const byDay = {};
     list.forEach(e=>{
@@ -9729,7 +9790,7 @@ function openDrainCalendar(startDay){
     // Heading row
     const head = document.createElement('div');
     head.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;';
-    head.innerHTML = '<h3 style="font-size:16px;margin:0;">Schedule drains</h3>';
+    head.innerHTML = '<h2 style="font-size:17px;margin:0;">Drain schedule</h2>';
     const nav = document.createElement('div');
     nav.style.cssText = 'display:flex;align-items:center;gap:6px;margin-left:12px;';
     const prev = smallBtn('‹', 'btn-ghost', 'width:32px;padding:4px 0;');
@@ -9756,9 +9817,6 @@ function openDrainCalendar(startDay){
       selBtn.title = 'Pick days to send to the app';
       selBtn.addEventListener('click', ()=>{ selecting = true; picked.clear(); draw(); });
       right.appendChild(selBtn);
-      const closeBtn = smallBtn('Close');
-      closeBtn.addEventListener('click', ()=> overlay.remove());
-      right.appendChild(closeBtn);
     } else {
       const hint = document.createElement('span');
       hint.style.cssText = 'font-size:12.5px;font-weight:600;color:var(--teal-deep);';
@@ -9812,7 +9870,7 @@ function openDrainCalendar(startDay){
     }
     // The month
     const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;grid-template-rows:auto repeat(6,124px);';   // always six weeks of the same height, so the calendar never changes size (Oct 13)
     ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => grid.insertAdjacentHTML('beforeend', '<div style="font-size:11px;font-weight:700;color:var(--muted);text-align:center;padding:4px 0;">' + d + '</div>'));
     const first = new Date(yy, mm - 1, 1).getDay(), daysIn = new Date(yy, mm, 0).getDate();
     for(let i = 0; i < first; i++) grid.appendChild(document.createElement('div'));
@@ -9822,7 +9880,7 @@ function openDrainCalendar(startDay){
       const ents = byDay[iso] || [];
       const cell = document.createElement('div');
       const isSel = !selecting && iso === sel, isPicked = selecting && picked.has(iso);
-      cell.style.cssText = 'min-height:84px;border:1px solid var(--line);border-radius:8px;padding:4px 5px;background:#fff;cursor:pointer;min-width:0;'
+      cell.style.cssText = 'height:124px;overflow:hidden;border:1px solid var(--line);border-radius:8px;padding:4px 5px;background:#fff;cursor:pointer;min-width:0;'
         + (isSel ? 'background:var(--teal-pale);border-color:var(--teal-deep);box-shadow:inset 0 0 0 1px var(--teal-deep);' : '')
         + (isPicked ? 'background:#FBF1DD;border-color:#8A5E0B;box-shadow:inset 0 0 0 1.5px #8A5E0B;' : '')
         + (selecting && !ents.length ? 'opacity:.55;cursor:default;' : '');
@@ -9831,7 +9889,8 @@ function openDrainCalendar(startDay){
       num.style.cssText = 'font-size:11.5px;font-weight:700;' + (iso === today ? 'color:#fff;background:var(--teal-deep);border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;' : 'color:var(--ink);');
       num.textContent = d;
       cell.appendChild(num);
-      ents.forEach(e=>{
+      // Up to four names, then how many more, as on the filter clean calendar (Oct 13)
+      ents.slice(0, 4).forEach(e=>{
         const r = pdCalRecord(e);
         // Done in the app: green with a tick, as a finished filter clean is.
         // In the app, not done yet: gold with a clock. Not sent yet: blue (Oct 13).
@@ -9840,13 +9899,15 @@ function openDrainCalendar(startDay){
           r ? (r.status === 'done' ? 'done' : 'app') : '',
           pdEntryKindsText(e) + ' drain' + (r ? (r.status === 'done' ? ' \u2014 done' : ' \u2014 in the app') : '')));
       });
+      if(ents.length > 4) cell.insertAdjacentHTML('beforeend', '<div style="font-size:10px;color:var(--muted);margin-top:2px;">+ ' + (ents.length - 4) + ' more</div>');
       cell.addEventListener('click', ()=>{
         if(selecting){
           if(!ents.length) return;
           if(picked.has(iso)) picked.delete(iso); else picked.add(iso);
-        } else sel = iso;
+        } else sel = (sel === iso ? '' : iso);   // the chosen day again: closed (Oct 13)
         draw();
       });
+      cell.dataset.calDay = iso;
       grid.appendChild(cell);
     }
     box.appendChild(grid);
@@ -9854,6 +9915,7 @@ function openDrainCalendar(startDay){
     if(!selecting && sel){
       const ents = (byDay[sel] || []);
       const panel = document.createElement('div');
+      panel.dataset.calPanel = '1';
       panel.style.cssText = 'margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;';
       const ph = document.createElement('div');
       ph.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;';
@@ -10060,6 +10122,15 @@ function openDrainCalendar(startDay){
       box.appendChild(panel);
     }
   }
+  // A click anywhere in the window that isn't a day, a button or a menu closes
+  // the chosen day, as on the filter clean calendar (Oct 13)
+  box.addEventListener('click', ev=>{
+    if(!sel || selecting) return;
+    const t = ev.target;
+    if(!t || !t.isConnected) return;
+    if(t.closest('[data-cal-day],[data-cal-panel],button,select,input,label,a')) return;
+    sel = ''; draw();
+  });
   function pushDays(days){
     const all = pdCal();
     const recs = pdScheduled();
@@ -10097,9 +10168,13 @@ function openDrainCalendar(startDay){
     renderPoolDrains();
     showToast(n + (n === 1 ? ' drain' : ' drains') + ' sent to the app' + (noTech ? ' · ' + noTech + ' left out with no technician' : ''));
   }
-  draw();
+  // Redrawn when the page's own list changes; the month is kept for next time
+  let drawing = false;
+  const drawKeep = ()=>{ if(drawing) return; drawing = true; try{ host._month = month; draw(); } finally { drawing = false; } };
+  host._refresh = drawKeep;
+  drawKeep();
+  if(startDay) setTimeout(()=>{ try{ host.scrollIntoView({behavior: 'smooth', block: 'start'}); }catch(e){} }, 0);
 }
-document.getElementById('btnDrainCalendar').addEventListener('click', ()=> openDrainCalendar());
 
 // ---------- Pool drain emails (Oct 11) ----------
 // Two emails, written like the filter clean one: "drain coming up", sent to
@@ -14700,29 +14775,83 @@ async function openFilterGroupScheduler(){
 // customers whose group is on that date (green ✓ done, gold with a clock in the
 // app, blue not sent yet). A day pressed lists everyone underneath, by group.
 // Select, tick days, Push to app sends those days' groups to the route.
+// Put a group on a day, from the filter clean calendar (Oct 13). A group
+// already on another day moves to this one; if it was sent to the app, its
+// cleans still to do move with it.
+function fcPickGroupForDay(iso, after){
+  const nice = new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
+  const list = filterGroups.filter(g => g && g.date !== iso)
+    .slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity: 'base', numeric: true}));
+  if(!list.length){ showToast(filterGroups.length ? 'Every group is on this day already' : 'Make a group first, on the Groups tab'); return; }
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:440px;width:100%;max-height:80vh;display:flex;flex-direction:column;text-align:left;';
+  box.innerHTML = '<h3 style="font-size:15px;margin:0 0 4px;"></h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;">Pick a group. Its customers go on this day with its technician.</p>'
+    + '<div data-list style="flex:1;overflow-y:auto;"></div>'
+    + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-primary" data-go style="flex:1;">Add to this day</button><button type="button" class="btn btn-ghost" data-cancel style="width:auto;">Cancel</button></div>';
+  box.querySelector('h3').textContent = 'Add a group to ' + nice;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const listEl = box.querySelector('[data-list]');
+  let chosen = '';
+  list.forEach(g=>{
+    const row = document.createElement('label');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid var(--line);font-size:13px;cursor:pointer;margin:0;text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink);';
+    const r = document.createElement('input');
+    r.type = 'radio'; r.name = 'fcPickGroup'; r.style.cssText = 'width:auto;margin:0;';
+    r.addEventListener('change', ()=>{ chosen = g.id; });
+    const nm = document.createElement('b'); nm.textContent = g.name || 'Untitled group';
+    const n = fgLiveIds(g).length;
+    const meta = document.createElement('span');
+    meta.style.cssText = 'margin-left:auto;font-size:11.5px;color:var(--muted);white-space:nowrap;';
+    meta.textContent = n + (n === 1 ? ' customer' : ' customers') + ' \u00b7 ' + (technicianNameById(g.technicianId) || 'No technician')
+      + ' \u00b7 ' + (g.date ? 'on ' + new Date(g.date + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'not on a day');
+    row.appendChild(r); row.appendChild(nm); row.appendChild(meta);
+    row.addEventListener('dblclick', ()=>{ chosen = g.id; box.querySelector('[data-go]').click(); });
+    listEl.appendChild(row);
+  });
+  box.querySelector('[data-cancel]').addEventListener('click', ()=> overlay.remove());
+  box.querySelector('[data-go]').addEventListener('click', ()=>{
+    if(!chosen){ showToast('Pick a group first'); return; }
+    const g = filterGroups.find(x => x && x.id === chosen);
+    overlay.remove();
+    if(!g) return;
+    g.date = iso;
+    if(after) after();
+    showToast((g.name || 'Group') + ' put on ' + nice);
+  });
+}
 function openFilterCalendar(startDay){
   const todayIso = (()=>{ const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); })();
-  let month = (startDay || todayIso).slice(0, 7);
+  const keepMonth = (document.getElementById('wcFilterCalCard') || {})._month;
+  let month = (startDay || keepMonth || todayIso).slice(0, 7);
   let sel = startDay || '';
   let selecting = false;
   const picked = new Set();
   let viewTech = '';
   let monthPick = false, pickYear = 0;
+  // On the page now, at the top of the tab, not in a window (Oct 13)
+  const host = document.getElementById('wcFilterCalCard');
+  if(!host) return;
+  if(host._calKey) document.removeEventListener('keydown', host._calKey, true);
+  // Replacements back to its own place first, so clearing the calendar keeps it
+  { const rb = document.getElementById('btnFilterReplacements'), home = document.getElementById('fcReplHome'); if(rb && home) home.appendChild(rb); }
+  host.innerHTML = '';
   const overlay = document.createElement('div');
-  overlay.className = 'confirm-overlay';
+  host.appendChild(overlay);
   const box = document.createElement('div');
-  box.className = 'confirm-box';
-  box.style.cssText = 'max-width:980px;width:100%;max-height:92vh;overflow-y:auto;';
   overlay.appendChild(box);
-  document.body.appendChild(overlay);
   const onCalKey = e=>{
     if(!overlay.isConnected){ document.removeEventListener('keydown', onCalKey, true); return; }
     if(e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     if(e.metaKey || e.ctrlKey || e.altKey) return;
     const el = document.activeElement;
     if(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
-    const layers = document.querySelectorAll('.confirm-overlay');
-    if(layers[layers.length - 1] !== overlay) return;
+    // Not while a window is open, or the tab isn't showing
+    if(document.querySelector('.confirm-overlay') || !host.offsetParent) return;
     e.preventDefault(); e.stopPropagation();
     const [y, m] = month.split('-').map(Number);
     const d = new Date(y, m - 1 + (e.key === 'ArrowRight' ? 1 : -1), 1);
@@ -14730,6 +14859,7 @@ function openFilterCalendar(startDay){
     draw();
   };
   document.addEventListener('keydown', onCalKey, true);
+  host._calKey = onCalKey;
   const custOf = id => customers.find(c => c.id === id);
   const techName = id => (technicians.find(t => String(t.id) === String(id)) || {}).name || 'No technician';
   const smallBtn = (text, cls, extra) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn ' + (cls || 'btn-ghost'); b.style.cssText = 'width:auto;flex:0 0 auto;padding:6px 12px;font-size:12.5px;' + (extra || ''); b.textContent = text; return b; };
@@ -14746,12 +14876,14 @@ function openFilterCalendar(startDay){
     return by;
   }
   function draw(){
+    host._month = month;
+    { const rb = document.getElementById('btnFilterReplacements'), home = document.getElementById('fcReplHome'); if(rb && home && rb.parentNode !== home) home.appendChild(rb); }
     const byDay = groupsOn();
     const count = gs => gs.reduce((n, g) => n + fgLiveIds(g).length, 0);
     box.innerHTML = '';
     const head = document.createElement('div');
     head.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;';
-    head.innerHTML = '<h3 style="font-size:16px;margin:0;">Schedule filter cleans</h3>';
+    head.innerHTML = '<h2 style="font-size:17px;margin:0;">Filter clean schedule</h2>';
     const nav = document.createElement('div');
     nav.style.cssText = 'display:flex;align-items:center;gap:6px;margin-left:12px;';
     const prev = smallBtn('‹', 'btn-ghost', 'width:32px;padding:4px 0;');
@@ -14772,14 +14904,14 @@ function openFilterCalendar(startDay){
     const right = document.createElement('div');
     right.style.cssText = 'display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap;';
     right.appendChild(calTechMenu(viewTech, v => { viewTech = v; draw(); }));
+    // Replacements beside the technician menu (Oct 13)
+    const replBtn = document.getElementById('btnFilterReplacements');
+    if(replBtn){ replBtn.style.cssText = 'width:auto;flex:0 0 auto;padding:6px 12px;font-size:12.5px;'; right.appendChild(replBtn); }
     if(!selecting){
       const selBtn = smallBtn('Select', 'btn-primary');
       selBtn.title = 'Pick days to send to the app';
       selBtn.addEventListener('click', ()=>{ selecting = true; picked.clear(); draw(); });
       right.appendChild(selBtn);
-      const closeBtn = smallBtn('Close');
-      closeBtn.addEventListener('click', ()=> overlay.remove());
-      right.appendChild(closeBtn);
     } else {
       const hint = document.createElement('span');
       hint.style.cssText = 'font-size:12.5px;font-weight:600;color:var(--teal-deep);';
@@ -14824,7 +14956,7 @@ function openFilterCalendar(startDay){
       box.appendChild(mp);
     }
     const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;grid-template-rows:auto repeat(6,124px);';   // always six weeks of the same height, so the calendar never changes size (Oct 13)
     ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => grid.insertAdjacentHTML('beforeend', '<div style="font-size:11px;font-weight:700;color:var(--muted);text-align:center;padding:4px 0;">' + d + '</div>'));
     const first = new Date(yy, mm - 1, 1).getDay(), daysIn = new Date(yy, mm, 0).getDate();
     for(let i = 0; i < first; i++) grid.appendChild(document.createElement('div'));
@@ -14833,7 +14965,7 @@ function openFilterCalendar(startDay){
       const gs = byDay[iso] || [];
       const cell = document.createElement('div');
       const isSel = !selecting && iso === sel, isPicked = selecting && picked.has(iso);
-      cell.style.cssText = 'min-height:84px;border:1px solid var(--line);border-radius:8px;padding:4px 5px;background:#fff;cursor:pointer;min-width:0;'
+      cell.style.cssText = 'height:124px;overflow:hidden;border:1px solid var(--line);border-radius:8px;padding:4px 5px;background:#fff;cursor:pointer;min-width:0;'
         + (isSel ? 'background:var(--teal-pale);border-color:var(--teal-deep);box-shadow:inset 0 0 0 1px var(--teal-deep);' : '')
         + (isPicked ? 'background:#FBF1DD;border-color:#8A5E0B;box-shadow:inset 0 0 0 1.5px #8A5E0B;' : '')
         + (selecting && !gs.length ? 'opacity:.55;cursor:default;' : '');
@@ -14870,6 +15002,11 @@ function openFilterCalendar(startDay){
       ph.children[0].textContent = new Date(sel + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'});
       const n = count(gs);
       ph.children[1].textContent = n + (n === 1 ? ' customer' : ' customers');
+      // Groups are put on days here now, not with a date on the group (Oct 13)
+      const addG = smallBtn('+ Add a group', 'btn-ghost', 'margin-left:auto;');
+      addG.addEventListener('click', ()=> fcPickGroupForDay(sel, ()=>{ saveFilterGroups(); renderFilterGroups(); draw(); }));
+      ph.style.alignItems = 'center';
+      ph.appendChild(addG);
       panel.appendChild(ph);
       if(!gs.length) panel.insertAdjacentHTML('beforeend', '<div style="font-size:12.5px;color:var(--muted);padding:6px 0;">No filter cleans on this day.</div>');
       gs.forEach(g=>{
@@ -14891,6 +15028,25 @@ function openFilterCalendar(startDay){
           });
           gh.appendChild(off);
         }
+        // The group off this day (Oct 13): off the app too if it was sent
+        const gBin = document.createElement('button');
+        gBin.type = 'button';
+        gBin.innerHTML = WEIR_BIN_SVG;
+        gBin.dataset.xDrawn = 'bin';
+        gBin.dataset.binSize = 's';
+        gBin.title = 'Take this group off this day';
+        gBin.setAttribute('aria-label', gBin.title);
+        gBin.style.cssText = 'cursor:pointer;flex-shrink:0;' + (g.finalized ? '' : 'margin-left:auto;');
+        gBin.addEventListener('click', async ()=>{
+          const ok = await confirmDialog('Take "' + (g.name || 'this group') + '" off this day?' + (g.finalized ? ' Its filter cleans come off the app too, except any already done.' : ''), 'Take off');
+          if(!ok) return;
+          const it = filterGroups.find(x => x && x.id === g.id); if(!it) return;
+          if(it.finalized) unscheduleFilterGroup(it);
+          it.date = '';
+          saveFilterGroups(); renderFilterGroups(); draw();
+          showToast((g.name || 'Group') + ' taken off this day');
+        });
+        gh.appendChild(gBin);
         panel.appendChild(gh);
         const done = fgCleanStatus(g);
         // Drag a name by its grip to move it (Oct 13): the group takes the same
@@ -14985,11 +15141,14 @@ function openFilterCalendar(startDay){
     showToast(cleans + (cleans === 1 ? ' filter clean' : ' filter cleans') + ' sent to the app'
       + (blocked ? ' · ' + blocked + (blocked === 1 ? ' group' : ' groups') + ' left out (no technician)' : ''));
   }
-  draw();
+  // Redrawn when the page's own list changes; the month is kept for next time
+  let drawing = false;
+  const drawKeep = ()=>{ if(drawing) return; drawing = true; try{ host._month = month; draw(); } finally { drawing = false; } };
+  host._refresh = drawKeep;
+  drawKeep();
+  if(startDay) setTimeout(()=>{ try{ host.scrollIntoView({behavior: 'smooth', block: 'start'}); }catch(e){} }, 0);
 }
 
-// Schedule opens the calendar (Oct 13; it was a list of groups to tick)
-document.getElementById('btnScheduleFilterGroups').addEventListener('click', ()=> openFilterCalendar());
 document.getElementById('filterGroupTech').addEventListener('change', ()=>{ filterGroupPage = 1; renderFilterGroups(); });
 
 async function openFilterGroupEmail(){
