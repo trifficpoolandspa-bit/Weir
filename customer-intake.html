@@ -1749,7 +1749,7 @@ input::placeholder{color:#A9BCB9;}
         <div class="section-count" id="filterGroupCount" style="margin:0;"></div>
         <div id="filterGroupSelBar" style="margin-left:auto;"></div>
       </div>
-      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Group customers together and give the group a technician. Put groups on days from the Schedules tab, then press Select there to push them onto the technician's route. Customize emails to send to groups individually or all together.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Group customers together and give the group a technician. Put groups on days from the Schedule tab, then press Select there to push them onto the technician's route. Customize emails to send to groups individually or all together.</p>
       <div id="filterGroupList"></div>
     </div>
 
@@ -7070,7 +7070,7 @@ function applyWorkCenterMode(mode){
   const cameFrom = workCenterMode;
   workCenterMode = mode;
   // Leaving the filter clean groups starts their one-minute clock
-  if(cameFrom === 'filters' && mode !== 'filters') filtersLeftAt = Date.now();
+  if(cameFrom === 'filters' && mode !== 'filters'){ filtersLeftAt = Date.now(); wcCalResetOnLeave('filters'); }
   if(cameFrom === 'quotes' && mode !== 'quotes') leaveWcForm();
   if(mode === 'quotes' && cameFrom !== 'quotes'){ resetScheduleDates(); wcView = 'main'; }
   // Leaving Drains for another WorkCenter tab: nobody stays ticked (Oct 13)
@@ -7552,6 +7552,18 @@ function fgChipState(g, cid){
 // technician, order and ticks. Not-done ones follow every change; done ones
 // are left as they were. Runs on every save and whenever the page is drawn,
 // so cleans left behind by older changes are put right too.
+// One customer's own settings in a filter clean group (Oct 13): photo,
+// technician and extra work, set in the calendar's day window. Without one,
+// the group's own.
+function fgCustPhoto(g, cid){ return (g && g.custPhoto && typeof g.custPhoto[cid] === 'boolean') ? g.custPhoto[cid] : (g ? g.photoRequired !== false : true); }
+function fgCustTech(g, cid){ return (g && g.custTech && g.custTech[cid]) || (g ? g.technicianId : '') || ''; }
+function fgCustExtra(g, cid){
+  const list = (g && g.custExtra && Array.isArray(g.custExtra[cid])) ? g.custExtra[cid] : [];
+  return list.filter(li => li && String(li.description || '').trim());
+}
+function fgCustLineItems(g, cid){
+  return fgCustExtra(g, cid).map(li => ({description: String(li.description).trim(), qty: Number(li.qty) || 1, price: li.price === undefined ? '' : li.price}));
+}
 function fgSyncScheduled(){
   let sched = lsGet('scheduledFilterCleans') || [];
   let changed = false;
@@ -7572,8 +7584,8 @@ function fgSyncScheduled(){
         if(!g.date || !g.technicianId) return;
         sched.push({
           id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-          groupId: g.id, groupName: g.name, customerId: cid, technicianId: g.technicianId,
-          date: g.date, order: i, photoRequired: g.photoRequired !== false,
+          groupId: g.id, groupName: g.name, customerId: cid, technicianId: fgCustTech(g, cid),
+          date: g.date, order: i, photoRequired: fgCustPhoto(g, cid), lineItems: fgCustLineItems(g, cid),
           emailCustomer: g.emailCustomer !== false, status: 'scheduled'
         });
         changed = true;
@@ -7581,10 +7593,14 @@ function fgSyncScheduled(){
       }
       mine.forEach(sc=>{
         if(sc.status === 'done') return;
-        const want = {groupName: g.name, order: i, photoRequired: g.photoRequired !== false, emailCustomer: g.emailCustomer !== false};
+        const want = {groupName: g.name, order: i, photoRequired: fgCustPhoto(g, cid), emailCustomer: g.emailCustomer !== false};
         if(g.date) want.date = g.date;
-        if(g.technicianId) want.technicianId = g.technicianId;
+        const tech = fgCustTech(g, cid);
+        if(tech) want.technicianId = tech;
         Object.keys(want).forEach(k=>{ if(sc[k] !== want[k]){ sc[k] = want[k]; changed = true; } });
+        // Extra work for this customer (Oct 13), compared as a whole
+        const li = fgCustLineItems(g, cid);
+        if(JSON.stringify(sc.lineItems || []) !== JSON.stringify(li)){ sc.lineItems = li; changed = true; }
       });
     });
   });
@@ -8214,7 +8230,24 @@ const drainBucketPage = {};          // each list's page, ten to a page (Oct 11)
 let openDrainGroupIds = new Set();
 // Leaving the Drains tab (Oct 13): nobody ticked, every list closed and on
 // its first page. What's on the drain calendar stays exactly as it is.
+// Leaving Drains or Filter cleans (Oct 13): back to the Schedule tab, All
+// technicians and no day chosen on the calendar, next time
+function wcCalResetOnLeave(which){
+  try{
+    if(which === 'drains'){
+      pdTab = 'schedule';
+      const t = document.getElementById('drainTech'); if(t) t.value = '';
+      const h = document.getElementById('wcDrainCalCard'); if(h) h._refresh = null;   // drawn fresh on the way back
+    }
+    if(which === 'filters'){
+      fcTab = 'schedules';
+      const t = document.getElementById('filterGroupTech'); if(t) t.value = '';
+      const h = document.getElementById('wcFilterCalCard'); if(h) h._refresh = null;
+    }
+  }catch(e){}
+}
 function pdResetOnLeave(){
+  try{ wcCalResetOnLeave('drains'); }catch(e){}
   try{
     drainPicked.clear();
     openDrainBuckets.clear();
@@ -9749,6 +9782,7 @@ function openDrainCalendar(startDay){
   // On the page now, at the top of the tab, not in a window (Oct 13)
   const host = document.getElementById('wcDrainCalCard');
   if(!host) return;
+  if(host._dayWin){ host._dayWin.remove(); host._dayWin = null; }
   if(host._calKey) document.removeEventListener('keydown', host._calKey, true);
   host.innerHTML = '';
   const overlay = document.createElement('div');
@@ -9911,15 +9945,23 @@ function openDrainCalendar(startDay){
       grid.appendChild(cell);
     }
     box.appendChild(grid);
-    // The chosen day
+    // The chosen day, in a window over the calendar (Oct 13)
+    if(host._dayWin){ host._dayWin.remove(); host._dayWin = null; }
     if(!selecting && sel){
       const ents = (byDay[sel] || []);
+      const dayWin = document.createElement('div');
+      dayWin.className = 'confirm-overlay';
+      host._dayWin = dayWin;
+      // A click outside the window closes it, and the day with it
+      dayWin.addEventListener('click', ev=>{ if(ev.target === dayWin){ sel = ''; draw(); } });
       const panel = document.createElement('div');
       panel.dataset.calPanel = '1';
-      panel.style.cssText = 'margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;';
+      panel.className = 'confirm-box';
+      panel.style.cssText = 'max-width:1000px;width:100%;max-height:88vh;overflow-y:auto;text-align:left;padding:18px 20px;';
+      dayWin.appendChild(panel);
       const ph = document.createElement('div');
-      ph.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;';
-      ph.innerHTML = '<b style="font-size:13.5px;"></b><span style="font-size:12px;color:var(--muted);"></span>';
+      ph.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+      ph.innerHTML = '<b style="font-size:16px;"></b><span style="font-size:12px;color:var(--muted);"></span>';
       ph.children[0].textContent = pdDate(sel, true);
       ph.children[1].textContent = ents.length + (ents.length === 1 ? ' customer' : ' customers');
       const add = smallBtn('+ Add customers', 'btn-ghost', 'margin-left:auto;');
@@ -9940,6 +9982,9 @@ function openDrainCalendar(startDay){
         });
       });
       ph.appendChild(add);
+      const closeDay = smallBtn('Close');
+      closeDay.addEventListener('click', ()=>{ sel = ''; draw(); });
+      ph.appendChild(closeDay);
       panel.appendChild(ph);
       if(!ents.length) panel.insertAdjacentHTML('beforeend', '<div style="font-size:12.5px;color:var(--muted);padding:6px 0;">Nobody on this day yet.</div>');
       // Every column a fixed width, so nothing staggers down the list (Oct 13)
@@ -10118,8 +10163,8 @@ function openDrainCalendar(startDay){
         if(extra.children.length) row.appendChild(extra);
         listWrap.appendChild(row);
       });
+      document.body.appendChild(dayWin);
       setTimeout(()=> listWrap.querySelectorAll('.pd-scroll-name').forEach(webMarqueeIfCut), 0);
-      box.appendChild(panel);
     }
   }
   // A click anywhere in the window that isn't a day, a button or a menu closes
@@ -14836,6 +14881,7 @@ function openFilterCalendar(startDay){
   // On the page now, at the top of the tab, not in a window (Oct 13)
   const host = document.getElementById('wcFilterCalCard');
   if(!host) return;
+  if(host._dayWin){ host._dayWin.remove(); host._dayWin = null; }
   if(host._calKey) document.removeEventListener('keydown', host._calKey, true);
   // Replacements back to its own place first, so clearing the calendar keeps it
   { const rb = document.getElementById('btnFilterReplacements'), home = document.getElementById('fcReplHome'); if(rb && home) home.appendChild(rb); }
@@ -14990,28 +15036,44 @@ function openFilterCalendar(startDay){
       grid.appendChild(cell);
     }
     box.appendChild(grid);
-    // The chosen day, everyone listed by group
+    // The chosen day, everyone listed by group, in a window over the
+    // calendar like the drain calendar's (Oct 13)
+    if(host._dayWin){ host._dayWin.remove(); host._dayWin = null; }
     if(!selecting && sel && sel.slice(0, 7) === month){
       const gs = byDay[sel] || [];
+      const dayWin = document.createElement('div');
+      dayWin.className = 'confirm-overlay';
+      host._dayWin = dayWin;
+      dayWin.addEventListener('click', ev=>{ if(ev.target === dayWin){ sel = ''; draw(); } });
       const panel = document.createElement('div');
       panel.dataset.calPanel = '1';
-      panel.style.cssText = 'border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-top:12px;';
+      panel.className = 'confirm-box';
+      panel.style.cssText = 'max-width:1000px;width:100%;max-height:88vh;overflow-y:auto;text-align:left;padding:18px 20px;';
+      dayWin.appendChild(panel);
       const ph = document.createElement('div');
-      ph.style.cssText = 'display:flex;align-items:baseline;gap:10px;margin-bottom:4px;';
-      ph.innerHTML = '<b style="font-size:13.5px;"></b><span style="font-size:12px;color:var(--muted);"></span>';
+      ph.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+      ph.innerHTML = '<b style="font-size:16px;"></b><span style="font-size:12px;color:var(--muted);"></span>';
       ph.children[0].textContent = new Date(sel + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'});
       const n = count(gs);
       ph.children[1].textContent = n + (n === 1 ? ' customer' : ' customers');
       // Groups are put on days here now, not with a date on the group (Oct 13)
       const addG = smallBtn('+ Add a group', 'btn-ghost', 'margin-left:auto;');
       addG.addEventListener('click', ()=> fcPickGroupForDay(sel, ()=>{ saveFilterGroups(); renderFilterGroups(); draw(); }));
-      ph.style.alignItems = 'center';
       ph.appendChild(addG);
+      const closeDay = smallBtn('Close');
+      closeDay.addEventListener('click', ()=>{ sel = ''; draw(); });
+      ph.appendChild(closeDay);
       panel.appendChild(ph);
+      // Every column a fixed width, as on the drain window
+      const COLS = 'display:grid;grid-template-columns:22px 125px minmax(150px,1fr) 140px 90px 28px;gap:10px;align-items:center;min-width:760px;';
+      const sortedTechs = technicians.slice().sort((a, b2) => String(a.name || '').localeCompare(String(b2.name || ''), undefined, {sensitivity: 'base'}));
+      // Changes to one customer's clean, saved on the group (fgSyncScheduled
+      // carries them to the app)
+      const editGroup = (gid, fn)=>{ const it = filterGroups.find(x => x && x.id === gid); if(!it) return; fn(it); saveFilterGroups(); renderFilterGroups(); draw(); };
       if(!gs.length) panel.insertAdjacentHTML('beforeend', '<div style="font-size:12.5px;color:var(--muted);padding:6px 0;">No filter cleans on this day.</div>');
       gs.forEach(g=>{
         const gh = document.createElement('div');
-        gh.style.cssText = 'display:flex;align-items:center;gap:10px;margin:10px 0 4px;flex-wrap:wrap;';
+        gh.style.cssText = 'display:flex;align-items:center;gap:10px;margin:14px 0 2px;flex-wrap:wrap;';
         gh.innerHTML = '<b style="font-size:13.5px;"></b><span style="font-size:12px;color:var(--muted);"></span>';
         gh.children[0].textContent = g.name || 'Untitled group';
         const blockers = filterGroupBlockers(g);
@@ -15049,10 +15111,17 @@ function openFilterCalendar(startDay){
         gh.appendChild(gBin);
         panel.appendChild(gh);
         const done = fgCleanStatus(g);
+        const listWrap = document.createElement('div');
+        listWrap.style.cssText = 'overflow-x:auto;';
+        const hd = document.createElement('div');
+        hd.style.cssText = COLS + 'font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:6px 0 4px;';
+        hd.innerHTML = '<span></span><span>Photo</span><span>Customer</span><span>Technician</span><span></span><span></span>';
+        listWrap.appendChild(hd);
+        panel.appendChild(listWrap);
         // Drag a name by its grip to move it (Oct 13): the group takes the same
         // order, and so does the route in the app
         const listEl = document.createElement('div');
-        panel.appendChild(listEl);
+        listWrap.appendChild(listEl);
         const onReorder = keys=>{
           const it = filterGroups.find(x => x && x.id === g.id); if(!it) return;
           const ids = it.customerIds || [];
@@ -15066,18 +15135,47 @@ function openFilterCalendar(startDay){
           const c = custOf(cid); if(!c) return;
           const st = stateOf(g, cid, done);
           const row = document.createElement('div');
-          row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line);font-size:13px;background:#fff;';
+          row.style.cssText = COLS + 'padding:6px 0;border-top:1px solid var(--line);font-size:13px;background:#fff;';
           row.dataset.reorderKey = cid;
+          const isDone = st === 'done';
           const grip = document.createElement('div');
           grip.textContent = '\u2261';
           grip.title = 'Drag to move';
           grip.style.cssText = 'color:var(--muted);font-size:19px;flex-shrink:0;padding:0 4px 0 2px;cursor:grab;touch-action:none;line-height:1;';
           attachTouchReorder(grip, row, listEl, '[data-reorder-key]', onReorder);
           row.appendChild(grip);
+          // Photo required for this one customer (Oct 13): the group's setting
+          // to start, on unless the group's is off
+          const phLab = document.createElement('label');
+          phLab.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;white-space:nowrap;cursor:pointer;margin:0;text-transform:none;letter-spacing:0;color:var(--ink);';
+          const phBox = document.createElement('input');
+          phBox.type = 'checkbox'; phBox.style.cssText = 'width:auto;margin:0;';
+          phBox.checked = fgCustPhoto(g, cid);
+          phBox.disabled = isDone;
+          phBox.addEventListener('change', ()=> editGroup(g.id, it=>{ it.custPhoto = it.custPhoto || {}; it.custPhoto[cid] = phBox.checked; }));
+          phLab.appendChild(phBox);
+          phLab.appendChild(document.createTextNode('Photo required'));
+          row.appendChild(phLab);
           const nm = document.createElement('span');
-          nm.style.cssText = 'flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+          nm.className = 'pd-scroll-name';
+          nm.style.cssText = 'font-weight:600;min-width:0;overflow:hidden;white-space:nowrap;';
           nm.textContent = displayName(c.name);
+          nm.title = displayName(c.name);
           row.appendChild(nm);
+          // Which technician gets this one clean (Oct 13): the group's to start
+          const techSel = document.createElement('select');
+          techSel.style.cssText = 'width:100%;padding:4px 8px;font-size:12px;';
+          techSel.title = 'Which technician gets this filter clean in the app';
+          if(!g.technicianId){ const o = document.createElement('option'); o.value = ''; o.textContent = 'No technician'; techSel.appendChild(o); }
+          sortedTechs.forEach(t => { const o = document.createElement('option'); o.value = String(t.id); o.textContent = t.name; techSel.appendChild(o); });
+          techSel.value = String(fgCustTech(g, cid) || '');
+          techSel.disabled = isDone;
+          techSel.addEventListener('change', ()=> editGroup(g.id, it=>{
+            it.custTech = it.custTech || {};
+            // The group's own technician is the default, not a choice to keep
+            if(techSel.value && String(techSel.value) !== String(it.technicianId || '')) it.custTech[cid] = techSel.value; else delete it.custTech[cid];
+          }));
+          row.appendChild(techSel);
           const stEl = document.createElement('span');
           stEl.style.cssText = 'font-size:11.5px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;';
           if(st === 'done'){ stEl.style.color = 'var(--green)'; stEl.textContent = '✓ done'; }
@@ -15108,10 +15206,42 @@ function openFilterCalendar(startDay){
             pad.style.cssText = 'width:24px;flex-shrink:0;';
             row.appendChild(pad);
           }
+          // Extra work under the customer (Oct 13), as on the drain window:
+          // ticked off on this filter clean in the app
+          const extra = document.createElement('div');
+          extra.style.cssText = 'grid-column:3 / 6;display:flex;gap:6px;flex-wrap:nowrap;align-items:center;padding:0 0 2px;min-width:0;';
+          const tagsWrap = document.createElement('div');
+          tagsWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:nowrap;align-items:center;flex:1 1 auto;min-width:0;overflow:hidden;'
+            + '-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);';
+          extra.appendChild(tagsWrap);
+          const exItems = fgCustExtra(g, cid);
+          exItems.forEach(li=>{
+            const tag = document.createElement('span');
+            tag.className = 'pd-scroll-name';
+            tag.style.cssText = 'background:#E9EEF0;color:#3E5560;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:7px;width:75px;flex:0 0 75px;overflow:hidden;white-space:nowrap;box-sizing:border-box;';
+            tag.textContent = li.description + ((Number(li.qty) || 1) > 1 ? ' \u00d7 ' + Number(li.qty) : '');
+            tag.title = tag.textContent;
+            tagsWrap.appendChild(tag);
+          });
+          if(!isDone){
+            const addX = document.createElement('button');
+            addX.type = 'button';
+            addX.textContent = exItems.length ? 'Edit extra work' : '+ Extra work';
+            addX.style.cssText = 'width:auto;flex:0 0 auto;white-space:nowrap;border:1px dashed #BFDCD8;color:var(--teal-deep);background:#fff;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:700;cursor:pointer;';
+            addX.addEventListener('click', ()=>{
+              pdOpenExtraWork({extraWork: exItems}, displayName(c.name), items=> editGroup(g.id, it=>{
+                it.custExtra = it.custExtra || {};
+                if(items.length) it.custExtra[cid] = items; else delete it.custExtra[cid];
+              }));
+            });
+            extra.appendChild(addX);
+          }
+          if(extra.children.length > 1 || exItems.length) row.appendChild(extra);
           listEl.appendChild(row);
         });
       });
-      box.appendChild(panel);
+      document.body.appendChild(dayWin);
+      setTimeout(()=> panel.querySelectorAll('.pd-scroll-name').forEach(webMarqueeIfCut), 0);
     }
   }
   // A click anywhere in the window that isn't a day, a button or a menu closes
@@ -27644,6 +27774,11 @@ function switchView(view){
   if(view !== 'workcenter' && wcPage && wcPage.classList.contains('active')
      && typeof workCenterMode !== 'undefined' && workCenterMode === 'drains'
      && typeof pdResetOnLeave === 'function') pdResetOnLeave();
+  // Leaving Filter cleans for another page: Schedule tab, All technicians,
+  // no day chosen, next time (Oct 13)
+  if(view !== 'workcenter' && wcPage && wcPage.classList.contains('active')
+     && typeof workCenterMode !== 'undefined' && workCenterMode === 'filters'
+     && typeof wcCalResetOnLeave === 'function') wcCalResetOnLeave('filters');
   if(view !== 'workcenter' && wcPage && wcPage.classList.contains('active')
      && typeof workCenterMode !== 'undefined' && workCenterMode === 'quotes'
      && typeof leaveWcForm === 'function'){

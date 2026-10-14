@@ -10513,7 +10513,9 @@ function routeJobsFor(customerId, dayISO, techId){
     .filter(s => s && s.status === 'scheduled' && s.date === dayISO && s.customerId === customerId && mine(s))
     .map(s => ({key: 'filter clean:' + s.id, kind: 'filter clean', id: s.id,
                 // Only when the group's Photo required was ticked (Oct 3)
-                title: 'Filter clean', details: '', photoRequired: s.photoRequired === true, videoRequired: false}));
+                title: 'Filter clean', details: '', photoRequired: s.photoRequired === true, videoRequired: false,
+                // Extra work the office added on the calendar's day window (Oct 13)
+                lineItems: Array.isArray(s.lineItems) ? s.lineItems : []}));
   // Pool drains, sent from the website's Pool drains page (Oct 10)
   const drains = (lsGet('scheduledPoolDrains') || [])
     .filter(s => s && s.status === 'scheduled' && s.date === dayISO && s.customerId === customerId && mine(s))
@@ -11032,7 +11034,7 @@ function openJobPage(customer, job){
   }
   // A pool drain's extra work from the office (Oct 13): each item with a box to
   // tick, all ticked before Submit, like a work order's items
-  if(job.kind === 'pool drain'){
+  if(job.kind === 'pool drain' || job.kind === 'filter clean'){   // filter cleans too (Oct 13)
     // With how many after the name when it's more than one (Oct 13)
     const extra = (job.lineItems || []).filter(li => li && String(li.description || '').trim())
       .map(li => String(li.description).trim() + ((Number(li.qty) || 1) > 1 ? ' \u00d7 ' + Number(li.qty) : ''));
@@ -11303,6 +11305,8 @@ function openJobPage(customer, job){
         if(isPhotoRef(videoRef)) fc.doneVideo = videoRef;
         if(videoMore.length) fc.doneVideoMore = videoMore;
         if(replacements.length) fc.doneReplacements = replacements.slice();
+        // Every extra work item was ticked to get here (Oct 13)
+        if(Array.isArray(fc.lineItems) && fc.lineItems.length) fc.doneExtraWork = fc.lineItems.map(li => String((li && li.description) || '').trim()).filter(Boolean);
         lsSet('scheduledFilterCleans', cleans);
         // Unless the office unticked Email customer on its group (Oct 11)
         if(customer && fc.emailCustomer !== false) queueJobEmail(customer, Object.assign({kind: 'filter clean'}, fc));
