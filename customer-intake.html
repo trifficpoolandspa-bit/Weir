@@ -531,6 +531,10 @@ input::placeholder{color:#A9BCB9;}
 .marquee-inner{display:inline-block;white-space:nowrap;will-change:transform;}
 .marquee-on{-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent);mask-image:linear-gradient(90deg,#000 85%,transparent);}
 .marquee-on .marquee-inner{animation:weirMarquee var(--marquee-time,6s) ease-in-out infinite;}
+/* The × on an extra work bubble shows only while hovering it (Oct 13) */
+.pd-xtag-x{position:absolute;right:0;top:0;bottom:0;width:18px;border:0;border-radius:0;margin:0;background:#E9EEF0;color:#C0392B;font-size:15px;font-weight:700;line-height:1;padding:0;display:none;cursor:pointer;}
+.pd-xtag .pd-xtag-x{display:none !important;}
+.pd-xtag:hover .pd-xtag-x{display:inline-flex !important;align-items:center;justify-content:center;}
 /* The extra work counter's number, without the browser's own arrows (Oct 13) */
 .pd-qty::-webkit-outer-spin-button,.pd-qty::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 </style>
@@ -7555,7 +7559,9 @@ function fgChipState(g, cid){
 // One customer's own settings in a filter clean group (Oct 13): photo,
 // technician and extra work, set in the calendar's day window. Without one,
 // the group's own.
-function fgCustPhoto(g, cid){ return (g && g.custPhoto && typeof g.custPhoto[cid] === 'boolean') ? g.custPhoto[cid] : (g ? g.photoRequired !== false : true); }
+// Photo required is on to start for every customer (Tyrus, Oct 13); the
+// group's own tick on the Groups tab sets all of its customers at once
+function fgCustPhoto(g, cid){ return (g && g.custPhoto && typeof g.custPhoto[cid] === 'boolean') ? g.custPhoto[cid] : true; }
 function fgCustTech(g, cid){ return (g && g.custTech && g.custTech[cid]) || (g ? g.technicianId : '') || ''; }
 function fgCustExtra(g, cid){
   const list = (g && g.custExtra && Array.isArray(g.custExtra[cid])) ? g.custExtra[cid] : [];
@@ -7788,6 +7794,10 @@ function renderFilterGroups(){
     photoReq.addEventListener('click', e => e.stopPropagation());     // not a press on the row
     photoBox.addEventListener('change', ()=>{
       g.photoRequired = photoBox.checked;
+      // Every customer in the group follows it (Oct 13); each can still be
+      // changed on its own in the calendar's day window
+      g.custPhoto = {};
+      (g.customerIds || []).forEach(cid => { g.custPhoto[cid] = photoBox.checked; });
       saveFilterGroups();
       // Filter cleans already sent to the route follow it, until they're done
       const sched = lsGet('scheduledFilterCleans') || [];
@@ -9494,6 +9504,39 @@ function pdApplyExtra(e, recs){
   });
 }
 // The Extra work window: pick from Products & Services or type your own
+// One extra work bubble (Oct 13): a fixed 75px, words too long for it scroll
+// across, and a plain red × over its right end on hover takes it off
+function pdExtraTag(li, onRemove){
+  const tag = document.createElement('span');
+  tag.className = 'pd-xtag';
+  tag.style.cssText = 'position:relative;background:#E9EEF0;color:#3E5560;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:7px;width:75px;flex:0 0 75px;overflow:hidden;white-space:nowrap;box-sizing:border-box;';
+  const txt = document.createElement('span');
+  txt.className = 'pd-scroll-name';
+  txt.style.cssText = 'display:block;overflow:hidden;white-space:nowrap;';
+  txt.textContent = li.description + ((Number(li.qty) || 1) > 1 ? ' \u00d7 ' + Number(li.qty) : '');
+  tag.title = txt.textContent;
+  tag.appendChild(txt);
+  if(onRemove){
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'pd-xtag-x';
+    x.textContent = '\u00d7';
+    x.title = 'Take this off';
+    x.setAttribute('aria-label', 'Take ' + txt.textContent + ' off');
+    x.addEventListener('click', ev=>{ ev.stopPropagation(); onRemove(); });
+    tag.appendChild(x);
+  }
+  return tag;
+}
+// Extra work tags that run past the end fade out before the button (Oct 13);
+// ones that fit don't fade
+function pdFadeExtraTags(root){
+  (root || document).querySelectorAll('.pd-extra-tags').forEach(w=>{
+    const cut = w.scrollWidth > w.clientWidth + 1;
+    const m = cut ? 'linear-gradient(90deg,#000 calc(100% - 24px),transparent)' : '';
+    w.style.webkitMaskImage = m; w.style.maskImage = m;
+  });
+}
 function pdOpenExtraWork(e, name, onDone){
   let items = pdExtraOf(e).map(li => Object.assign({}, li));
   const overlay = document.createElement('div');
@@ -9843,11 +9886,14 @@ function openDrainCalendar(startDay){
     pickBtn.addEventListener('click', ()=>{ monthPick = !monthPick; pickYear = yy; draw(); });
     nav.appendChild(pickBtn);
     head.appendChild(nav);
+    // The technician menu right after the calendar icon (Oct 13)
+    { const tm = calTechMenu(viewTech, v => { viewTech = v; draw(); }); tm.style.marginLeft = '6px'; nav.appendChild(tm); }
+    // Select for route on a row of its own below, at the right; what it opens
+    // (Cancel, Push to app) stays on that row (Oct 13)
     const right = document.createElement('div');
-    right.style.cssText = 'display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap;';
-    right.appendChild(calTechMenu(viewTech, v => { viewTech = v; draw(); }));
+    right.style.cssText = 'display:flex;align-items:center;gap:8px;justify-content:flex-end;flex:1 0 100%;flex-wrap:wrap;';
     if(!selecting){
-      const selBtn = smallBtn('Select', 'btn-primary');
+      const selBtn = smallBtn('Select for route', 'btn-primary');
       selBtn.title = 'Pick days to send to the app';
       selBtn.addEventListener('click', ()=>{ selecting = true; picked.clear(); draw(); });
       right.appendChild(selBtn);
@@ -9856,14 +9902,8 @@ function openDrainCalendar(startDay){
       hint.style.cssText = 'font-size:12.5px;font-weight:600;color:var(--teal-deep);';
       hint.textContent = 'Tap the days to send';
       right.appendChild(hint);
-      const tech = document.createElement('select');
-      tech.style.cssText = 'width:auto;padding:6px 8px;font-size:12.5px;';
-      tech.title = 'Which technician gets these drains';
-      tech.innerHTML = '<option value="">Each customer’s technician</option>';
-      technicians.forEach(t => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.name; tech.appendChild(o); });
-      tech.value = pushTech;
-      tech.addEventListener('change', ()=>{ pushTech = tech.value; });
-      right.appendChild(tech);
+      // No technician menu here (Oct 13): each drain goes to the technician
+      // set in the day window, the customer's own unless changed there
       const cancel = smallBtn('Cancel');
       cancel.addEventListener('click', ()=>{ selecting = false; picked.clear(); draw(); });
       right.appendChild(cancel);
@@ -10123,18 +10163,20 @@ function openDrainCalendar(startDay){
         extra.style.cssText = 'grid-column:2 / 6;display:flex;gap:6px;flex-wrap:nowrap;align-items:center;padding:0 0 2px;min-width:0;';
         const tagsWrap = document.createElement('div');
         // Takes the room up to the button; what doesn't fit fades out before it
-        tagsWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:nowrap;align-items:center;flex:1 1 auto;min-width:0;overflow:hidden;'
-          + '-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);';
+        tagsWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:nowrap;align-items:center;flex:0 1 auto;min-width:0;overflow:hidden;';   // the button follows the tags (Oct 13)
+        tagsWrap.className = 'pd-extra-tags';
         extra.appendChild(tagsWrap);
         const exItems = pdExtraOf(e);
-        exItems.forEach(li=>{
-          const tag = document.createElement('span');
-          // A fixed 75px; words too long for it scroll across (Oct 13)
-          tag.className = 'pd-scroll-name';
-          tag.style.cssText = 'background:#E9EEF0;color:#3E5560;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:7px;width:75px;flex:0 0 75px;overflow:hidden;white-space:nowrap;box-sizing:border-box;';
-          tag.textContent = li.description + ((Number(li.qty) || 1) > 1 ? ' \u00d7 ' + Number(li.qty) : '');
-          tag.title = tag.textContent;
-          tagsWrap.appendChild(tag);
+        exItems.forEach((li, idx)=>{
+          // A red × on hover takes it off (Oct 13), unless the drain is done
+          tagsWrap.appendChild(pdExtraTag(li, (r && r.status === 'done') ? null : ()=>{
+            const all = pdCal(); const it = all.find(y => y.id === e.id); if(!it) return;
+            const items = pdExtraOf(it).slice(); items.splice(idx, 1);
+            if(items.length) it.extraWork = items; else delete it.extraWork;
+            if(it.pushed && Object.keys(it.pushed).length){ pdEntryNormalize(it); const recs = pdScheduled(); pdApplyExtra(it, recs); lsSet('scheduledPoolDrains', recs); }
+            pdCalSave(all);
+            draw();
+          }));
         });
         if(!(r && r.status === 'done')){
           const addX = document.createElement('button');
@@ -10164,7 +10206,7 @@ function openDrainCalendar(startDay){
         listWrap.appendChild(row);
       });
       document.body.appendChild(dayWin);
-      setTimeout(()=> listWrap.querySelectorAll('.pd-scroll-name').forEach(webMarqueeIfCut), 0);
+      setTimeout(()=>{ listWrap.querySelectorAll('.pd-scroll-name').forEach(webMarqueeIfCut); pdFadeExtraTags(panel); }, 0);
     }
   }
   // A click anywhere in the window that isn't a day, a button or a menu closes
@@ -14824,49 +14866,68 @@ async function openFilterGroupScheduler(){
 // already on another day moves to this one; if it was sent to the app, its
 // cleans still to do move with it.
 function fcPickGroupForDay(iso, after){
+  // Several at once, with a technician menu, in even columns (Oct 13)
   const nice = new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
-  const list = filterGroups.filter(g => g && g.date !== iso)
+  const all = filterGroups.filter(g => g && g.date !== iso)
     .slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity: 'base', numeric: true}));
-  if(!list.length){ showToast(filterGroups.length ? 'Every group is on this day already' : 'Make a group first, on the Groups tab'); return; }
+  if(!all.length){ showToast(filterGroups.length ? 'Every group is on this day already' : 'Make a group first, on the Groups tab'); return; }
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
   const box = document.createElement('div');
   box.className = 'confirm-box';
-  box.style.cssText = 'max-width:440px;width:100%;max-height:80vh;display:flex;flex-direction:column;text-align:left;';
+  box.style.cssText = 'max-width:480px;width:100%;max-height:80vh;display:flex;flex-direction:column;text-align:left;';
   box.innerHTML = '<h3 style="font-size:15px;margin:0 0 4px;"></h3>'
-    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;">Pick a group. Its customers go on this day with its technician.</p>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;">Tick the groups. Their customers go on this day with their technicians.</p>'
+    + '<div data-techslot></div>'
+    + '<div data-head></div>'
     + '<div data-list style="flex:1;overflow-y:auto;"></div>'
     + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-primary" data-go style="flex:1;">Add to this day</button><button type="button" class="btn btn-ghost" data-cancel style="width:auto;">Cancel</button></div>';
-  box.querySelector('h3').textContent = 'Add a group to ' + nice;
+  box.querySelector('h3').textContent = 'Add groups to ' + nice;
   overlay.appendChild(box);
   document.body.appendChild(overlay);
+  const COLS = 'display:grid;grid-template-columns:22px minmax(0,1fr) 110px 90px;gap:10px;align-items:center;';
+  const head = box.querySelector('[data-head]');
+  head.style.cssText = COLS + 'font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:10px 0 4px;';
+  head.innerHTML = '<span></span><span>Group</span><span>Technician</span><span>Customers</span>';
   const listEl = box.querySelector('[data-list]');
-  let chosen = '';
-  list.forEach(g=>{
-    const row = document.createElement('label');
-    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid var(--line);font-size:13px;cursor:pointer;margin:0;text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink);';
-    const r = document.createElement('input');
-    r.type = 'radio'; r.name = 'fcPickGroup'; r.style.cssText = 'width:auto;margin:0;';
-    r.addEventListener('change', ()=>{ chosen = g.id; });
-    const nm = document.createElement('b'); nm.textContent = g.name || 'Untitled group';
-    const n = fgLiveIds(g).length;
-    const meta = document.createElement('span');
-    meta.style.cssText = 'margin-left:auto;font-size:11.5px;color:var(--muted);white-space:nowrap;';
-    meta.textContent = n + (n === 1 ? ' customer' : ' customers') + ' \u00b7 ' + (technicianNameById(g.technicianId) || 'No technician')
-      + ' \u00b7 ' + (g.date ? 'on ' + new Date(g.date + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : 'not on a day');
-    row.appendChild(r); row.appendChild(nm); row.appendChild(meta);
-    row.addEventListener('dblclick', ()=>{ chosen = g.id; box.querySelector('[data-go]').click(); });
-    listEl.appendChild(row);
-  });
+  const go = box.querySelector('[data-go]');
+  const picked = new Set();
+  let tech = '';
+  const techMenu = calTechMenu('', v => { tech = v; drawList(); });
+  techMenu.style.cssText = 'width:100%;';
+  box.querySelector('[data-techslot]').appendChild(techMenu);
+  const updGo = ()=>{ go.textContent = picked.size > 1 ? 'Add ' + picked.size + ' groups to this day' : 'Add to this day'; };
+  function drawList(){
+    listEl.innerHTML = '';
+    const shown = all.filter(g => !tech || String(g.technicianId || '') === String(tech));
+    if(!shown.length) listEl.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:8px 2px;">No groups for this technician.</div>';
+    shown.forEach(g=>{
+      const row = document.createElement('label');
+      row.style.cssText = COLS + 'padding:9px 2px;border-top:1px solid var(--line);font-size:13px;cursor:pointer;margin:0;text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink);';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.style.cssText = 'width:auto;margin:0;';
+      cb.checked = picked.has(g.id);
+      cb.addEventListener('change', ()=>{ if(cb.checked) picked.add(g.id); else picked.delete(g.id); updGo(); });
+      const cell = (text, css) => { const el = document.createElement('span'); el.className = 'pd-scroll-name'; el.style.cssText = 'min-width:0;overflow:hidden;white-space:nowrap;' + css; el.textContent = text; el.title = text; return el; };
+      const n = fgLiveIds(g).length;
+      row.appendChild(cb);
+      row.appendChild(cell(g.name || 'Untitled group', 'font-weight:700;'));
+      row.appendChild(cell(technicianNameById(g.technicianId) || 'No technician', 'font-size:12px;color:var(--muted);'));
+      row.appendChild(cell(n + (n === 1 ? ' customer' : ' customers'), 'font-size:12px;color:var(--muted);'));
+      listEl.appendChild(row);
+    });
+    setTimeout(()=> listEl.querySelectorAll('.pd-scroll-name').forEach(webMarqueeIfCut), 0);
+    updGo();
+  }
+  drawList();
   box.querySelector('[data-cancel]').addEventListener('click', ()=> overlay.remove());
-  box.querySelector('[data-go]').addEventListener('click', ()=>{
-    if(!chosen){ showToast('Pick a group first'); return; }
-    const g = filterGroups.find(x => x && x.id === chosen);
+  go.addEventListener('click', ()=>{
+    if(!picked.size){ showToast('Tick a group first'); return; }
+    const chosen = filterGroups.filter(x => x && picked.has(x.id));
     overlay.remove();
-    if(!g) return;
-    g.date = iso;
+    chosen.forEach(g => { g.date = iso; });
     if(after) after();
-    showToast((g.name || 'Group') + ' put on ' + nice);
+    showToast(chosen.length === 1 ? (chosen[0].name || 'Group') + ' put on ' + nice : chosen.length + ' groups put on ' + nice);
   });
 }
 function openFilterCalendar(startDay){
@@ -14947,14 +15008,16 @@ function openFilterCalendar(startDay){
     pickBtn.addEventListener('click', ()=>{ monthPick = !monthPick; pickYear = yy; draw(); });
     nav.appendChild(pickBtn);
     head.appendChild(nav);
-    const right = document.createElement('div');
-    right.style.cssText = 'display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap;';
-    right.appendChild(calTechMenu(viewTech, v => { viewTech = v; draw(); }));
-    // Replacements beside the technician menu (Oct 13)
+    // The technician menu right after the calendar icon, then Replacements (Oct 13)
+    { const tm = calTechMenu(viewTech, v => { viewTech = v; draw(); }); tm.style.marginLeft = '6px'; nav.appendChild(tm); }
     const replBtn = document.getElementById('btnFilterReplacements');
-    if(replBtn){ replBtn.style.cssText = 'width:auto;flex:0 0 auto;padding:6px 12px;font-size:12.5px;'; right.appendChild(replBtn); }
+    if(replBtn){ replBtn.style.cssText = 'width:auto;flex:0 0 auto;padding:6px 12px;font-size:12.5px;'; nav.appendChild(replBtn); }
+    // Select for route on a row of its own below, at the right; what it opens
+    // (Cancel, Push to app) stays on that row (Oct 13)
+    const right = document.createElement('div');
+    right.style.cssText = 'display:flex;align-items:center;gap:8px;justify-content:flex-end;flex:1 0 100%;flex-wrap:wrap;';
     if(!selecting){
-      const selBtn = smallBtn('Select', 'btn-primary');
+      const selBtn = smallBtn('Select for route', 'btn-primary');
       selBtn.title = 'Pick days to send to the app';
       selBtn.addEventListener('click', ()=>{ selecting = true; picked.clear(); draw(); });
       right.appendChild(selBtn);
@@ -15211,17 +15274,17 @@ function openFilterCalendar(startDay){
           const extra = document.createElement('div');
           extra.style.cssText = 'grid-column:3 / 6;display:flex;gap:6px;flex-wrap:nowrap;align-items:center;padding:0 0 2px;min-width:0;';
           const tagsWrap = document.createElement('div');
-          tagsWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:nowrap;align-items:center;flex:1 1 auto;min-width:0;overflow:hidden;'
-            + '-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);';
+          tagsWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:nowrap;align-items:center;flex:0 1 auto;min-width:0;overflow:hidden;';   // the button follows the tags (Oct 13)
+          tagsWrap.className = 'pd-extra-tags';
           extra.appendChild(tagsWrap);
           const exItems = fgCustExtra(g, cid);
-          exItems.forEach(li=>{
-            const tag = document.createElement('span');
-            tag.className = 'pd-scroll-name';
-            tag.style.cssText = 'background:#E9EEF0;color:#3E5560;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:7px;width:75px;flex:0 0 75px;overflow:hidden;white-space:nowrap;box-sizing:border-box;';
-            tag.textContent = li.description + ((Number(li.qty) || 1) > 1 ? ' \u00d7 ' + Number(li.qty) : '');
-            tag.title = tag.textContent;
-            tagsWrap.appendChild(tag);
+          exItems.forEach((li, idx)=>{
+            // A red × on hover takes it off (Oct 13), unless the clean is done
+            tagsWrap.appendChild(pdExtraTag(li, isDone ? null : ()=> editGroup(g.id, it=>{
+              const items = fgCustExtra(it, cid).slice(); items.splice(idx, 1);
+              it.custExtra = it.custExtra || {};
+              if(items.length) it.custExtra[cid] = items; else delete it.custExtra[cid];
+            })));
           });
           if(!isDone){
             const addX = document.createElement('button');
@@ -15236,12 +15299,13 @@ function openFilterCalendar(startDay){
             });
             extra.appendChild(addX);
           }
-          if(extra.children.length > 1 || exItems.length) row.appendChild(extra);
+          if(!tagsWrap.children.length) tagsWrap.remove();   // the button starts under the name, as on drains
+          if(extra.children.length) row.appendChild(extra);
           listEl.appendChild(row);
         });
       });
       document.body.appendChild(dayWin);
-      setTimeout(()=> panel.querySelectorAll('.pd-scroll-name').forEach(webMarqueeIfCut), 0);
+      setTimeout(()=>{ panel.querySelectorAll('.pd-scroll-name').forEach(webMarqueeIfCut); pdFadeExtraTags(panel); }, 0);
     }
   }
   // A click anywhere in the window that isn't a day, a button or a menu closes
