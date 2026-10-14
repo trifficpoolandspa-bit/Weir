@@ -496,10 +496,11 @@ console.log('\n=== Emailing a filter clean group ===');
     const head = d.querySelector('#wcFiltersSection .section-head');
     const labels = Array.from(head.querySelectorAll('button')).map(b => b.textContent);
     check('  an Email button is in the heading', labels.indexOf('Email') !== -1, labels.join(','));
-    check('  New group sits first, then Schedule, then Email',
+    // Oct 13: Schedule became the calendar on its own tab; the Groups tab's
+    // heading has + New group, then Email
+    check('  New group sits first, then Email',
           labels.indexOf('+ New group') === 0
-          && labels.indexOf('Schedule') === 1
-          && labels.indexOf('Email') === 2, labels.join(','));
+          && labels.indexOf('Email') === 1, labels.join(','));
 
     // The message is built from the editable template
     const body = w.eval("fillFilterEmail(loadFilterEmail().body, ['Tuesday, September 22, 2026'])");
@@ -602,7 +603,7 @@ console.log('\n=== The WorkCenter tab always matches what is shown ===');
   w.Element.prototype.scrollIntoView = function(){};
 
   const ids = ['wcQuotesSection','wcQuotesHistoryCard','wcCallsSection',
-               'wcCallsListCard','wcFiltersSection','wcBroadcastSection'];
+               'wcCallsListCard','wcFilterTabsCard','wcFilterCalCard','wcFiltersSection','wcBroadcastSection'];   // the filter tabs and calendar (Oct 13)
   const shown = ()=> ids.filter(id => {
     const e = d.getElementById(id);
     return e && e.style.display !== 'none';
@@ -635,15 +636,16 @@ console.log('\n=== The WorkCenter tab always matches what is shown ===');
 
     // Same for filter cleans
     press('filters');
+    // Oct 13: it opens on its Schedule tab: the tab strip and the calendar
     check('  filter cleans shows only its own section',
-          shown().join(',') === 'wcFiltersSection', shown().join(','));
+          shown().join(',') === 'wcFilterTabsCard,wcFilterCalCard', shown().join(','));
     w.eval("switchView('settings'); webLeftAt = {}; switchView('workcenter');");  // past the page's 20 seconds (Sept 29)
     check('  and is hidden on returning',
-          shown().indexOf('wcFiltersSection') === -1, shown().join(','));
+          shown().indexOf('wcFiltersSection') === -1 && shown().indexOf('wcFilterCalCard') === -1, shown().join(','));
 
     // No mode may leave another's section visible
     let clean = true;
-    [['quotes',1],['filters',1],['broadcast',1]].forEach(([m,n])=>{
+    [['quotes',1],['filters',2],['broadcast',1]].forEach(([m,n])=>{   // filters: its tabs and the calendar (Oct 13)
       w.eval("applyWorkCenterMode('" + m + "');");
       if(shown().length !== n) clean = false;
     });

@@ -224,25 +224,22 @@ function boot(){
 
       const head = d.querySelector('#wcFiltersSection .section-head');
       const labels = Array.from(head.querySelectorAll('button')).map(b => b.textContent);
-      check('  Schedule is in the heading', labels.indexOf('Schedule') !== -1, labels.join(','));
+      // Oct 13: the Groups tab's heading has + New group then Email; Schedule
+      // became the calendar on its own tab, with Replacements beside it
       check('  New group comes first',
             labels.indexOf('+ New group') === 0, labels.join(','));
-      // Oct 13: Replacements, then Email, then Schedule at the far right
-      check('  then Replacements, Email, and Schedule last',
-            labels.indexOf('+ New group') < labels.indexOf('Replacements')
-            && labels.indexOf('Replacements') < labels.indexOf('Email')
-            && labels.indexOf('Email') < labels.indexOf('Schedule')
-            && labels.indexOf('Schedule') === labels.length - 1, labels.join(','));
+      check('  then Email',
+            labels.indexOf('Email') === 1 && labels.indexOf('Schedule') === -1, labels.join(','));
 
       const inCard = Array.from(d.querySelectorAll('#filterGroupList button')).map(b => b.textContent);
       check('  no Schedule button inside a group', inCard.indexOf('Schedule') === -1, inCard.join(','));
       check('  no Unschedule button either', inCard.indexOf('Unschedule') === -1, inCard.join(','));
 
-      // Oct 13: Schedule opens a calendar, like the drain one
-      d.getElementById('btnScheduleFilterGroups').click();
-      await new Promise(r => setTimeout(r, 200));
-      const cal = () => Array.from(d.querySelectorAll('.confirm-overlay')).pop();
-      check('  the calendar opens', !!cal() && /Schedule filter cleans/.test(cal().textContent));
+      // Oct 13: the calendar is on the page, on the Schedule tab
+      const cal = () => d.getElementById('wcFilterCalCard');
+      const win = () => Array.from(d.querySelectorAll('.confirm-overlay')).pop();
+      check('  the calendar is on the Schedule tab', !!cal() && cal().style.display !== 'none' && /Filter clean schedule/.test(cal().textContent));
+      check('  with Replacements beside it', Array.from(cal().querySelectorAll('button')).some(b => /^Replacements/.test(b.textContent)));
       const menu = cal().querySelector('select');
       check('  with a technician menu, All technicians first',
             menu && menu.options[0].textContent === 'All technicians' && menu.value === '', menu ? menu.options[0].textContent : 'none');
@@ -258,13 +255,15 @@ function boot(){
       const oct = cellFor('2026-10-06');
       check('  a group on the route shows gold with a clock', !!oct.querySelector('svg') && /251, 241, 221|FBF1DD/i.test(oct.querySelector('div[style*="background"]').getAttribute('style')));
       oct.click();
-      check('  pressing a day lists its customers underneath', /Already on route/.test(cal().textContent) && /in the app/.test(cal().textContent));
+      check('  pressing a day opens a window with its customers', !!win() && /Already on route/.test(win().textContent)
+            && Array.from(win().querySelectorAll('select.cal-status-pick')).some(sel => sel.value === 'app'));
       // Take the one on the route off
       w.eval("confirmDialog = ()=> Promise.resolve(true);");
-      Array.from(cal().querySelectorAll('button')).find(b => b.textContent === 'Take off route').click();
+      Array.from(win().querySelectorAll('button')).find(b => b.textContent === 'Take off route').click();
       await new Promise(r => setTimeout(r, 200));
+      Array.from(win().querySelectorAll('button')).find(b => b.textContent === 'Close').click();
       // Select the first group's day and push it
-      Array.from(cal().querySelectorAll('button')).find(b => b.textContent === 'Select').click();
+      Array.from(cal().querySelectorAll('button')).find(b => b.textContent === 'Select for route').click();
       cellFor('2026-09-22').click();
       const push = Array.from(cal().querySelectorAll('button')).find(b => /^Push to app/.test(b.textContent));
       check('  Push to app counts the cleans', /1 day, 2 cleans/.test(push.textContent), push.textContent);

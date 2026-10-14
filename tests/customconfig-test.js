@@ -1025,20 +1025,17 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     await wait(80);
     const list = () => d.getElementById('filterGroupList');
     const headings = () => Array.from(list().querySelectorAll(':scope > [data-reorder-key]')).map(c => c.dataset.reorderKey).join(',');
-    check('the subtext says to press Schedule and mentions emails', /press Schedule to push it onto that technician\u2019s route\. Customize emails/.test(d.getElementById('wcFiltersSection').textContent.replace(/'/g, '\u2019')));
+    // Oct 13: groups go on days from the Schedule tab's calendar
+    check('the subtext says to press Select on the Schedule tab and mentions emails', /from the Schedule tab, then press Select there to push them onto the technician\u2019s route\. Customize emails/.test(d.getElementById('wcFiltersSection').textContent.replace(/'/g, '\u2019')));
     check('no Save group button', !/Save group/.test(list().textContent));
     check('each group has a drag grip', list().querySelectorAll(':scope > [data-reorder-key] span[title="Drag to reorder"]').length === 3);
     check('each heading lights up under the pointer', list().querySelectorAll('.fg-head').length === 3);
-    // The date: saved as it changes, no redraw, heading updated
-    const dateBox = list().querySelector('input[type="date"]');
-    dateBox.value = iso(5); dateBox.dispatchEvent(new w.Event('change'));
+    // Oct 13: no date on the groups list; days are set on the Schedule tab's calendar
+    check('an open group has no date box', !list().querySelector('input[type="date"]'));
+    w.eval("filterGroups.find(g => g.id === 'g1').date = '" + iso(5) + "'; saveFilterGroups(); renderFilterGroups();");
     await wait(30);
-    check('a group\u2019s date saves as it changes', JSON.parse(w.localStorage.getItem('weir:filterGroups')).find(g => g.id === 'g1').date === iso(5));
-    check('without redrawing the list (the box stays the same one)', list().querySelector('input[type="date"]') === dateBox);
-    dateBox.dispatchEvent(new w.Event('blur')); await wait(30);
-    check('nor on leaving the box, so the next click lands', list().querySelector('input[type="date"]') === dateBox);
     const dayName = new Date(iso(5) + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
-    check('the heading shows the new date', list().textContent.indexOf(dayName) !== -1, dayName);
+    check('nor a date on its heading', list().textContent.indexOf(dayName) === -1, dayName);
     // Customers in a group: grips, and their order goes to the scheduled cleans
     check('an open group\u2019s customers have drag grips', list().querySelectorAll('span[title^="Drag to reorder \u2014 the order"]').length === 2);
     w.eval("scheduleFilterGroup(filterGroups.find(g => g.id === 'g1')); saveFilterGroups();");
