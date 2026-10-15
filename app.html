@@ -3824,6 +3824,8 @@ const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'r
                          'technicianOrder',
                          'reportEmailStyle', 'customerGroups', 'photoDefaults', 'photoEveryone',
                          'photoDefaultsSeeded'];
+const OFFICE_ONLY_SETUP = ['filterGroups', 'drainCalendar', 'workOrders', 'serviceCalls', 'filterCleanEmail',
+  'drainEmailSoon', 'drainEmailScheduled', 'broadcastTemplates', 'broadcastCategories'];
 const SYNC_COMPANY_DETAIL_KEYS = ['companyName', 'ownerName', 'licenseNumber', 'serviceArea',
   'accountEmail', 'accountPhone', 'businessAddress', 'businessCity', 'businessState',
   'businessZip', 'businessWebsite'];
@@ -4101,6 +4103,10 @@ function syncApplyRecord(kind, id, data, deleted, agreed){
   }
   if(kind === 'setup'){
     if(deleted || !('value' in data)) return true;
+    // The office's own lists (Oct 14): the website's filter clean groups, drain
+    // calendar, quotes sent and email wording. The phones get the jobs made from
+    // them, so these aren't kept here, which saves the phone's room.
+    if(OFFICE_ONLY_SETUP.indexOf(id) !== -1) return true;
     // Emails that didn't go out: added to, never swapped, so a failure noted
     // here and not yet sent isn't lost (Oct 8)
     if(id === 'emailFailures'){
@@ -4501,7 +4507,8 @@ const SYNC_WORK_LISTS = [
 // and a work order's photo and video (snippet 25, Oct 3)
 const SYNC_WORK_SENDABLE = ['task', 'reschedule', 'work_order', 'filter_clean', 'pool_drain'];
 // doneDurationMs: how long the job took (Oct 10, snippet 32)
-const SYNC_FILTER_CLEAN_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore', 'doneReplacements', 'doneDurationMs'];
+// doneExtraWork: the extra work ticked off on a filter clean or pool drain (Oct 14, snippet 33)
+const SYNC_FILTER_CLEAN_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore', 'doneReplacements', 'doneDurationMs', 'doneExtraWork'];
 const SYNC_TASK_FIELDS = ['done', 'doneAt', 'doneBy', 'doneNotes', 'doneVideo', 'doneVideoMore', 'doneDurationMs'];
 const SYNC_WORK_ORDER_FIELDS = ['status', 'doneAt', 'doneBy', 'doneNotes', 'donePhoto', 'doneVideo', 'donePhotoMore', 'doneVideoMore', 'doneReplacements', 'doneDurationMs'];
 
@@ -11511,6 +11518,26 @@ function customerServicedOn(c, day){
   return !!c && !!day && (c.day === day || (Array.isArray(c.extraDays) && c.extraDays.indexOf(day) !== -1));
 }
 
+// Where a customer's jobs go on the route (Oct 14): just below their stop;
+// once that's done, just after the stop that came before them on the day (or
+// first if they were first); not on the route that day, at the bottom
+function routeJobAnchor(container, cid, dayAllIds, added){
+  const service = container.querySelector('[data-customer-row="' + cid + '"]');
+  if(service) return service;
+  const at = dayAllIds.indexOf(cid);
+  if(at === -1) return null;
+  let prev = null;
+  for(let i = at - 1; i >= 0 && !prev; i--) prev = container.querySelector('[data-customer-row="' + dayAllIds[i] + '"]');
+  if(prev){
+    let a = prev;
+    while(a.nextElementSibling && added.indexOf(a.nextElementSibling) === -1
+      && (a.nextElementSibling.classList.contains('route-job') || a.nextElementSibling.classList.contains('route-brief') || a.nextElementSibling.classList.contains('route-job-brief'))) a = a.nextElementSibling;
+    return a;
+  }
+  const first = container.firstElementChild;
+  if(first && added.indexOf(first) === -1) added.forEach(r => container.insertBefore(r, first));
+  return null;
+}
 function renderHomeList(...args){
   const box = document.getElementById('homeCustomerList');
   const open = box && box.querySelector('.route-brief');
@@ -11870,13 +11897,23 @@ function adminVersion_renderHomeList(){
   // By default a job sits just below its customer's service when they're on
   // the route that day, and at the bottom otherwise. Separate items either way:
   // submitting one never submits the other, and a dragged job keeps its place.
+  // Oct 14: once the customer's service is done their job stays where they
+  // were on the route, not dropped to the bottom
+  const dayAllIds = (()=>{
+    try{
+      const all = customers.filter(x => x && x.active !== false && customerServicedOn(x, selectedHomeDay)
+        && !skipsThisDay(x, selectedDayISO) && !movedAway.has(x.id) && (!adminViewTechId || x.technicianId === adminViewTechId));
+      const moved = customers.filter(x => x && movedHere.has(x.id) && x.active !== false
+        && (!adminViewTechId || movedHereFor(movedWho, x, adminViewTechId)) && !all.some(b => b.id === x.id));
+      return orderCustomersForDay(selectedHomeDay, all.concat(moved)).map(x => x.id);
+    }catch(e){ return []; }
+  })();
   jobsOnTheirOwn.forEach(c=>{
     const before = container.children.length;
     appendRouteJobRows(container, c, routeJobsFor(c.id, selectedDayISO, adminViewTechId), selectedDayISO, canReorder);
     const added = Array.from(container.children).slice(before);
-    const service = container.querySelector('[data-customer-row="' + c.id + '"]');
-    if(!service) return;
-    let anchor = service;
+    let anchor = routeJobAnchor(container, c.id, dayAllIds, added);
+    if(!anchor) return;
     added.forEach(r => { anchor.after(r); anchor = r; });
   });
   if(looseTasks.length) appendRouteJobRows(container, null, looseTasks, selectedDayISO, canReorder);
@@ -12211,13 +12248,24 @@ function techVersion_renderHomeList(){
   // By default a job sits just below its customer's service when they're on
   // the route that day, and at the bottom otherwise. Separate items either way:
   // submitting one never submits the other, and a dragged job keeps its place.
+  // Oct 14: once the customer's service is done their job stays where they
+  // were on the route, not dropped to the bottom: just after the stop that came
+  // before them (or first, if they were first)
+  const dayAllIds = (()=>{
+    try{
+      const mine = customers.filter(x => x && x.active !== false && customerServicedOn(x, selectedHomeDay)
+        && currentUser && x.technicianId === currentUser.id && !skipsThisDay(x, selectedDayISO) && !movedAway.has(x.id));
+      const movedIn = customers.filter(x => x && x.active !== false && currentUser
+        && movedHereFor(movedOntoDate(reschedules, selectedDayISO), x, currentUser.id) && !mine.some(m => m.id === x.id));
+      return orderCustomersForDay(selectedHomeDay, mine.concat(movedIn)).map(x => x.id);
+    }catch(e){ return []; }
+  })();
   jobsOnTheirOwn.forEach(c=>{
     const before = container.children.length;
     appendRouteJobRows(container, c, routeJobsFor(c.id, selectedDayISO, currentUser ? currentUser.id : '__none__'), selectedDayISO, canReorder);
     const added = Array.from(container.children).slice(before);
-    const service = container.querySelector('[data-customer-row="' + c.id + '"]');
-    if(!service) return;
-    let anchor = service;
+    let anchor = routeJobAnchor(container, c.id, dayAllIds, added);
+    if(!anchor) return;
     added.forEach(r => { anchor.after(r); anchor = r; });
   });
   if(looseTasks.length) appendRouteJobRows(container, null, looseTasks, selectedDayISO, canReorder);
@@ -12497,8 +12545,8 @@ function pickReserviceTech(customer){
     techs.forEach(t=>{
       const o = document.createElement('option');
       o.value = String(t.id);
+      // Just "(assigned)" on their own technician; no "(me)" (Tyrus, Oct 14)
       o.textContent = (t.name || 'Technician')
-        + (who && String(t.id) === String(who.id) ? ' (me)' : '')
         + (String(t.id) === String(customer.technicianId || '') ? ' (assigned)' : '');
       sel.appendChild(o);
     });
@@ -15078,7 +15126,7 @@ function syncStepChrome(){
       if(!ok) return;
     }
     await discardVisitInProgress();
-    visitDraft = {customerId: null, values: {}, section: null, step: 1};
+    visitDraft = {customerId: null, values: {}, section: null, step: 1}; forgetVisitInProgress();
   visitLeftOpenFor = null;
     switchView('home');
   });
@@ -17776,6 +17824,108 @@ function captureVisitDraft(){
 }
 
 
+// ---------- A report in progress kept through the phone closing the app (Oct 14) ----------
+// Tyrus took an after photo, turned the phone off, and the photo was gone. The
+// phone had closed the app while it was off (phones do that to save power, and
+// after the camera), and everything not yet saved lived only on screen. Now the
+// report being done — what's typed, which step, and every photo taken — is kept
+// on the phone as it changes, and brought back when the app opens again the
+// same day. It's let go once the report is submitted or cancelled.
+const VIP_DB = 'weirVisitInProgress', VIP_STORE = 'v', VIP_KEY = 'current';
+let vipDbPromise = null, vipLastSig = '', vipRestoring = false, vipTimer = null;
+function vipDb(){
+  if(vipDbPromise) return vipDbPromise;
+  vipDbPromise = new Promise((resolve, reject)=>{
+    if(!window.indexedDB){ reject(new Error('no indexeddb')); return; }
+    let req;
+    try{ req = indexedDB.open(VIP_DB, 1); }catch(e){ reject(e); return; }
+    req.onupgradeneeded = ()=>{ const db = req.result; if(!db.objectStoreNames.contains(VIP_STORE)) db.createObjectStore(VIP_STORE); };
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error || new Error('indexeddb failed'));
+  });
+  return vipDbPromise;
+}
+function vipDo(mode, fn){
+  return vipDb().then(db => new Promise((resolve, reject)=>{
+    const tx = db.transaction(VIP_STORE, mode);
+    let req;
+    try{ req = fn(tx.objectStore(VIP_STORE)); }catch(e){ reject(e); return; }
+    tx.oncomplete = ()=> resolve(req && 'result' in req ? req.result : undefined);
+    tx.onerror = ()=> reject(tx.error || new Error('transaction failed'));
+  }));
+}
+function vipControllers(){
+  return {pool: poolPhotoController, spa: spaPhotoController, fountain: fountainPhotoController, gate: gatePhotoController,
+          poolBefore: poolBeforePhotoController, spaBefore: spaBeforePhotoController, fountainBefore: fountainBeforePhotoController};
+}
+async function saveVisitInProgress(){
+  if(vipRestoring) return;
+  if(!currentVisitCustomerId){ return; }
+  try{ captureVisitDraft(); }catch(e){}
+  try{ if(currentVisitFountainId && typeof stashFountainDraft === 'function') stashFountainDraft(); }catch(e){}
+  const photos = {};
+  Object.entries(vipControllers()).forEach(([k, c])=>{ try{ const a = c && c.getAll(); if(a && a.length) photos[k] = a.slice(); }catch(e){} });
+  const rec = {date: todayDateStr(), user: currentUser ? String(currentUser.id) : '', customerId: currentVisitCustomerId,
+    draft: visitDraft, section: currentVisibleSection, step: currentVisitStep, fountainId: currentVisitFountainId,
+    fountainDrafts: fountainDraftValues || {}, photos, savedAt: Date.now()};
+  const sig = JSON.stringify([rec.customerId, rec.draft && rec.draft.values, rec.section, rec.step, rec.fountainId,
+    Object.keys(photos).map(k => k + ':' + photos[k].map(x => String(x).length + String(x).slice(-24)).join(',')),
+    Object.keys(rec.fountainDrafts).map(k => k + ':' + JSON.stringify(rec.fountainDrafts[k]).length)]);
+  if(sig === vipLastSig) return;
+  vipLastSig = sig;
+  try{ await vipDo('readwrite', st => st.put(rec, VIP_KEY)); }catch(e){}
+}
+function forgetVisitInProgress(){
+  vipLastSig = '';
+  try{ vipDo('readwrite', st => st.delete(VIP_KEY)).catch(()=>{}); }catch(e){}
+}
+// Kept as it changes: every couple of seconds while a report is open, and the
+// moment the app is put away or the screen goes off
+setInterval(()=>{ if(currentVisitCustomerId && currentViewName === 'visit') saveVisitInProgress(); }, 2000);
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden) saveVisitInProgress(); });
+window.addEventListener('pagehide', ()=>{ saveVisitInProgress(); });
+document.addEventListener('change', e=>{
+  if(!currentVisitCustomerId) return;
+  const v = document.getElementById('view-visit');
+  if(v && e.target && v.contains(e.target)){ clearTimeout(vipTimer); vipTimer = setTimeout(saveVisitInProgress, 600); }
+}, true);
+// Opening again the same day: straight back into the report, as it was
+async function restoreVisitInProgress(){
+  let rec = null;
+  try{ rec = await vipDo('readonly', st => st.get(VIP_KEY)); }catch(e){ return false; }
+  if(!rec || !rec.customerId) return false;
+  const who = currentUser ? String(currentUser.id) : '';
+  const c = customers.find(x => x && x.id === rec.customerId);
+  if(rec.date !== todayDateStr() || (rec.user && rec.user !== who) || !c){ forgetVisitInProgress(); return false; }
+  const hasPhotos = Object.keys(rec.photos || {}).length > 0;
+  const vals = (rec.draft && rec.draft.values) || {};
+  const typed = Object.keys(vals).some(k => vals[k] !== '' && vals[k] !== false && vals[k] !== null);
+  if(!hasPhotos && !typed && !(pendingVisit && pendingVisit.customerId === rec.customerId)){ forgetVisitInProgress(); return false; }
+  vipRestoring = true;
+  try{
+    try{ selectedHomeDay = DAYS_OF_WEEK[new Date().getDay()]; weekOffset = 0; }catch(e){}
+    await openVisit(rec.customerId);
+    await new Promise(r => setTimeout(r, 250));
+    if(currentVisitCustomerId !== rec.customerId) return false;
+    fountainDraftValues = rec.fountainDrafts || {};
+    if(rec.section){ try{ showVisitSection(rec.section); }catch(e){} }
+    visitDraft = Object.assign({}, rec.draft || {}, {customerId: rec.customerId});
+    try{ restoreVisitDraft(rec.customerId); }catch(e){}
+    const ctl = vipControllers();
+    Object.keys(rec.photos || {}).forEach(k=>{
+      // A fountain's photos belong to the fountain they were taken at
+      if((k === 'fountain' || k === 'fountainBefore') && rec.fountainId && currentVisitFountainId !== rec.fountainId) return;
+      try{ if(ctl[k]) ctl[k].setAll(rec.photos[k]); }catch(e){}
+    });
+    if(rec.step){ try{ goToVisitStep(rec.step); }catch(e){} }
+    showToast('Your report for ' + (c.name || 'this customer') + ' was kept — carry on where you left off');
+    return true;
+  }finally{
+    vipRestoring = false;
+    vipLastSig = '';
+  }
+}
+
 // Was a report still open when the technician switched tabs? If so, coming
 // back to Today reopens it. If they had already returned to the route, Today
 // shows the route — which is what it should have done all along.
@@ -17854,7 +18004,7 @@ async function discardVisitInProgress(){
     const b = beforeControllerFor(t);
     if(b) b.clear();
   });
-  visitDraft = {customerId: null, values: {}, section: null, step: 1};
+  visitDraft = {customerId: null, values: {}, section: null, step: 1}; forgetVisitInProgress();
   visitLeftOpenFor = null;
   fountainDraftValues = {};
   visitStepBySection = {};
@@ -18113,7 +18263,7 @@ window.addEventListener('popstate', async ()=>{
       }
       await discardVisitInProgress();
     }
-    visitDraft = {customerId: null, values: {}, section: null, step: 1};
+    visitDraft = {customerId: null, values: {}, section: null, step: 1}; forgetVisitInProgress();
   visitLeftOpenFor = null;
     switchView('home');
     return;
@@ -19051,7 +19201,7 @@ async function finalizeVisitSend(){
   await commitVisitPackage(customerId);
 
   pendingVisit = null;
-  visitDraft = {customerId: null, values: {}, section: null, step: 1};
+  visitDraft = {customerId: null, values: {}, section: null, step: 1}; forgetVisitInProgress();
   visitLeftOpenFor = null;
 
   const elapsedMs = stopVisitTimer();
@@ -19098,7 +19248,7 @@ async function finalizeVisitSend(){
   currentVisitStep = 1;
   visitStepBySection = {};
   fountainDraftValues = {};
-  visitDraft = {customerId: null, values: {}, section: null, step: 1};
+  visitDraft = {customerId: null, values: {}, section: null, step: 1}; forgetVisitInProgress();
   visitLeftOpenFor = null;
 
   const who = customer ? customer.name : 'Customer';
@@ -20706,6 +20856,10 @@ async function adminVersion_attemptAutoSend(customerId, type, manual){
     showToast('Saved \u2014 the email didn\'t go out. Resend it from the Report tab.');
     return;
   }
+  // Resend goes the normal way only (Tyrus, Oct 14): never a share sheet or an
+  // email draft. It says why it didn't go, and it's on the office's Alerts.
+  showToast('The report didn\u2019t go out \u2014 ' + officeSaid + '. Try Resend again in a moment.');
+  return;
 
   // Prefer native share (can actually attach the photo as a real file)
   if(photo && navigator.share){
@@ -20823,6 +20977,10 @@ async function techVersion_attemptAutoSend(customerId, type, manual){
     showToast('Saved \u2014 the email didn\'t go out. Resend it from the Report tab.');
     return;
   }
+  // Resend goes the normal way only (Tyrus, Oct 14): never a share sheet or an
+  // email draft. It says why it didn't go, and it's on the office's Alerts.
+  showToast('The report didn\u2019t go out \u2014 ' + officeSaid + '. Try Resend again in a moment.');
+  return;
 
   // Prefer native share (can actually attach the photo as a real file)
   if(photo && navigator.share){
@@ -21026,6 +21184,7 @@ function attachAdminLoginHandlers(){
     if(isAdminUser()) adminStartOnOwnRoute();
     // Whoever signs in lands on Today, on today's list
     try{ openOnToday(); }catch(e){}
+    setTimeout(()=>{ try{ restoreVisitInProgress(); }catch(e){} }, 300);
     watchAdminAccount();
     startFieldSync();
   }
@@ -21046,6 +21205,8 @@ function guardAdminSession(){
     if(isAdminUser()) adminStartOnOwnRoute();
     // Already signed in: the page it was on before the phone closed it (Oct 12)
     try{ openWhereLeft(); }catch(e){ try{ openOnToday(); }catch(e2){} }
+    // A report the phone closed the app on, brought back (Oct 14)
+    setTimeout(()=>{ try{ restoreVisitInProgress(); }catch(e){} }, 300);
     watchAdminAccount();
     startFieldSync();
   } else {
@@ -21526,8 +21687,8 @@ function rememberLastPage(){
 }
 document.addEventListener('visibilitychange', ()=>{ if(document.hidden) rememberLastPage(); });
 window.addEventListener('pagehide', rememberLastPage);
-// On opening again the same day: the page it was on. A report can't be
-// brought back once the phone has closed the app, so that opens on Today.
+// On opening again the same day: the page it was on. A report in progress is
+// brought back as well (restoreVisitInProgress, Oct 14).
 function openWhereLeft(){
   let last = null;
   try{ last = JSON.parse(localStorage.getItem('weir:lastPage') || 'null'); }catch(e){}

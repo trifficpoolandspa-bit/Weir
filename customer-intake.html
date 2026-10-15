@@ -1763,7 +1763,7 @@ input::placeholder{color:#A9BCB9;}
         <h2>Filter cleans not in a group on this computer</h2>
         <button class="btn btn-ghost" id="btnRemoveStrayCleans" type="button" style="width:auto;margin-left:auto;color:var(--rust);border-color:#EFC9BC;">Remove all</button>
       </div>
-      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">These are on technicians&rsquo; routes, but none of the filter groups here made them &mdash; left over from a group made in another browser, one since deleted, or an older date. Groups are only kept in the browser they were made in. Removing one takes it off every route at the next sync.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">These are on technicians&rsquo; routes, but none of the filter groups here made them &mdash; left over from a group made in another browser, one since deleted, or an older date. Removing one takes it off every route at the next sync.</p>
       <div id="wcFilterStrayList"></div>
     </div>
 
@@ -5917,6 +5917,86 @@ function saveFilterGroups(){
     if(keep.length !== all.length) lsSet('scheduledFilterCleans', keep);
   }catch(e){}
   try{ fgSyncScheduled(); }catch(e){}
+  // Customers on their own (Oct 14): once the last one is taken off, the day's
+  // holder goes too, and with it any of its cleans still on the route
+  const empty = filterGroups.filter(g => g && g.solo && !(g.customerIds || []).length);
+  if(empty.length){
+    const gone = new Set(empty.map(g => g.id));
+    try{ lsSet('scheduledFilterCleans', (lsGet('scheduledFilterCleans') || []).filter(sc => !(sc && gone.has(sc.groupId) && sc.status !== 'done'))); }catch(e){}
+    filterGroups = filterGroups.filter(g => !gone.has(g.id));
+    lsSet('filterGroups', filterGroups);
+  }
+}
+// The day's holder for customers added on their own (Oct 14), made when first needed
+function fgSoloFor(iso){
+  let g = filterGroups.find(x => x && x.solo && x.date === iso);
+  if(!g){
+    g = {id: 'fgs_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), name: 'Customers on their own', solo: true,
+         date: iso, technicianId: '', customerIds: [], photoRequired: true, emailCustomer: true};
+    filterGroups.push(g);
+  }
+  return g;
+}
+// Pick customers to add to a day on their own (Oct 14): search, tick, add
+function fcPickCustomersForDay(iso, after){
+  const nice = new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
+  const onDay = new Set();
+  filterGroups.forEach(g => { if(g && g.date === iso) (g.customerIds || []).forEach(id => onDay.add(id)); });
+  const all = customers.filter(c => c && !c.deleted && c.active !== false && !onDay.has(c.id))
+    .slice().sort((a, b) => String(displayName(a.name)).localeCompare(String(displayName(b.name)), undefined, {sensitivity: 'base', numeric: true}));
+  if(!all.length){ showToast('Everyone is on this day already'); return; }
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:440px;width:100%;max-height:80vh;display:flex;flex-direction:column;text-align:left;';
+  box.innerHTML = '<h3 style="font-size:15px;margin:0 0 4px;"></h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 8px;">Tick the customers. They go on this day on their own, not in a group.</p>'
+    + '<input type="text" data-search placeholder="Search customers" autocomplete="off" style="margin:0 0 6px;">'
+    + '<div data-list style="flex:1;overflow-y:auto;"></div>'
+    + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-primary" data-go style="flex:1;">Add to this day</button><button type="button" class="btn btn-ghost" data-cancel style="width:auto;">Cancel</button></div>';
+  box.querySelector('h3').textContent = 'Add a customer to ' + nice;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const listEl = box.querySelector('[data-list]');
+  const search = box.querySelector('[data-search]');
+  const go = box.querySelector('[data-go]');
+  const picked = new Set();
+  const upd = ()=>{ go.textContent = picked.size > 1 ? 'Add ' + picked.size + ' customers to this day' : 'Add to this day'; };
+  function drawList(){
+    const term = search.value.trim().toLowerCase();
+    listEl.innerHTML = '';
+    const shown = all.filter(c => !term || [c.name, c.address, c.phone, c.email].some(v => String(v || '').toLowerCase().indexOf(term) !== -1));
+    if(!shown.length) listEl.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:8px 2px;">Nobody matches.</div>';
+    shown.slice(0, 200).forEach(c=>{
+      const row = document.createElement('label');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid var(--line);font-size:13px;cursor:pointer;margin:0;text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink);';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.style.cssText = 'width:auto;margin:0;';
+      cb.checked = picked.has(c.id);
+      cb.addEventListener('change', ()=>{ if(cb.checked) picked.add(c.id); else picked.delete(c.id); upd(); });
+      const nm = document.createElement('b'); nm.textContent = displayName(c.name);
+      nm.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      const tech = document.createElement('span');
+      tech.style.cssText = 'margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap;';
+      tech.textContent = technicianNameById(c.technicianId) || 'No technician';
+      row.appendChild(cb); row.appendChild(nm); row.appendChild(tech);
+      listEl.appendChild(row);
+    });
+    upd();
+  }
+  search.addEventListener('input', drawList);
+  drawList();
+  setTimeout(()=> search.focus(), 0);
+  box.querySelector('[data-cancel]').addEventListener('click', ()=> overlay.remove());
+  go.addEventListener('click', ()=>{
+    if(!picked.size){ showToast('Tick a customer first'); return; }
+    overlay.remove();
+    const g = fgSoloFor(iso);
+    picked.forEach(id => { if((g.customerIds || []).indexOf(id) === -1) g.customerIds.push(id); });
+    if(after) after();
+    showToast(picked.size === 1 ? 'Added to ' + nice : picked.size + ' customers added to ' + nice);
+  });
 }
 
 let openFilterGroupIds = new Set();
@@ -7513,7 +7593,7 @@ document.getElementById('btnFilterReplacements').addEventListener('click', openF
 // how many customers they hold between them, each counted once (Oct 3)
 function fgShownGroups(){
   const tech = (document.getElementById('filterGroupTech') || {}).value || '';
-  return filterGroups.filter(g => !tech ? true : tech === 'none' ? !g.technicianId : String(g.technicianId) === String(tech));
+  return filterGroups.filter(g => !g.solo && (!tech ? true : tech === 'none' ? !g.technicianId : String(g.technicianId) === String(tech)));
 }
 function fgCountText(groups){
   const people = new Set();
@@ -7562,15 +7642,92 @@ function fgChipState(g, cid){
 // Photo required is on to start for every customer (Tyrus, Oct 13); the
 // group's own tick on the Groups tab sets all of its customers at once
 function fgCustPhoto(g, cid){ return (g && g.custPhoto && typeof g.custPhoto[cid] === 'boolean') ? g.custPhoto[cid] : true; }
-function fgCustTech(g, cid){ return (g && g.custTech && g.custTech[cid]) || (g ? g.technicianId : '') || ''; }
+function fgCustTech(g, cid){
+  const own = g && g.custTech && g.custTech[cid];
+  if(own) return own;
+  if(g && g.technicianId) return g.technicianId;
+  // On their own (Oct 14): their own technician
+  if(g && g.solo){ const c = customers.find(x => x && x.id === cid); return (c && c.technicianId) || ''; }
+  return '';
+}
 function fgCustExtra(g, cid){
   const list = (g && g.custExtra && Array.isArray(g.custExtra[cid])) ? g.custExtra[cid] : [];
   return list.filter(li => li && String(li.description || '').trim());
 }
 function fgCustLineItems(g, cid){
-  return fgCustExtra(g, cid).map(li => ({description: String(li.description).trim(), qty: Number(li.qty) || 1, price: li.price === undefined ? '' : li.price}));
+  const out = fgCustExtra(g, cid).map(li => ({description: String(li.description).trim(), qty: Number(li.qty) || 1, price: li.price === undefined ? '' : li.price}));
+  // Replacements the customer still needs ride along as extra work until
+  // they're done (Oct 13)
+  const have = new Set(out.map(li => li.description.toLowerCase()));
+  fgNeededParts(cid).forEach(part=>{ if(!have.has(part.toLowerCase())) out.push({description: part, qty: 1, price: '', replacement: true}); });
+  return out;
+}
+// The replacements a customer still needs (Oct 13), from the Replacements list:
+// their filter cleans and work orders, and any the office added
+let fgPartsCache = null;
+function fgNeededPartsMap(){
+  if(fgPartsCache) return fgPartsCache;
+  const map = {};
+  try{
+    filterReplacementsList().forEach(f=>{
+      const cid = f && f.customerId; if(!cid) return;
+      const list = map[cid] = map[cid] || [];
+      partsStillNeeded(f).forEach(p => { if(list.indexOf(p) === -1) list.push(p); });
+    });
+  }catch(e){}
+  return map;
+}
+function fgNeededParts(cid){ return (fgNeededPartsMap()[cid] || []).slice(); }
+// A part replaced: ticked off wherever the customer's Replacements list has it
+function fgMarkPartReplaced(cid, part, skipId){
+  let custChanged = false;
+  const lists = {scheduledFilterCleans: lsGet('scheduledFilterCleans') || [], scheduledWorkOrders: lsGet('scheduledWorkOrders') || []};
+  const changed = {};
+  filterReplacementsList().forEach(f=>{
+    if(!f || String(f.customerId) !== String(cid) || f.id === skipId) return;
+    if(partsStillNeeded(f).indexOf(part) === -1) return;
+    if(f._office){
+      const c = customers.find(x => String(x.id) === String(cid));
+      const n = c && (c.neededParts || []).find(x => x && x.id === f.id);
+      if(!n) return;
+      n.replacedItems = Array.from(new Set((n.replacedItems || []).concat([part])));
+      const doneSet = new Set(n.replacedItems);
+      if((n.items || []).every(x => doneSet.has(x))) c.neededParts = c.neededParts.filter(x => x !== n);
+      custChanged = true;
+      return;
+    }
+    const key = f._wo ? 'scheduledWorkOrders' : 'scheduledFilterCleans';
+    const rec = lists[key].find(x => x && x.id === f.id);
+    if(!rec) return;
+    rec.replacedItems = Array.from(new Set((rec.replacedItems || []).concat([part])));
+    changed[key] = true;
+  });
+  Object.keys(changed).forEach(k => lsSet(k, lists[k]));
+  if(custChanged) saveCustomers();
+}
+// Filter cleans done in the app with replacement parts ticked off as extra
+// work take those parts off the Replacements list (Oct 13)
+function fgReconcileReplacements(){
+  const sched = lsGet('scheduledFilterCleans') || [];
+  const todo = sched.filter(sc => sc && sc.status === 'done' && !sc.replacementsApplied
+    && (sc.lineItems || []).some(li => li && li.replacement) && Array.isArray(sc.doneExtraWork));
+  if(!todo.length) return;
+  todo.forEach(sc=>{
+    const parts = (sc.lineItems || []).filter(li => li && li.replacement).map(li => String(li.description || ''));
+    parts.forEach(part => { if(sc.doneExtraWork.indexOf(part) !== -1) fgMarkPartReplaced(sc.customerId, part, sc.id); });
+  });
+  const fresh = lsGet('scheduledFilterCleans') || [];
+  todo.forEach(t => { const r = fresh.find(x => x && x.id === t.id); if(r) r.replacementsApplied = true; });
+  lsSet('scheduledFilterCleans', fresh);
+  try{ updateFilterReplacementsButton(); }catch(e){}
 }
 function fgSyncScheduled(){
+  try{ fgReconcileReplacements(); }catch(e){}
+  fgPartsCache = null;
+  try{ fgPartsCache = fgNeededPartsMap(); }catch(e){}
+  try{ fgSyncScheduledInner(); } finally { fgPartsCache = null; }
+}
+function fgSyncScheduledInner(){
   let sched = lsGet('scheduledFilterCleans') || [];
   let changed = false;
   filterGroups.forEach(g=>{
@@ -7647,7 +7804,8 @@ function renderFilterGroups(){
     techMenu.value = Array.from(techMenu.options).some(o => o.value === keep) ? keep : '';
     showTech = techMenu.value;
   }
-  const shownGroup = g => !showTech || (showTech === 'none' ? !g.technicianId : String(g.technicianId || '') === showTech);
+  // Customers added to a day on their own (Oct 14) aren't a group to list here
+  const shownGroup = g => !g.solo && (!showTech || (showTech === 'none' ? !g.technicianId : String(g.technicianId || '') === showTech));
   if(!filterGroups.some(shownGroup)){
     const who = techMenu ? techMenu.options[techMenu.selectedIndex].textContent : '';
     container.insertAdjacentHTML('beforeend', emptyState(showTech === 'none' ? 'Every group has a technician.' : 'No groups for ' + who + '.'));
@@ -9814,6 +9972,23 @@ function calHeadToPageStyle(head){
   });
   head.querySelectorAll('select').forEach(sel=>{ sel.style.padding = ''; sel.style.fontSize = ''; sel.style.fontWeight = ''; sel.style.minWidth = '160px'; });
   head.querySelectorAll('span').forEach(sp=>{ if(/Tap the days/.test(sp.textContent || '')) sp.style.fontSize = '13px'; });
+  // The month, its arrows and the calendar icon in the middle; the technician
+  // menu (and Replacements) at the far right (Oct 13)
+  const h2b = head.querySelector('h2'), nav = h2b && h2b.nextElementSibling;
+  if(nav && nav.tagName === 'DIV'){
+    const tools = document.createElement('div');
+    tools.style.cssText = 'display:flex;align-items:center;gap:8px;justify-self:end;';
+    Array.from(nav.children).forEach(el=>{ if(el.tagName === 'SELECT' || /^Replacements/.test((el.textContent || '').trim())) tools.appendChild(el); });
+    tools.querySelectorAll('select').forEach(sel => { sel.style.marginLeft = '0'; });
+    nav.style.marginLeft = '0';
+    nav.style.justifySelf = 'center';
+    nav.after(tools);
+    head.style.display = 'grid';
+    head.style.gridTemplateColumns = '1fr auto 1fr';
+    head.style.columnGap = '12px';
+    const row2 = tools.nextElementSibling;
+    if(row2) row2.style.gridColumn = '1 / -1';
+  }
 }
 // A day window's status badge (Oct 13), in the style of the customer's Quotes &
 // orders badges: done green, in the app gold, not sent yet blue, as on the
@@ -12928,7 +13103,11 @@ const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'r
                          // Emails that didn't go out, from any computer or phone (Oct 8)
                          'emailFailures',
                          // After photo's defaults given once, company-wide (Oct 3)
-                         'photoDefaultsSeeded'];
+                         'photoDefaultsSeeded',
+                         // Oct 14: kept only in the browser they were typed into until
+                         // now: the filter clean, drain and mass email wording
+                         'filterCleanEmail', 'drainEmailSoon', 'drainEmailScheduled',
+                         'broadcastTemplates', 'broadcastCategories'];
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
   // The "Last 3 months" readings table on the phones' visits, and its chemicals added rows
   'showRecentReadings', 'showRecentDosages',
@@ -12948,7 +13127,14 @@ const SYNC_RECORD_LISTS = [
   ['scheduledFilterCleans', 'filter_clean'],
   ['scheduledPoolDrains', 'pool_drain'],
   ['scheduledWorkOrders', 'work_order'],
-  ['rescheduledVisits', 'reschedule']
+  ['rescheduledVisits', 'reschedule'],
+  // Oct 14: kept only in the browser they were made in until now, so another
+  // computer never saw them. One record each (snippet 33), office only, so
+  // two computers' changes are kept side by side.
+  ['filterGroups', 'filter_group'],
+  ['drainCalendar', 'drain_entry'],
+  ['workOrders', 'quote'],
+  ['serviceCalls', 'service_call']
 ];
 
 // Everything on this device that belongs on the server, as {kind\u0002id: data}
@@ -13104,6 +13290,37 @@ function refreshSyncedWorkingCopy(id){
   active.addEventListener('blur', ()=> setTimeout(redraw, 0), {once: true});
 }
 
+// Another computer's change to the office's own lists (Oct 14): the page's
+// working copy takes it, and what's on screen is redrawn, once
+let syncOfficeRedrawTimer = null;
+const syncOfficeRedraw = new Set();
+function syncOfficeListArrived(kind){
+  if(kind === 'filter_group') filterGroups = lsGet('filterGroups') || [];
+  if(kind === 'quote') workOrders = lsGet('workOrders') || [];
+  if(kind === 'service_call') serviceCalls = lsGet('serviceCalls') || [];
+  syncOfficeRedraw.add(kind);
+  if(syncOfficeRedrawTimer) return;
+  syncOfficeRedrawTimer = setInterval(()=>{
+    if(document.querySelector('.confirm-overlay') || reorderInProgress) return;   // after the window in front closes
+    clearInterval(syncOfficeRedrawTimer); syncOfficeRedrawTimer = null;
+    const kinds = Array.from(syncOfficeRedraw); syncOfficeRedraw.clear();
+    try{
+      if(kinds.indexOf('filter_group') !== -1){
+        renderFilterGroups();
+        const h = document.getElementById('wcFilterCalCard'); if(h && h._refresh && h.offsetParent) h._refresh();
+      }
+      if(kinds.indexOf('drain_entry') !== -1){
+        const h = document.getElementById('wcDrainCalCard'); if(h && h._refresh && h.offsetParent) h._refresh();
+        if(typeof renderPoolDrains === 'function') renderPoolDrains();
+      }
+      if(kinds.indexOf('quote') !== -1){
+        if(typeof renderWorkOrderHistory === 'function') renderWorkOrderHistory();
+        if(typeof qoCustomerId !== 'undefined' && qoCustomerId) renderCustomerWorkOrders(qoCustomerId);
+      }
+      if(kinds.indexOf('service_call') !== -1 && typeof renderServiceCallsList === 'function') renderServiceCallsList();
+    }catch(e){}
+  }, 300);
+}
 function syncApplyRecord(kind, id, data, deleted){
   if(kind === 'technician'){
     const list = lsGet('technicians') || [];
@@ -13183,6 +13400,7 @@ function syncApplyRecord(kind, id, data, deleted){
         renderGroupList();
       }catch(e){}
     }
+
     // Equipment quick buttons from another computer: an open profile shows
     // them straight away (Oct 2), unless a window is open over it
     if(id === 'equipmentChoices'){
@@ -13207,6 +13425,12 @@ function syncApplyRecord(kind, id, data, deleted){
     else if(i === -1) list.push(Object.assign({}, data));
     else list[i] = Object.assign({}, data);
     if(!lsSet(key, list)) return false;
+    // Oct 14: filter clean groups, the drain calendar, quotes sent and service
+    // calls from another computer show here straight away (redrawn once the
+    // window in front is closed)
+    if(kind === 'filter_group' || kind === 'drain_entry' || kind === 'quote' || kind === 'service_call'){
+      try{ syncOfficeListArrived(kind); }catch(e){}
+    }
     if(kind === 'task'){
       try{ if(typeof tasks !== 'undefined') tasks = lsGet('tasks') || []; }catch(e){}
       try{ if(typeof renderTaskList === 'function') renderTaskList(); }catch(e){}
@@ -14822,7 +15046,9 @@ function filterGroupBlockers(g){
   // Everyone paused: nothing to schedule (Oct 8)
   else if(!fgLiveIds(g).length) out.push('a customer who isn\u2019t paused');
   if(!g.date) out.push('no date');
-  if(!g.technicianId) out.push('no technician');
+  // Customers on their own (Oct 14): each goes to their own technician
+  if(g.solo){ if(fgLiveIds(g).some(cid => !fgCustTech(g, cid))) out.push('a technician for everyone'); }
+  else if(!g.technicianId) out.push('no technician');
   return out;
 }
 
@@ -14983,7 +15209,7 @@ async function openFilterGroupScheduler(){
 function fcPickGroupForDay(iso, after){
   // Several at once, with a technician menu, in even columns (Oct 13)
   const nice = new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
-  const all = filterGroups.filter(g => g && g.date !== iso)
+  const all = filterGroups.filter(g => g && !g.solo && g.date !== iso)
     .slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity: 'base', numeric: true}));
   if(!all.length){ showToast(filterGroups.length ? 'Every group is on this day already' : 'Make a group first, on the Groups tab'); return; }
   const overlay = document.createElement('div');
@@ -15092,7 +15318,7 @@ function openFilterCalendar(startDay){
     const by = {};
     filterGroups.forEach(g=>{
       if(!g || !g.date) return;
-      if(viewTech && String(g.technicianId || '') !== String(viewTech)) return;
+      if(viewTech && (g.solo ? !fgLiveIds(g).some(cid => String(fgCustTech(g, cid)) === String(viewTech)) : String(g.technicianId || '') !== String(viewTech))) return;
       if(!fgLiveIds(g).length) return;
       (by[g.date] = by[g.date] || []).push(g);
     });
@@ -15260,7 +15486,11 @@ function openFilterCalendar(startDay){
       const n = count(gs);
       ph.children[1].textContent = n + (n === 1 ? ' customer' : ' customers');
       // Groups are put on days here now, not with a date on the group (Oct 13)
-      const addG = smallBtn('+ Add a group', 'btn-ghost', 'margin-left:auto;');
+      // One customer at a time too, not in a group (Oct 14)
+      const addC = smallBtn('+ Add a customer', 'btn-ghost', 'margin-left:auto;');
+      addC.addEventListener('click', ()=> fcPickCustomersForDay(sel, ()=>{ saveFilterGroups(); renderFilterGroups(); draw(); }));
+      ph.appendChild(addC);
+      const addG = smallBtn('+ Add a group', 'btn-ghost');
       addG.addEventListener('click', ()=> fcPickGroupForDay(sel, ()=>{ saveFilterGroups(); renderFilterGroups(); draw(); }));
       ph.appendChild(addG);
       const closeDay = smallBtn('Close');
@@ -15274,15 +15504,16 @@ function openFilterCalendar(startDay){
       // carries them to the app)
       const editGroup = (gid, fn)=>{ const it = filterGroups.find(x => x && x.id === gid); if(!it) return; fn(it); saveFilterGroups(); renderFilterGroups(); draw(); };
       if(!gs.length) panel.insertAdjacentHTML('beforeend', '<div style="font-size:12.5px;color:var(--muted);padding:6px 0;">No filter cleans on this day.</div>');
-      gs.forEach(g=>{
+      // Customers on their own after the groups (Oct 14)
+      gs.slice().sort((a, b2) => (a.solo ? 1 : 0) - (b2.solo ? 1 : 0)).forEach(g=>{
         const gh = document.createElement('div');
         gh.style.cssText = 'display:flex;align-items:center;gap:10px;margin:14px 0 2px;flex-wrap:wrap;';
         gh.innerHTML = '<b style="font-size:13.5px;"></b><span style="font-size:12px;color:var(--muted);"></span>';
-        gh.children[0].textContent = g.name || 'Untitled group';
+        gh.children[0].textContent = g.solo ? 'Customers on their own' : (g.name || 'Untitled group');
         const blockers = filterGroupBlockers(g);
-        gh.children[1].textContent = (g.technicianId ? techName(g.technicianId) : 'No technician') + ' · '
+        gh.children[1].textContent = (g.solo ? 'not in a group' : (g.technicianId ? techName(g.technicianId) : 'No technician')) + ' · '
           + (g.finalized ? 'on the route' : blockers.length ? 'needs ' + blockers.join(', ') : 'not sent yet');
-        if(g.finalized){
+        if(g.finalized && !g.solo){
           // Taken back off the route, as unticking it used to
           const off = smallBtn('Take off route', 'btn-ghost', 'margin-left:auto;padding:4px 10px;font-size:12px;color:var(--rust);border-color:#EFC9BC;');
           off.addEventListener('click', async ()=>{
@@ -15311,7 +15542,8 @@ function openFilterCalendar(startDay){
           saveFilterGroups(); renderFilterGroups(); draw();
           showToast((g.name || 'Group') + ' taken off this day');
         });
-        gh.appendChild(gBin);
+        // Each customer on their own has their own bin instead
+        if(!g.solo) gh.appendChild(gBin);
         panel.appendChild(gh);
         const done = fgCleanStatus(g);
         const listWrap = document.createElement('div');
@@ -15369,7 +15601,7 @@ function openFilterCalendar(startDay){
           const techSel = document.createElement('select');
           techSel.style.cssText = 'width:100%;padding:4px 8px;font-size:12px;';
           techSel.title = 'Which technician gets this filter clean in the app';
-          if(!g.technicianId){ const o = document.createElement('option'); o.value = ''; o.textContent = 'No technician'; techSel.appendChild(o); }
+          if(!fgCustTech(g, cid)){ const o = document.createElement('option'); o.value = ''; o.textContent = 'No technician'; techSel.appendChild(o); }
           sortedTechs.forEach(t => { const o = document.createElement('option'); o.value = String(t.id); o.textContent = t.name; techSel.appendChild(o); });
           techSel.value = String(fgCustTech(g, cid) || '');
           techSel.disabled = isDone;
@@ -15419,6 +15651,13 @@ function openFilterCalendar(startDay){
           tagsWrap.className = 'pd-extra-tags';
           extra.appendChild(tagsWrap);
           const exItems = fgCustExtra(g, cid);
+          // Replacements still needed (Oct 13): on the job until done, gold, no ×
+          if(!isDone) fgNeededParts(cid).filter(part => !exItems.some(li => String(li.description).trim().toLowerCase() === part.toLowerCase())).forEach(part=>{
+            const t = pdExtraTag({description: part, qty: 1}, null);
+            t.style.background = '#FBF1DD'; t.style.color = '#8A5E0B';
+            t.title = part + ' \u2014 a replacement they still need; on this filter clean until it\u2019s done';
+            tagsWrap.appendChild(t);
+          });
           exItems.forEach((li, idx)=>{
             // A red × on hover takes it off (Oct 13), unless the clean is done
             tagsWrap.appendChild(pdExtraTag(li, isDone ? null : ()=> editGroup(g.id, it=>{
@@ -25362,6 +25601,142 @@ async function openVisitLocationMap(customer, loc){
 }
 
 // The report for one body of water, as it has always looked
+// ---------- Resend a service report (Oct 14) ----------
+// The same email the phone sends: the report style set on the website, the
+// readings, chemicals added and service performed for each body of water, and
+// the before and after photos. Sent the normal way, through the office.
+function reportEmailRows(pairs){
+  return pairs.map((p, i)=>
+    '<tr><td style="padding:7px 10px;border-bottom:1px solid #E6E9E8;color:#4A5A58;font-size:14px;'
+    + (i === 0 ? 'border-top:1px solid #E6E9E8;' : '') + '">' + esc(p[0]) + '</td>'
+    + '<td style="padding:7px 10px;border-bottom:1px solid #E6E9E8;color:#16302E;font-size:14px;font-weight:600;text-align:right;white-space:nowrap;'
+    + (i === 0 ? 'border-top:1px solid #E6E9E8;' : '') + '">' + esc(p[1]) + '</td></tr>').join('');
+}
+function reportEmailBlock(title, pairs){
+  if(!pairs.length) return '';
+  return '<tr><td style="padding:18px 0 6px;"><div style="font-size:12px;font-weight:700;color:#0F766E;text-transform:uppercase;letter-spacing:0.06em;">'
+    + esc(title) + '</div></td></tr><tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">'
+    + reportEmailRows(pairs) + '</table></td></tr>';
+}
+function reportEmailSection(customer, part){
+  const r = part.r || {};
+  const label = historyTypeLabel(customer, part.type);
+  if(part.type === 'skip' || r.skipped) return {label, skipped: true};
+  const cfgType = part.type === 'spa' ? 'spa' : (part.type === 'pool' ? 'pool' : 'fountain');
+  const readingPairs = [], productPairs = [], servicePairs = [];
+  chemListFor(cfgType).forEach(chem=>{
+    const v = r[chem.key];
+    if(v === '' || v === undefined || v === null) return;
+    readingPairs.push([chem.label, v + (chem.unit ? ' ' + chem.unit : '')]);
+  });
+  dosageListFor(cfgType).forEach(d=>{
+    const v = r[d.key];
+    if(v === '' || v === undefined || v === null || parseFloat(v) === 0) return;
+    productPairs.push([d.label, v + (d.unit ? ' ' + d.unit : '')]);
+  });
+  [['filterBackwashed', 'Filter backwashed'], ['saltCellCleaned', 'Salt cell cleaned'],
+   ['skimmerBasketEmptied', 'Skimmer basket emptied'], ['pumpBasketEmptied', 'Pump basket emptied'],
+   ['poolSkimmed', 'Pool skimmed'], ['wallsBrushed', 'Walls brushed']].forEach(([f, l]) => { if(r[f]) servicePairs.push([l, 'Yes']); });
+  return {label, readingPairs, productPairs, servicePairs};
+}
+function buildServiceReportEmailHtml(customer, whenText, sections, techName){
+  const b = loadEmailStyle();
+  const company = companyName();
+  let body = '';
+  sections.forEach(sec=>{
+    body += '<tr><td style="padding:22px 0 0;"><div style="font-size:16px;font-weight:700;color:#16302E;">' + esc(sec.label) + '</div></td></tr>';
+    if(sec.skipped){ body += '<tr><td style="padding:6px 0 0;font-size:14px;color:#B8492E;font-weight:600;">Skipped this visit</td></tr>'; return; }
+    if(b.showReadings !== false) body += reportEmailBlock('Readings', sec.readingPairs);
+    body += reportEmailBlock('Chemicals added', sec.productPairs);
+    body += reportEmailBlock('Service performed', sec.servicePairs);
+  });
+  const plain = t => '<span style="color:#4A5A58;text-decoration:none;">' + esc(t) + '</span>';
+  const contact = b.showContact !== false ? ['accountPhone', 'accountEmail', 'businessWebsite'].map(k => lsGet(k)).filter(Boolean).map(plain).join(' &nbsp;&middot;&nbsp; ') : '';
+  return '<!DOCTYPE html><html><head><meta charset="utf-8">'
+    + '<meta name="format-detection" content="telephone=no,address=no,email=no,date=no">'
+    + '<style>a[href^="tel"],a[href^="mailto"],a[href^="http"],a[x-apple-data-detectors]{color:inherit !important;text-decoration:none !important;font-size:inherit !important;font-family:inherit !important;font-weight:inherit !important;}</style>'
+    + '</head><body style="margin:0;padding:0;background:#F4F6F5;">'
+    + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F4F6F5;padding:24px 12px;"><tr><td align="center">'
+    + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:580px;background:#FFFFFF;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Arial,sans-serif;">'
+    + '<tr><td style="background:' + esc(b.colour) + ';padding:22px 26px;"><div style="font-size:19px;font-weight:700;color:#FFFFFF;">' + esc(company) + '</div></td></tr>'
+    + '<tr><td style="padding:24px 26px 0;">'
+    + (b.greeting ? '<div style="font-size:14.5px;color:#4A5A58;margin-bottom:16px;">' + esc(b.greeting) + '</div>' : '')
+    + (techName ? '<div style="font-size:12px;font-weight:700;color:#0F766E;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Technician: ' + esc(techName) + '</div>' : '')
+    + '<div style="font-size:17px;font-weight:700;color:#16302E;">' + esc(customer.name) + '</div>'
+    + (customer.address ? '<div style="font-size:13.5px;color:#6B7B79;margin-top:3px;">' + esc(customer.address) + '</div>' : '')
+    + '<div style="font-size:13.5px;color:#6B7B79;margin-top:3px;">' + esc(whenText) + '</div>'
+    + '</td></tr>'
+    + '<tr><td style="padding:0 26px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">' + body + '</table></td></tr>'
+    + '<tr><td style="padding:26px;">'
+    + (b.signoff ? '<div style="font-size:14px;color:#4A5A58;padding-top:18px;border-top:1px solid #E6E9E8;">' + esc(b.signoff) + '</div>' : '')
+    + '<div style="font-size:13.5px;font-weight:600;color:#16302E;margin-top:10px;">' + esc(company) + '</div>'
+    + (contact ? '<div style="font-size:12.5px;color:#4A5A58;margin-top:4px;">' + contact + '</div>' : '')
+    + (lsGet('licenseNumber') ? '<div style="font-size:11.5px;color:#8A9997;margin-top:3px;">License ' + esc(lsGet('licenseNumber')) + '</div>' : '')
+    + '</td></tr></table></td></tr></table></body></html>';
+}
+// A photo as JPEG for the email (phones keep them as WebP, which some mail can't show)
+function reportPhotoJpeg(dataUrl){
+  return new Promise(resolve=>{
+    try{
+      if(/^data:image\/jpe?g/i.test(dataUrl)){ resolve(String(dataUrl).split(',')[1] || ''); return; }
+      const img = new Image();
+      img.onload = ()=>{
+        try{
+          const max = 1600, k = Math.min(1, max / Math.max(img.width, img.height));
+          const cv = document.createElement('canvas');
+          cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+          cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+          resolve(cv.toDataURL('image/jpeg', 0.85).split(',')[1] || '');
+        }catch(e){ resolve(String(dataUrl).split(',')[1] || ''); }
+      };
+      img.onerror = ()=> resolve(String(dataUrl).split(',')[1] || '');
+      img.src = dataUrl;
+    }catch(e){ resolve(''); }
+  });
+}
+async function resendServiceReport(customer, v){
+  const to = String(customer.email || '').trim();
+  if(!to){ showToast('This customer has no email on file'); return false; }
+  const ok = await confirmDialog('Email this report to ' + (customer.name || 'the customer') + ' at ' + to + '?', 'Resend');
+  if(!ok) return false;
+  const parts = (v.parts || []).filter(p => p && p.r);
+  const sections = parts.map(p => reportEmailSection(customer, p));
+  const first = (parts[0] || {}).r || {};
+  const when = new Date(first.date || v.date);
+  const whenText = isNaN(when) ? String(v.date || '') : when.toLocaleString(undefined, {month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'});
+  const techName = technicianNameById(customer.technicianId) || '';
+  const photos = [];
+  for(const p of parts){
+    if(p.type === 'skip' || p.r.skipped) continue;
+    const body = historyTypeLabel(customer, p.type);
+    for(const [lbl, ref] of reportPhotoPairs(p.r)){
+      if(photos.length >= 12) break;
+      let data = null;
+      try{ data = await resolvePhoto(ref); }catch(e){}
+      if(!data) continue;
+      const content = await reportPhotoJpeg(data);
+      if(content) photos.push({filename: (body + '-' + lbl).toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.jpg', content, caption: body + ' ' + lbl.toLowerCase()});
+    }
+  }
+  // "Pool", or "Pool & Spa" for more than one, as the phone names it
+  const label = sections.length ? sections.map(x => x.label).join(' & ') : 'Pool';
+  try{
+    const res = await sbFetch('/functions/v1/send-report', {
+      method: 'POST',
+      body: JSON.stringify({to, subject: label + ' service report — ' + customer.name,
+        html: buildServiceReportEmailHtml(customer, whenText, sections, techName), customerId: customer.id, photos})
+    });
+    if(res && res.ok){ showToast('Report sent to ' + to); return true; }
+    recordEmailFailure(customer, 'Service report', to, emailFailReason(res));
+    showToast('The report didn’t go out — ' + emailFailReason(res));
+    return false;
+  }catch(e){
+    recordEmailFailure(customer, 'Service report', to, 'No connection to the office');
+    showToast('The report didn’t go out — no connection to the office');
+    return false;
+  }
+}
+
 function buildReportDoc(customerId, name, customer, type, r, onDelete){
   const label = type === 'skip' ? 'Service' : historyTypeLabel(customer, type);
   const cfgType = type === 'spa' ? 'spa' : (type === 'pool' ? 'pool' : 'fountain');
@@ -25795,6 +26170,22 @@ function showHistory(customerId, name){
     // A skipped visit is undone with Reservice on the phone, not deleted here
     // A skipped visit has no bin, but keeps its space so the row lines up
     if(v.parts.every(p => p.type === 'skip')) del.style.visibility = 'hidden';
+    // Resend (Oct 14): the report emailed to the customer again, the normal way
+    const resend = document.createElement('button');
+    resend.className = 'btn btn-ghost';
+    resend.type = 'button';
+    resend.textContent = 'Resend';
+    resend.title = 'Email this report to the customer again';
+    resend.style.cssText = 'width:auto;padding:4px 10px;font-size:11.5px;';
+    resend.addEventListener('click', async (e)=>{
+      e.stopPropagation();                 // not a press on the bar
+      if(resend.disabled) return;
+      resend.disabled = true; resend.textContent = 'Sending\u2026';
+      try{ await resendServiceReport(customer, v); }
+      finally{ resend.disabled = false; resend.textContent = 'Resend'; }
+    });
+    if(v.parts.every(p => p.type === 'skip')) resend.style.visibility = 'hidden';
+    right.appendChild(resend);
     right.appendChild(del);
     if(repTick){
       const lead = document.createElement('div');
