@@ -56,7 +56,9 @@ const ROOT = 'file://' + path.resolve('.') + '/';
     document.getElementById('view-customers').classList.add('active');
     out.push(['Customer tab has Customers and WorkCenter buttons', !!document.getElementById('btnCustPaneList') && !!document.getElementById('btnCustPaneWork')]);
     showCustomerPane('work');
-    out.push(['WorkCenter shows Work Order and Task only', Array.from(document.querySelectorAll('#awcKindRow [data-kind]')).map(b => b.dataset.kind).join() === 'Work Order,Task']);
+    // Quote joined them on Oct 15
+    out.push(['WorkCenter shows Quote, Work Order and Task', Array.from(document.querySelectorAll('#awcKindRow [data-kind]')).map(b => b.dataset.kind).join() === 'Quote,Work Order,Task']);
+    awcKind = 'Work Order'; awcView = 'main'; awcApply();
     // 1fp: the number on the Scheduled date line
     const num = document.getElementById('awcWoNumber');
     out.push(['work order number sits on the Scheduled date line', !!num && /Scheduled date/.test(num.parentElement.textContent)]);
