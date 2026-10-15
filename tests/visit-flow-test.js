@@ -1069,6 +1069,17 @@ async function walkVisit(w, d, maxPresses){
       check(file + ': another technician\u2019s job is not shown', !order.some(x => /Not mine/.test(x)));
       check(file + ': a job on another day is not shown today', !order.some(x => /Tomorrow job/.test(x)));
       check(file + ': the jobs count counts each job', d.getElementById('homeJobCount').textContent === '2/2', d.getElementById('homeJobCount').textContent);
+      // Oct 14: once the customer's service is done, their job stays where
+      // they were rather than dropping to the bottom
+      w.eval("(function(){ const c = customers.find(x => x.name === 'Alpha Today'); c.lastServicedDate = todayDateStr(); c.lastServicedAt = new Date().toISOString();"
+        + " try{ noteServicedFor(c); }catch(e){} saveCustomers(); renderHomeList(); })()");
+      await wait(150);
+      const after = list();
+      check(file + ': after their service is done, the job stays where they were', after.indexOf('svc:Alpha Today') === -1
+            && after.indexOf('job:Alpha Today \u2013 Check seal') === order.indexOf('svc:Alpha Today')
+            && after[after.length - 1] === 'job:Wendy Other \u2013 Replace cartridge', order.join(' | ') + '  →  ' + after.join(' | '));
+      w.eval("(function(){ const c = customers.find(x => x.name === 'Alpha Today'); c.lastServicedDate = ''; c.lastServicedAt = ''; c.servicedDates = []; saveCustomers(); renderHomeList(); })()");
+      await wait(150);
       const jobRow = Array.from(d.querySelectorAll('#homeCustomerList .route-job'))[0];
       check(file + ': a job row has a grip for rearranging', !!jobRow.querySelector('.route-grip'));
       check(file + ': and is saved in the route order as a job', /^job:/.test(jobRow.dataset.reorderKey));

@@ -2554,6 +2554,47 @@ async function serverTechniciansTab(){
       check('technicians tab suite', false, e.stack);
     }
 
+    // ---- The office's own lists reach every computer (Oct 14) ----
+    // Filter clean groups, the drain calendar, quotes sent and the email
+    // wording were kept only in the browser they were made in
+    console.log('\n=== Filter groups, the drain calendar and quotes reach the other computer ===');
+    try{
+      await reset();
+      const srv = makeServer();
+      const cust = {id: 'c_sync1', name: 'Sync Customer', technicianId: ''};
+      const A = await boot(srv, {customers: [cust],
+        filterGroups: [{id: 'fg_a', name: 'Alpha group', date: '2026-11-03', customerIds: ['c_sync1'], custExtra: {c_sync1: [{description: 'O-ring', qty: 2}]}}],
+        drainCalendar: [{id: 'dc_a', date: '2026-11-04', customerId: 'c_sync1', bodyKind: 'pool', extraWork: [{description: 'Acid wash', qty: 1}]}],
+        workOrders: [{id: 'wo_a', type: 'Quote', customerId: 'c_sync1', date: '2026-10-14', lineItems: [{description: 'Pump', qty: 1, price: 900}], status: 'sent'}],
+        filterCleanEmail: {subject: 'Filter day', body: 'Hi there, please {date}'}});
+      await A.w.eval('syncCustomers()');
+      for(let i = 0; i < 600 && A.w.eval('syncRunning'); i++) await sleep(10);
+      const B = await boot(srv, {customers: []});
+      await B.w.eval('syncCustomers()');
+      for(let i = 0; i < 600 && B.w.eval('syncRunning'); i++) await sleep(10);
+      const bGet = k => JSON.parse(B.w.localStorage.getItem('weir:' + k) || 'null');
+      check('the other computer gets the filter clean group', (bGet('filterGroups') || []).some(g => g.id === 'fg_a' && g.date === '2026-11-03'), JSON.stringify(bGet('filterGroups')));
+      check('with its extra work', ((bGet('filterGroups') || []).find(g => g.id === 'fg_a') || {custExtra: {}}).custExtra.c_sync1[0].description === 'O-ring');
+      check('and the page uses it straight away', B.w.eval("filterGroups.some(g => g.id === 'fg_a')"));
+      check('it gets the drain calendar', (bGet('drainCalendar') || []).some(e => e.id === 'dc_a' && e.extraWork[0].description === 'Acid wash'), JSON.stringify(bGet('drainCalendar')));
+      check('it gets the quotes sent', (bGet('workOrders') || []).some(x => x.id === 'wo_a') && B.w.eval("workOrders.some(x => x.id === 'wo_a')"));
+      check('and the filter clean email wording', (bGet('filterCleanEmail') || {}).subject === 'Filter day');
+      // B adds a group while A changes theirs: both are kept
+      B.w.eval("filterGroups.push({id: 'fg_b', name: 'Bravo group', customerIds: []}); saveFilterGroups();");
+      A.w.eval("filterGroups.find(g => g.id === 'fg_a').date = '2026-11-05'; saveFilterGroups();");
+      for(const X of [B, A, B]){
+        await X.w.eval('syncCustomers()');
+        for(let i = 0; i < 600 && X.w.eval('syncRunning'); i++) await sleep(10);
+      }
+      const merged = c => JSON.parse(c.w.localStorage.getItem('weir:filterGroups') || '[]');
+      check('a group added on one computer and a change on the other are both kept',
+            merged(B).some(g => g.id === 'fg_b') && merged(B).some(g => g.id === 'fg_a' && g.date === '2026-11-05')
+            && merged(A).some(g => g.id === 'fg_b'), JSON.stringify(merged(B)) + ' | ' + JSON.stringify(merged(A)));
+      A.close(); B.close();
+    }catch(e){
+      check('office lists across computers', false, e.stack);
+    }
+
     // ---- Restore from backup wins everywhere ----
     // Two computers on the same company. A makes a backup; B then changes a
     // customer, the email style and adds a customer; A never syncs those in,
@@ -3873,6 +3914,22 @@ async function serverFieldSignIn(){
         const serverTask = (await pool.query("select data from public.company_records where kind='task' and id='task_p1'")).rows[0];
         check('ticking a task off reaches the office', serverTask && serverTask.data.done === true, JSON.stringify(serverTask));
         check('and its title is untouched', serverTask && serverTask.data.title === 'Drop off tabs');
+
+        // Finishing a filter clean with its extra work ticked off reaches the
+        // office (Oct 14: the server turned doneExtraWork away, and with it the
+        // whole finish, until snippet 33)
+        phone.w.eval(`
+          const all = lsGet('scheduledFilterCleans') || [];
+          const fc = all.find(x => x.id === 'fc_p1');
+          fc.status = 'done'; fc.doneAt = new Date().toISOString(); fc.doneBy = 't_nina';
+          fc.doneDurationMs = 600000; fc.doneExtraWork = ['O-ring'];
+          lsSet('scheduledFilterCleans', all);
+        `);
+        await sleep(2400);
+        for(let i = 0; i < 400 && phone.w.eval('syncRunning'); i++) await sleep(10);
+        const serverFc = (await pool.query("select data from public.company_records where kind='filter_clean' and id='fc_p1'")).rows[0];
+        check('a filter clean finished with its extra work reaches the office',
+              serverFc && serverFc.data.status === 'done' && (serverFc.data.doneExtraWork || [])[0] === 'O-ring', JSON.stringify(serverFc));
 
         // Moving a visit in the field
         phone.w.eval(`lsSet('rescheduledVisits', (lsGet('rescheduledVisits') || []).concat([
