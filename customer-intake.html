@@ -31307,7 +31307,7 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
         const cs = getComputedStyle(n);
         if(cs.position === 'fixed'){
           const r = n.getBoundingClientRect();
-          if(r.width >= Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth) - 2 && r.height >= Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight) - 2) return true;
+          if(r.width >= Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth) - 24 && r.height >= Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight) - 2) return true;
           // A window built into the page is hidden until opened, so it can't
           // be measured then: a fixed layer stacked over the page counts too
           if((parseInt(cs.zIndex, 10) || 0) >= 100) return true;
@@ -31395,7 +31395,9 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
     const vw = Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth);
     const vh = Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight);
     const coversScreen = r.left <= 1 && r.top <= 1
-      && r.right >= vw - 1 && r.bottom >= vh - 1;
+      // (the page always keeps its scrollbar's room now, so a full-screen
+      // layer can stop short of the window's edge by that much)
+      && r.right >= vw - 24 && r.bottom >= vh - 1;
     return coversScreen && el.children.length > 0;
   };
   const wayOut = layer=>{
@@ -31442,7 +31444,7 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
       const r = el.getBoundingClientRect();
       const vw = Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth);
       const vh = Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight);
-      return r.left <= 1 && r.top <= 1 && r.right >= vw - 1 && r.bottom >= vh - 1;
+      return r.left <= 1 && r.top <= 1 && r.right >= vw - 24 && r.bottom >= vh - 1;
     }catch(e){ return false; }
   };
   // The window in front: whatever is on top in the middle of the screen,
@@ -31507,7 +31509,7 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
       try{
         if(getComputedStyle(n).position === 'fixed'){
           const r = n.getBoundingClientRect();
-          if(r.width >= Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth) - 2 && r.height >= Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight) - 2) return true;
+          if(r.width >= Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth) - 24 && r.height >= Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight) - 2) return true;
         }
       }catch(e){}
       n = n.parentElement;
@@ -31578,7 +31580,7 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
       const cs = getComputedStyle(el);
       if(cs.position !== 'fixed' || cs.display === 'none' || cs.visibility === 'hidden') return false;
       const r = el.getBoundingClientRect();
-      return r.width >= Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth) - 2 && r.height >= Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight) - 2 && el.children.length > 0;
+      return r.width >= Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth) - 24 && r.height >= Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight) - 2 && el.children.length > 0;
     }catch(e){ return false; }
   };
   let open = new Set();

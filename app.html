@@ -15816,7 +15816,7 @@ function appWorkOrderDates(startISO, repeat, customEvery, customUnit){
   document.head.appendChild(st);
 })();
 
-var awcKind = 'Work Order';      // or 'Task'
+var awcKind = 'Quote';           // or 'Work Order' or 'Task'; opens on Quote (Oct 15)
 var awcView = 'main';            // main | current | history
 var awcWoCustomers = [];         // customer ids on the work order
 var awcTaskCustomers = [];       // customer ids on the task (optional)
@@ -18058,7 +18058,14 @@ function showCustomerPane(which){
   const a = document.getElementById('btnCustPaneList'), b = document.getElementById('btnCustPaneWork');
   if(!a || !b) return;
   a.addEventListener('click', ()=> showCustomerPane('list'));
-  b.addEventListener('click', ()=> showCustomerPane('work'));
+  b.addEventListener('click', ()=>{
+    // Pressing WorkCenter always opens on Quote (Oct 15), unless something
+    // opened from Current is being changed there
+    const already = document.getElementById('custPaneWork');
+    const showing = already && already.style.display !== 'none';
+    if(!showing && !(typeof awcEdit !== 'undefined' && awcEdit)){ awcKind = 'Quote'; awcView = 'main'; awcShown = 20; }
+    showCustomerPane('work');
+  });
   // Opening a customer's form from anywhere brings the Customers side back
   const form = document.getElementById('newCustomerCard');
   if(form) new MutationObserver(()=>{
@@ -22402,13 +22409,17 @@ window.addEventListener('pagehide', rememberLastPage);
 // On opening again the same day: the page it was on. A report in progress is
 // brought back as well (restoreVisitInProgress, Oct 14).
 function openWhereLeft(){
+  // Oct 15: swiped away and opened again → Today, on today's list. Left
+  // running in the background (another app, the home screen) → the page it
+  // was on, as set on Oct 12. When the phone itself closes a background app to
+  // free memory, the browser reports it (document.wasDiscarded), so that still
+  // counts as left running and opens on the page it was on.
   let last = null;
   try{ last = JSON.parse(localStorage.getItem('weir:lastPage') || 'null'); }catch(e){}
   const pages = ['home', 'serviced', 'technicians', 'customers', 'report', 'options'];
-  if(!last || last.date !== todayDateStr() || pages.indexOf(last.view) === -1){ openOnToday(); return; }
-  if(last.view === 'technicians' && !isAdminUser()){ openOnToday(); return; }
-  // Oct 15: Today always opens on today, not the day that was being looked at
-  if(last.view === 'home'){ openOnToday(); return; }
+  const putAway = !!document.wasDiscarded;
+  if(!putAway || !last || last.date !== todayDateStr() || pages.indexOf(last.view) === -1
+     || last.view === 'home' || (last.view === 'technicians' && !isAdminUser())){ openOnToday(); return; }
   switchView(last.view);
 }
 // A report was open when another tab was pressed, and hasn't been finished,
