@@ -30,6 +30,9 @@
   .close-link{display:inline-block;margin-top:8px;padding:0;border:0;background:none;font:inherit;font-size:14px;font-weight:700;
               color:var(--teal);text-decoration:underline;text-underline-offset:3px;cursor:pointer !important;}
   .close-link:hover{color:#0B3734;}
+  .dl-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;margin-top:20px;padding:13px 22px;border-radius:12px;border:0;
+          background:var(--teal);color:#fff;font:inherit;font-size:15px;font-weight:700;cursor:pointer !important;}
+  .dl-btn svg{width:18px;height:18px;}
   .wait .badge path{display:none;}
   .wait .badge{animation:pulse 1.2s ease-in-out infinite;}
   @keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
@@ -51,6 +54,8 @@
 (function(){
   const q = new URLSearchParams(location.search);
   const token = q.get('t') || '';
+  // Download quote (Oct 15): the quote as a PDF, not an answer
+  if(q.get('a') === 'download'){ downloadQuote(q.get('s') || '', token); return; }
   const action = q.get('a') === 'deny' ? 'deny' : 'approve';
   const server = q.get('s') || '';
   const card = document.getElementById('card');
@@ -86,7 +91,7 @@
     const u = new URL(server);
     if(u.protocol === 'https:' && /\.supabase\.co$/.test(u.hostname)) fn = u.origin + '/functions/v1/quote-response';
   }catch(e){}
-  if(!token || !fn){ done('Thanks for stopping by!', 'This link looks incomplete. Please reply to the email or give us a call and we\u2019ll sort it out.'); return; }
+  if(!token || !fn){ done('Thank you for your response!', 'We will be in touch shortly.'); return; }
 
   const send = tries => fetch(fn, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({t: token, a: action})})
     .then(r => r.json())
@@ -114,6 +119,215 @@
     });
   send(2);
 })();
+
+// ---------- Download quote (Oct 15) ----------
+// The email's Download button lands here. The quote's breakdown, kept on the
+// server with its code (snippet 34), is drawn as a PDF and saved to the
+// customer's phone or computer. Nothing is recorded.
+function downloadQuote(server, token){
+  const card = document.getElementById('card');
+  const $ = id => document.getElementById(id);
+  // The public keys, the same ones the website uses (safe to show; the server's
+  // rules decide what they can read)
+  const KEYS = {
+    'myxxahrlmzvrbcmopwyo.supabase.co': 'sb_publishable_32m_kcK3pQpClCGAvAAogg_Ut9RBFS1',
+    'mjjgvpejbibybhsmrdno.supabase.co': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qamd2cGVqYmlieWJoc21yZG5vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwOTIyNzgsImV4cCI6MjEwNTY2ODI3OH0.fC627DhuydW81Bie_abdlWTZ-FykNHZUMVd9RrFJSJg'
+  };
+  document.title = 'Your quote';
+  $('title').textContent = 'One moment…';
+  $('text').textContent = 'Getting your quote ready.';
+  const say = (title, text)=>{
+    card.classList.remove('wait');
+    card.querySelector('.badge').style.display = 'none';
+    $('title').textContent = title;
+    $('text').textContent = text;
+  };
+  let host = '', key = '';
+  try{
+    const u = new URL(server);
+    if(u.protocol === 'https:' && /\.supabase\.co$/.test(u.hostname)){ host = u.origin; key = KEYS[u.hostname] || ''; }
+  }catch(e){}
+  if(!token || !host || !key){ say('Thank you!', 'We will be in touch shortly.'); return; }
+
+  const lib = new Promise((ok, fail)=>{
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    sc.onload = ()=> ok(); sc.onerror = ()=> fail(new Error('pdf'));
+    document.head.appendChild(sc);
+  });
+  const ask = tries => fetch(host + '/rest/v1/rpc/quote_download', {
+      method: 'POST',
+      headers: {'content-type': 'application/json', apikey: key, Authorization: 'Bearer ' + key},
+      body: JSON.stringify({p_token: token})
+    }).then(r => r.ok ? r.json() : null)
+    .catch(()=> tries > 0 ? new Promise(r => setTimeout(r, 1500)).then(()=> ask(tries - 1)) : 'offline');
+
+  Promise.all([ask(2), lib.catch(()=> null)]).then(([d])=>{
+    if(d === 'offline'){ say('Almost there', 'We couldn’t reach our system just now. Please check your connection and reload this page.'); return; }
+    if(!d || typeof d !== 'object' || !Array.isArray(d.items)){
+      say('This quote can’t be downloaded', 'Please reply to the email and we’ll send it to you another way.'); return;
+    }
+    if(!window.jspdf){ say('Almost there', 'Your quote couldn’t be prepared just now. Please reload this page to try again.'); return; }
+    let doc, name;
+    try{ ({doc, name} = drawQuotePdf(d)); }
+    catch(e){ say('Almost there', 'Your quote couldn’t be prepared just now. Please reload this page to try again.'); return; }
+    const company = d.company && d.company.name || d.companyName || '';
+    const kind = String(d.type || 'Quote').toLowerCase();
+    card.classList.remove('wait');
+    $('title').textContent = 'Your ' + kind + ' is downloading';
+    $('text').textContent = 'Look for “' + name + '” in your downloads. If it didn’t start, press the button below.';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'dl-btn';
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>';
+    btn.appendChild(document.createTextNode('Download ' + kind));
+    btn.addEventListener('click', ()=> doc.save(name));
+    $('text').after(btn);
+    $('foot').textContent = company;
+    try{ doc.save(name); }catch(e){}
+  });
+}
+
+// One Letter page (more for a long quote): the company band, who it's for and
+// when, the items, the total, the notes, and a footer on every page
+function drawQuotePdf(d){
+  const {jsPDF} = window.jspdf;
+  const doc = new jsPDF({unit: 'pt', format: 'letter'});
+  const W = 612, H = 792, L = 40, R = 572;
+  const rgb = hex=>{
+    const m = String(hex || '').replace('#', '').match(/^([0-9a-f]{6})$/i);
+    const h = m ? m[1] : '134E4A';
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  };
+  const brand = rgb(d.colour), teal = [15, 118, 110], ink = [22, 48, 46], soft = [74, 90, 88], muted = [107, 123, 121], line = [230, 233, 232];
+  const money = n => '$' + (Number(n) || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const co = d.company || {};
+  const company = co.name || d.companyName || '';
+  const type = d.type || 'Quote';
+  const num = d.number ? String(d.number) : '';
+  const set = (size, style, colour)=>{ doc.setFont('helvetica', style || 'normal'); doc.setFontSize(size); doc.setTextColor.apply(doc, colour || ink); };
+
+  // The band across the top of the first page
+  doc.setFillColor.apply(doc, brand); doc.rect(0, 0, W, 118, 'F');
+  set(20, 'bold', [255, 255, 255]); doc.text(company || type, L, 50, {maxWidth: 360});
+  set(9.5, 'normal', [225, 238, 236]);
+  const c1 = [co.phone, co.email].filter(Boolean).join('   ·   ');
+  const c2 = [co.website, co.license ? 'License ' + co.license : ''].filter(Boolean).join('   ·   ');
+  if(c1) doc.text(c1, L, 72);
+  if(c2) doc.text(c2, L, c1 ? 87 : 72);
+  set(9, 'bold', [225, 238, 236]); doc.text(type.toUpperCase(), R, 48, {align: 'right', charSpace: 1.5});
+  if(num){
+    set(28, 'bold', [255, 255, 255]); doc.text(num, R, 82, {align: 'right'});
+    const w = doc.getTextWidth(num);
+    set(28, 'normal', [160, 196, 191]); doc.text('#', R - w - 2, 82, {align: 'right'});
+  }
+
+  // Prepared for, the date, and the quote's name
+  let y = 152;
+  const label = (t, x, yy)=>{ set(8, 'bold', teal); doc.text(t.toUpperCase(), x, yy, {charSpace: 0.8}); };
+  label('Prepared for', L, y);
+  set(12.5, 'bold', ink); doc.text(d.customer && d.customer.name || '', L, y + 17, {maxWidth: 220});
+  let yA = y + 17;
+  if(d.customer && d.customer.address){
+    set(10, 'normal', muted);
+    const addr = doc.splitTextToSize(d.customer.address, 215);
+    doc.text(addr, L, y + 32); yA = y + 32 + (addr.length - 1) * 12;
+  }
+  label('Date', 290, y); set(10.5, 'normal', ink); doc.text(d.date || '', 290, y + 17);
+  let yB = y + 17;
+  if(d.expiresOn){ label('Valid until', 290, y + 38); set(10.5, 'normal', ink); doc.text(d.expiresOn, 290, y + 55); yB = y + 55; }
+  let yC = y;
+  if(d.name){
+    label(type, 440, y); set(10.5, 'normal', ink);
+    const nm = doc.splitTextToSize(d.name, 132); doc.text(nm, 440, y + 17); yC = y + 17 + (nm.length - 1) * 13;
+  }
+  y = Math.max(yA, yB, yC) + 22;
+  doc.setDrawColor.apply(doc, line); doc.setLineWidth(1); doc.line(L, y, R, y);
+
+  // The items
+  const cols = {qty: 384, price: 476, amount: R - 10};
+  const header = yy=>{
+    set(8, 'bold', teal);
+    doc.text('ITEM', L + 10, yy, {charSpace: 0.8});
+    doc.text('QTY', cols.qty, yy, {align: 'center', charSpace: 0.8});
+    doc.text('PRICE', cols.price, yy, {align: 'right', charSpace: 0.8});
+    doc.text('AMOUNT', cols.amount, yy, {align: 'right', charSpace: 0.8});
+    doc.setDrawColor.apply(doc, brand); doc.setLineWidth(1.5); doc.line(L, yy + 8, R, yy + 8);
+    return yy + 8;
+  };
+  const BOTTOM = H - 78;
+  const nextPage = ()=>{
+    doc.addPage();
+    set(10, 'bold', ink); doc.text(company, L, 46);
+    set(10, 'normal', muted); doc.text(type + (num ? ' #' + num : '') + ' (continued)', R, 46, {align: 'right'});
+    return header(84);
+  };
+  y = header(y + 30);
+  d.items.forEach((it, i)=>{
+    set(10.5, 'bold', ink);
+    const desc = doc.splitTextToSize(String(it.description || ''), 300);
+    const h = 14 + desc.length * 13;
+    if(y + h > BOTTOM) y = nextPage();
+    if(i % 2 === 1){ doc.setFillColor(247, 250, 249); doc.rect(L, y, R - L, h, 'F'); }
+    set(10.5, 'bold', ink); doc.text(desc, L + 10, y + 17);
+    set(10.5, 'normal', soft);
+    const qty = Number(it.qty) || 0, price = Number(it.price) || 0;
+    doc.text(String(qty), cols.qty, y + 17, {align: 'center'});
+    doc.text(money(price), cols.price, y + 17, {align: 'right'});
+    set(10.5, 'bold', ink); doc.text(money(qty * price), cols.amount, y + 17, {align: 'right'});
+    doc.setDrawColor.apply(doc, line); doc.setLineWidth(0.8); doc.line(L, y + h, R, y + h);
+    y += h;
+  });
+
+  // The total, in a solid bar on the right
+  if(y + 80 > BOTTOM) y = nextPage();
+  y += 18;
+  set(10, 'normal', muted);
+  const n = d.items.length;
+  doc.text(n + (n === 1 ? ' item' : ' items'), R - 236, y + 4);
+  y += 14;
+  doc.setFillColor.apply(doc, brand); doc.roundedRect(R - 240, y, 240, 42, 7, 7, 'F');
+  set(9, 'bold', [225, 238, 236]); doc.text('TOTAL', R - 226, y + 25, {charSpace: 1.2});
+  set(19, 'bold', [255, 255, 255]); doc.text(money(d.total), R - 14, y + 28, {align: 'right'});
+  y += 42;
+
+  // Notes
+  if(String(d.notes || '').trim()){
+    set(10.5, 'normal', soft);
+    const lines = doc.splitTextToSize(String(d.notes).trim(), R - L - 40);
+    const h = 36 + lines.length * 14;
+    y += 28;
+    if(y + h > BOTTOM) y = nextPage() + 20;
+    doc.setFillColor(244, 248, 247); doc.rect(L, y, R - L, h, 'F');
+    doc.setFillColor.apply(doc, teal); doc.rect(L, y, 3, h, 'F');
+    label('Notes', L + 18, y + 18);
+    set(10.5, 'normal', soft); doc.text(lines, L + 18, y + 36);
+    y += h;
+  }
+
+  // How to answer (quotes only)
+  if(type === 'Quote'){
+    y += 24;
+    if(y + 20 > BOTTOM) y = nextPage() + 20;
+    set(10, 'normal', soft);
+    doc.text('To approve, press Approve in the email, or reply to it. Questions? Call or email us any time.', L, y);
+  }
+
+  // A footer on every page
+  const pages = doc.getNumberOfPages();
+  for(let p = 1; p <= pages; p++){
+    doc.setPage(p);
+    doc.setDrawColor.apply(doc, line); doc.setLineWidth(1); doc.line(L, H - 58, R, H - 58);
+    set(10, 'bold', ink); doc.text(company, L, H - 38);
+    if(d.signoff){ set(9, 'normal', muted); doc.text(String(d.signoff).split('\n')[0], L, H - 24, {maxWidth: 330}); }
+    set(9, 'normal', muted);
+    doc.text(type + (num ? ' #' + num : '') + '   ·   Page ' + p + ' of ' + pages, R, H - 38, {align: 'right'});
+  }
+
+  const safe = t => String(t || '').replace(/[\\/:*?"<>|]+/g, '').trim();
+  const name = safe(type + (num ? ' ' + num : '') + (company ? ' – ' + company : '')) + '.pdf';
+  return {doc, name};
+}
 </script>
 </body>
 </html>
