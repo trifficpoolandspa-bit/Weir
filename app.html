@@ -2564,8 +2564,44 @@ function renderConfigFields(containerId, list, type, kind, onInput){
 function listsForBody(customerId, bodyKey, fallbackType){
   const custom = lsGet('customChemConfig') || {};
   const forCust = custom[customerId];
-  if(forCust && forCust[bodyKey]) return forCust[bodyKey];
+  if(forCust && forCust[bodyKey]){
+    // Their quick buttons are the company's unless changed for them (Oct 15)
+    const own = JSON.parse(JSON.stringify(forCust[bodyKey]));
+    return followCompanyButtons(own, chemConfig[fallbackType], custom);
+  }
   return chemConfig[fallbackType];
+}
+
+// The website's rule, the same here (customer-intake.html, Oct 15): a
+// customer's setup is a copy of the company lists from when it was made, so
+// buttons since taken off the company lists stayed on it. Each reading and
+// dosage shows the company's buttons unless the office changed that
+// customer's (buttonsOwn). Older setups with no mark: a set no other customer
+// has is theirs; a set several share came from an old company list.
+function followCompanyButtons(setup, company, everyone){
+  if(!setup || !company) return setup;
+  const vals = b => (Array.isArray(b) ? b : []).map(x => String(btnValue(x)));
+  const same = (a, b) => vals(a).join('|') === vals(b).join('|');
+  ['chemicals', 'dosages'].forEach(part=>{
+    (setup[part] || []).forEach(item=>{
+      if(!item || !item.key || item.buttonsOwn === true) return;
+      const theirs = (company[part] || []).find(x => x && x.key === item.key);
+      if(!theirs || !Array.isArray(theirs.buttons)) return;
+      if(item.buttonsOwn !== false && !same(item.buttons, theirs.buttons)){
+        let shared = 0;
+        Object.keys(everyone || {}).forEach(cid => Object.keys(everyone[cid] || {}).forEach(body=>{
+          const s = everyone[cid][body];
+          ((s && s[part]) || []).forEach(x=>{
+            if(x && x.key === item.key && Array.isArray(x.buttons) && same(x.buttons, item.buttons)) shared++;
+          });
+        }));
+        if(shared <= 1) return;
+      }
+      item.buttons = JSON.parse(JSON.stringify(theirs.buttons));
+      if(theirs.buttonsOrdered === true) item.buttonsOrdered = true; else delete item.buttonsOrdered;
+    });
+  });
+  return setup;
 }
 
 // The readings page: every visit in the last 4 weeks for this body of water,
@@ -2907,7 +2943,27 @@ document.addEventListener('visibilitychange', ()=>{
   if(document.hidden){ tabHiddenAt = Date.now(); return; }
   // Oct 12: coming back to the app leaves every page exactly as it was (the
   // Customer tab used to go back to its list after 30 seconds away)
+  // Oct 15: except the day on Today — coming back always shows today
+  todayOnReturn();
 });
+// Today's list back on today whenever the app comes back to the front: from
+// another app, the home screen, the phone waking, or the browser bringing the
+// page back from its cache
+function todayOnReturn(){
+  try{
+    if(document.hidden) return;
+    if(currentViewName === 'home' && !busyForOpenOnToday()){
+      const today = DAYS_OF_WEEK[new Date().getDay()];
+      if(selectedHomeDay !== today || weekOffset !== 0){
+        selectedHomeDay = today; weekOffset = 0;
+        renderHomeList();
+      }
+    }
+  }catch(e){}
+}
+// (Not on focus: the phone's own date picker takes focus and gives it back,
+// which would undo the day just picked)
+window.addEventListener('pageshow', e=>{ if(e.persisted) todayOnReturn(); });
 function switchView(view, opts){
   opts = opts || {};
   if(view !== 'technicians' && typeof techOrderPending !== 'undefined' && techOrderPending) endTechOrder();
@@ -3365,7 +3421,8 @@ function deviceSet(key, value){
 
 async function fieldFetch(path, opts, withSession){
   const o = opts || {};
-  const headers = {'apikey': FIELD_SUPABASE_KEY, 'Content-Type': 'application/json'};
+  // Any headers the call adds of its own (Prefer, say) are kept (Oct 15)
+  const headers = Object.assign({'apikey': FIELD_SUPABASE_KEY, 'Content-Type': 'application/json'}, o.headers || {});
   const s = deviceGet('session');
   if(withSession !== false && s && s.access_token) headers['Authorization'] = 'Bearer ' + s.access_token;
   let res;
@@ -4500,7 +4557,11 @@ const SYNC_WORK_LISTS = [
   ['scheduledFilterCleans', 'filter_clean'],
   ['scheduledPoolDrains', 'pool_drain'],
   ['scheduledWorkOrders', 'work_order'],
-  ['rescheduledVisits', 'reschedule']
+  ['rescheduledVisits', 'reschedule'],
+  // Quotes (Oct 15): the website's quotes, on an owner's or admin's phone for
+  // the WorkCenter's Quote tab. Made here they're sent whole (pushOfficeWork);
+  // the server never gives them to a technician (snippet 33).
+  ['workOrders', 'quote']
 ];
 // Finishing a task or a work order visit goes back too: done, when, by whom
 // and the notes (snippet 16 lets a technician change exactly these on their own),
@@ -15759,6 +15820,9 @@ var awcView = 'main';            // main | current | history
 var awcWoCustomers = [];         // customer ids on the work order
 var awcTaskCustomers = [];       // customer ids on the task (optional)
 var awcLineItems = [{description: '', qty: '', price: ''}];
+var awcPickFilterCleans = function(){};
+var awcQuoteCustomers = [];      // customer ids on the quote (Oct 15)
+var awcQuoteLines = [{description: '', qty: '', price: ''}];
 var awcWoTechs = [];             // technician ids ticked
 var awcTaskTechs = [];
 var awcShown = 20;               // rows shown on Current / History before "Show more"
@@ -15827,6 +15891,8 @@ function awcBuild(pane){
   pane.innerHTML = `
   <div class="card" id="awc">
     <div class="btn-row" id="awcKindRow" style="gap:6px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line);flex-wrap:nowrap;">
+      <!-- Quote (Oct 15), as on the website: to the left of Work Order -->
+      <button type="button" class="btn" data-kind="Quote" style="flex:1;padding:10px 6px;">Quote</button>
       <button type="button" class="btn" data-kind="Work Order" style="flex:1;padding:10px 6px;">Work Order</button>
       <button type="button" class="btn" data-kind="Task" style="flex:1;padding:10px 6px;">Task</button>
     </div>
@@ -15838,6 +15904,57 @@ function awcBuild(pane){
       <button type="button" class="btn btn-ghost" data-view="history" style="display:none;flex:1;padding:10px 6px;">History</button>
     </div>
 
+    <!-- A quote (Oct 15): the website's quote, laid out like the work order
+         form. Emailed with Approve / Decline / Download, and kept on the server
+         so the website's Quotes, Alerts and the customer's Quotes & Orders have it -->
+    <div id="awcQuoteForm" style="display:none;">
+      <h2>New quote</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Emailed to the customer to approve or decline.</p>
+      <div class="field">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px;">
+          <label style="margin:0;">Date</label>
+          <span class="awc-num" id="awcQuoteNumber"></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:nowrap;">
+          <input type="date" id="awcQuoteDate" style="width:auto;">
+          <label class="inline-check">Expires in
+            <input type="number" id="awcQuoteExpires" min="1" max="365" step="1" value="30" inputmode="numeric" style="width:64px;text-align:center;padding-left:6px;padding-right:6px;">
+            days</label>
+        </div>
+      </div>
+      <div class="field">
+        <label>Quote name</label>
+        <input id="awcQuoteName" placeholder="e.g. Heater replacement" autocomplete="off">
+      </div>
+      <div class="field" style="position:relative;">
+        <label>Customer</label>
+        <div id="awcQuoteChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
+        <input id="awcQuoteSearch" placeholder="Start typing a name&hellip;" autocomplete="off">
+        <div class="awc-suggest" id="awcQuoteSuggest"></div>
+      </div>
+      <div class="field">
+        <label>Line items</label>
+        <div id="awcQuoteLines"></div>
+        <div class="btn-row" style="gap:8px;margin-top:4px;">
+          <button type="button" class="btn btn-ghost" id="awcQuoteAddLine" style="width:auto;">+ Add line item</button>
+          <button type="button" class="btn btn-ghost" id="awcQuoteAddFilterClean" style="width:auto;">+ Filter clean</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Notes (optional)</label>
+        <textarea id="awcQuoteNotes" placeholder="Any additional details for the customer..."></textarea>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0 14px;">
+        <span style="font-size:13px;font-weight:600;color:var(--muted);">Total</span>
+        <span id="awcQuoteTotal" style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--teal-deep);">$0.00</span>
+      </div>
+      <button type="button" class="btn btn-primary" id="awcQuoteSend" style="margin-bottom:8px;">Send to customer</button>
+      <div class="btn-row" style="flex-wrap:nowrap;">
+        <button type="button" class="btn btn-ghost" id="awcQuoteCustomize" style="flex:1 1 0;min-width:0;">Customize email</button>
+        <button type="button" class="btn btn-ghost" id="awcQuoteClear" style="flex:1 1 0;min-width:0;">Clear</button>
+      </div>
+    </div>
+
     <div id="awcWoForm">
       <h2>New work order</h2>
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Goes onto the technician&rsquo;s route on the scheduled date.</p>
@@ -15847,10 +15964,13 @@ function awcBuild(pane){
           <label style="margin:0;">Scheduled date</label>
           <span class="awc-num" id="awcWoNumber"></span>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:nowrap;">
           <input type="date" id="awcWoDate" style="width:auto;">
-          <label class="inline-check"><input type="checkbox" id="awcWoPhoto" checked> Photo required</label>
-          <label class="inline-check"><input type="checkbox" id="awcWoVideo"> Video required</label>
+          <!-- Photo and Video required stacked in one column beside the date (Oct 15) -->
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <label class="inline-check"><input type="checkbox" id="awcWoPhoto" checked> Photo required</label>
+            <label class="inline-check"><input type="checkbox" id="awcWoVideo"> Video required</label>
+          </div>
         </div>
       </div>
       <div class="field" style="position:relative;">
@@ -15914,10 +16034,12 @@ function awcBuild(pane){
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">A job for a technician &mdash; for a customer, or on its own.</p>
       <div class="field">
         <label>Scheduled date</label>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:nowrap;">
           <input type="date" id="awcTaskDate" style="width:auto;">
-          <label class="inline-check"><input type="checkbox" id="awcTaskPhoto"> Photo required</label>
-          <label class="inline-check"><input type="checkbox" id="awcTaskVideo"> Video required</label>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <label class="inline-check"><input type="checkbox" id="awcTaskPhoto"> Photo required</label>
+            <label class="inline-check"><input type="checkbox" id="awcTaskVideo"> Video required</label>
+          </div>
         </div>
       </div>
       <button type="button" class="btn btn-primary" id="awcSavedTasks" style="width:100%;margin-bottom:12px;">Saved tasks</button>
@@ -15972,7 +16094,7 @@ function awcBuild(pane){
 
     <div id="awcCurrent" style="display:none;">
       <h2>Current</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Work orders and tasks still to be done.</p>
+      <p id="awcCurSub" style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Work orders and tasks still to be done.</p>
       <select id="awcCurTech" style="margin-bottom:8px;"></select>
       <div id="awcCurList"></div>
     </div>
@@ -16012,9 +16134,10 @@ function awcBuild(pane){
     });
     awcRenderLines();
   };
-  if(fcBtn) fcBtn.addEventListener('click', ()=>{
+  // The same window for the quote's + Filter clean (Oct 15)
+  awcPickFilterCleans = addLines=>{
     const list = (lsGet('productsServices') || []).filter(x => x && /filter\s*clean/i.test(String(x.name || '')));
-    if(list.length <= 1){ addFcLines([{product: list[0] || null, count: 1}]); return; }
+    if(list.length <= 1){ addLines([{product: list[0] || null, count: 1}]); return; }
     const counts = list.map(()=> 0);
     const overlay = document.createElement('div');
     overlay.className = 'confirm-overlay';
@@ -16061,11 +16184,13 @@ function awcBuild(pane){
     overlay.querySelector('[data-cancel]').addEventListener('click', close);
     addBtn.addEventListener('click', ()=>{
       if(!total()) return;
-      addFcLines(list.map((product, i) => ({product, count: counts[i]})).filter(x => x.count));
+      addLines(list.map((product, i) => ({product, count: counts[i]})).filter(x => x.count));
       close();
     });
     document.body.appendChild(overlay);
-  });
+  };
+  if(fcBtn) fcBtn.addEventListener('click', ()=> awcPickFilterCleans(addFcLines));
+  awcWireQuote();
   document.getElementById('awcAddLine').addEventListener('click', ()=>{
     awcLineItems.push({description: '', qty: '', price: ''});
     awcRenderLines();
@@ -16101,12 +16226,19 @@ function awcApply(){
   });
   document.getElementById('awcMainTab').textContent = awcKind;
   document.querySelectorAll('#awcViewRow [data-view]').forEach(b => { b.className = 'btn ' + (b.dataset.view === awcView ? 'btn-primary' : 'btn-ghost'); });
-  document.getElementById('awcWoForm').style.display = (awcView === 'main' && !isTask) ? '' : 'none';
+  const isQuote = awcKind === 'Quote';
+  document.getElementById('awcQuoteForm').style.display = (awcView === 'main' && isQuote) ? '' : 'none';
+  document.getElementById('awcWoForm').style.display = (awcView === 'main' && !isTask && !isQuote) ? '' : 'none';
+  const curSub = document.getElementById('awcCurSub');
+  if(curSub) curSub.textContent = isQuote ? 'Quotes sent and waiting on an answer, and ones answered in the last 30 days.' : 'Work orders and tasks still to be done.';
+  const curTech = document.getElementById('awcCurTech');
+  if(curTech) curTech.style.display = isQuote ? 'none' : '';
   document.getElementById('awcTaskForm').style.display = (awcView === 'main' && isTask) ? '' : 'none';
   document.getElementById('awcCurrent').style.display = awcView === 'current' ? '' : 'none';
   document.getElementById('awcHistory').style.display = awcView === 'history' ? '' : 'none';
   if(awcView === 'main'){
     document.getElementById('awcWoNumber').textContent = '#' + String(awcNextWorkOrderNumber()).padStart(4, '0');
+    awcShowQuoteNumber();
     const dl = document.getElementById('awcProducts');
     dl.innerHTML = (lsGet('productsServices') || []).filter(p => p && p.name)
       .map(p => '<option value="' + awcEsc(p.name) + '"></option>').join('');
@@ -16167,7 +16299,8 @@ function awcWireSearch(inputId, boxId, picked, onPick){
 }
 
 function awcRenderChips(){
-  [['awcWoChips', ()=> awcWoCustomers, ids => { awcWoCustomers = ids; }],
+  [['awcQuoteChips', ()=> awcQuoteCustomers, ids => { awcQuoteCustomers = ids; }],
+   ['awcWoChips', ()=> awcWoCustomers, ids => { awcWoCustomers = ids; }],
    ['awcTaskChips', ()=> awcTaskCustomers, ids => { awcTaskCustomers = ids; }]].forEach(([boxId, get, set])=>{
     const box = document.getElementById(boxId);
     if(!box) return;
@@ -16197,17 +16330,30 @@ function awcTotal(){
   return total;
 }
 
-function awcRenderLines(){
-  const box = document.getElementById('awcLines');
+function awcRenderLines(boxId){
+  // The work order's lines, or the quote's (Oct 15): the same rows for both
+  const isQuote = boxId === 'awcQuoteLines';
+  const box = document.getElementById(isQuote ? 'awcQuoteLines' : 'awcLines');
+  if(!box) return;
+  const items = isQuote ? awcQuoteLines : awcLineItems;
+  const total = isQuote ? awcQuoteTotal : awcTotal;
   box.innerHTML = '';
-  awcLineItems.forEach((item, i)=>{
+  items.forEach((item, i)=>{
     const row = document.createElement('div');
     row.className = 'awc-line';
+    // The description with its own list of matching products underneath (Oct
+    // 15): the phone's built-in list showed nothing while typing
+    const descWrap = document.createElement('div');
+    descWrap.style.cssText = 'position:relative;flex:2;min-width:0;display:flex;';
     const desc = document.createElement('input');
     desc.placeholder = 'Description';
     desc.value = item.description || '';
-    desc.style.flex = '2';
-    desc.setAttribute('list', 'awcProducts');
+    desc.style.cssText = 'flex:1;width:100%;min-width:0;';
+    desc.setAttribute('autocomplete', 'off');
+    const sug = document.createElement('div');
+    sug.className = 'awc-suggest';
+    sug.style.top = '100%';
+    descWrap.appendChild(desc); descWrap.appendChild(sug);
     const qty = document.createElement('input');
     qty.type = 'number'; qty.step = 'any'; qty.inputMode = 'decimal';
     qty.placeholder = 'Qty';
@@ -16224,6 +16370,40 @@ function awcRenderLines(){
     price.value = item.price;
     price.style.cssText = 'flex:1;width:100%;padding-left:22px;';
     priceWrap.appendChild(dollar); priceWrap.appendChild(price);
+    const hideSug = ()=>{ sug.style.display = 'none'; sug.innerHTML = ''; };
+    const showSug = ()=>{
+      const t = desc.value.trim().toLowerCase();
+      if(!t){ hideSug(); return; }
+      const named = (lsGet('productsServices') || []).filter(p => p && p.name && String(p.name).toLowerCase().includes(t) && String(p.name) !== desc.value);
+      named.sort((x, y)=>{
+        const xs = String(x.name).toLowerCase().startsWith(t) ? 0 : 1, ys = String(y.name).toLowerCase().startsWith(t) ? 0 : 1;
+        return xs - ys || String(x.name).localeCompare(String(y.name));
+      });
+      sug.innerHTML = '';
+      named.slice(0, 8).forEach(p=>{
+        const opt = document.createElement('div');
+        opt.style.cssText = 'display:flex;align-items:center;gap:10px;';
+        const nm = document.createElement('span');
+        nm.style.cssText = 'flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        nm.textContent = p.name;
+        opt.appendChild(nm);
+        if(p.price !== undefined && p.price !== null && p.price !== ''){
+          const pr = document.createElement('span');
+          pr.style.cssText = "flex-shrink:0;font-size:12.5px;color:var(--muted);font-family:'JetBrains Mono',monospace;";
+          pr.textContent = '$' + (Number(p.price) || 0).toFixed(2);
+          opt.appendChild(pr);
+        }
+        opt.addEventListener('mousedown', e=>{
+          e.preventDefault();
+          desc.value = p.name;
+          desc.dispatchEvent(new Event('input', {bubbles: true}));
+          hideSug();
+          try{ desc.blur(); }catch(err){}
+        });
+        sug.appendChild(opt);
+      });
+      sug.style.display = sug.children.length ? 'block' : 'none';
+    };
     desc.addEventListener('input', ()=>{
       item.description = desc.value;
       // Anything entered starts with a quantity of one
@@ -16236,20 +16416,543 @@ function awcRenderLines(){
         item.price = match.price == null ? '' : match.price;
         price.value = item.price;
       }
-      awcTotal();
+      total();
     });
-    qty.addEventListener('input', ()=>{ item.qty = qty.value; awcTotal(); });
-    price.addEventListener('input', ()=>{ item.price = price.value; awcTotal(); });
+    desc.addEventListener('input', showSug);
+    desc.addEventListener('focus', showSug);
+    desc.addEventListener('blur', ()=> setTimeout(hideSug, 200));
+    qty.addEventListener('input', ()=>{ item.qty = qty.value; total(); });
+    price.addEventListener('input', ()=>{ item.price = price.value; total(); });
     const x = document.createElement('button');
     x.type = 'button';
     x.className = 'awc-x';
-    x.textContent = '\u00d7';
+    x.textContent = '×';
     x.setAttribute('aria-label', 'Remove line item');
-    x.addEventListener('click', ()=>{ awcLineItems.splice(i, 1); awcRenderLines(); });
-    row.appendChild(desc); row.appendChild(qty); row.appendChild(priceWrap); row.appendChild(x);
+    x.addEventListener('click', ()=>{ items.splice(i, 1); awcRenderLines(boxId); });
+    row.appendChild(descWrap); row.appendChild(qty); row.appendChild(priceWrap); row.appendChild(x);
     box.appendChild(row);
   });
-  awcTotal();
+  total();
+}
+
+// ---------- Quote (Oct 15) ----------
+// The website's quote, made on the phone. The same email (Approve, Decline and
+// Download quote), the same numbering, and the same record: it's sent to the
+// office whole (pushOfficeWork, kind 'quote'), so the website's Quotes → Current,
+// Alerts and the customer's Quotes & Orders have it, and quotes made on the
+// website show here.
+function awcCompanyName(){
+  const n = String(lsGet('companyName') || '').trim();
+  return n || 'Your pool service';
+}
+function awcQuoteNumberText(n){ return String(n).padStart(4, '0'); }
+function awcQuotes(){ return (lsGet('workOrders') || []).filter(w => w && w.id && (w.type || 'Quote') === 'Quote'); }
+function awcNextQuoteNumber(){
+  const used = awcQuotes().reduce((m, w) => Math.max(m, Number(w.number) || 0), 0);
+  return Math.max(used, Number(lsGet('quoteCounter')) || 0) + 1;
+}
+function awcShowQuoteNumber(){
+  const el = document.getElementById('awcQuoteNumber');
+  if(el) el.innerHTML = '<span class="num-hash">#</span>' + awcQuoteNumberText(awcNextQuoteNumber());
+}
+function awcQuoteTotal(){
+  const total = awcQuoteLines.reduce((sum, it) => sum + (parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0), 0);
+  const el = document.getElementById('awcQuoteTotal');
+  if(el) el.textContent = '$' + total.toFixed(2);
+  return total;
+}
+var AWC_QUOTE_ANSWER_DAYS = 30;
+function awcQuoteExpiresDays(){
+  const n = Math.round(Number((document.getElementById('awcQuoteExpires') || {}).value));
+  return n >= 1 && n <= 365 ? n : AWC_QUOTE_ANSWER_DAYS;
+}
+var AWC_QUOTE_EMAIL_DEFAULTS = {
+  header: '', subheader: '',
+  closing: 'Questions, or ready to go ahead? Just reply to this email.',
+  signoff: null, showContact: true
+};
+function awcQuoteEmailStyle(){
+  return Object.assign({}, AWC_QUOTE_EMAIL_DEFAULTS, lsGet('quoteEmailStyle') || {});
+}
+// Which quote codes have their breakdown on the server (so the email offers Download)
+var awcQuoteCanDownload = {};
+function awcQuoteLinkCanDownload(url){
+  const m = String(url || '').match(/[?&]t=([0-9a-f]+)/);
+  return !!(m && awcQuoteCanDownload[m[1]]);
+}
+
+// The quote's secret code on the server, as the website makes it: the
+// customer's Approve or Decline is recorded against it, and its breakdown is
+// what Download quote gives them (snippet 34)
+async function awcRegisterQuote(quoteId, expiresDays, details){
+  try{
+    const company = deviceGet('company');
+    if(!company || !company.id) return null;
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    const token = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    const put = withDetails => fieldAuthed('/rest/v1/quote_responses?on_conflict=company_id,quote_id', {
+      method: 'POST',
+      headers: {'Prefer': 'resolution=merge-duplicates,return=minimal'},
+      body: JSON.stringify(Object.assign({company_id: company.id, quote_id: quoteId, token: token, outcome: null,
+        responded_at: null, created_at: new Date().toISOString()},
+        expiresDays && expiresDays !== AWC_QUOTE_ANSWER_DAYS ? {expires_days: expiresDays} : {},
+        withDetails ? {details: details} : {}))
+    });
+    let res = await put(!!details);
+    let canDownload = !!details && res.ok;
+    // A server without snippet 34 yet: still Approve and Decline, no Download
+    if(details && !res.ok && !res.offline){ res = await put(false); canDownload = false; }
+    if(!res.ok) return null;
+    awcQuoteCanDownload[token] = canDownload;
+    return new URL('quote-response.html', location.href).href.split('?')[0]
+      + '?s=' + encodeURIComponent(FIELD_SUPABASE_URL) + '&t=' + token;
+  }catch(e){ return null; }
+}
+
+function awcWireQuote(){
+  document.getElementById('awcQuoteDate').value = todayDateStr();
+  awcWireSearch('awcQuoteSearch', 'awcQuoteSuggest', ()=> awcQuoteCustomers, id=>{ awcQuoteCustomers.push(id); awcRenderChips(); });
+  document.getElementById('awcQuoteAddLine').addEventListener('click', ()=>{
+    awcQuoteLines.push({description: '', qty: '', price: ''});
+    awcRenderLines('awcQuoteLines');
+  });
+  document.getElementById('awcQuoteAddFilterClean').addEventListener('click', ()=>{
+    awcPickFilterCleans(picks=>{
+      picks.forEach(({product, count})=>{
+        for(let i = 0; i < count; i++){
+          const item = {description: product ? product.name : 'Filter clean', qty: '1',
+            price: product && product.price != null && product.price !== '' ? String(product.price) : '', filterClean: true};
+          const blank = awcQuoteLines.findIndex(li => !String(li.description || '').trim() && !String(li.price || '').trim());
+          if(blank !== -1) awcQuoteLines[blank] = item; else awcQuoteLines.push(item);
+        }
+      });
+      awcRenderLines('awcQuoteLines');
+    });
+  });
+  document.getElementById('awcQuoteSend').addEventListener('click', awcSendQuote);
+  document.getElementById('awcQuoteClear').addEventListener('click', awcClearQuote);
+  document.getElementById('awcQuoteCustomize').addEventListener('click', awcCustomizeQuoteEmail);
+  awcRenderLines('awcQuoteLines');
+  awcShowQuoteNumber();
+}
+
+function awcClearQuote(){
+  awcQuoteCustomers = [];
+  awcQuoteLines = [{description: '', qty: '', price: ''}];
+  document.getElementById('awcQuoteSearch').value = '';
+  document.getElementById('awcQuoteNotes').value = '';
+  document.getElementById('awcQuoteName').value = '';
+  document.getElementById('awcQuoteDate').value = todayDateStr();
+  document.getElementById('awcQuoteExpires').value = String(AWC_QUOTE_ANSWER_DAYS);
+  awcRenderChips(); awcRenderLines('awcQuoteLines'); awcShowQuoteNumber();
+}
+
+async function awcSendQuote(){
+  const btn = document.getElementById('awcQuoteSend');
+  if(btn.disabled) return;
+  const picked = awcQuoteCustomers.map(id => (customers || []).find(c => c && String(c.id) === String(id))).filter(Boolean);
+  if(!picked.length){ showToast('Add at least one customer'); return; }
+  const items = awcQuoteLines.filter(it => it && String(it.description || '').trim())
+    .map(it => Object.assign({}, it, {description: String(it.description).trim()}));
+  if(!items.length){ showToast('Add at least one line item'); return; }
+  if(!picked.some(c => c.email)){
+    showToast(picked.length === 1 ? 'This customer has no email on file' : 'None of these customers has an email on file');
+    return;
+  }
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = 'Sending…';
+  const notes = document.getElementById('awcQuoteNotes').value.trim();
+  const name = document.getElementById('awcQuoteName').value.trim();
+  const total = items.reduce((sum, it) => sum + (parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0), 0);
+  const dateISO = document.getElementById('awcQuoteDate').value || '';
+  const dateText = (dateISO ? new Date(dateISO + 'T12:00:00') : new Date())
+    .toLocaleDateString(undefined, {month: 'long', day: 'numeric', year: 'numeric'});
+  const expiresDays = awcQuoteExpiresDays();
+  let sent = 0;
+  const notSent = [];
+  try{
+    for(const c of picked){
+      if(!c.email){ notSent.push((c.name || 'Customer') + ' (no email on file)'); continue; }
+      const quoteId = 'wo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      const number = awcNextQuoteNumber();
+      lsSet('quoteCounter', number);
+      queueSetupSend('quoteCounter');
+      const details = awcQuoteDownloadDetails(c, 'Quote', dateText, items, total, notes, number, expiresDays, name);
+      const respondUrl = await awcRegisterQuote(quoteId, expiresDays, details);
+      const html = awcQuoteEmailHtml(c, 'Quote', dateText, items, total, notes, null, respondUrl, number, expiresDays);
+      const subject = 'Quote from ' + awcCompanyName() + ' — ' + c.name;
+      const res = await fieldAuthed('/functions/v1/send-report', {
+        method: 'POST',
+        body: JSON.stringify({to: c.email, subject: subject, html: html, customerId: c.id})
+      });
+      const ok = !!res.ok;
+      // Kept as the website keeps it, and sent to the office whole
+      const list = lsGet('workOrders') || [];
+      list.push(Object.assign({
+        number: number, name: name, emailHtml: html, emailSubject: subject, id: quoteId,
+        customerId: c.id, type: 'Quote', lineItems: items.map(it => Object.assign({}, it)), notes: notes,
+        total: total, date: dateISO, createdAt: new Date().toISOString(), status: ok ? 'sent' : 'draft'
+      }, expiresDays ? {expiresDays: expiresDays} : {}));
+      lsSet('workOrders', list);
+      queueOfficeWork('quote', quoteId);
+      if(ok) sent++;
+      else notSent.push((c.name || 'Customer') + (res.offline ? ' (no signal)' : ''));
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+  try{ fieldSync(); }catch(e){}
+  if(!notSent.length){
+    showToast('Quote sent to ' + (sent === 1 ? (picked[0].name || 'the customer') : sent + ' customers'));
+    awcClearQuote();
+  } else {
+    showToast((sent ? 'Sent to ' + sent + '. ' : '') + 'Not sent: ' + notSent.join(', ') + ' — it’s saved; try again with a connection.');
+    awcShowQuoteNumber();
+  }
+}
+
+// Customers' answers, straight from the server, so the Quote tab is up to date
+// even with no office computer open. Each answer is sent on to the office too.
+var awcAnswersAt = 0;
+async function awcCheckQuoteAnswers(){
+  if(Date.now() - awcAnswersAt < 30000) return;
+  awcAnswersAt = Date.now();
+  try{
+    const res = await fieldAuthed('/rest/v1/quote_responses?select=quote_id,outcome,responded_at&outcome=not.is.null', {method: 'GET'});
+    if(!res.ok || !Array.isArray(res.body)) return;
+    const list = lsGet('workOrders') || [];
+    let changed = false;
+    res.body.forEach(a=>{
+      const w = list.find(x => x && x.id === a.quote_id);
+      if(!w) return;
+      const approved = a.outcome === 'approved';
+      if(w.closed && !w.expired && !!w.approved === approved && !!w.denied === !approved) return;
+      w.closed = true; w.approved = approved; w.denied = !approved; w.expired = false;
+      w[approved ? 'approvedAt' : 'deniedAt'] = a.responded_at || new Date().toISOString();
+      w.answeredByCustomer = true;
+      queueOfficeWork('quote', w.id);
+      changed = true;
+    });
+    if(changed){
+      lsSet('workOrders', list);
+      if(awcKind === 'Quote' && awcView === 'current') awcRenderQuoteCurrent();
+    }
+  }catch(e){}
+}
+
+function awcQuoteStatus(w){
+  const days = Number(w.expiresDays) || AWC_QUOTE_ANSWER_DAYS;
+  const sentAt = new Date(w.createdAt || 0).getTime();
+  if(w.approved) return {key: 'approved', text: 'APPROVED', colour: '#3E8F5F'};
+  if(w.denied) return {key: 'declined', text: 'DECLINED', colour: '#B8492E'};
+  if(w.expired || (sentAt && Date.now() - sentAt > days * 86400000)) return {key: 'expired', text: 'EXPIRED', colour: '#8A9997'};
+  if(w.status === 'draft') return {key: 'draft', text: 'NOT SENT', colour: '#B8492E'};
+  return {key: 'pending', text: 'PENDING', colour: '#B07D1A'};
+}
+
+function awcRenderQuoteCurrent(){
+  const box = document.getElementById('awcCurList');
+  if(!box) return;
+  awcCheckQuoteAnswers();
+  const day = iso => iso ? new Date(iso).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : '';
+  const recent = Date.now() - 30 * 86400000;
+  const rows = awcQuotes().map(w => ({w: w, st: awcQuoteStatus(w)})).filter(({w, st})=>{
+    if(st.key === 'pending' || st.key === 'draft') return true;
+    if(st.key === 'approved' || st.key === 'declined'){
+      const at = new Date(w.approvedAt || w.deniedAt || 0).getTime();
+      return at >= recent;
+    }
+    return false;
+  }).sort((a, b) => String(b.w.createdAt || '').localeCompare(String(a.w.createdAt || '')));
+  box.innerHTML = '';
+  if(!rows.length){
+    box.innerHTML = '<div style="font-size:13.5px;color:var(--muted);padding:12px 2px;">No quotes waiting on an answer.</div>';
+    return;
+  }
+  rows.slice(0, awcShown).forEach(({w, st})=>{
+    const row = document.createElement('div');
+    row.className = 'awc-row';
+    row.style.cursor = 'pointer';
+    const top = document.createElement('div');
+    top.style.cssText = 'display:flex;align-items:center;gap:8px;';
+    const nm = document.createElement('b');
+    nm.style.cssText = 'font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    nm.textContent = awcCustName(w.customerId) || 'Customer';
+    const badge = document.createElement('span');
+    badge.style.cssText = 'margin-left:auto;flex-shrink:0;display:inline-flex;justify-content:center;min-width:82px;padding:4px 8px;'
+      + 'border-radius:7px;font-size:10.5px;font-weight:700;letter-spacing:.04em;color:#fff;background:' + st.colour + ';';
+    badge.textContent = st.text;
+    top.appendChild(nm); top.appendChild(badge);
+    const what = document.createElement('div');
+    what.style.cssText = 'font-size:13px;color:var(--muted);margin-top:3px;';
+    const title = w.name || (w.lineItems || []).map(li => li && li.description).filter(Boolean).join(', ');
+    what.textContent = ['Quote' + (w.number ? ' #' + awcQuoteNumberText(w.number) : ''), title, '$' + (Number(w.total) || 0).toFixed(2)]
+      .filter(Boolean).join(' · ');
+    const when = document.createElement('div');
+    when.style.cssText = 'font-size:12.5px;color:var(--muted);margin-top:2px;';
+    const days = Number(w.expiresDays) || AWC_QUOTE_ANSWER_DAYS;
+    when.textContent = st.key === 'approved' ? 'Approved ' + day(w.approvedAt)
+      : st.key === 'declined' ? 'Declined ' + day(w.deniedAt)
+      : st.key === 'draft' ? 'Not emailed yet'
+      : 'Sent ' + day(w.createdAt) + ' · expires ' + day(new Date(new Date(w.createdAt).getTime() + days * 86400000).toISOString());
+    row.appendChild(top); row.appendChild(what); row.appendChild(when);
+    row.addEventListener('click', ()=> awcOpenQuote(w));
+    box.appendChild(row);
+  });
+  awcMoreButton(box, rows.length, awcRenderQuoteCurrent);
+}
+
+// A quote as the customer got it, with Copy to a new quote
+function awcOpenQuote(w){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const card = document.createElement('div');
+  card.className = 'confirm-box';
+  card.style.cssText = 'max-width:560px;width:100%;display:flex;flex-direction:column;max-height:88vh;';
+  const h = document.createElement('h3');
+  h.style.cssText = 'font-size:16px;margin:0 0 4px;';
+  h.textContent = 'Quote' + (w.number ? ' #' + awcQuoteNumberText(w.number) : '') + ' — ' + (awcCustName(w.customerId) || 'Customer');
+  const sub = document.createElement('p');
+  sub.style.cssText = 'font-size:12.5px;color:var(--muted);margin:0 0 10px;';
+  sub.textContent = w.createdAt ? 'Sent ' + new Date(w.createdAt).toLocaleString() : '';
+  const frame = document.createElement('iframe');
+  frame.style.cssText = 'flex:1;min-height:360px;width:100%;border:1px solid var(--line);border-radius:10px;background:#F4F6F5;';
+  frame.setAttribute('sandbox', '');
+  frame.srcdoc = w.emailHtml || awcQuoteEmailHtml((customers || []).find(c => c && c.id === w.customerId) || {name: 'Customer'},
+    'Quote', w.date || '', w.lineItems || [], Number(w.total) || 0, w.notes || '', null, null, w.number);
+  const btns = document.createElement('div');
+  btns.className = 'btn-row';
+  btns.style.cssText = 'margin-top:12px;flex-wrap:nowrap;';
+  const copy = document.createElement('button');
+  copy.type = 'button'; copy.className = 'btn btn-ghost'; copy.style.cssText = 'flex:1 1 0;min-width:0;';
+  copy.textContent = 'Copy to a new quote';
+  const close = document.createElement('button');
+  close.type = 'button'; close.className = 'btn btn-primary'; close.style.cssText = 'flex:1 1 0;min-width:0;';
+  close.textContent = 'Close';
+  const shut = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+  close.addEventListener('click', shut);
+  copy.addEventListener('click', ()=>{
+    shut();
+    awcQuoteCustomers = w.customerId ? [w.customerId] : [];
+    awcQuoteLines = (w.lineItems || []).map(li => Object.assign({}, li));
+    if(!awcQuoteLines.length) awcQuoteLines = [{description: '', qty: '', price: ''}];
+    document.getElementById('awcQuoteName').value = w.name || '';
+    document.getElementById('awcQuoteNotes').value = w.notes || '';
+    document.getElementById('awcQuoteDate').value = todayDateStr();
+    awcView = 'main'; awcApply();
+    awcRenderChips(); awcRenderLines('awcQuoteLines');
+    showToast('Copied — change anything, then Send to customer');
+  });
+  btns.appendChild(copy); btns.appendChild(close);
+  card.appendChild(h); card.appendChild(sub); card.appendChild(frame); card.appendChild(btns);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+}
+
+// The top and bottom of a quote email, the same settings as the website's
+// Customize email (kept for the company, so both use them)
+function awcCustomizeQuoteEmail(){
+  const q = awcQuoteEmailStyle();
+  const report = lsGet('reportEmailStyle') || {};
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const card = document.createElement('div');
+  card.className = 'confirm-box';
+  card.style.cssText = 'max-width:440px;width:100%;max-height:88vh;overflow-y:auto;';
+  card.innerHTML = '<h3 style="font-size:17px;margin:0 0 4px;">Customize email</h3>'
+    + '<p style="font-size:13px;color:var(--muted);margin:0 0 14px;">The top and bottom of every quote email, here and on the website.</p>'
+    + '<div class="field"><label>Header</label><input data-f="header"></div>'
+    + '<div class="field"><label>Line under the header (optional)</label><input data-f="subheader" placeholder="e.g. Licensed &amp; insured"></div>'
+    + '<div class="field"><label>Closing line</label><textarea data-f="closing" rows="2"></textarea></div>'
+    + '<div class="field"><label>Sign-off</label><input data-f="signoff"></div>'
+    + '<label class="inline-check" style="margin:2px 0 16px;"><input type="checkbox" data-f="showContact"> Show phone, email and website</label>'
+    + '<div class="btn-row" style="flex-wrap:nowrap;margin-bottom:10px;">'
+    + '<button type="button" class="btn btn-ghost" data-preview style="flex:1 1 0;min-width:0;">Preview</button>'
+    + '<button type="button" class="btn btn-ghost" data-reset style="flex:1 1 0;min-width:0;">Reset to default</button></div>'
+    + '<button type="button" class="btn btn-primary" data-save style="margin-bottom:8px;">Save</button>'
+    + '<button type="button" class="btn btn-ghost" data-cancel>Cancel</button>';
+  const f = k => card.querySelector('[data-f="' + k + '"]');
+  const fill = v=>{
+    f('header').value = v.header || '';
+    f('header').placeholder = awcCompanyName();
+    f('subheader').value = v.subheader || '';
+    f('closing').value = v.closing || '';
+    f('signoff').value = v.signoff !== null && v.signoff !== undefined ? v.signoff
+      : (report.signoff !== undefined ? report.signoff : 'Thank you for your business.');
+    f('showContact').checked = v.showContact !== false;
+  };
+  const values = ()=> ({header: f('header').value, subheader: f('subheader').value, closing: f('closing').value,
+    signoff: f('signoff').value, showContact: f('showContact').checked});
+  fill(q);
+  const shut = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+  card.querySelector('[data-cancel]').addEventListener('click', shut);
+  card.querySelector('[data-reset]').addEventListener('click', ()=> fill(AWC_QUOTE_EMAIL_DEFAULTS));
+  card.querySelector('[data-save]').addEventListener('click', ()=>{
+    lsSet('quoteEmailStyle', values());
+    queueSetupSend('quoteEmailStyle');
+    try{ fieldSync(); }catch(e){}
+    shut();
+    showToast('Quote email saved');
+  });
+  card.querySelector('[data-preview]').addEventListener('click', ()=>{
+    const sample = {name: 'Sample Customer', address: '123 Main St'};
+    const html = awcQuoteEmailHtml(sample, 'Quote', new Date().toLocaleDateString(undefined, {month: 'long', day: 'numeric', year: 'numeric'}),
+      [{description: 'Variable-speed pump', qty: 1, price: 1249}, {description: 'Install labour', qty: 2, price: 95}],
+      1439, 'Sample notes.', values(), null, awcNextQuoteNumber(), awcQuoteExpiresDays());
+    const pv = document.createElement('div');
+    pv.className = 'confirm-overlay';
+    pv.style.zIndex = '400';
+    const pc = document.createElement('div');
+    pc.className = 'confirm-box';
+    pc.style.cssText = 'max-width:560px;width:100%;display:flex;flex-direction:column;max-height:88vh;';
+    const fr = document.createElement('iframe');
+    fr.setAttribute('sandbox', '');
+    fr.style.cssText = 'flex:1;min-height:420px;width:100%;border:1px solid var(--line);border-radius:10px;';
+    fr.srcdoc = html;
+    const done = document.createElement('button');
+    done.type = 'button'; done.className = 'btn btn-primary'; done.style.marginTop = '12px'; done.textContent = 'Close';
+    done.addEventListener('click', ()=> pv.remove());
+    pc.appendChild(fr); pc.appendChild(done); pv.appendChild(pc);
+    document.body.appendChild(pv);
+  });
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+}
+
+function awcQuoteEmailHtml(customer, type, dateText, items, total, notes, styleOverride, respondUrl, quoteNumber, expiresDays){
+  const style = lsGet('reportEmailStyle') || {};
+  const q = styleOverride || awcQuoteEmailStyle();
+  const colour = style.colour || '#134E4A';
+  const company = awcCompanyName();
+  const headerText = (q.header || '').trim() || company;
+  const money = n => '$' + (Number(n) || 0).toFixed(2);
+  const cell = 'padding:9px 10px;border-bottom:1px solid #E6E9E8;font-size:14px;';
+  const head = 'padding:8px 10px;border-bottom:2px solid #E6E9E8;font-size:11.5px;font-weight:700;'
+    + 'color:#0F766E;text-transform:uppercase;letter-spacing:0.05em;';
+
+  const rows = items.map(item=>{
+    const qty = parseFloat(item.qty) || 0;
+    const price = parseFloat(item.price) || 0;
+    return '<tr>'
+      + '<td style="' + cell + 'color:#16302E;">' + awcEsc(item.description) + '</td>'
+      + '<td style="' + cell + 'color:#4A5A58;text-align:center;white-space:nowrap;">' + awcEsc(String(qty)) + '</td>'
+      + '<td style="' + cell + 'color:#4A5A58;text-align:right;white-space:nowrap;">' + money(price) + '</td>'
+      + '<td style="' + cell + 'color:#16302E;font-weight:600;text-align:right;white-space:nowrap;">' + money(qty * price) + '</td>'
+      + '</tr>';
+  }).join('');
+
+  const bits = [];
+  const plain = t => '<span style="color:#4A5A58;text-decoration:none;">' + awcEsc(t) + '</span>';
+  if(q.showContact !== false){
+    if(lsGet('accountPhone')) bits.push(plain(lsGet('accountPhone')));
+    if(lsGet('accountEmail')) bits.push(plain(lsGet('accountEmail')));
+    if(lsGet('businessWebsite')) bits.push(plain(lsGet('businessWebsite')));
+  }
+  const signoff = q.signoff !== null && q.signoff !== undefined ? q.signoff
+    : (style.signoff !== undefined ? style.signoff : 'Thank you for your business.');
+
+  return '<!DOCTYPE html><html><head><meta charset="utf-8">'
+    + '<meta name="format-detection" content="telephone=no,address=no,email=no,date=no">'
+    + '<style>a[href^="tel"],a[href^="mailto"],a[href^="http"],a[x-apple-data-detectors]{'
+    + 'color:inherit !important;text-decoration:none !important;font-size:inherit !important;'
+    + 'font-family:inherit !important;font-weight:inherit !important;}</style>'
+    + '</head><body style="margin:0;padding:0;background:#F4F6F5;">'
+    + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F4F6F5;padding:24px 12px;">'
+    + '<tr><td align="center">'
+    + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+    + 'style="max-width:580px;background:#FFFFFF;border-radius:12px;overflow:hidden;'
+    + 'font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Arial,sans-serif;">'
+    // Header
+    + '<tr><td style="background:' + awcEsc(colour) + ';padding:22px 26px;">'
+    + '<div style="font-size:19px;font-weight:700;color:#FFFFFF;">' + awcEsc(headerText) + '</div>'
+    + ((q.subheader || '').trim() ? '<div style="font-size:13px;color:#FFFFFF;opacity:0.85;margin-top:4px;">'
+        + awcEsc(q.subheader.trim()) + '</div>' : '')
+    + '</td></tr>'
+    // What, who and when
+    + '<tr><td style="padding:24px 26px 0;">'
+    // The top line: QUOTE, with the quote's number just to its right
+    + '<div style="font-size:12px;font-weight:700;color:#0F766E;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">'
+    + awcEsc(type)
+    // The number as on the form: large, with a light # (Oct 2)
+    + (quoteNumber ? '<span style="display:inline-block;vertical-align:middle;margin-left:10px;'
+        + 'font-family:\'Space Grotesk\',Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;letter-spacing:-0.01em;color:#0E4A4D;text-transform:none;line-height:1;">'
+        + '<span style="color:#A9BCB9;font-weight:500;">#</span>' + awcEsc(awcQuoteNumberText(quoteNumber)) + '</span>' : '')
+    + '</div>'
+    + '<div style="font-size:17px;font-weight:700;color:#16302E;">' + awcEsc(customer.name) + '</div>'
+    + (customer.address ? '<div style="font-size:13.5px;color:#6B7B79;margin-top:3px;">' + awcEsc(customer.address) + '</div>' : '')
+    + '<div style="font-size:13.5px;color:#6B7B79;margin-top:3px;">' + awcEsc(dateText) + '</div>'
+    + '</td></tr>'
+    // The items
+    + '<tr><td style="padding:20px 26px 0;">'
+    + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">'
+    + '<tr><td style="' + head + '">Item</td><td style="' + head + 'text-align:center;">Qty</td>'
+    + '<td style="' + head + 'text-align:right;">Price</td><td style="' + head + 'text-align:right;">Amount</td></tr>'
+    + rows
+    + '<tr><td colspan="3" style="padding:12px 10px 0;font-size:14.5px;font-weight:700;color:#16302E;text-align:right;">Total</td>'
+    + '<td style="padding:12px 10px 0;font-size:16px;font-weight:700;color:#16302E;text-align:right;white-space:nowrap;">' + money(total) + '</td></tr>'
+    + '</table></td></tr>'
+    // Notes
+    + (notes ? '<tr><td style="padding:20px 26px 0;">'
+        + '<div style="font-size:12px;font-weight:700;color:#0F766E;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Notes</div>'
+        + '<div style="font-size:14px;color:#4A5A58;line-height:1.5;white-space:pre-wrap;">' + awcEsc(notes) + '</div></td></tr>' : '')
+    // Footer
+    + '<tr><td style="padding:26px;">'
+    // How long this quote is good for (quotes sent with a set number of days)
+    + (expiresDays ? '<div style="font-size:13.5px;color:#4A5A58;margin:0 0 4px;">This quote expires in <strong>'
+        + expiresDays + (expiresDays === 1 ? ' day' : ' days') + '</strong>, on '
+        + awcEsc(new Date(Date.now() + expiresDays * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'}))
+        + '.</div>' : '')
+    // Approve / Deny, when the quote can take an answer
+    + (respondUrl ? '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 6px;width:100%;"><tr>'
+        + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">Approve</a></td>'
+        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#ffffff;color:#B8492E;border:1.5px solid #EFC9BC;font-weight:700;font-size:15px;text-decoration:none;">Decline</a></td>'
+        + '</tr></table>'
+        // Download quote (Oct 15): the breakdown as a PDF to keep
+        + (!awcQuoteLinkCanDownload(respondUrl) ? '' : '<a href="' + respondUrl + '&a=download" style="display:block;text-align:center;margin:12px 0 6px;padding:12px 10px;border-radius:10px;'
+        + 'background:#F1F8F7;color:' + awcEsc(colour) + ';border:1.5px solid #BFDCD8;font-weight:700;font-size:14.5px;text-decoration:none;">'
+        + '&#8615;&nbsp; Download ' + awcEsc(String(type || 'Quote').toLowerCase()) + ' (PDF)</a>') : '')
+    + (((q.closing || '').trim() || signoff) ? '<div style="font-size:14px;color:#4A5A58;padding-top:18px;border-top:1px solid #E6E9E8;white-space:pre-wrap;">'
+        + awcEsc((q.closing || '').trim())
+        + ((q.closing || '').trim() && signoff ? '<br>' : '') + (signoff ? awcEsc(signoff) : '') + '</div>' : '')
+    + '<div style="font-size:13.5px;font-weight:600;color:#16302E;margin-top:10px;">' + awcEsc(company) + '</div>'
+    + (bits.length ? '<div style="font-size:12.5px;color:#4A5A58;margin-top:4px;">' + bits.join(' &nbsp;&middot;&nbsp; ') + '</div>' : '')
+    + (lsGet('licenseNumber') ? '<div style="font-size:11.5px;color:#8A9997;margin-top:3px;">License ' + awcEsc(lsGet('licenseNumber')) + '</div>' : '')
+    + '</td></tr>'
+    + '</table></td></tr></table></body></html>';
+}
+
+function awcQuoteDownloadDetails(customer, type, dateText, items, total, notes, quoteNumber, expiresDays, quoteName){
+  const style = lsGet('reportEmailStyle') || {};
+  const q = awcQuoteEmailStyle();
+  const signoff = q.signoff !== null && q.signoff !== undefined ? q.signoff
+    : (style.signoff !== undefined ? style.signoff : 'Thank you for your business.');
+  const expiresOn = expiresDays
+    ? new Date(Date.now() + expiresDays * 86400000).toLocaleDateString(undefined, {month: 'long', day: 'numeric', year: 'numeric'})
+    : '';
+  return {
+    v: 1,
+    type: type || 'Quote',
+    number: quoteNumber ? awcQuoteNumberText(quoteNumber) : '',
+    name: quoteName || '',
+    date: dateText || '',
+    expiresOn: expiresOn,
+    customer: {name: customer.name || '', address: customer.address || ''},
+    items: (items || []).map(li => ({description: String(li.description || ''), qty: parseFloat(li.qty) || 0, price: parseFloat(li.price) || 0})),
+    total: Number(total) || 0,
+    notes: notes || '',
+    colour: style.colour || '#134E4A',
+    company: {
+      name: awcCompanyName(),
+      phone: q.showContact !== false ? (lsGet('accountPhone') || '') : '',
+      email: q.showContact !== false ? (lsGet('accountEmail') || '') : '',
+      website: q.showContact !== false ? (lsGet('businessWebsite') || '') : '',
+      license: lsGet('licenseNumber') || ''
+    },
+    signoff: signoff || ''
+  };
 }
 
 function awcLabelTechs(){
@@ -17085,6 +17788,7 @@ function awcOpenForEditing(isTask, r){
 
 // Current: what's still on the routes, soonest first
 function awcRenderCurrent(){
+  if(awcKind === 'Quote'){ awcRenderQuoteCurrent(); return; }
   const box = document.getElementById('awcCurList');
   const tech = awcTechMenu('awcCurTech');
   const isTask = awcKind === 'Task';
@@ -18142,9 +18846,13 @@ function rememberPlace(){
 async function restorePlace(p){
   navigatingBack = true;
   try{
+    const leaving = currentViewName;
     switchView(p.view, {skipRefresh: true});
+    // Back within Today (or out of a report) keeps the day; Back from another
+    // tab lands on today, like pressing the Today tab (Oct 15)
     if(p.view === 'home' && p.homeDay){
-      selectedHomeDay = p.homeDay; weekOffset = p.weekOffset || 0;
+      if(leaving === 'home' || leaving === 'visit'){ selectedHomeDay = p.homeDay; weekOffset = p.weekOffset || 0; }
+      else { selectedHomeDay = DAYS_OF_WEEK[new Date().getDay()]; weekOffset = 0; }
       try{ renderHomeList(); }catch(e){}
     }
     if(p.view === 'customers'){
@@ -21698,12 +22406,8 @@ function openWhereLeft(){
   const pages = ['home', 'serviced', 'technicians', 'customers', 'report', 'options'];
   if(!last || last.date !== todayDateStr() || pages.indexOf(last.view) === -1){ openOnToday(); return; }
   if(last.view === 'technicians' && !isAdminUser()){ openOnToday(); return; }
-  if(last.view === 'home'){
-    if(last.day) selectedHomeDay = last.day;
-    weekOffset = Number(last.weekOffset) || 0;
-    if(currentViewName !== 'home') switchView('home'); else renderHomeList();
-    return;
-  }
+  // Oct 15: Today always opens on today, not the day that was being looked at
+  if(last.view === 'home'){ openOnToday(); return; }
   switchView(last.view);
 }
 // A report was open when another tab was pressed, and hasn't been finished,

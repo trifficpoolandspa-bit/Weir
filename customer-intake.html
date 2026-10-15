@@ -173,6 +173,9 @@ body.sidebar-subtabs #view-workcenter > .card:has(> #workCenterTypeControl){disp
 body.sidebar-subtabs .card:has(> #techMainTabs){display:none;}
 body.sidebar-subtabs #chemConfigTypeControl{display:none !important;}
 
+/* The scrollbar's room is always kept, so a page never shifts sideways when it
+   comes or goes (Oct 15) */
+html{overflow-y:scroll;scrollbar-gutter:stable;}
 .view{display:none;}
 .view.active{display:block;}
 
@@ -4999,7 +5002,7 @@ function openProductServiceModal(){
   });
 
   overlay.querySelector('#psCancel').addEventListener('click', cleanup);
-  nameEl.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') priceEl.focus(); });
+  nameEl.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); priceEl.focus(); } });
 }
 
 // Schedule an existing product or service for a customer on a date
@@ -11676,7 +11679,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const cancel = document.getElementById('btnCancelForgot');
   if(cancel) cancel.addEventListener('click', closeForgotBox);
   const typed = document.getElementById('forgotEmail');
-  if(typed) typed.addEventListener('keydown', e=>{ if(e.key === 'Enter') sendPasswordReset(); });
+  if(typed) typed.addEventListener('keydown', e=>{ if(e.key === 'Enter'){ e.preventDefault(); sendPasswordReset(); } });
   const box = document.getElementById('forgotScreen');
   // Arriving from the emailed link: set a password before anything else
   try{ startPasswordReset(); }catch(e){}
@@ -11931,7 +11934,7 @@ function startPasswordReset(){
   screen.style.display = 'flex';
   const go = ()=> setNewPassword(recovery);
   document.getElementById('btnSetPassword').addEventListener('click', go);
-  document.getElementById('resetPassword2').addEventListener('keydown', e=>{ if(e.key === 'Enter') go(); });
+  document.getElementById('resetPassword2').addEventListener('keydown', e=>{ if(e.key === 'Enter'){ e.preventDefault(); go(); } });
   return true;
 }
 
@@ -12026,7 +12029,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const btn = document.getElementById('btnSiteLogin');
   const pass = document.getElementById('sitePassword');
   if(btn) btn.addEventListener('click', attemptSiteLogin);
-  if(pass) pass.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') attemptSiteLogin(); });
+  if(pass) pass.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); attemptSiteLogin(); } });
   guardSiteSession();
 });
 
@@ -15945,8 +15948,59 @@ function renderLineItems(){
     const descInput = document.createElement('input');
     descInput.value = item.description;
     descInput.placeholder = 'Description';
-    descInput.style.flex = '2';
-    descInput.setAttribute('list', 'wcProductSuggestions');
+    descInput.style.cssText = 'width:100%;min-width:0;';
+    descInput.setAttribute('autocomplete', 'weir-line-item');   // not the browser's saved entries
+    // Our own list of matches under the box (Oct 15): the browser's own list
+    // (a datalist) shows nothing on phones, so typing there suggested nothing
+    const descWrap = document.createElement('div');
+    descWrap.style.cssText = 'position:relative;flex:2;min-width:0;display:flex;';
+    const suggest = document.createElement('div');
+    suggest.style.cssText = 'display:none;position:absolute;left:0;right:0;top:100%;z-index:45;background:#fff;'
+      + 'border:1px solid var(--line);border-radius:10px;margin-top:4px;box-shadow:0 4px 14px rgba(15,46,46,0.14);'
+      + 'max-height:240px;overflow-y:auto;';
+    descWrap.appendChild(descInput);
+    descWrap.appendChild(suggest);
+    const hideSuggest = ()=>{ suggest.style.display = 'none'; suggest.innerHTML = ''; };
+    const showSuggest = ()=>{
+      const t = descInput.value.trim().toLowerCase();
+      if(!t){ hideSuggest(); return; }
+      const named = (productsServices || []).filter(p => p && p.name && String(p.name).toLowerCase().includes(t));
+      // Ones starting with what's typed first, then the rest, each A to Z
+      named.sort((a, b)=>{
+        const as = String(a.name).toLowerCase().startsWith(t) ? 0 : 1, bs = String(b.name).toLowerCase().startsWith(t) ? 0 : 1;
+        return as - bs || String(a.name).localeCompare(String(b.name));
+      });
+      const matches = named.filter(p => String(p.name) !== descInput.value).slice(0, 8);
+      suggest.innerHTML = '';
+      if(!matches.length){ hideSuggest(); return; }
+      matches.forEach(p=>{
+        const opt = document.createElement('div');
+        opt.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;font-size:13.5px;cursor:pointer;border-bottom:1px solid var(--line);';
+        const nm = document.createElement('span');
+        nm.style.cssText = 'flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        nm.textContent = p.name;
+        opt.appendChild(nm);
+        if(p.price !== undefined && p.price !== null && p.price !== ''){
+          const pr = document.createElement('span');
+          pr.style.cssText = "flex-shrink:0;font-size:12.5px;color:var(--muted);font-family:'JetBrains Mono',monospace;";
+          pr.textContent = '$' + (Number(p.price) || 0).toFixed(2);
+          opt.appendChild(pr);
+        }
+        opt.addEventListener('mouseenter', ()=>{ opt.style.background = 'var(--teal-pale)'; });
+        opt.addEventListener('mouseleave', ()=>{ opt.style.background = ''; });
+        opt.addEventListener('mousedown', e=>{
+          e.preventDefault();
+          descInput.value = p.name;
+          descInput.dispatchEvent(new Event('input', {bubbles: true}));
+          hideSuggest();
+        });
+        suggest.appendChild(opt);
+      });
+      suggest.style.display = 'block';
+    };
+    descInput.addEventListener('focus', showSuggest);
+    descInput.addEventListener('input', showSuggest);
+    descInput.addEventListener('blur', ()=> setTimeout(hideSuggest, 150));
     descInput.addEventListener('input', ()=>{
       item.description = descInput.value;
       // Anything entered starts with a quantity of one
@@ -16007,7 +16061,7 @@ function renderLineItems(){
       recalcWorkOrderTotal();
     });
 
-    row.appendChild(descInput);
+    row.appendChild(descWrap);
     row.appendChild(qtyInput);
     row.appendChild(priceWrap);
     row.appendChild(removeBtn);
@@ -18077,10 +18131,13 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
     const quoteId = 'wo_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
     const expiresDays = type === 'Quote' ? quoteExpiresDays() : null;
     if(expiresDays) message += `\n\nThis quote expires in ${expiresDays} ${expiresDays === 1 ? 'day' : 'days'}.`;
-    const respondUrl = await registerQuoteResponse(quoteId, expiresDays);
     // This quote's number: the next one up
     const quoteNumber = nextQuoteNumber();
     lsSet('quoteCounter', quoteNumber);
+    // The breakdown kept with the code, for the email's Download quote (Oct 15)
+    const details = quoteDownloadDetails(customer, type, quoteDateText, validItems, total, notes, quoteNumber, expiresDays,
+      document.getElementById('wcQuoteName').value.trim());
+    const respondUrl = await registerQuoteResponse(quoteId, expiresDays, details);
     const emailHtml = quoteEmailHtml(customer, type, quoteDateText, validItems, total, notes, null, respondUrl, quoteNumber, expiresDays);
     const sent = await sendQuoteEmail(customer, subject, emailHtml, message);
     if(sent) sentCount++;
@@ -18132,6 +18189,10 @@ function loadQuoteEmailStyle(){
   return Object.assign({}, QUOTE_EMAIL_DEFAULTS, lsGet('quoteEmailStyle') || {});
 }
 
+function quoteLinkCanDownload(url){
+  const m = String(url || '').match(/[?&]t=([0-9a-f]+)/);
+  return !!(m && quoteCanDownload[m[1]]);
+}
 function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOverride, respondUrl, quoteNumber, expiresDays){
   const style = lsGet('reportEmailStyle') || {};
   const q = styleOverride || loadQuoteEmailStyle();
@@ -18219,7 +18280,11 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
     + (respondUrl ? '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 6px;width:100%;"><tr>'
         + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">Approve</a></td>'
         + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#ffffff;color:#B8492E;border:1.5px solid #EFC9BC;font-weight:700;font-size:15px;text-decoration:none;">Decline</a></td>'
-        + '</tr></table>' : '')
+        + '</tr></table>'
+        // Download quote (Oct 15): the breakdown as a PDF to keep
+        + (!quoteLinkCanDownload(respondUrl) ? '' : '<a href="' + respondUrl + '&a=download" style="display:block;text-align:center;margin:12px 0 6px;padding:12px 10px;border-radius:10px;'
+        + 'background:#F1F8F7;color:' + esc(colour) + ';border:1.5px solid #BFDCD8;font-weight:700;font-size:14.5px;text-decoration:none;">'
+        + '&#8615;&nbsp; Download ' + esc(String(type || 'Quote').toLowerCase()) + ' (PDF)</a>') : '')
     + (((q.closing || '').trim() || signoff) ? '<div style="font-size:14px;color:#4A5A58;padding-top:18px;border-top:1px solid #E6E9E8;white-space:pre-wrap;">'
         + esc((q.closing || '').trim())
         + ((q.closing || '').trim() && signoff ? '<br>' : '') + (signoff ? esc(signoff) : '') + '</div>' : '')
@@ -18478,21 +18543,65 @@ function quoteExpiresDays(){
   return n >= 1 && n <= 365 ? n : QUOTE_ANSWER_DAYS;
 }
 
-async function registerQuoteResponse(quoteId, expiresDays){
+// What the customer's downloaded quote (PDF) shows, kept on the server with the
+// quote's code (snippet 34) so the email's Download button works on any phone
+// or computer, for good. Read back only by someone holding the email's link.
+function quoteDownloadDetails(customer, type, dateText, items, total, notes, quoteNumber, expiresDays, quoteName){
+  const style = lsGet('reportEmailStyle') || {};
+  const q = loadQuoteEmailStyle();
+  const signoff = q.signoff !== null && q.signoff !== undefined ? q.signoff
+    : (style.signoff !== undefined ? style.signoff : 'Thank you for your business.');
+  const expiresOn = expiresDays
+    ? new Date(Date.now() + expiresDays * 86400000).toLocaleDateString(undefined, {month: 'long', day: 'numeric', year: 'numeric'})
+    : '';
+  return {
+    v: 1,
+    type: type || 'Quote',
+    number: quoteNumber ? quoteNumberText(quoteNumber) : '',
+    name: quoteName || '',
+    date: dateText || '',
+    expiresOn: expiresOn,
+    customer: {name: customer.name || '', address: customer.address || ''},
+    items: (items || []).map(li => ({description: String(li.description || ''), qty: parseFloat(li.qty) || 0, price: parseFloat(li.price) || 0})),
+    total: Number(total) || 0,
+    notes: notes || '',
+    colour: style.colour || '#134E4A',
+    company: {
+      name: companyName(),
+      phone: q.showContact !== false ? (lsGet('accountPhone') || '') : '',
+      email: q.showContact !== false ? (lsGet('accountEmail') || '') : '',
+      website: q.showContact !== false ? (lsGet('businessWebsite') || '') : '',
+      license: lsGet('licenseNumber') || ''
+    },
+    signoff: signoff || ''
+  };
+}
+
+// Which codes have their breakdown on the server (so the email offers Download)
+var quoteCanDownload = {};
+async function registerQuoteResponse(quoteId, expiresDays, details){
   try{
     if(typeof siteUser === 'undefined' || !siteUser || !siteUser.companyId) return null;
     const bytes = new Uint8Array(16);
     crypto.getRandomValues(bytes);
     const token = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
-    const res = await sbFetch('/rest/v1/quote_responses?on_conflict=company_id,quote_id', {
+    const put = withDetails => sbFetch('/rest/v1/quote_responses?on_conflict=company_id,quote_id', {
       method: 'POST',
       headers: {'Prefer': 'resolution=merge-duplicates,return=minimal'},
       // Sent now: the customer has the quote's days (30 unless set) from this
       // sending to answer. expires_days needs snippet 20 on the server.
       body: JSON.stringify(Object.assign({company_id: siteUser.companyId, quote_id: quoteId, token: token, outcome: null, responded_at: null, created_at: new Date().toISOString()},
-        expiresDays && expiresDays !== QUOTE_ANSWER_DAYS ? {expires_days: expiresDays} : {}))
+        expiresDays && expiresDays !== QUOTE_ANSWER_DAYS ? {expires_days: expiresDays} : {},
+        // The breakdown for Download quote (needs snippet 34)
+        withDetails ? {details: details} : {}))
     });
+    let res = await put(!!details);
+    let canDownload = !!details && !!res && res.ok;
+    // A server without snippet 34 yet turns the breakdown away: the quote still
+    // goes with Approve and Decline, just without Download
+    if(details && (!res || !res.ok) && !(res && res.offline)){ res = await put(false); canDownload = false; }
     if(!res || !res.ok) return null;
+    quoteCanDownload[token] = canDownload;
     // The page on this website that asks the customer to confirm (Supabase shows
     // pages from its own addresses as plain text); it carries which server to tell
     return new URL('quote-response.html', location.href).href.split('?')[0]
@@ -18554,6 +18663,8 @@ async function takeQuoteAnswers(){
       saveWorkOrders();
       const wcPage = document.getElementById('view-workcenter');
       if(wcPage && wcPage.classList.contains('active') && workCenterMode === 'quotes') applyWorkOrderType();
+      // The answer shows in Alerts straight away (Oct 15)
+      try{ renderAlerts(); }catch(e){ try{ updateAlertsBadge(); }catch(e2){} }
     }
   }catch(e){}
 }
@@ -19952,7 +20063,7 @@ function openColorPicker(item, idx, onDone){
       const v = btnValue(item.buttons[idx]);
       // Blue is the default, so it stays a plain number
       item.buttons[idx] = key === 'blue' ? v : {v, c: key};
-      saveActiveConfig();
+      markButtonsOwn(item); saveActiveConfig();
       document.body.removeChild(overlay);
       if(onDone) onDone();
     });
@@ -20060,7 +20171,7 @@ function openQuickButtonsModal(item){
         item.buttons[idx] = key === 'blue' ? parsed : {v: parsed, c: key};
         // Back into its place by number (unless the order is their own)
         const moved = sortQuickButtons(item);
-        saveActiveConfig();
+        markButtonsOwn(item); saveActiveConfig();
         if(moved) renderBody();
       });
       chip.appendChild(numInput);
@@ -20087,7 +20198,7 @@ function openQuickButtonsModal(item){
         + 'display:flex;align-items:center;justify-content:center;';
       del.addEventListener('click', ()=>{
         item.buttons.splice(idx, 1);
-        saveActiveConfig();
+        markButtonsOwn(item); saveActiveConfig();
         renderBody();
       });
       chip.appendChild(del);
@@ -20098,7 +20209,7 @@ function openQuickButtonsModal(item){
         item.buttons = reordered;
         // Their own order from now on: kept, not re-sorted by number
         item.buttonsOrdered = true;
-        saveActiveConfig();
+        markButtonsOwn(item); saveActiveConfig();
         renderBody();
       });
 
@@ -20121,7 +20232,7 @@ function openQuickButtonsModal(item){
       // In the colour chosen for this field, or for the whole body of water
       const c = newButtonColor(item);
       item.buttons.push(c === 'blue' ? 0 : {v: 0, c: c});
-      saveActiveConfig();
+      markButtonsOwn(item); saveActiveConfig();
       renderBody();
       // Ready to type straight away: the new button's number is waiting with
       // its 0 selected, so typing replaces it
@@ -20143,7 +20254,7 @@ function openQuickButtonsModal(item){
       resort.addEventListener('click', ()=>{
         delete item.buttonsOrdered;
         sortQuickButtons(item);
-        saveActiveConfig();
+        markButtonsOwn(item); saveActiveConfig();
         renderBody();
       });
       addRow.appendChild(resort);
@@ -20161,7 +20272,7 @@ function openQuickButtonsModal(item){
         if(!pick) return;
         colorAllButtons(item, pick.key);
         item.buttonColor = pick.key;          // new buttons here start in it too
-        saveActiveConfig();
+        markButtonsOwn(item); saveActiveConfig();
         renderBody();
         showToast('All ' + (item.label || 'these') + ' buttons ' + QUICK_BUTTON_COLORS[pick.key].label.toLowerCase());
       });
@@ -20457,6 +20568,52 @@ wireApplyAll('chkApplyAllDosages', 'applyPoolDosagesToAll', 'dosages', 'dosages'
 // Stored as customConfig[customerId][bodyKey] = {chemicals, dosages}.
 // Anything not set here falls back to the standard Pool/Spa/Extra lists.
 let customConfig = lsGet('customChemConfig') || {};
+
+// ---------- A customer's quick buttons follow the company's (Oct 15) ----------
+// A customer's setup is a copy of the company lists taken when it was made, so
+// buttons later removed from the company lists stayed on every customised
+// customer (Shock 2, 3, 4 and Chlorine tabs 0.25 kept turning up). Now each of
+// their readings and dosages shows the company's buttons, unless that
+// customer's buttons were changed for them (buttonsOwn). The same rule is in
+// the app (followCompanyButtons), so both show the same buttons.
+// Setups saved before this carry no mark. A set that differs from the
+// company's and that no other customer has was set for them, and is kept; a
+// set several customers share came from an old company list, and follows.
+function followCompanyButtons(setup, company, everyone, markDecision){
+  if(!setup || !company) return setup;
+  const vals = b => (Array.isArray(b) ? b : []).map(x => String(btnValue(x)));
+  const same = (a, b) => vals(a).join('|') === vals(b).join('|');
+  ['chemicals', 'dosages'].forEach(part=>{
+    (setup[part] || []).forEach(item=>{
+      if(!item || !item.key || item.buttonsOwn === true) return;
+      const theirs = (company[part] || []).find(x => x && x.key === item.key);
+      if(!theirs || !Array.isArray(theirs.buttons)) return;
+      if(item.buttonsOwn !== false && !same(item.buttons, theirs.buttons)){
+        let shared = 0;
+        Object.keys(everyone || {}).forEach(cid => Object.keys(everyone[cid] || {}).forEach(body=>{
+          const s = everyone[cid][body];
+          ((s && s[part]) || []).forEach(x=>{
+            if(x && x.key === item.key && Array.isArray(x.buttons) && same(x.buttons, item.buttons)) shared++;
+          });
+        }));
+        // Decided once; kept with the setup the next time it's saved, so it
+        // doesn't change as other customers' setups are saved
+        if(shared <= 1){ if(markDecision) item.buttonsOwn = true; return; }
+      }
+      if(markDecision) item.buttonsOwn = false;
+      item.buttons = JSON.parse(JSON.stringify(theirs.buttons));
+      if(theirs.buttonsOrdered === true) item.buttonsOrdered = true; else delete item.buttonsOrdered;
+    });
+  });
+  return setup;
+}
+function customBaseType(bodyKey){
+  return bodyKey === 'pool' ? 'pool' : (bodyKey === 'spa' ? 'spa' : 'fountain');
+}
+// Changed for this customer on Customer Customization: theirs from now on
+function markButtonsOwn(item){
+  if(item && selectedChemConfigType === 'custom') item.buttonsOwn = true;
+}
 
 // ---------- Groups of customers who share a setup ----------
 // A group holds one setup and every member follows it. Changing the group
@@ -21103,7 +21260,13 @@ document.getElementById('btnAllCustomQuickColors').addEventListener('click', asy
   const pick = await pickQuickColor('Colour for every customized customer\u2019s quick buttons', false);
   if(!pick) return;
   const lists = [];
-  const addSetup = setup => Object.keys(setup || {}).forEach(k => { if(setup[k] && lists.indexOf(setup[k]) === -1) lists.push(setup[k]); });
+  const everyone = lsGet('customChemConfig') || {};
+  const addSetup = setup => Object.keys(setup || {}).forEach(k => {
+    if(!setup[k] || lists.indexOf(setup[k]) !== -1) return;
+    // Their buttons as they show now, so the colour goes on those (Oct 15)
+    followCompanyButtons(setup[k], chemConfig[customBaseType(k)], everyone, true);
+    lists.push(setup[k]);
+  });
   Object.keys(customConfig).forEach(cid => addSetup(customConfig[cid]));
   customerGroups.forEach(g => addSetup(g.config));
   // A body of water open but not yet changed: its copy follows too
@@ -21113,6 +21276,7 @@ document.getElementById('btnAllCustomQuickColors').addEventListener('click', asy
     l.defaultButtonColor = pick.key;
     ['chemicals', 'dosages'].forEach(part => (l[part] || []).forEach(it=>{
       n += colorAllButtons(it, pick.key);
+      if(Array.isArray(it.buttons)) it.buttonsOwn = true;   // coloured for them: theirs now
       delete it.buttonColor;
     }));
   });
@@ -21142,7 +21306,7 @@ function activeConfigLists(){
     if(!customCustomerId || !customBodyKey) return null;
 
     const saved = customConfig[customCustomerId] && customConfig[customCustomerId][customBodyKey];
-    if(saved) return saved;
+    if(saved) return followCompanyButtons(saved, chemConfig[customBaseType(customBodyKey)], lsGet('customChemConfig') || {}, true);
 
     // Not customised yet — hand back a copy of the default to edit
     const slot = customCustomerId + '|' + customBodyKey;
@@ -22306,7 +22470,8 @@ document.getElementById('btnAllQuickColors').addEventListener('click', async ()=
     if(selectedChemConfigType === 'custom'){
       // This customer's own setups (bodies still on the company's follow it)
       const mine = (customCustomerId && customConfig[customCustomerId]) || {};
-      lists = Object.keys(mine).map(k => mine[k]);
+      const everyone = lsGet('customChemConfig') || {};
+      lists = Object.keys(mine).map(k => followCompanyButtons(mine[k], chemConfig[customBaseType(k)], everyone, true));
       const here = activeConfigLists();
       if(here && lists.indexOf(here) === -1) lists.push(here);
     } else {
@@ -22321,6 +22486,7 @@ document.getElementById('btnAllQuickColors').addEventListener('click', async ()=
     l.defaultButtonColor = pick.key;      // new buttons on this body of water start in it
     ['chemicals', 'dosages'].forEach(part => (l[part] || []).forEach(it=>{
       n += colorAllButtons(it, pick.key);
+      if(Array.isArray(it.buttons)) markButtonsOwn(it);   // coloured for this customer: theirs now
       delete it.buttonColor;              // the page-wide choice was just applied over them
     }));
   });
@@ -22809,7 +22975,7 @@ function promptDialog(message, placeholder, value, okLabel){
     overlay.querySelector('#promptCancel').addEventListener('click', ()=>cleanup(null));
     overlay.querySelector('#promptOk').addEventListener('click', ()=>cleanup(input.value.trim() || null));
     input.addEventListener('keydown', (e)=>{
-      if(e.key === 'Enter') cleanup(input.value.trim() || null);
+      if(e.key === 'Enter'){ e.preventDefault(); cleanup(input.value.trim() || null); }
       if(e.key === 'Escape') cleanup(null);
     });
     setTimeout(()=> input.focus(), 50);
@@ -28017,6 +28183,23 @@ function collectAlerts(){
     const vids = [t.doneVideo].concat(t.doneVideoMore || []).filter(Boolean);
     if(vids.length && now - tm <= ALERT_VIDEO_DAYS * 86400000) out.push(Object.assign({id: 'tkvideo:' + t.id, kind: 'video', refs: vids}, base));
   });
+  // Quotes the customer approved or declined from the email (Oct 15), on the
+  // Repairs tab. Pressing one opens it in the customer's Quotes & Orders.
+  (typeof workOrders !== 'undefined' ? workOrders : []).forEach(w=>{
+    if(!w || !w.id || !w.answeredByCustomer || !(w.approved || w.denied)) return;
+    if((w.type || 'Quote') !== 'Quote') return;
+    const c = (customers || []).find(x => x && String(x.id) === String(w.customerId));
+    if(!c || c.deleted) return;
+    const at = w.approved ? w.approvedAt : w.deniedAt;
+    const tm = new Date(at || w.createdAt || 0).getTime();
+    if(!tm || isNaN(tm) || now - tm > ALERT_NOTE_DAYS * 86400000) return;   // answered in the last 30 days
+    const what = (w.lineItems || []).map(li => li && li.description).filter(Boolean).join(', ') || w.name || '';
+    out.push({id: 'quote:' + w.id + ':' + (w.approved ? 'a' : 'd'), kind: 'repair', tagText: 'Quote',
+      customerId: c.id, name: displayName(c.name),
+      body: 'Quote' + (w.number ? ' #' + quoteNumberText(w.number) : ''), t: tm, jobKey: 'q:' + w.id, tech: '',
+      notes: (w.approved ? 'Approved' : 'Declined') + ' by the customer'
+        + (w.total ? ' — ' + qoMoney(w.total) : '') + (what ? '\n' + what : '')});
+  });
   // Emails that didn't go out (Oct 8)
   const fails = lsGet('emailFailures');
   if(fails && typeof fails === 'object') Object.keys(fails).forEach(id=>{
@@ -28216,7 +28399,7 @@ function renderAlerts(){
     if(tick){ tick.style.marginTop = '4px'; row.appendChild(tick); }
     const tag = document.createElement('span');
     tag.className = 'alert-tag ' + a.kind;
-    tag.textContent = a.kind === 'video' ? 'Video' : (a.kind === 'repair' ? 'Repair' : (a.kind === 'email' ? 'Email' : a.kind === 'reminder' ? 'Reminder' : 'Note'));
+    tag.textContent = a.tagText ? a.tagText : a.kind === 'video' ? 'Video' : (a.kind === 'repair' ? 'Repair' : (a.kind === 'email' ? 'Email' : a.kind === 'reminder' ? 'Reminder' : 'Note'));
     const body = document.createElement('div');
     body.style.cssText = 'flex:1;min-width:0;';
     const t1 = document.createElement('div');
@@ -28383,6 +28566,7 @@ function alertsNoteSave(key){
 }
 
 function switchView(view){
+  try{ if(window.releaseTabHold) window.releaseTabHold(); }catch(e){}
   // Anything being typed on a profile is kept on the way out
   try{ if(typeof saveOpenProfileEdits === 'function') saveOpenProfileEdits(); }catch(e){}
   const keep = false;
@@ -31208,6 +31392,63 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
   }, true);
 })();
 
+// Enter in a pop-up window presses its main button (Oct 15): Save, Done, Add,
+// Finalize, Send, Yes… whichever the window's solid (main) button is. Not while
+// typing in a multi-line box (Enter is a new line there), not when a suggestion
+// is highlighted (Enter picks it), and not when a button already has the focus
+// (Enter presses that one). A window whose main button deletes or removes
+// something is left alone, so Enter can never delete by accident.
+(function enterPressesMainButton(){
+  const coversScreen = el=>{
+    try{
+      const cs = getComputedStyle(el);
+      if(cs.position !== 'fixed' || cs.display === 'none' || cs.visibility === 'hidden') return false;
+      const r = el.getBoundingClientRect();
+      const vw = Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth);
+      const vh = Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight);
+      return r.left <= 1 && r.top <= 1 && r.right >= vw - 1 && r.bottom >= vh - 1;
+    }catch(e){ return false; }
+  };
+  // The window in front: whatever is on top in the middle of the screen,
+  // inside a full-screen layer
+  const topWindow = ()=>{
+    let n = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+    while(n && n !== document.body && n !== document.documentElement){
+      if((n.classList && n.classList.contains('confirm-overlay')) || coversScreen(n)) return n;
+      n = n.parentElement;
+    }
+    return null;
+  };
+  const shown = b => !b.disabled && b.getClientRects().length > 0 && getComputedStyle(b).visibility !== 'hidden';
+  const words = b => ((b.textContent || '').trim() || b.getAttribute('aria-label') || '').toLowerCase();
+  const risky = /^(delete|remove|clear|discard|erase|wipe)\b/;
+  const mainButton = layer=>{
+    const btns = Array.from(layer.querySelectorAll('button')).filter(shown);
+    const solid = btns.filter(b => b.classList.contains('btn-primary'));
+    let pick = solid.length ? solid[solid.length - 1] : null;
+    if(!pick){
+      for(const want of [/^(done|ok|okay|save|finalize|accept|confirm|send|add|yes|continue|apply)\b/]){
+        pick = btns.find(b => want.test(words(b))) || null;
+      }
+    }
+    if(!pick || risky.test(words(pick))) return null;
+    return pick;
+  };
+  document.addEventListener('keydown', e=>{
+    if(e.key !== 'Enter' || e.isComposing || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.defaultPrevented) return;
+    const t = e.target;
+    if(t && (t.tagName === 'TEXTAREA' || t.tagName === 'BUTTON' || t.tagName === 'A' || t.isContentEditable)) return;
+    const layer = topWindow();
+    if(!layer) return;
+    // Typing on the page behind the window doesn't count
+    if(t && t !== document.body && !layer.contains(t)) return;
+    const btn = mainButton(layer);
+    if(!btn) return;
+    e.preventDefault();
+    btn.click();
+  });
+})();
+
 // Clicking a customer field empties it, so a new name can be typed straight
 // away without backspacing over the old one. Click away without choosing or
 // typing anything and what was there comes back. Pressing something beside the
@@ -31494,6 +31735,48 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
     } finally { ranging = false; }
     try{ const sel = window.getSelection(); if(sel) sel.removeAllRanges(); }catch(err){}
   });
+})();
+
+// ---- Tabs stay put (Oct 15) ----
+// Pressing between tabs on a page (Alerts' kinds, WorkCenter's sections,
+// Products and Services, a customer's profile tabs, and every other row of tabs)
+// used to make the page jump: a shorter tab pulled everything up, and the
+// scrollbar coming and going nudged it sideways. Now the page never gets shorter
+// while you stay on it (only the bottom can grow), and it stays scrolled where
+// it was. Going to another page starts fresh.
+(function tabsStayPut(){
+  const TABS = '.seg-control .history-type-btn, .nav-subs .nav-sub';
+  let heldView = null;
+  const release = ()=>{
+    const main = document.querySelector('main');
+    if(main) main.style.minHeight = '';
+    heldView = null;
+  };
+  window.releaseTabHold = release;
+  document.addEventListener('click', e=>{
+    const t = e.target;
+    // Only a real press: a tab pressed by the code (opening a quote from an
+    // alert, say) is often followed by a scroll to the thing it opened
+    if(!e.isTrusted || !t || !t.closest) return;
+    // Another page: no hold
+    if(t.closest('nav .tab')){ release(); return; }
+    const btn = t.closest(TABS);
+    if(!btn || btn.disabled) return;
+    // Tabs inside a pop-up window aren't on the page
+    if(btn.closest('.confirm-overlay')) return;
+    const main = document.querySelector('main');
+    const view = document.querySelector('.view.active');
+    if(!main || !view || !view.contains(btn) && !btn.closest('.nav-subs')) return;
+    if(heldView !== view){ main.style.minHeight = ''; heldView = view; }
+    const h = main.offsetHeight;
+    if((parseFloat(main.style.minHeight) || 0) < h) main.style.minHeight = h + 'px';
+    const y = window.scrollY;
+    const back = ()=>{ if(heldView === view && Math.abs(window.scrollY - y) > 1) window.scrollTo(0, y); };
+    setTimeout(back, 0);
+    requestAnimationFrame(back);
+    setTimeout(back, 150);
+    setTimeout(back, 400);
+  }, true);
 })();
 </script>
 
