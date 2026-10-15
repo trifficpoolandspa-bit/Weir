@@ -347,6 +347,7 @@ textarea{min-height:52px;resize:vertical;}
   82%, 100% { transform: translateX(var(--marquee-shift, 0px)); }
 }
 .marquee-inner{display:inline-block;white-space:nowrap;will-change:transform;}
+.cust-name-text.marquee-on{-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent);mask-image:linear-gradient(90deg,#000 85%,transparent);}
 .marquee-on .marquee-inner{animation:weirMarquee var(--marquee-time, 6s) ease-in-out infinite;}
 /* Technicians → Photo requirements: only its own card shows, whatever else
    redraws the list underneath (Oct 3) */
@@ -10661,7 +10662,7 @@ function openReplacementsPicker(current, onDone){
 function jobKindColours(kind){
   return kind === 'task' ? ['#E8F1E4', '#4D6B3C']
     : kind === 'filter clean' ? ['#FBF1DD', '#8A5E0B']
-    : kind === 'pool drain' ? ['#E4F0F8', '#1F5E86']
+    : kind === 'pool drain' ? ['#C3DEF3', '#174C78']      // sky blue (Oct 15), apart from the work order grey
     : ['#E9EEF0', '#3E5560'];
 }
 // Each kind's icon (Oct 3): work order 🛠, filter clean 🚿, task 📋
@@ -11771,7 +11772,7 @@ function adminVersion_renderHomeList(){
     row.dataset.customerRow = c.id;
     row.style.flexWrap = 'nowrap';
     row.innerHTML = `<div style="display:flex;align-items:center;min-width:0;flex:1 1 auto;">
-        <div style="min-width:0;flex:1 1 auto;"><div class="cust-name">${c.name}${movedJustTodayTo(c, selectedDayISO) ? ' <span style="background:var(--gold);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;vertical-align:middle;margin-left:6px;">JUST TODAY</span>' : ''}</div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.address || 'No address on file'}</div></div>
+        <div style="min-width:0;flex:1 1 auto;">${custNameLineHtml(c, movedJustTodayTo(c, selectedDayISO))}<div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.address || 'No address on file'}</div></div>
       </div>`;
 
     if(canReorder){
@@ -12120,7 +12121,7 @@ function techVersion_renderHomeList(){
     row.dataset.customerRow = c.id;
     row.style.flexWrap = 'nowrap';
     row.innerHTML = `<div style="display:flex;align-items:center;min-width:0;flex:1 1 auto;">
-        <div style="min-width:0;flex:1 1 auto;"><div class="cust-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.name}${filterCleanIds.has(c.id) ? ' <span style="background:var(--gold);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;vertical-align:middle;margin-left:6px;">FILTER CLEAN</span>' : ''}${movedJustTodayTo(c, selectedDayISO) ? ' <span style="background:var(--gold);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;vertical-align:middle;margin-left:6px;">JUST TODAY</span>' : ''}</div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.address || 'No address on file'}</div></div>
+        <div style="min-width:0;flex:1 1 auto;">${custNameLineHtml(c, movedJustTodayTo(c, selectedDayISO))}<div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.address || 'No address on file'}</div></div>
       </div>`;
 
     if(canReorder){
@@ -23376,6 +23377,19 @@ function placeVisitNotes(){
 // Give it an element whose text may be cut off (overflow hidden, one line):
 // if it is, the text slides left to show the rest, pauses, and starts over.
 // Text that fits stays still.
+// A customer's name line on Today (Oct 15): the name takes all the room it can,
+// and slides to show the rest when it's too long; JUST TODAY sits at the far
+// right of the line, beside On my way, so the name never shifts and the tag is
+// never cut off. (The old FILTER CLEAN tag is gone: a filter clean is its own row.)
+function custNameLineHtml(c, justToday){
+  const name = String(c.name || '').replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+  // Started once the row is on screen, so the name can be measured
+  setTimeout(()=>{ document.querySelectorAll('.cust-name-text:not([data-mq])').forEach(el=>{ el.dataset.mq = '1'; try{ marqueeIfCut(el); }catch(e){} }); }, 0);
+  return '<div class="cust-name" style="display:flex;align-items:center;gap:8px;min-width:0;">'
+    + '<span class="cust-name-text" style="flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap;">' + name + '</span>'
+    + (justToday ? '<span style="flex:0 0 auto;background:var(--gold);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;white-space:nowrap;">JUST TODAY</span>' : '')
+    + '</div>';
+}
 function marqueeIfCut(el){
   if(!el) return;
   let inner = el.querySelector(':scope > .marquee-inner');

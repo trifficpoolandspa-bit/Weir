@@ -693,7 +693,7 @@ input::placeholder{color:#A9BCB9;}
         <button class="history-type-btn active" data-tab="profile" type="button">Profile</button>
         <button class="history-type-btn" data-tab="equipment" type="button">Equipment</button>
         <button class="history-type-btn" data-tab="history" type="button">Service Reports</button>
-        <button class="history-type-btn" data-tab="workorders" type="button">Quotes &amp; Orders</button>
+        <button class="history-type-btn" data-tab="workorders" type="button">Jobs</button>
       </div>
     </div>
 
@@ -740,7 +740,7 @@ input::placeholder{color:#A9BCB9;}
     </div>
     <div class="card" id="workOrdersCard" style="display:none;">
       <div class="section-head">
-        <h2>Quotes &amp; work orders</h2>
+        <h2>Jobs</h2>
         <span class="section-count" id="custWorkOrderCount"></span>
       </div>
       <!-- As on Service Reports (Oct 3) -->
@@ -756,6 +756,7 @@ input::placeholder{color:#A9BCB9;}
             <option value="quote">Quotes</option>
             <option value="workorder">Work orders</option>
             <option value="clean">Filter cleans</option>
+            <option value="drain">Pool drains</option>
             <option value="task">Tasks</option>
           </select>
           <span style="flex:1;"></span>
@@ -17474,7 +17475,7 @@ function renderSubmittedHistory(kind){
     } else if(!subTick && kind === 'work order' && sub.customerId && sub.sourceId){
       // A work order opens on the customer's Service reports (Oct 3)
       row.style.cursor = 'pointer';
-      row.title = 'Open this work order in the customer\u2019s Quotes & Orders';
+      row.title = 'Open this work order in the customer\u2019s Jobs';
       row.addEventListener('click', e=>{
         if(e.target.closest('button, input, a, select')) return;
         openWorkOrderReport(sub.customerId, sub.sourceId);
@@ -17567,7 +17568,7 @@ function openHistoryGroupWindow(kind, lead){
       // A work order's date opens it on the customer's Service reports (Oct 3)
       if(kind === 'work order' && m.customerId && m.sourceId){
         row.style.cursor = 'pointer';
-        row.title = 'Open this one in the customer\u2019s Quotes & Orders';
+        row.title = 'Open this one in the customer\u2019s Jobs';
         row.addEventListener('click', e=>{
           if(e.target.closest('button')) return;
           if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
@@ -18798,6 +18799,15 @@ function qoEntriesFor(customerId){
     out.push({key: 'fc:' + f.id, kind: 'clean', f: f, tag: 'Filter clean', title: said, titleHtml: html,
       done: f.status === 'done', date: f.status === 'done' && f.doneAt ? f.doneAt : (f.date || '') + 'T12:00:00'});
   });
+  // Pool drains (Oct 15): each drain sent to the app, done or still to do
+  (lsGet('scheduledPoolDrains') || []).filter(f => f && f.id && String(f.customerId) === cid).forEach(f=>{
+    const label = f.bodyName ? f.bodyName + ' drain'
+      : ({spa: 'Spa drain', fountain: 'Fountain drain', extra: 'Extra body drain'}[f.bodyKind] || 'Pool drain');
+    const extra = (Array.isArray(f.lineItems) ? f.lineItems : []).map(li => li && li.description).filter(Boolean);
+    out.push({key: 'pd:' + f.id, kind: 'drain', f: f, tag: label,
+      title: f.status !== 'done' ? 'Not done yet' + (extra.length ? ' · ' + extra.join(', ') : '') : (extra.length ? extra.join(', ') : 'Done'),
+      done: f.status === 'done', date: f.status === 'done' && f.doneAt ? f.doneAt : (f.date || '') + 'T12:00:00'});
+  });
   // Repeating tasks the same way: their upcoming ones are one row
   const myTasks = (tasks || []).filter(t => t && (t.customerIds || []).map(String).indexOf(cid) !== -1);
   const taskSeries = {};
@@ -18945,6 +18955,14 @@ function qoBody(item, customerId){
   }
   if(item.kind === 'workorder' && item.j && item.done) return buildWorkOrderDoc(customerId, item.j);
   if(item.kind === 'clean' && item.done) return buildWorkOrderDoc(customerId, Object.assign({}, item.f, {_clean: true}));
+  if(item.kind === 'drain' && item.done) return buildWorkOrderDoc(customerId, Object.assign({}, item.f, {_drain: true, _drainLabel: item.tag}));
+  if(item.kind === 'drain'){
+    const f = item.f;
+    const doc = qoDoc(item.tag, ['Scheduled for ' + when(f.date), tech(f.technicianId) ? 'Technician: ' + tech(f.technicianId) : 'No technician yet'], true);
+    if((f.lineItems || []).length) qoSection(doc, 'Extra work', qoItems(f.lineItems));
+    if(f.notes) qoSection(doc, 'Notes', qoNotes(f.notes));
+    return doc;
+  }
   if(item.kind === 'workorder'){
     const w = item.w, j = item.j || w;
     const doc = qoDoc('Work order' + (w.number ? ' #' + quoteNumberText(w.number) : ''),
@@ -19102,6 +19120,7 @@ function qoRemove(item, customerId){
   }
   if(item.done && item.kind === 'workorder' && item.j){ removeWorkOrderVisits([item.j.id]); return; }
   if(item.done && item.kind === 'clean'){ removeFilterCleanVisits([item.f.id]); return; }
+  if(item.kind === 'drain'){ removePoolDrainVisits([item.f.id]); return; }
   if(item.kind === 'quote' || (item.kind === 'workorder' && !item.j)){
     workOrders = workOrders.filter(x => x.id !== item.w.id);
     saveWorkOrders();
@@ -19131,10 +19150,11 @@ async function qoDelete(item, customerId){
     return;
   }
   const what = item.kind === 'quote' ? 'quote' : item.kind === 'workorder' ? 'work order'
-    : item.kind === 'clean' ? 'filter clean' : 'task';
-  if(item.done && (item.kind === 'workorder' && item.j || item.kind === 'clean')){
+    : item.kind === 'clean' ? 'filter clean' : item.kind === 'drain' ? String(item.tag || 'pool drain').toLowerCase() : 'task';
+  if(item.done && (item.kind === 'workorder' && item.j || item.kind === 'clean' || item.kind === 'drain')){
     // A finished one goes everywhere, as its report's own Delete does
-    return deleteWorkOrderVisit(customerId, item.kind === 'clean' ? Object.assign({}, item.f, {_clean: true}) : item.j);
+    return deleteWorkOrderVisit(customerId, item.kind === 'clean' ? Object.assign({}, item.f, {_clean: true})
+      : item.kind === 'drain' ? Object.assign({}, item.f, {_drain: true, _drainLabel: item.tag}) : item.j);
   }
   const when = item.date ? ' from ' + fmtDate(item.date) : '';
   const ok = await confirmDialog('Delete this ' + what + when + '? It is removed from WorkCenter too, and this cannot be undone.', 'Delete');
@@ -19148,6 +19168,8 @@ async function qoDelete(item, customerId){
     lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => j.id !== item.j.id));
   } else if(item.kind === 'clean'){
     lsSet('scheduledFilterCleans', (lsGet('scheduledFilterCleans') || []).filter(f => f.id !== item.f.id));
+  } else if(item.kind === 'drain'){
+    removePoolDrainVisits([item.f.id]);
   } else {
     // A task for several customers loses just this one; the last one, the task
     const t = tasks.find(x => x.id === item.t.id);
@@ -19198,6 +19220,13 @@ function qoItemText(item){
     if(j.notes || w.notes) lines.push('Work order notes: ' + (j.notes || w.notes));
     if(item.j && item.j.doneAt) lines.push('Submitted ' + fmtDate(item.j.doneAt) + (item.j.doneBy ? ' by ' + (tech(item.j.doneBy) || 'a technician') : ''));
     if(item.j && item.j.doneNotes) lines.push('Technician\u2019s notes: ' + item.j.doneNotes);
+  } else if(item.kind === 'drain'){
+    const f = item.f;
+    if(f.date) lines.push('Scheduled for ' + fmtDate(f.date + 'T12:00:00'));
+    if(tech(f.technicianId)) lines.push('Technician: ' + tech(f.technicianId));
+    if((f.lineItems || []).length){ lines.push('Extra work:'); items(f.lineItems); }
+    if(f.doneAt) lines.push('Completed ' + fmtDate(f.doneAt) + (f.doneBy ? ' by ' + (tech(f.doneBy) || 'a technician') : ''));
+    if(f.doneNotes) lines.push('Technician\u2019s notes: ' + f.doneNotes);
   } else if(item.kind === 'clean'){
     const f = item.f;
     if(f.date) lines.push('Scheduled for ' + fmtDate(f.date + 'T12:00:00'));
@@ -19284,7 +19313,7 @@ function openMultiQoPicker(){
     const chosen = all.filter(x => order.includes(qoDay(x))).sort((a, b) => String(a.date).localeCompare(String(b.date)));
     const addr = [customer.address, customer.city, customer.state, customer.zip].filter(Boolean).join(', ');
     let doc = '========================================\n';
-    doc += 'QUOTES & ORDERS\n' + customer.name + '\n';
+    doc += 'JOBS\n' + customer.name + '\n';
     if(addr) doc += addr + '\n';
     doc += chosen.length + (chosen.length === 1 ? ' item' : ' items') + '\n';
     doc += 'Generated ' + new Date().toLocaleString() + '\n';
@@ -19348,10 +19377,10 @@ function renderCustomerWorkOrders(customerId){
   const kind = kindSel ? kindSel.value : '';
   const list = all.filter(x => (!qoDateFilter || qoDay(x) === qoDateFilter) && (!kind || x.kind === kind));
   if(!list.length){
-    const kindName = {quote: 'quotes', workorder: 'work orders', clean: 'filter cleans', task: 'tasks'}[kind];
+    const kindName = {quote: 'quotes', workorder: 'work orders', clean: 'filter cleans', drain: 'pool drains', task: 'tasks'}[kind];
     container.innerHTML = emptyState(qoDateFilter ? 'Nothing on that date.'
       : kindName ? 'No ' + kindName + ' for this customer yet.'
-      : 'No quotes, work orders, filter cleans or tasks for this customer yet.');
+      : 'No quotes, work orders, filter cleans, pool drains or tasks for this customer yet.');
     return;
   }
   if(qoOpenId && !list.some(x => x.key === qoOpenId)) qoOpenId = null;
@@ -19390,7 +19419,9 @@ function renderCustomerWorkOrders(customerId){
     // Each kind its own colour (Tyrus, Oct 3): quote plum, work order slate,
     // filter clean gold, task sage
     const TAG_COLOURS = {quote: ['#F1E8F3', '#6B3E78'], workorder: ['#E9EEF0', '#3E5560'],
-      clean: ['#FBF1DD', '#8A5E0B'], task: ['#E8F1E4', '#4D6B3C']};
+      clean: ['#FBF1DD', '#8A5E0B'], task: ['#E8F1E4', '#4D6B3C'],
+      // Pool drains in the app's sky blue (Oct 15)
+      drain: ['#C3DEF3', '#174C78']};
     const tc = TAG_COLOURS[item.kind === 'series' ? item.of : item.kind] || ['var(--teal-pale)', 'var(--teal-deep)'];
     const tag = document.createElement('span');
     tag.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;white-space:nowrap;"
@@ -24036,7 +24067,7 @@ function twJobsFor(techId, iso){
 function twJobColours(kind){
   return kind === 'task' ? ['#E8F1E4', '#4D6B3C']
     : kind === 'filter clean' ? ['#FBF1DD', '#8A5E0B']
-    : kind === 'pool drain' ? ['#E4F0F8', '#1F5E86']
+    : kind === 'pool drain' ? ['#C3DEF3', '#174C78']
     : ['#E9EEF0', '#3E5560'];
 }
 function twJobRow(job, withCustomer){
@@ -24081,7 +24112,7 @@ function twJobRow(job, withCustomer){
     row.title = 'Open ' + displayName(c.name) + '\u2019s pool drains';
     row.addEventListener('click', ()=> openDrainHistory(c));
   } else if(c){
-    row.title = 'Open it in ' + displayName(c.name) + '\u2019s Quotes & Orders';
+    row.title = 'Open it in ' + displayName(c.name) + '\u2019s Jobs';
     row.addEventListener('click', ()=> openJobReport(c.id, job.key));
   }
   return row;
@@ -26054,6 +26085,11 @@ function removeWorkOrderVisits(ids){
   try{ if(document.getElementById('wcSubmittedList')) renderSubmittedHistory('work order'); }catch(e){}
 }
 // A finished filter clean, gone everywhere (Oct 3)
+// Pool drains taken off (Oct 15), as filter cleans are
+function removePoolDrainVisits(ids){
+  const set = new Set(ids.map(String));
+  lsSet('scheduledPoolDrains', (lsGet('scheduledPoolDrains') || []).filter(f => !(f && set.has(String(f.id)))));
+}
 function removeFilterCleanVisits(ids){
   const set = new Set(ids.map(String));
   lsSet('scheduledFilterCleans', (lsGet('scheduledFilterCleans') || []).filter(f => !(f && set.has(String(f.id)))));
@@ -26062,13 +26098,13 @@ function removeFilterCleanVisits(ids){
 async function deleteWorkOrderVisit(customerId, j){
   const num = j.workOrderNumber ? ' #' + quoteNumberText(j.workOrderNumber) : '';
   const sure = await confirmDialog(
-    'Delete ' + (j._clean ? 'this filter clean' : 'work order' + num) + ' from ' + fmtDate((j.date || '') + 'T12:00:00') + '?\n\n'
-    + 'It is removed for good from Service reports' + (j._clean ? '' : ' and WorkCenter History') + ', on every device, and cannot be brought back.',
+    'Delete ' + (j._clean ? 'this filter clean' : j._drain ? 'this ' + String(j._drainLabel || 'pool drain').toLowerCase() : 'work order' + num) + ' from ' + fmtDate((j.date || '') + 'T12:00:00') + '?\n\n'
+    + 'It is removed for good from Jobs' + (j._clean || j._drain ? '' : ' and WorkCenter History') + ', on every device, and cannot be brought back.',
     'Delete for good');
   if(!sure) return;
-  if(j._clean) removeFilterCleanVisits([j.id]); else removeWorkOrderVisits([j.id]);
+  if(j._clean) removeFilterCleanVisits([j.id]); else if(j._drain) removePoolDrainVisits([j.id]); else removeWorkOrderVisits([j.id]);
   try{ renderCustomerWorkOrders(customerId); }catch(e){}
-  showToast(j._clean ? 'Filter clean deleted' : 'Work order deleted');
+  showToast(j._clean ? 'Filter clean deleted' : j._drain ? (j._drainLabel || 'Pool drain') + ' deleted' : 'Work order deleted');
 }
 
 function renderWorkOrderReportRow(histList, customerId, customer, name, v, repKey, redrawRep){
@@ -26152,14 +26188,14 @@ function buildWorkOrderDoc(customerId, j){
       + '<td style="color:var(--gold);border-bottom:none;">' + workOrderMoney(total) + '</td></tr>';
   }
   doc.innerHTML = '<div class="report-head"><div>'
-    + '<h3>' + (j._clean ? 'Filter clean' : 'Work order' + esc(num)) + '</h3>'
+    + '<h3>' + (j._clean ? 'Filter clean' : j._drain ? esc(j._drainLabel || 'Pool drain') : 'Work order' + esc(num)) + '</h3>'
     + '<div class="rdate">Scheduled for ' + esc(fmtDate((j.date || '') + 'T12:00:00'))
     + (j.doneAt ? ' \u00b7 Submitted ' + esc(fmtDate(j.doneAt)) + ' at '
        + esc(new Date(j.doneAt).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'})) : '') + '</div>'
     + '<div class="rdate">Submitted by ' + esc(by) + '</div>'
     + (j.doneDurationMs ? '<div class="rdate">Time on the job ' + esc(jobDurationText(j.doneDurationMs)) + '</div>' : '')
     + '</div><div class="report-badge">Completed</div></div>'
-    + (items.length ? '<div class="report-sec">Line items</div><table class="report-table">' + rows + '</table>' : '')
+    + (items.length ? '<div class="report-sec">' + (j._drain ? 'Extra work' : 'Line items') + '</div><table class="report-table">' + rows + '</table>' : '')
     + (j.notes ? '<div class="report-sec">Work order notes</div><div class="report-notes">' + esc(j.notes) + '</div>' : '')
     + (j.doneNotes ? '<div class="report-sec">Technician\u2019s notes</div><div class="report-notes">' + esc(j.doneNotes) + '</div>' : '')
     + (j.donePhoto ? '<div class="report-sec">' + ((j.donePhotoMore || []).length ? 'Photos' : 'Photo') + '</div><div class="report-photos" data-wo-photo>'
@@ -26195,7 +26231,7 @@ function buildWorkOrderDoc(customerId, j){
   const delOpen = document.createElement('button');
   delOpen.className = 'btn btn-ghost';
   delOpen.type = 'button';
-  delOpen.textContent = j._clean ? 'Delete this filter clean' : 'Delete this work order';
+  delOpen.textContent = j._clean ? 'Delete this filter clean' : j._drain ? 'Delete this ' + String(j._drainLabel || 'pool drain').toLowerCase() : 'Delete this work order';
   delOpen.style.cssText = 'width:auto;color:var(--rust);border-color:#EFC0B4;';
   delOpen.addEventListener('click', ()=> deleteWorkOrderVisit(customerId, j));
   footer.appendChild(delOpen);
