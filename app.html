@@ -17861,6 +17861,9 @@ function vipControllers(){
 async function saveVisitInProgress(){
   if(vipRestoring) return;
   if(!currentVisitCustomerId){ return; }
+  // Only a report still open: on screen, or left open while on another tab.
+  // One finished or cancelled is never kept again.
+  if(currentViewName !== 'visit' && !visitLeftOpenFor) return;
   try{ captureVisitDraft(); }catch(e){}
   try{ if(currentVisitFountainId && typeof stashFountainDraft === 'function') stashFountainDraft(); }catch(e){}
   const photos = {};
