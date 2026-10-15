@@ -61,8 +61,11 @@ const P = 'data:image/webp;base64,UklGRiIAAABXRUJQVlA4TBYAAAAvAAAAAAfQ//73v/+BiO
   check('with the after photo', hasPhoto());
   check('and what was typed', (d.getElementById('pool_chem_chlorine')||{}).value === '3.3');
   // Cancelling the report lets it go: nothing comes back next time
-  w.eval("document.getElementById('btnCancelVisit') ? document.getElementById('btnCancelVisit').click() : null"); await wait(600);
-  w.eval("forgetVisitInProgress();"); await wait(200);
+  // As Cancel report does: the report thrown away, and back to Today
+  await w.eval("discardVisitInProgress().then(()=>{ visitDraft = {customerId: null, values: {}, section: null, step: 1}; forgetVisitInProgress(); visitLeftOpenFor = null; switchView('home'); })");
+  await wait(300);
+  const vis2 = h => { Object.defineProperty(d,'hidden',{configurable:true,get:()=>h}); d.dispatchEvent(new w.Event('visibilitychange')); };
+  vis2(true); await wait(300); vis2(false); await wait(2300);
   const again = await w.eval("vipDo('readonly', st => st.get('current'))");
   check('once the report is finished with, it is let go', !again);
   dom.window.close();
