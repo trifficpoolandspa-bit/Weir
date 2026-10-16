@@ -374,6 +374,13 @@ const HELPERS = `
       check('quote page: a long quote runs onto a second page', data.numpages >= 2, data.numpages);
       check('quote page: the PDF has the customer, items and total', /Mark Anderson/.test(data.text) && /Item number 40/.test(data.text) && /\$400\.00/.test(data.text));
       check('quote page: every page has its footer', (data.text.match(/Page \d of \d/g) || []).length === data.numpages);
+      // Oct 15: no "40 items" above the total, and the total bar stays where it was
+      check('quote page: no item count above the total', !/\b\d+ items?\b/.test(data.text), (data.text.match(/\b\d+ items?\b/) || [])[0]);
+      const at = {};
+      await pdfParse(fs.readFileSync(where), {pagerender: pg => pg.getTextContent().then(tc=>{
+        tc.items.forEach(i=>{ if(/^(Item number 40|TOTAL)$/.test(i.str)) at[i.str] = i.transform[5]; }); return ''; })});
+      const gap = at['Item number 40'] - at.TOTAL;
+      check('quote page: the total sits the same distance below the last item as before (67pt)', Math.abs(gap - 67) < 0.5, gap);
     }
     const shown = await p.evaluate(()=> document.getElementById('title').textContent + ' | ' + document.getElementById('text').textContent);
     check('quote page: says it is downloading, with a button to download again', /downloading/.test(shown) && await p.locator('.dl-btn').count() === 1, shown);
