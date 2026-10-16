@@ -18827,7 +18827,7 @@ function qoEntriesFor(customerId){
 }
 
 // The opened part of a row: the same report layout as Service Reports
-function qoDoc(heading, lines, current){
+function qoDoc(heading, lines, current, onComplete){
   const doc = document.createElement('div');
   doc.className = 'report-doc';
   doc.style.marginTop = '8px';
@@ -18841,7 +18841,20 @@ function qoDoc(heading, lines, current){
   const badge = document.createElement('div');
   badge.className = 'report-badge';
   badge.textContent = current ? 'Current' : 'Completed';
-  head.appendChild(left); head.appendChild(badge);
+  head.appendChild(left);
+  // Mark completed beside the Current badge (Oct 15)
+  if(current && onComplete){
+    const right = document.createElement('div');
+    right.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
+    const done = document.createElement('button');
+    done.type = 'button';
+    done.className = 'btn btn-ghost';
+    done.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;';
+    done.textContent = 'Mark completed';
+    done.addEventListener('click', e=>{ e.stopPropagation(); onComplete(); });
+    right.appendChild(done); right.appendChild(badge);
+    head.appendChild(right);
+  } else head.appendChild(badge);
   doc.appendChild(head);
   return doc;
 }
@@ -18877,8 +18890,35 @@ function qoItems(items){
   return table;
 }
 
+// Done by the office without going through the field, as WorkCenter's Current
+// and the drain and filter clean calendars do it (Oct 15). The report stays open.
+function qoMarkCompleted(item, customerId){
+  const stamp = new Date().toISOString();
+  const mark = r => { r.status = 'done'; r.doneAt = stamp; r.doneBy = 'office'; };
+  if(item.kind === 'task'){
+    const t = tasks.find(x => x.id === item.t.id);
+    if(!t) return;
+    Object.assign(t, {done: true, doneAt: stamp, doneBy: 'office'});
+    saveTasks();
+  } else {
+    const listKey = {workorder: 'scheduledWorkOrders', clean: 'scheduledFilterCleans', drain: 'scheduledPoolDrains'}[item.kind];
+    const rec = item.kind === 'workorder' ? item.j : item.f;
+    if(!listKey || !rec) return;
+    const list = lsGet(listKey) || [];
+    const r = list.find(x => x && x.id === rec.id);
+    if(!r || r.status === 'done') return;
+    mark(r);
+    lsSet(listKey, list);
+  }
+  renderCustomerWorkOrders(customerId);
+  try{ renderWorkOrderHistory(); }catch(e){}
+  try{ if(typeof renderTaskList === 'function') renderTaskList(); }catch(e){}
+  showToast('Completed');
+}
+
 function qoBody(item, customerId){
   const when = d => d ? fmtDate(String(d).length === 10 ? d + 'T12:00:00' : d) : '';
+  const complete = ()=> qoMarkCompleted(item, customerId);
   const tech = id => id === 'office' ? 'the office' : (technicianNameById(id) || '');
   if(item.kind === 'quote'){
     const w = item.w;
@@ -18958,7 +18998,7 @@ function qoBody(item, customerId){
   if(item.kind === 'drain' && item.done) return buildWorkOrderDoc(customerId, Object.assign({}, item.f, {_drain: true, _drainLabel: item.tag}));
   if(item.kind === 'drain'){
     const f = item.f;
-    const doc = qoDoc(item.tag, ['Scheduled for ' + when(f.date), tech(f.technicianId) ? 'Technician: ' + tech(f.technicianId) : 'No technician yet'], true);
+    const doc = qoDoc(item.tag, ['Scheduled for ' + when(f.date), tech(f.technicianId) ? 'Technician: ' + tech(f.technicianId) : 'No technician yet'], true, complete);
     if((f.lineItems || []).length) qoSection(doc, 'Extra work', qoItems(f.lineItems));
     if(f.notes) qoSection(doc, 'Notes', qoNotes(f.notes));
     return doc;
@@ -18966,7 +19006,7 @@ function qoBody(item, customerId){
   if(item.kind === 'workorder'){
     const w = item.w, j = item.j || w;
     const doc = qoDoc('Work order' + (w.number ? ' #' + quoteNumberText(w.number) : ''),
-      ['Scheduled for ' + when(j.date), tech(j.technicianId) ? 'Technician: ' + tech(j.technicianId) : 'No technician yet'], true);
+      ['Scheduled for ' + when(j.date), tech(j.technicianId) ? 'Technician: ' + tech(j.technicianId) : 'No technician yet'], true, item.j ? complete : null);
     if((j.lineItems || w.lineItems || []).length) qoSection(doc, 'Line items', qoItems(j.lineItems || w.lineItems));
     if(j.notes || w.notes) qoSection(doc, 'Work order notes', qoNotes(j.notes || w.notes));
     const acts = document.createElement('div');
@@ -18984,14 +19024,14 @@ function qoBody(item, customerId){
   if(item.kind === 'clean'){
     const f = item.f;
     return qoDoc('Filter clean', ['Scheduled for ' + when(f.date), f.groupName ? 'Group: ' + f.groupName : '',
-      tech(f.technicianId) ? 'Technician: ' + tech(f.technicianId) : ''], true);
+      tech(f.technicianId) ? 'Technician: ' + tech(f.technicianId) : ''], true, complete);
   }
   // A task
   const t = item.t;
   const doc = qoDoc('Task', [t.title || '', t.date ? 'Scheduled for ' + when(t.date) : '',
     t.done && t.doneAt ? 'Completed ' + when(t.doneAt) + (t.doneBy ? ' by ' + (tech(t.doneBy) || 'a technician') : '') : '',
     t.done && t.doneDurationMs ? 'Time on the job ' + jobDurationText(t.doneDurationMs) : '',
-    !t.done && tech(t.technicianId) ? 'Technician: ' + tech(t.technicianId) : ''], !t.done);
+    !t.done && tech(t.technicianId) ? 'Technician: ' + tech(t.technicianId) : ''], !t.done, complete);
   if(t.details) qoSection(doc, 'Details', qoNotes(t.details));
   if(t.doneNotes) qoSection(doc, 'Technician\u2019s notes', qoNotes(t.doneNotes));
   return doc;

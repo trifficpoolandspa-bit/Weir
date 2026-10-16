@@ -282,9 +282,6 @@ function drawQuotePdf(d){
   // The total, in a solid bar on the right
   if(y + 80 > BOTTOM) y = nextPage();
   y += 18;
-  set(10, 'normal', muted);
-  const n = d.items.length;
-  doc.text(n + (n === 1 ? ' item' : ' items'), R - 236, y + 4);
   y += 14;
   doc.setFillColor.apply(doc, brand); doc.roundedRect(R - 240, y, 240, 42, 7, 7, 'F');
   set(9, 'bold', [225, 238, 236]); doc.text('TOTAL', R - 226, y + 25, {charSpace: 1.2});
