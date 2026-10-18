@@ -5,6 +5,9 @@
 // email_events table for the company that sent it, and the office website
 // shows it under Alerts → Emails (Oct 8).
 //
+// Oct 18: also sent, delivered, delayed and opened, which move the email
+// along in email_log for History / Billing → Email history (snippet 35).
+//
 // Deploy with Verify JWT OFF: Resend has no Supabase sign-in. Instead every
 // call is checked against the webhook's signing secret, stored in Supabase as
 // RESEND_WEBHOOK_SECRET (Resend shows it as "whsec_…" on the webhook's page).
@@ -17,12 +20,38 @@ const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SECRET = Deno.env.get('RESEND_WEBHOOK_SECRET') ?? '';
 
-// The events worth an alert. Delivered, opened and so on are ignored.
+// The events worth an alert
 const KEEP: Record<string, string> = {
   'email.bounced': 'bounced',
   'email.complained': 'complained',
-  'email.failed': 'failed'
+  'email.failed': 'failed',
+  // Not sent at all: the address bounced or complained before (Oct 18)
+  'email.suppressed': 'failed'
 };
+// Everything that moves an email along in Email history (Oct 18, snippet 35)
+const PROGRESS: Record<string, string> = {
+  'email.sent': 'sent',
+  'email.delivered': 'delivered',
+  'email.delivery_delayed': 'delayed',
+  'email.opened': 'viewed',
+  'email.bounced': 'bounced',
+  'email.complained': 'complained',
+  'email.failed': 'failed',
+  'email.suppressed': 'failed'
+};
+
+// Applies one event to the email's row in email_log. Quiet when the email
+// isn't on this server, or was sent before Email history existed.
+async function logProgress(emailId: string, step: string, at: string, reason: string){
+  if(!emailId) return;
+  try{
+    await fetch(SUPABASE_URL + '/rest/v1/rpc/email_log_event', {
+      method: 'POST',
+      headers: {apikey: SERVICE_KEY, Authorization: 'Bearer ' + SERVICE_KEY, 'Content-Type': 'application/json'},
+      body: JSON.stringify({p_id: emailId, p_event: step, p_at: at, p_reason: reason})
+    });
+  }catch(e){ console.log('email_log_event', String(e)); }
+}
 
 function reply(status: number, body: Record<string, unknown>){
   return new Response(JSON.stringify(body), {status, headers: {'Content-Type': 'application/json'}});
@@ -75,11 +104,19 @@ Deno.serve(async (req: Request)=>{
 
   let event: any;
   try{ event = JSON.parse(raw); }catch(e){ return reply(400, {error: 'That was not readable'}); }
-  const kind = KEEP[String(event && event.type || '')];
+  const type = String(event && event.type || '');
+  const kind = KEEP[type];
+  const step = PROGRESS[type];
   // Anything else: thanks, nothing to keep (a 200 stops Resend retrying)
-  if(!kind) return reply(200, {ignored: true});
+  if(!kind && !step) return reply(200, {ignored: true});
 
   const d = event.data || {};
+  const at = String(event.created_at || d.created_at || new Date().toISOString());
+  // Not a problem: only Email history wants to know
+  if(!kind){
+    await logProgress(String(d.email_id || ''), step, at, '');
+    return reply(200, {kept: true});
+  }
   const company = tag(d.tags, 'company');
   // An email sent before the labels existed can't be matched to a company
   if(!/^[0-9a-f-]{36}$/i.test(company)) return reply(200, {ignored: true, why: 'no company label'});
@@ -89,6 +126,7 @@ Deno.serve(async (req: Request)=>{
   const reason = kind === 'bounced'
     ? (bounce.message || bounce.subType || bounce.type || 'The address does not exist')
     : kind === 'complained' ? 'The customer marked it as spam'
+    : type === 'email.suppressed' ? 'Not sent: this address bounced or marked an email as spam before'
     : (failed.reason || d.reason || 'The email service could not deliver it');
 
   const row = {
@@ -101,6 +139,7 @@ Deno.serve(async (req: Request)=>{
     reason: String(reason).slice(0, 500),
     happened_at: String(event.created_at || d.created_at || new Date().toISOString())
   };
+  await logProgress(String(d.email_id || ''), step, at, row.reason);
   const res = await fetch(SUPABASE_URL + '/rest/v1/email_events', {
     method: 'POST',
     headers: {apikey: SERVICE_KEY, Authorization: 'Bearer ' + SERVICE_KEY,
