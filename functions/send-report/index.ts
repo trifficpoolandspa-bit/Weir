@@ -90,6 +90,42 @@ function tagValue(v: string){
   return String(v || '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 256) || 'none';
 }
 
+// What kind of email it is, for Email history. The apps say; an older phone
+// that doesn't is read from the subject.
+const KINDS = ['report', 'quote', 'workorder', 'clean', 'drain', 'onmyway', 'email'];
+function kindOfEmail(said: unknown, subject: string){
+  const k = String(said || '');
+  if(KINDS.indexOf(k) !== -1) return k;
+  if(/service report/i.test(subject)) return 'report';
+  if(/^on my way$/i.test(subject.trim())) return 'onmyway';
+  if(/quote/i.test(subject)) return 'quote';
+  if(/work order/i.test(subject)) return 'workorder';
+  if(/filter clean/i.test(subject)) return 'clean';
+  if(/drain/i.test(subject)) return 'drain';
+  return 'email';
+}
+
+// One row in email_log (snippet 35), the email as it went: photos in the
+// report point at their kept copies, since the inline ones can't be shown
+// outside the email
+async function logSent(companyId: string, id: string, body: Record<string, any>, to: string, subject: string, html: string){
+  if(!SERVICE_KEY) return;
+  try{
+    const res = await fetch(SUPABASE_URL + '/rest/v1/email_log', {
+      method: 'POST',
+      headers: {apikey: SERVICE_KEY, Authorization: 'Bearer ' + SERVICE_KEY,
+                'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates,return=minimal'},
+      body: JSON.stringify({
+        id: id, company_id: companyId,
+        customer_id: body.customerId ? String(body.customerId) : null,
+        to_address: to, subject: subject, kind: kindOfEmail(body.kind, subject),
+        html: html.slice(0, 400000), status: 'sent'
+      })
+    });
+    if(!res.ok) console.log('email_log', res.status, (await res.text().catch(()=> '')).slice(0, 200));
+  }catch(e){ console.log('email_log', String(e)); }
+}
+
 Deno.serve(async (req: Request)=>{
   if(req.method === 'OPTIONS') return new Response('ok', {headers: CORS});
   if(req.method !== 'POST') return reply(405, {error: 'Send it as a POST'});
@@ -280,6 +316,13 @@ Deno.serve(async (req: Request)=>{
   const result = await sent.json().catch(()=> ({}));
   if(!sent.ok){
     return reply(sent.status, {error: result.message || 'The email service refused it', detail: result});
+  }
+  // Kept for the office's Email history (Oct 18). Never holds up or fails the
+  // send: the email has already gone.
+  if(result.id){
+    let kept = String(payload.html || '');
+    shown.forEach(p => { if(p.link) kept = kept.split('cid:' + p.id + '"').join(p.link + '"'); });
+    await logSent(who.companyId, String(result.id), body, to, subject, kept);
   }
   return reply(200, {sent: true, id: result.id, from: from, replyTo: who.replyTo,
                      photos: attachments.length, linked: linkOnly.length});
