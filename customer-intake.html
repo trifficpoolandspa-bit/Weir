@@ -153,7 +153,8 @@ nav{
 .nav-subs{display:none;padding:2px 0 8px;}
 body.sidebar-subtabs nav .tab.active[data-view="workcenter"] + .nav-subs,
 body.sidebar-subtabs nav .tab.active[data-view="technicians"] + .nav-subs,
-body.sidebar-subtabs nav .tab.active[data-view="chemconfig"] + .nav-subs{display:block;}
+body.sidebar-subtabs nav .tab.active[data-view="chemconfig"] + .nav-subs,
+body.sidebar-subtabs nav .tab.active[data-view="history"] + .nav-subs{display:block;}
 .nav-sub{position:relative;display:block;width:100%;text-align:left;background:none;border:none;cursor:pointer;
   padding:8px 20px 8px 42px;font-family:'Inter',sans-serif;font-size:12.5px;font-weight:600;color:#9CC8C4;}
 .nav-sub::before{content:"";position:absolute;left:26px;top:0;bottom:0;border-left:1.5px solid rgba(175,214,210,0.35);}
@@ -172,6 +173,7 @@ body.sidebar-subtabs #workCenterTypeControl{display:none;}
 body.sidebar-subtabs #view-workcenter > .card:has(> #workCenterTypeControl){display:none;}
 body.sidebar-subtabs .card:has(> #techMainTabs){display:none;}
 body.sidebar-subtabs #chemConfigTypeControl{display:none !important;}
+body.sidebar-subtabs .card:has(> #historyTypeControl){display:none;}
 
 /* The scrollbar's room is always kept, so a page never shifts sideways when it
    comes or goes (Oct 15) */
@@ -330,6 +332,26 @@ input::placeholder{color:#A9BCB9;}
 .profile-meta-row.editable:hover{background:var(--teal-pale);}
 /* A pressable row in a list or window */
 .press-row:hover{background:var(--teal-pale);}
+/* Email history (Oct 18): customers as on History, each email a row under them */
+#emailHistList > div{border-bottom:1px solid var(--line);}
+#emailHistList > div:last-child{border-bottom:none;}
+#emailHistList .cust-row{border-radius:8px;transition:background-color .12s ease;}
+#emailHistList .cust-row:hover{background:var(--teal-pale);}
+.eh-row{display:flex;align-items:center;gap:12px;padding:9px 8px;border-radius:8px;cursor:pointer;font-size:13px;transition:background-color .12s ease;}
+.eh-row:hover{background:var(--teal-pale);}
+.eh-row + .eh-row{border-top:1px solid var(--line);}
+.eh-date{flex:0 0 112px;font-weight:600;white-space:nowrap;}
+.eh-kind{flex:0 0 120px;}
+.eh-subj{flex:1 1 auto;min-width:0;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.eh-when{flex:0 0 160px;text-align:right;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.eh-tag{font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;white-space:nowrap;letter-spacing:0.07em;text-transform:uppercase;padding:3px 7px;border-radius:6px;}
+.eh-st{display:inline-flex;align-items:center;justify-content:center;width:92px;padding:4px 0;border-radius:7px;font-size:10.5px;font-weight:700;letter-spacing:.04em;color:#fff;flex-shrink:0;}
+.eh-st.unsent{background:#8A9795;} .eh-st.sent{background:var(--teal-deep);} .eh-st.delivered{background:var(--teal-mid);}
+.eh-st.viewed{background:var(--green);} .eh-st.delayed{background:#1F5E86;}
+.eh-st.bounced,.eh-st.complained,.eh-st.failed{background:var(--rust);}
+.eh-key{display:flex;flex-wrap:wrap;gap:10px 18px;font-size:12px;color:var(--muted);margin:0 0 14px;}
+.eh-key > div{display:flex;align-items:center;gap:7px;}
+.eh-key .eh-st{width:auto;padding:3px 7px;}
 /* History & billing: each customer's row lights up under the pointer (Oct 10) */
 #billingList .cust-row{border-radius:8px;transition:background-color .12s ease;}
 #billingList .cust-row:hover{background:var(--teal-pale);}
@@ -624,6 +646,11 @@ input::placeholder{color:#A9BCB9;}
         <button type="button" class="nav-sub" data-type="broadcast"><span>Email</span></button>
       </div>
       <button class="tab" data-view="history">History / Billing</button>
+      <!-- History's two sections in the sidebar (Oct 18); they press the page's own tabs -->
+      <div class="nav-subs" id="histNavSubs">
+        <button type="button" class="nav-sub active" data-hist="service"><span>Service history</span></button>
+        <button type="button" class="nav-sub" data-hist="email"><span>Email history</span></button>
+      </div>
       <button class="tab" data-view="alerts">Alerts <span class="nav-badge" id="alertsBadge" style="display:none;"></span></button>
       <button class="tab" data-view="settings">Settings</button>
     </nav>
@@ -1823,6 +1850,14 @@ input::placeholder{color:#A9BCB9;}
   </div>
 
   <div class="view" id="view-history">
+    <!-- Service history / Email history (Oct 18). With the sections in the
+         sidebar this strip is hidden and the sidebar presses it -->
+    <div class="card" style="padding:12px;">
+      <div class="seg-control" id="historyTypeControl" style="margin-bottom:0;">
+        <button class="history-type-btn active" data-hist="service" type="button">Service history</button>
+        <button class="history-type-btn" data-hist="email" type="button">Email history</button>
+      </div>
+    </div>
     <div class="card" id="wcBillingSection">
       <div class="section-head">
         <h2>History</h2>
@@ -1852,6 +1887,66 @@ input::placeholder{color:#A9BCB9;}
         <button type="button" id="billingSearchClear" style="display:none;position:absolute;right:8px;bottom:4px;height:30px;width:30px;padding:0;border:1px solid #EFC9BC;border-radius:8px;background:#fff;color:var(--rust);font-size:18px;line-height:1;cursor:pointer;align-items:center;justify-content:center;">×</button>
       </div>
       <div id="billingList"></div>
+    </div>
+
+    <!-- Email history (Oct 18): every email the server sent to a customer, by customer -->
+    <div class="card" id="emailHistorySection" style="display:none;">
+      <div class="section-head">
+        <h2>Email history</h2>
+        <span class="section-count" id="emailHistCount"></span>
+      </div>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Every email sent to a customer in the month you pick, by customer. Tap a customer to see their emails, and an email to see it as they got it.</p>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+        <div class="field" style="flex:0 0 auto;margin-bottom:0;">
+          <label>Month</label>
+          <div style="display:inline-flex;align-items:stretch;border:1px solid var(--line);border-radius:9px;background:#fff;overflow:hidden;">
+            <button type="button" id="emailHistMonthPrev" title="Previous month" style="flex:0 0 30px;padding:0;border:none;border-right:1px solid var(--line);background:#fff;color:var(--teal-deep);font-size:15px;cursor:pointer;">‹</button>
+            <input type="month" id="emailHistMonth" style="width:auto;min-width:0;border:none;border-radius:0;padding:9px 8px;">
+            <button type="button" id="emailHistMonthNext" title="Next month" style="flex:0 0 30px;padding:0;border:none;border-left:1px solid var(--line);background:#fff;color:var(--teal-deep);font-size:15px;cursor:pointer;">›</button>
+          </div>
+        </div>
+        <div class="field" style="flex:0 0 200px;margin-bottom:0;">
+          <label>Type</label>
+          <select id="emailHistKind">
+            <option value="">All emails</option>
+            <option value="report">Service reports</option>
+            <option value="quote">Quotes</option>
+            <option value="workorder">Work orders</option>
+            <option value="clean">Filter cleans</option>
+            <option value="drain">Pool drains</option>
+            <option value="onmyway">On my way</option>
+          </select>
+        </div>
+        <div class="field" style="flex:0 0 200px;margin-bottom:0;">
+          <label>Status</label>
+          <select id="emailHistStatus">
+            <option value="">Any status</option>
+            <option value="unsent">Not sent</option>
+            <option value="sent">Sent</option>
+            <option value="delivered">Delivered</option>
+            <option value="viewed">Viewed</option>
+            <option value="delayed">Delayed</option>
+            <option value="bounced">Bounced</option>
+            <option value="complained">Marked as spam</option>
+            <option value="failed">Failed</option>
+          </select>
+        </div>
+      </div>
+      <div class="field" style="position:relative;margin-bottom:14px;">
+        <input id="emailHistorySearch" placeholder="Search by name, address, phone, or email" autocomplete="off" style="padding-right:38px;">
+        <button type="button" id="emailHistorySearchClear" title="Clear the search" style="display:none;position:absolute;right:8px;bottom:4px;height:30px;width:30px;padding:0;border:1px solid #EFC9BC;border-radius:8px;background:#fff;color:var(--rust);font-size:18px;line-height:1;cursor:pointer;align-items:center;justify-content:center;">&times;</button>
+      </div>
+      <div class="eh-key">
+        <div><span class="eh-st unsent">NOT SENT</span>Didn&rsquo;t go out</div>
+        <div><span class="eh-st sent">SENT</span>Handed to the email service</div>
+        <div><span class="eh-st delivered">DELIVERED</span>Reached their inbox</div>
+        <div><span class="eh-st viewed">VIEWED</span>They opened it</div>
+        <div><span class="eh-st delayed">DELAYED</span>Their email server is slow; still trying</div>
+        <div><span class="eh-st bounced">BOUNCED</span>Address doesn&rsquo;t exist</div>
+        <div><span class="eh-st complained">SPAM</span>They marked it as spam</div>
+        <div><span class="eh-st failed">FAILED</span>Couldn&rsquo;t be sent</div>
+      </div>
+      <div id="emailHistList"></div>
     </div>
 
   </div>
@@ -5163,7 +5258,7 @@ async function sendCustomerEmail(toEmail, subject, message, customer, what){
     const res = await sbFetch('/functions/v1/send-report', {
       method: 'POST',
       body: JSON.stringify({to: toEmail, subject: subject, html: plainEmailHtml(message),
-                            customerId: customer && customer.id || undefined})
+                            customerId: customer && customer.id || undefined, kind: ehKindFromWhat(what)})
     });
     if(res.ok) return true;
     recordEmailFailure(customer, what, toEmail, emailFailReason(res));
@@ -5903,6 +5998,376 @@ document.getElementById('billingMonth').addEventListener('change', (e)=>{
   openBillingIds.clear();
   renderBilling();
 });
+
+// ---------- Email history (Oct 18) ----------
+// History / Billing's second section: every email the server sent to a
+// customer (email_log, snippet 35), by customer A to Z, each with where it got
+// to: Sent, Delivered, Viewed, Delayed, Bounced, Marked as spam or Failed.
+// Emails that never went out (no connection, or refused) come from the same
+// list Alerts → Emails uses, as Not sent. Read from the server, so every
+// computer sees the same.
+let historyPane = 'service';
+let emailHistMonthValue = '';
+let emailHistKindValue = '';
+let emailHistStatusValue = '';
+let emailHistTerm = '';
+let emailHistPage = 1;
+const openEmailHistKeys = new Set();
+let emailHistRows = null;         // what the server sent, for emailHistLoadedFor
+let emailHistLoadedFor = '';
+let emailHistError = '';
+let emailHistAsked = 0;
+
+const EH_KINDS = {
+  report: ['Report', 'var(--teal-pale)', 'var(--teal-deep)'],
+  quote: ['Quote', '#F1E8F3', '#6B3E78'],
+  workorder: ['Work order', '#E9EEF0', '#3E5560'],
+  clean: ['Filter clean', '#FBF1DD', '#8A5E0B'],
+  drain: ['Pool drain', '#C3DEF3', '#174C78'],
+  onmyway: ['On my way', '#E4F0F8', '#1F5E86'],
+  email: ['Email', 'var(--surface-alt)', 'var(--muted)']
+};
+const EH_STATUS = {unsent: 'NOT SENT', sent: 'SENT', delivered: 'DELIVERED', viewed: 'VIEWED',
+  delayed: 'DELAYED', bounced: 'BOUNCED', complained: 'SPAM', failed: 'FAILED'};
+const EH_PROBLEM = {bounced: 'bounced', complained: 'marked as spam', failed: 'failed'};
+
+function ehKindFromWhat(what){
+  const w = String(what || '');
+  if(/report/i.test(w)) return 'report';
+  if(/quote/i.test(w)) return 'quote';
+  if(/work order/i.test(w)) return 'workorder';
+  if(/filter clean/i.test(w)) return 'clean';
+  if(/drain/i.test(w)) return 'drain';
+  if(/on my way/i.test(w)) return 'onmyway';
+  return 'email';
+}
+function ehWhen(iso){
+  const d = new Date(iso);
+  if(isNaN(d)) return '';
+  return d.toLocaleString(undefined, {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
+}
+function ehMonthRange(ym){
+  const [y, m] = String(ym || '').split('-').map(Number);
+  return {from: new Date(y, m - 1, 1), to: new Date(y, m, 1)};
+}
+
+async function loadEmailHistory(ym){
+  emailHistAsked++;
+  const ask = emailHistAsked;
+  const r = ehMonthRange(ym);
+  const res = await sbFetch('/rest/v1/email_log?select=id,customer_id,to_address,subject,kind,status,reason,sent_at,delivered_at,opened_at,problem_at'
+    + '&sent_at=gte.' + encodeURIComponent(r.from.toISOString()) + '&sent_at=lt.' + encodeURIComponent(r.to.toISOString())
+    + '&order=sent_at.desc&limit=3000', {method: 'GET'});
+  if(ask !== emailHistAsked) return;          // a newer month was asked for meanwhile
+  if(res && res.ok && Array.isArray(res.body)){
+    emailHistRows = res.body;
+    emailHistLoadedFor = ym;
+    emailHistError = '';
+  } else {
+    emailHistRows = null;
+    emailHistLoadedFor = '';
+    emailHistError = !res || res.offline || !res.status
+      ? 'Could not load the emails — no connection to the office.'
+      : 'Could not load the emails right now. Try again in a moment.';
+  }
+  renderEmailHistory();
+}
+
+// Everything for the month: the server's emails, plus ones that never went out
+function emailHistEntries(ym){
+  const out = (emailHistRows || []).map(e => ({
+    key: 'e:' + e.id, id: e.id, customerId: e.customer_id || '', to: e.to_address || '',
+    subject: e.subject || '', kind: EH_KINDS[e.kind] ? e.kind : 'email', status: EH_STATUS[e.status] ? e.status : 'sent',
+    reason: e.reason || '', at: e.sent_at, deliveredAt: e.delivered_at, openedAt: e.opened_at, problemAt: e.problem_at
+  }));
+  const r = ehMonthRange(ym);
+  const fails = lsGet('emailFailures');
+  if(fails && typeof fails === 'object'){
+    Object.keys(fails).forEach(k=>{
+      const f = fails[k];
+      // Bounces and the like are already on the server's list
+      if(!f || f.event || !(f.t >= r.from.getTime() && f.t < r.to.getTime())) return;
+      out.push({key: 'f:' + k, id: '', customerId: f.customerId || '', to: f.to || '', subject: f.what || 'Email',
+        kind: ehKindFromWhat(f.what), status: 'unsent', reason: f.reason || '', at: new Date(f.t).toISOString(), name: f.name || ''});
+    });
+  }
+  return out;
+}
+
+function renderEmailHistory(){
+  const container = document.getElementById('emailHistList');
+  const countEl = document.getElementById('emailHistCount');
+  if(!container) return;
+  if(!emailHistMonthValue){
+    const now = new Date();
+    emailHistMonthValue = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  }
+  const monthEl = document.getElementById('emailHistMonth');
+  if(monthEl && monthEl.value !== emailHistMonthValue) monthEl.value = emailHistMonthValue;
+  const ym = emailHistMonthValue;
+
+  if(emailHistLoadedFor !== ym){
+    if(countEl) countEl.textContent = '';
+    if(emailHistError){ container.innerHTML = emptyState(emailHistError); return; }
+    container.innerHTML = emptyState('Loading emails…');
+    return;
+  }
+
+  // One group per customer; an address with no customer is its own group
+  const byCust = {};
+  const label = v => String(v || '').replace(/[^A-Za-z0-9_-]/g, '_');
+  emailHistEntries(ym).forEach(e=>{
+    const to = String(e.to || '').trim().toLowerCase();
+    const c = (customers || []).find(x => x && e.customerId && (String(x.id) === String(e.customerId) || label(x.id) === e.customerId))
+      || (customers || []).find(x => x && to && String(x.email || '').trim().toLowerCase() === to);
+    const key = c ? 'c:' + c.id : 'a:' + (to || e.name || '?');
+    if(!byCust[key]) byCust[key] = {key: key, customer: c || null, name: c ? displayName(c.name) : (e.name || e.to || 'Unknown'),
+      email: c ? (c.email || e.to) : e.to, emails: []};
+    byCust[key].emails.push(e);
+  });
+
+  const term = emailHistTerm.trim().toLowerCase();
+  const groups = Object.values(byCust).map(g=>{
+    g.shown = g.emails.filter(e => (!emailHistKindValue || e.kind === emailHistKindValue)
+      && (!emailHistStatusValue || e.status === emailHistStatusValue))
+      .sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    return g;
+  }).filter(g => g.shown.length)
+    .filter(g => !term || [g.name, g.email, g.customer && g.customer.name, g.customer && g.customer.address, g.customer && g.customer.phone]
+      .filter(Boolean).join(' ').toLowerCase().includes(term))
+    .sort((a, b) => String(a.name).toLowerCase().localeCompare(String(b.name).toLowerCase()));
+
+  const total = groups.reduce((n, g) => n + g.shown.length, 0);
+  if(countEl) countEl.textContent = total ? total + (total === 1 ? ' email' : ' emails') : '';
+
+  if(!groups.length){
+    const filtered = term || emailHistKindValue || emailHistStatusValue;
+    container.innerHTML = emptyState(term ? 'No customers match "' + escapeSyncText(emailHistTerm.trim()) + '".'
+      : filtered ? 'No emails like that this month.' : 'No emails sent this month.');
+    return;
+  }
+
+  const PER = 10;
+  const totalPages = Math.max(1, Math.ceil(groups.length / PER));
+  if(emailHistPage > totalPages) emailHistPage = totalPages;
+  if(emailHistPage < 1) emailHistPage = 1;
+  const start = (emailHistPage - 1) * PER;
+
+  container.innerHTML = '';
+  groups.slice(start, start + PER).forEach(g=>{
+    const isOpen = openEmailHistKeys.has(g.key);
+    const wrap = document.createElement('div');
+    const head = document.createElement('div');
+    head.className = 'cust-row';
+    head.style.cursor = 'pointer';
+    head.addEventListener('click', ()=>{
+      if(isOpen) openEmailHistKeys.delete(g.key); else openEmailHistKeys.add(g.key);
+      renderEmailHistory();
+    });
+    const meta = [g.shown.length + (g.shown.length === 1 ? ' email' : ' emails'), g.email].filter(Boolean);
+    head.innerHTML = '<div class="cust-left"><div class="cust-avatar"></div><div class="cust-info"><div class="cust-name"></div>'
+      + '<div class="cust-meta"></div></div></div>';
+    head.querySelector('.cust-avatar').textContent = initialOf(g.name);
+    head.querySelector('.cust-name').textContent = g.name;
+    head.querySelector('.cust-meta').textContent = meta.join(' · ');
+    const right = document.createElement('div');
+    right.style.cssText = 'display:flex;align-items:center;gap:14px;flex-shrink:0;';
+    // A problem shows on the row, so it's seen without opening the customer
+    const bad = g.shown.filter(e => EH_PROBLEM[e.status]);
+    const unsent = g.shown.filter(e => e.status === 'unsent');
+    if(bad.length || unsent.length){
+      const note = document.createElement('span');
+      note.style.cssText = 'font-size:11.5px;font-weight:700;white-space:nowrap;color:' + (bad.length ? 'var(--rust)' : 'var(--muted)') + ';';
+      note.textContent = bad.length
+        ? (bad.length === 1 ? '1 ' + EH_PROBLEM[bad[0].status] : bad.length + ' problems')
+        : unsent.length + ' not sent';
+      right.appendChild(note);
+    }
+    const chev = document.createElement('div');
+    chev.className = 'chev';
+    chev.textContent = isOpen ? '‹' : '›';
+    right.appendChild(chev);
+    head.appendChild(right);
+    wrap.appendChild(head);
+
+    if(isOpen){
+      const body = document.createElement('div');
+      body.style.cssText = 'padding:0 14px 14px;';
+      g.shown.forEach(e=>{
+        const row = document.createElement('div');
+        row.className = 'eh-row';
+        const k = EH_KINDS[e.kind] || EH_KINDS.email;
+        const when = e.status === 'viewed' && e.openedAt ? 'Opened ' + ehWhen(e.openedAt)
+          : e.status === 'delivered' && e.deliveredAt ? 'Delivered ' + ehWhen(e.deliveredAt)
+          : EH_PROBLEM[e.status] ? (e.reason || ehWhen(e.problemAt || e.at))
+          : e.status === 'unsent' ? (e.reason || 'Didn’t go out')
+          : 'Sent ' + ehWhen(e.at);
+        row.innerHTML = '<span class="eh-date"></span><span class="eh-kind"><span class="eh-tag"></span></span>'
+          + '<span class="eh-subj"></span><span class="eh-when"></span><span class="eh-st"></span>';
+        row.querySelector('.eh-date').textContent = fmtDate(e.at);
+        const tag = row.querySelector('.eh-tag');
+        tag.textContent = k[0];
+        tag.style.background = k[1]; tag.style.color = k[2];
+        row.querySelector('.eh-subj').textContent = e.subject;
+        row.querySelector('.eh-subj').title = e.subject;
+        row.querySelector('.eh-when').textContent = when;
+        row.querySelector('.eh-when').title = when;
+        const st = row.querySelector('.eh-st');
+        st.textContent = EH_STATUS[e.status];
+        st.classList.add(e.status);
+        row.addEventListener('click', ev=>{ ev.stopPropagation(); openEmailHistItem(e, g); });
+        body.appendChild(row);
+      });
+      wrap.appendChild(body);
+    }
+    container.appendChild(wrap);
+  });
+
+  if(totalPages > 1){
+    const pager = document.createElement('div');
+    pager.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--line);';
+    const pageBtn = (text, to, cur, title)=>{
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = text;
+      if(title) b.title = title;
+      const dead = to < 1 || to > totalPages;
+      b.disabled = dead;
+      if(typeof text === 'number') b.dataset.emailHistPage = String(to);
+      b.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border-radius:8px;font-size:' + (typeof text === 'number' ? '13px;font-weight:600;font-family:\'JetBrains Mono\',monospace;' : '15px;')
+        + (cur ? 'background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);cursor:pointer;'
+          : 'background:#fff;border:1px solid var(--line);' + (dead ? 'color:var(--line);cursor:default;' : 'color:var(--teal-deep);cursor:pointer;'));
+      if(!dead) b.addEventListener('click', ()=>{ emailHistPage = to; renderEmailHistory(); });
+      return b;
+    };
+    pager.appendChild(pageBtn('‹', emailHistPage - 1, false, 'Previous page'));
+    for(let p = 1; p <= totalPages; p++) pager.appendChild(pageBtn(p, p, p === emailHistPage));
+    pager.appendChild(pageBtn('›', emailHistPage + 1, false, 'Next page'));
+    const info = document.createElement('div');
+    info.style.cssText = 'width:100%;text-align:center;font-size:11.5px;color:var(--muted);margin-top:8px;';
+    info.textContent = 'Showing ' + (start + 1) + '–' + Math.min(start + PER, groups.length) + ' of ' + groups.length;
+    pager.appendChild(info);
+    container.appendChild(pager);
+  }
+}
+
+// One email, as the customer got it. Photos point at their kept copies.
+async function openEmailHistItem(e, g){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:640px;width:100%;max-height:88vh;display:flex;flex-direction:column;">'
+    + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;">'
+    + '<div style="min-width:0;"><h3 style="font-size:16px;margin:0 0 3px;" data-subj></h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0;" data-sub></p></div>'
+    + '<span class="eh-st" data-st></span></div>'
+    + '<div data-body style="flex:1;min-height:200px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:#F4F6F5;"></div>'
+    + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-ghost" data-close style="flex:1;">Close</button></div></div>';
+  document.body.appendChild(overlay);
+  overlay.querySelector('[data-subj]').textContent = e.subject;
+  overlay.querySelector('[data-sub]').textContent = [g.name, e.to, (e.status === 'unsent' ? '' : 'Sent ') + ehWhen(e.at)].filter(Boolean).join(' · ');
+  const st = overlay.querySelector('[data-st]');
+  st.textContent = EH_STATUS[e.status]; st.classList.add(e.status);
+  overlay.querySelector('[data-close]').addEventListener('click', ()=> overlay.remove());
+  const box = overlay.querySelector('[data-body]');
+  const say = text=>{
+    box.innerHTML = '<p style="font-size:13.5px;color:var(--muted);margin:0;padding:24px 18px;text-align:center;"></p>';
+    box.firstChild.textContent = text;
+  };
+  if(!e.id){ say('This email didn’t go out' + (e.reason ? ' — ' + e.reason : '') + ', so there’s nothing to show.'); return; }
+  say('Loading the email…');
+  const res = await sbFetch('/rest/v1/email_log?select=html&id=eq.' + encodeURIComponent(e.id), {method: 'GET'});
+  if(!overlay.isConnected) return;
+  const html = res && res.ok && Array.isArray(res.body) && res.body[0] ? res.body[0].html : '';
+  if(!html){ say(res && res.ok ? 'This email wasn’t kept, so it can’t be shown.' : 'Could not load the email — no connection to the office.'); return; }
+  box.innerHTML = '';
+  const frame = document.createElement('iframe');
+  // Shown as it was, but nothing in it can run
+  frame.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox');
+  frame.style.cssText = 'display:block;width:100%;height:62vh;border:none;background:#F4F6F5;';
+  frame.srcdoc = html.replace(/<a /gi, '<a target="_blank" ');
+  box.appendChild(frame);
+}
+
+// Which section of History / Billing is showing
+function setHistoryPane(which){
+  historyPane = which === 'email' ? 'email' : 'service';
+  document.querySelectorAll('#historyTypeControl .history-type-btn').forEach(b => b.classList.toggle('active', b.dataset.hist === historyPane));
+  const svc = document.getElementById('wcBillingSection');
+  const em = document.getElementById('emailHistorySection');
+  if(svc) svc.style.display = historyPane === 'service' ? '' : 'none';
+  if(em) em.style.display = historyPane === 'email' ? '' : 'none';
+  if(historyPane === 'email'){
+    renderEmailHistory();
+    loadEmailHistory(emailHistMonthValue || (()=>{ const n = new Date(); return n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0'); })());
+  }
+}
+document.querySelectorAll('#historyTypeControl .history-type-btn').forEach(b =>
+  b.addEventListener('click', ()=> setHistoryPane(b.dataset.hist)));
+// The sidebar's History sections press the page's own (hidden) tabs, and
+// follow whichever is showing
+(function histNavSubs(){
+  const subs = document.querySelectorAll('#histNavSubs .nav-sub');
+  const pageBtn = key => document.querySelector('#historyTypeControl .history-type-btn[data-hist="' + key + '"]');
+  const mirror = ()=> subs.forEach(b=>{ const p = pageBtn(b.dataset.hist); b.classList.toggle('active', !!p && p.classList.contains('active')); });
+  subs.forEach(b => b.addEventListener('click', ()=>{
+    const page = document.getElementById('view-history');
+    if(!page || !page.classList.contains('active')) switchView('history');
+    const p = pageBtn(b.dataset.hist);
+    if(p) p.click();
+    mirror();
+  }));
+  document.querySelectorAll('#historyTypeControl .history-type-btn').forEach(p =>
+    new MutationObserver(mirror).observe(p, {attributes: true, attributeFilter: ['class']}));
+  mirror();
+})();
+
+function shiftEmailHistMonth(delta){
+  const [y, m] = (emailHistMonthValue || '').split('-').map(Number);
+  if(!y || !m) return;
+  const d = new Date(y, m - 1 + delta, 1);
+  emailHistMonthValue = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  emailHistPage = 1;
+  openEmailHistKeys.clear();
+  renderEmailHistory();
+  loadEmailHistory(emailHistMonthValue);
+}
+document.getElementById('emailHistMonthPrev').addEventListener('click', ()=> shiftEmailHistMonth(-1));
+document.getElementById('emailHistMonthNext').addEventListener('click', ()=> shiftEmailHistMonth(1));
+document.getElementById('emailHistMonth').addEventListener('change', e=>{
+  if(!e.target.value) return;
+  emailHistMonthValue = e.target.value;
+  emailHistPage = 1;
+  openEmailHistKeys.clear();
+  renderEmailHistory();
+  loadEmailHistory(emailHistMonthValue);
+});
+document.getElementById('emailHistKind').addEventListener('change', e=>{
+  emailHistKindValue = e.target.value; emailHistPage = 1; renderEmailHistory();
+});
+document.getElementById('emailHistStatus').addEventListener('change', e=>{
+  emailHistStatusValue = e.target.value; emailHistPage = 1; renderEmailHistory();
+});
+document.getElementById('emailHistorySearch').addEventListener('input', e=>{
+  emailHistTerm = e.target.value;
+  emailHistPage = 1;
+  document.getElementById('emailHistorySearchClear').style.display = e.target.value ? 'flex' : 'none';
+  renderEmailHistory();
+});
+document.getElementById('emailHistorySearchClear').addEventListener('click', ()=>{
+  const inp = document.getElementById('emailHistorySearch');
+  inp.value = '';
+  emailHistTerm = '';
+  emailHistPage = 1;
+  document.getElementById('emailHistorySearchClear').style.display = 'none';
+  renderEmailHistory();
+  inp.focus();
+});
+// Fresh while it's on screen: statuses move on as customers open their emails
+setInterval(()=>{
+  const page = document.getElementById('view-history');
+  if(historyPane === 'email' && page && page.classList.contains('active') && !document.hidden
+     && emailHistMonthValue && !document.querySelector('.confirm-overlay')) loadEmailHistory(emailHistMonthValue);
+}, 60000);
 
 // ---------- Filter clean groups ----------
 let filterGroups = lsGet('filterGroups') || [];
@@ -18680,7 +19145,7 @@ async function sendQuoteEmail(customer, subject, html, plainText){
   if(!customer.email){ showToast('This customer has no email on file'); return false; }
   const res = await sbFetch('/functions/v1/send-report', {
     method: 'POST',
-    body: JSON.stringify({to: customer.email, subject: subject, html: html, customerId: customer.id})
+    body: JSON.stringify({to: customer.email, subject: subject, html: html, customerId: customer.id, kind: 'quote'})
   });
   if(res.ok) return true;
   recordEmailFailure(customer, 'Quote', customer.email, emailFailReason(res));
@@ -25961,7 +26426,7 @@ async function resendServiceReport(customer, v){
     const res = await sbFetch('/functions/v1/send-report', {
       method: 'POST',
       body: JSON.stringify({to, subject: label + ' service report — ' + customer.name,
-        html: buildServiceReportEmailHtml(customer, whenText, sections, techName), customerId: customer.id, photos})
+        html: buildServiceReportEmailHtml(customer, whenText, sections, techName), customerId: customer.id, photos, kind: 'report'})
     });
     if(res && res.ok){ showToast('Report sent to ' + to); return true; }
     recordEmailFailure(customer, 'Service report', to, emailFailReason(res));
@@ -28769,6 +29234,8 @@ function switchView(view){
     billingPage = 1;
     openBillingIds.clear();
     renderBilling();
+    // Opens on Service history, as WorkCenter opens on its first section (Oct 18)
+    try{ setHistoryPane('service'); }catch(e){}
   }
   // Back on WorkCenter's Drains from another page: every list closed again (Oct 11)
   if(view === 'workcenter' && keep && workCenterMode === 'drains'){
@@ -28835,6 +29302,7 @@ function sitePlace(){
     place.s = selectedSeasonId || null;
   }
   if(place.v === 'workcenter') place.w = workCenterMode;
+  if(place.v === 'history') place.h = historyPane;
   return place;
 }
 function placeKey(p){ return JSON.stringify(p); }
@@ -28868,6 +29336,7 @@ function goToPlace(p){
         if(p.s) pressIfThere('#seasonControl .history-type-btn[data-season="' + p.s + '"]');
       }
       if(p.v === 'workcenter' && p.w) pressIfThere('#workCenterTypeControl .history-type-btn[data-type="' + p.w + '"]');
+      if(p.v === 'history' && p.h) pressIfThere('#historyTypeControl .history-type-btn[data-hist="' + p.h + '"]');
     }
   }catch(e){}
   finally{
@@ -31540,7 +32009,7 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
                'wcCurrentSearch', 'wcSubmittedSearch', 'drainSearch', 'photoTaskCustSearch',
                // and Products and Services (Oct 11). Every search box added from
                // now on goes in this list too; the jump-to-date box doesn't.
-               'psSearch'];
+               'psSearch', 'emailHistorySearch'];
   // ...and any search box inside a window (the customer pickers and lists)
   // Inside a window: any full-screen fixed layer, wherever it sits on the page
   const inWindow = el=>{

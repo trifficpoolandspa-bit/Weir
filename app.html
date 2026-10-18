@@ -13087,7 +13087,7 @@ async function sendHeadsUpEmail(customer){
       headers: {'apikey': FIELD_SUPABASE_KEY,
                 'Authorization': 'Bearer ' + session.access_token,
                 'Content-Type': 'application/json'},
-      body: JSON.stringify({to: toEmail, subject: 'On my way', html: html, customerId: customer.id})
+      body: JSON.stringify({to: toEmail, subject: 'On my way', html: html, customerId: customer.id, kind: 'onmyway'})
     });
     if(res.status === 401){
       const again = await fieldRefresh();
@@ -16586,7 +16586,7 @@ async function awcSendQuote(){
       const subject = 'Quote from ' + awcCompanyName() + ' — ' + c.name;
       const res = await fieldAuthed('/functions/v1/send-report', {
         method: 'POST',
-        body: JSON.stringify({to: c.email, subject: subject, html: html, customerId: c.id})
+        body: JSON.stringify({to: c.email, subject: subject, html: html, customerId: c.id, kind: 'quote'})
       });
       const ok = !!res.ok;
       // Kept as the website keeps it, and sent to the office whole
@@ -18988,6 +18988,19 @@ window.addEventListener('popstate', async ()=>{
     return;
   }
 
+  // Back from a customer's profile always lands on the Customers list (Oct 16),
+  // wherever the profile was opened from. It used to retrace past the list to
+  // WorkCenter, because the list and the profile were remembered as one place.
+  {
+    const form = document.getElementById('newCustomerCard');
+    if(currentViewName === 'customers' && form && form.style.display !== 'none'){
+      editingCustomerId = null;
+      hideCustomerForm();
+      showCustomerPane('list');
+      return;
+    }
+  }
+
   // A report opened from a technician's route goes back to that route
   if(currentViewName === 'report' && reportOpenedFrom
      && reportOpenedFrom.view === 'technicians'){
@@ -21202,7 +21215,7 @@ function queueJobEmail(customer, job){
   const isWO = job.kind === 'work order';
   const num = isWO && job.workOrderNumber ? ' #' + String(job.workOrderNumber).padStart(4, '0') : '';
   const q = lsGet('jobEmailsToSend') || [];
-  q.push({key: job.kind + ':' + job.id, to: to, customerId: customer.id,
+  q.push({key: job.kind + ':' + job.id, to: to, customerId: customer.id, kind: isWO ? 'workorder' : 'clean',
           subject: (isWO ? 'Work order' + num : 'Filter clean') + ' completed \u2014 ' + customer.name,
           html: buildJobEmailHtml(customer, job, techName),
           photo: isPhotoRef(job.donePhoto) ? job.donePhoto : null,
@@ -21238,7 +21251,7 @@ async function sendJobEmails(){
           headers: {'apikey': FIELD_SUPABASE_KEY, 'Authorization': 'Bearer ' + session.access_token,
                     'Content-Type': 'application/json'},
           body: JSON.stringify({to: item.to, subject: item.subject, html: item.html,
-                                customerId: item.customerId, photos: photos})
+                                customerId: item.customerId, photos: photos, kind: item.kind || undefined})
         });
       }catch(e){ break; }                              // no signal: next sync
       if(res.status === 401){ await fieldRefresh(); break; }
@@ -21311,7 +21324,8 @@ async function sendReportFromOffice(customerId, type){
         subject: reportTypeLabel(type) + ' service report \u2014 ' + custName,
         html: currentReportHtml || currentReportText,
         customerId: customerId,
-        photos: photos
+        photos: photos,
+        kind: 'report'
       })
     });
     if(res.status === 401){
@@ -21402,7 +21416,7 @@ async function sendHeldReportEmails(){
           method: 'POST',
           headers: {'apikey': FIELD_SUPABASE_KEY, 'Authorization': 'Bearer ' + (deviceGet('session') || {}).access_token,
                     'Content-Type': 'application/json'},
-          body: JSON.stringify({to: item.to, subject: item.subject, html: item.html, customerId: item.customerId, photos: photos})
+          body: JSON.stringify({to: item.to, subject: item.subject, html: item.html, customerId: item.customerId, photos: photos, kind: 'report'})
         });
       }catch(e){ break; }                       // still no signal: try again later
       if(res.status === 401){ await fieldRefresh(); break; }
