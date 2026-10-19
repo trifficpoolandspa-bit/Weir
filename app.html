@@ -1025,6 +1025,8 @@ select#customerSelect{font-weight:600;}
         <!-- Admins only (Oct 12): send this customer's address or contact on -->
         <button type="button" class="btn btn-ghost" id="ncShareBtn" style="display:none;width:auto;padding:7px 14px;font-size:13px;">Share</button>
       </div>
+      <!-- When each body of water was last drained, and the last filter clean (Oct 19) -->
+      <p id="ncLastDone" style="display:none;font-size:12.5px;color:var(--muted);margin:-4px 0 14px;line-height:1.6;"></p>
       <div class="field"><label>Name</label><input id="ncName" placeholder="Jordan Ellis"></div>
       <div class="field" style="position:relative;">
         <label>Address</label>
@@ -7491,8 +7493,54 @@ function populateNcTechnicianSelect(){
   sel.value = prev;
 }
 
+// Under Edit customer (Oct 19): the last drain of each body of water they have,
+// extra bodies by their own names, then the last filter clean. Drains are the
+// ones on the customer's record (the website's Drains page keeps it); filter
+// cleans are the ones done on the routes.
+function renderNcLastDone(customer){
+  const box = document.getElementById('ncLastDone');
+  if(!box) return;
+  box.innerHTML = '';
+  if(!customer){ box.style.display = 'none'; return; }
+  let bodies = [];
+  if(customer.hasPool !== false) bodies.push({key: 'pool', label: 'pool'});
+  if(customer.hasSpa) bodies.push({key: 'spa', label: 'spa'});
+  (customer.fountains || []).forEach(f => { if(f && f.id && f.name) bodies.push({key: f.id, label: f.name}); });
+  // In the customer's own order, as on the website
+  try{
+    const saved = (lsGet('customBodyOrder') || {})[customer.id];
+    if(Array.isArray(saved) && saved.length){
+      const out = [];
+      saved.forEach(k => { const b = bodies.find(x => x.key === k); if(b) out.push(b); });
+      bodies.forEach(b => { if(out.indexOf(b) === -1) out.push(b); });
+      bodies = out;
+    }
+  }catch(e){}
+  const first = bodies.length ? bodies[0].key : 'pool';
+  const nice = iso => new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'});
+  const dayOf = r => { const t = r.doneAt ? new Date(r.doneAt) : null; return t && !isNaN(t) ? new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10) : (r.date || ''); };
+  const drains = (Array.isArray(customer.drains) ? customer.drains : []).filter(d => d && /^\d{4}-\d{2}-\d{2}$/.test(d.date || ''));
+  const lines = bodies.map(b=>{
+    const last = drains.filter(d => (d.body || first) === b.key).map(d => d.date).sort().pop();
+    return ['Last ' + b.label + ' drain', last ? nice(last) : 'Not yet'];
+  });
+  const cleans = (lsGet('scheduledFilterCleans') || []).filter(r => r && String(r.customerId) === String(customer.id) && r.status === 'done')
+    .map(dayOf).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  lines.push(['Last filter clean', cleans.length ? nice(cleans.pop()) : 'Not yet']);
+  lines.forEach(([k, v], i)=>{
+    if(i) box.appendChild(document.createElement('br'));
+    box.appendChild(document.createTextNode(k + ' '));
+    const b = document.createElement('b');
+    b.style.cssText = 'color:var(--ink);font-weight:600;';
+    b.textContent = v;
+    box.appendChild(b);
+  });
+  box.style.display = '';
+}
+
 function resetCustomerForm(){
   editingCustomerId = null;
+  { const ld = document.getElementById('ncLastDone'); if(ld){ ld.style.display = 'none'; ld.innerHTML = ''; } }
   ['ncName','ncAddress','ncCity','ncState','ncZip','ncEmail','ncPhone','ncPoolGallons','ncNeighborhoodGateCode','ncGateCode','ncAccessNotes']
     .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   document.getElementById('ncDay').value = '';
@@ -13380,6 +13428,7 @@ function openCustomerEditor(customer){
   ncDogs = (customer.dogs || []).map(d => ({...d}));
   renderNcDogFields();
   document.getElementById('newCustomerHeading').textContent = 'Edit customer';
+  renderNcLastDone(customer);
   { const sb = document.getElementById('ncShareBtn'); if(sb) sb.style.display = isAdminUser() ? '' : 'none'; }
   document.getElementById('btnSaveCustomer').textContent = 'Save changes';
   switchView('customers');

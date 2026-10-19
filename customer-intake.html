@@ -752,6 +752,8 @@ input::placeholder{color:#A9BCB9;}
         <!-- Delete this customer: a larger bin at the far right (Oct 2) -->
         <button type="button" class="btn btn-ghost" id="btnDeleteProfileCustomer" title="Delete this customer" style="align-self:flex-start;margin-left:20px;">Delete customer</button>
       </div>
+      <!-- The last drain of each body of water and the last filter clean, side by side (Oct 19) -->
+      <p id="profileLastDone" style="display:none;flex-wrap:wrap;gap:6px 28px;font-size:12.5px;color:var(--muted);margin:12px 0 12px;line-height:1.6;"></p>
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Tap any field to edit it.</p>
       <div id="profileMeta"></div>
     </div>
@@ -10518,8 +10520,10 @@ function calNameChip(text, state, title, ty){
     tg.textContent = ty;
     chip.appendChild(tg);
   }
+  // The name alone slides across when it's too long; the tag stays put (Oct 19)
   const t = document.createElement('span');
-  t.style.cssText = 'overflow:hidden;text-overflow:ellipsis;min-width:0;';
+  t.className = 'cal-chip-name';
+  t.style.cssText = 'overflow:hidden;white-space:nowrap;min-width:0;flex:1 1 auto;';
   t.textContent = text;
   chip.appendChild(t);
   if(title) chip.title = title;
@@ -10834,7 +10838,14 @@ function openWorkCalendar(startDay){
       const stWords = st => st === 'done' ? ' — done' : st === 'app' ? ' — in the app' : ' — not in app';
       on.fc.forEach(g=>{ const done = fgCleanStatus(g); fgLiveIds(g).forEach(cid=>{ const c = custOf(cid); if(c){ const st = fcState(g, cid, done); names.push([displayName(c.name), st, 'Filter clean, ' + (g.solo ? 'on their own' : (g.name || 'Group')) + stWords(st), 'FC']); } }); });
       on.pd.forEach(e=>{ const st = pdState(e); names.push([displayName(custOf(e.customerId).name), st, pdEntryKindsText(e) + ' drain' + stWords(st), 'PD']); });
-      on.wo.forEach(j=>{ const st = j.status === 'done' ? 'done' : j.held ? '' : 'app'; names.push([displayName(custOf(j.customerId).name), st, 'Work order' + (j.workOrderNumber ? ' #' + quoteNumberText(j.workOrderNumber) : '') + stWords(st), 'WO']); });
+      on.wo.forEach(j=>{
+        const st = j.status === 'done' ? 'done' : j.held ? '' : 'app';
+        // A filter clean or pool drain on the work order shows in its tag (Oct 19)
+        const li = j.lineItems || [];
+        const tag = 'WO' + (li.some(x => isFilterCleanItem(x) || /filter\s*clean/i.test(String((x && x.description) || ''))) ? ' FC' : '')
+          + (li.some(x => /\bdrain\b/i.test(String((x && x.description) || ''))) ? ' PD' : '');
+        names.push([displayName(custOf(j.customerId).name), st, 'Work order' + (j.workOrderNumber ? ' #' + quoteNumberText(j.workOrderNumber) : '') + stWords(st), tag]);
+      });
       on.tk.forEach(t=>{ const st = t.done ? 'done' : t.held ? '' : 'app'; const cs = taskCusts(t); names.push([cs.length ? displayName(cs[0].name) : (t.title || 'Task'), st, 'Task: ' + (t.title || '') + stWords(st), 'TK']); });
       names.slice(0, 4).forEach(x => cell.appendChild(calNameChip(x[0], x[1], x[2], x[3])));
       if(names.length > 4) cell.insertAdjacentHTML('beforeend', '<div style="font-size:10px;color:var(--muted);margin-top:2px;">+ ' + (names.length - 4) + ' more</div>');
@@ -10849,6 +10860,7 @@ function openWorkCalendar(startDay){
       grid.appendChild(cell);
     }
     box.appendChild(grid);
+    setTimeout(()=> grid.querySelectorAll('.cal-chip-name').forEach(webMarqueeIfCut), 0);
     // What the tags and colours mean
     const key = document.createElement('div');
     key.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12px;color:var(--muted);margin-top:12px;align-items:center;';
@@ -11184,7 +11196,16 @@ function openWorkCalendar(startDay){
         row.appendChild(textCell((j.workOrderNumber ? '#' + quoteNumberText(j.workOrderNumber) + ' · ' : '') + what));
         row.appendChild(calStatusBadge(j.status === 'done' ? 'done' : j.held ? '' : 'app', want => setJobStatus(j.id, want)));
         row.appendChild(textCell(techName(j.technicianId)));
-        row.appendChild(document.createElement('span'));
+        // A bin (Oct 19): this visit off the app and off the day
+        if(j.status !== 'done') row.appendChild(binBtn('Take off this day', async ()=>{
+          const ok = await confirmDialog('Take this work order visit for ' + displayName(c.name) + ' off this day? It comes off the app too.', 'Take off');
+          if(!ok) return;
+          lsSet('scheduledWorkOrders', woJobs().filter(x => !(x && x.id === j.id)));
+          try{ renderWorkOrderHistory(); }catch(e){}
+          draw();
+          showToast(displayName(c.name) + ' taken off');
+        }));
+        else row.appendChild(document.createElement('span'));
         listWrap.appendChild(row);
       });
     }
@@ -11203,7 +11224,17 @@ function openWorkCalendar(startDay){
         row.appendChild(textCell(t.title || 'Task'));
         row.appendChild(calStatusBadge(t.done ? 'done' : t.held ? '' : 'app', want => setTaskStatus(t.id, want)));
         row.appendChild(textCell(techName(t.technicianId)));
-        row.appendChild(document.createElement('span'));
+        // A bin (Oct 19): this task off the app and off the day
+        if(!t.done) row.appendChild(binBtn('Take off this day', async ()=>{
+          const ok = await confirmDialog('Take the task "' + (t.title || 'Task') + '" off this day? It comes off the app too.', 'Take off');
+          if(!ok) return;
+          tasks = tasks.filter(x => !(x && x.id === t.id));
+          saveTasks();
+          try{ renderTaskList(); }catch(e){}
+          draw();
+          showToast((t.title || 'Task') + ' taken off');
+        }));
+        else row.appendChild(document.createElement('span'));
         listWrap.appendChild(row);
       });
     }
@@ -14381,6 +14412,10 @@ function syncRecordState(state){
   return state.records;
 }
 
+// Records that can be removed from this device, and so deleted on the server
+const SYNC_REMOVABLE_KINDS = ['technician', 'task', 'filter_clean', 'pool_drain', 'work_order', 'reschedule',
+  'filter_group', 'drain_entry', 'quote', 'service_call'];
+
 // Notice what changed here since the server last agreed, field by field
 function syncScanRecords(state, now){
   const r = syncRecordState(state);
@@ -14408,8 +14443,11 @@ function syncScanRecords(state, now){
     if(local[key]) return;
     const k = r.known[key];
     // Profiles and work records can disappear from this device; company
-    // details, setup and settings always exist
-    const removable = ['technician', 'task', 'filter_clean', 'pool_drain', 'work_order', 'reschedule']
+    // details, setup and settings always exist. Oct 19: filter clean groups,
+    // drain calendar days, quotes and service calls too — left off this list,
+    // one taken off here was never deleted on the server, and the next pull
+    // put it straight back.
+    const removable = SYNC_REMOVABLE_KINDS
       .some(kind => key.indexOf(kind + '\u0002') === 0);
     if(k.d || !removable){ delete r.edits[key]; r.seen[key] = SYNC_GONE; return; }
     const was = r.edits[key] && r.edits[key]._deleted;
@@ -14452,7 +14490,7 @@ async function syncRecords(state, companyId){
   // have, last changed before the restore, came after the backup: removed on
   // the server rather than added here
   const restoredAt = state.restoredAt || null;
-  const removableKind = kind => ['technician', 'task', 'filter_clean', 'pool_drain', 'work_order', 'reschedule'].indexOf(kind) !== -1;
+  const removableKind = kind => SYNC_REMOVABLE_KINDS.some(k => k === kind);
   const hereRecords = restoredAt ? syncLocalRecords() : null;
   rows.forEach(row=>{
     const key = syncRecordKey(row.kind, row.id);
@@ -14820,7 +14858,19 @@ async function fetchDeletedCustomers(){
     out.push(...res.body);
     if(res.body.length < SYNC_PAGE) break;
   }
-  return {ok: true, rows: out};
+  // Ones deleted permanently are empty markers now: not listed (Oct 19)
+  return {ok: true, rows: out.filter(r => r && r.data && Object.keys(r.data).length)};
+}
+
+// Deleted for good (Oct 19): the server empties their row and drops every
+// earlier version (snippet 36). The empty row stays, marked deleted, so an
+// offline phone still drops its copy.
+async function purgeDeletedCustomer(row){
+  if(!siteUser || !siteUser.companyId) return {ok: false, message: 'Sign in first.'};
+  const res = await syncCall('/rest/v1/rpc/purge_deleted_customer', {method: 'POST', body: JSON.stringify({p_id: String(row.id)})});
+  if(res.offline) return {ok: false, message: 'You are offline. Deleting needs a connection.'};
+  if(!res.ok || !res.body || !res.body.purged) return {ok: false, message: 'Could not delete. ' + ((res.body && res.body.message) || '')};
+  return {ok: true};
 }
 
 function deletedAtOf(row){
@@ -14897,7 +14947,7 @@ async function openDeletedCustomers(){
   }
   let rows = got.rows;
 
-  const render = ()=>{
+  let render = ()=>{
     const term = search.value.trim().toLowerCase();
     const shown = rows.filter(r=>{
       if(!term) return true;
@@ -14912,20 +14962,24 @@ async function openDeletedCustomers(){
       const when = deletedAtOf(r);
       const item = document.createElement('div');
       item.className = 'deleted-customer';
-      item.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);';
+      item.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);';
       const info = document.createElement('div');
-      info.style.cssText = 'min-width:0;';
+      info.style.cssText = 'flex:1;min-width:0;';
+      // Too long for the line: it slides across to show the rest (Oct 19)
       const name = document.createElement('div');
-      name.style.cssText = 'font-weight:600;font-size:14px;';
+      name.className = 'deleted-scroll';
+      name.style.cssText = 'font-weight:600;font-size:14px;overflow:hidden;white-space:nowrap;';
       name.textContent = d.name || 'Unnamed customer';
       const sub = document.createElement('div');
-      sub.style.cssText = 'font-size:12px;color:var(--muted);';
+      sub.className = 'deleted-scroll';
+      sub.style.cssText = 'font-size:12px;color:var(--muted);overflow:hidden;white-space:nowrap;';
       sub.textContent = [d.address, when ? 'Deleted ' + when.toLocaleDateString() + ' ' + when.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) : '']
         .filter(Boolean).join(' \u00b7 ');
       info.appendChild(name); info.appendChild(sub);
+      // Every Restore the same width, at the far right (Oct 19)
       const btn = document.createElement('button');
       btn.className = 'btn btn-primary';
-      btn.style.cssText = 'width:auto;flex-shrink:0;';
+      btn.style.cssText = 'width:104px;flex:0 0 104px;padding-left:0;padding-right:0;';
       btn.textContent = 'Restore';
       btn.addEventListener('click', async ()=>{
         const yes = await confirmDialog('Restore ' + escapeSyncText(d.name || 'this customer') + '? They will come back on every device.', 'Restore');
@@ -14941,11 +14995,32 @@ async function openDeletedCustomers(){
         render();
         showToast('Restored ' + (d.name || 'customer'));
       });
-      item.appendChild(info); item.appendChild(btn);
+      // A bin after it: deleted for good (Oct 19)
+      const bin = document.createElement('button');
+      bin.type = 'button';
+      bin.innerHTML = WEIR_BIN_SVG;
+      bin.dataset.xDrawn = 'bin';
+      bin.title = 'Delete permanently';
+      bin.setAttribute('aria-label', bin.title);
+      bin.addEventListener('click', async ()=>{
+        const yes = await confirmDialog('Delete ' + escapeSyncText(d.name || 'this customer') + ' permanently? They can\u2019t be restored after this.', 'Delete');
+        if(!yes) return;
+        bin.disabled = true; btn.disabled = true;
+        const r2 = await purgeDeletedCustomer(r);
+        if(!r2.ok){ bin.disabled = false; btn.disabled = false; showToast(r2.message); return; }
+        rows = rows.filter(x => x !== r);
+        render();
+        showToast((d.name || 'Customer') + ' deleted permanently');
+      });
+      item.appendChild(info); item.appendChild(btn); item.appendChild(bin);
       box.appendChild(item);
     });
   };
-  search.addEventListener('input', render);
+  search.addEventListener('input', ()=> render());
+  // Names and addresses cut off slide across (Oct 19)
+  const scrollLong = ()=> setTimeout(()=> box.querySelectorAll('.deleted-scroll').forEach(webMarqueeIfCut), 0);
+  const draw0 = render;
+  render = ()=>{ draw0(); scrollLong(); };
   render();
 }
 
@@ -30441,6 +30516,31 @@ function saveOpenProfileEdits(keepRow){
 document.addEventListener('visibilitychange', ()=>{ if(document.hidden) saveOpenProfileEdits(); });
 window.addEventListener('pagehide', ()=> saveOpenProfileEdits());
 
+// Under the name line (Oct 19), as under Edit customer in the app: the last
+// drain of each body of water they have, extra bodies by their own names, then
+// the last filter clean done on a route
+function renderProfileLastDone(c){
+  const box = document.getElementById('profileLastDone');
+  if(!box) return;
+  box.innerHTML = '';
+  const nice = iso => new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'});
+  const items = pdBodies(c).map(b => ['Last ' + (b.key === 'pool' ? 'pool' : b.key === 'spa' ? 'spa' : b.label) + ' drain', pdLast(c, b.key)]);
+  const cleans = (lsGet('scheduledFilterCleans') || []).filter(r => r && String(r.customerId) === String(c.id) && r.status === 'done')
+    .map(r => { const t = r.doneAt ? new Date(r.doneAt) : null; return t && !isNaN(t) ? owLocalISO(t) : (r.date || ''); })
+    .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  items.push(['Last filter clean', cleans.length ? cleans[cleans.length - 1] : '']);
+  items.forEach(([k, iso])=>{
+    const sp = document.createElement('span');
+    sp.appendChild(document.createTextNode(k + ' '));
+    const b = document.createElement('b');
+    b.style.cssText = 'color:var(--ink);font-weight:600;';
+    b.textContent = iso ? nice(iso) : 'Not yet';
+    sp.appendChild(b);
+    box.appendChild(sp);
+  });
+  box.style.display = 'flex';
+}
+
 function viewCustomer(c){
   saveOpenProfileEdits();
   // A profile opened afresh (from the list, Previous / Next) never opens a
@@ -30460,6 +30560,7 @@ function viewCustomer(c){
   // Name — click to edit
   const nameEl = document.getElementById('profileName');
   nameEl.textContent = c.name;
+  try{ renderProfileLastDone(c); }catch(e){}
   nameEl.className = 'editable-name';
   nameEl.title = 'Tap to rename';
   nameEl.onclick = ()=>{
@@ -31569,6 +31670,15 @@ function renderCustomerSearchSuggestions(term){
   box.style.display = 'block';
 }
 
+// No list of past searches under the customer search (Oct 19): the browser
+// files what's typed by the box's name, and ignores autocomplete="off" here,
+// so the box gets a new name each time the page opens and nothing old matches
+(function noPastSearches(){
+  const el = document.getElementById('customerSearch');
+  if(!el) return;
+  el.setAttribute('name', 'cs-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+  el.setAttribute('autocomplete', 'off');
+})();
 document.getElementById('customerSearch').addEventListener('input', (e)=>{
   customerSearchTerm = e.target.value;
   customerPage = 1;
