@@ -124,7 +124,7 @@ const SEED = `
     out.push(['with white text', getComputedStyle(chips[0]).color === 'rgb(255, 255, 255)']);
     const key = cal.textContent;
     out.push(['the key under the grid names the four tags and three colours', /FC Filter clean/.test(key) && /PD Pool drain/.test(key) && /WO Work order/.test(key) && /TK Task/.test(key)
-      && /Not sent yet/.test(key) && /In the app/.test(key) && /Done/.test(key)]);
+      && /Not in app/.test(key) && /In the app/.test(key) && /Done/.test(key)]);
     out.push(['six weeks of 124px days', getComputedStyle(cal.querySelector('[data-cal-day]')).height === '124px']);
     // The day window
     cell.click();
@@ -182,7 +182,20 @@ const SEED = `
     out.push(['back to In the app it is not done again', (lsGet('scheduledWorkOrders') || [])[0].status === 'scheduled']);
     choose(Array.from(topWin().querySelectorAll('select.cal-status-pick'))[3], '');
     await wait(30);
-    out.push(['Not sent on a work order takes the visit off the route, after asking', (lsGet('scheduledWorkOrders') || []).length === 0]);
+    // Oct 19: Not in app keeps it on the day, held off the route
+    const held = (lsGet('scheduledWorkOrders') || [])[0];
+    out.push(['Not in app on a work order keeps it on the day', !!held && held.date === D && held.held === true && held.status === 'scheduled', JSON.stringify(held)]);
+    const woChip = Array.from(cal.querySelector('[data-cal-day="' + D + '"]').querySelectorAll('div')).find(x => /WO/.test(x.textContent) && x.style.background);
+    out.push(['…its chip goes the grey of Not in app', woChip && getComputedStyle(woChip).backgroundColor === 'rgb(138, 151, 149)']);
+    const pk = Array.from(topWin().querySelectorAll('select.cal-status-pick'));
+    out.push(['…and its badge says NOT IN APP', pk[3].options[pk[3].selectedIndex].textContent === 'NOT IN APP', pk[3].options[pk[3].selectedIndex].textContent]);
+    choose(pk[4], '');
+    await wait(30);
+    const tk = (lsGet('tasks') || [])[0];
+    out.push(['Not in app on a task keeps it on the day, not done', !!tk && tk.held === true && tk.done === false && tk.date === D]);
+    choose(Array.from(topWin().querySelectorAll('select.cal-status-pick'))[4], 'app');
+    await wait(30);
+    out.push(['In the app sends it back', !(lsGet('tasks') || [])[0].held]);
     // A click outside closes the day
     clickOutside(topWin());
     await wait(20);
@@ -419,6 +432,21 @@ const SEED = `
   }, SITE);
 
   console.log('\n=== App: a customer’s three emails ===');
+  await run('app.html', 'App held jobs', async ()=>{
+    const out = [];
+    const d = new Date(); const day = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    lsSet('tasks', [{id: 'k1', title: 'Held task', technicianId: 't1', date: day, customerIds: ['a'], done: false, held: true},
+                    {id: 'k2', title: 'Live task', technicianId: 't1', date: day, customerIds: ['a'], done: false}]);
+    lsSet('scheduledWorkOrders', [{id: 'j1', customerId: 'a', technicianId: 't1', date: day, status: 'scheduled', held: true, title: 'Held WO'},
+                                  {id: 'j2', customerId: 'a', technicianId: 't1', date: day, status: 'scheduled', title: 'Live WO'}]);
+    const jobs = routeJobsFor('a', day, 't1').map(j => j.id);
+    out.push(['the app leaves out a task and work order set to Not in app', jobs.indexOf('k1') === -1 && jobs.indexOf('j1') === -1, jobs.join(',')]);
+    out.push(['…and keeps the ones in the app', jobs.indexOf('k2') !== -1 && jobs.indexOf('j2') !== -1, jobs.join(',')]);
+    const all = techRouteJobsFor('t1', day).map(j => j.id);
+    out.push(['a technician’s route seen by the office leaves them out too', all.indexOf('k1') === -1 && all.indexOf('j1') === -1, all.join(',')]);
+    return out;
+  });
+
   await run('app.html', 'App emails', async ()=>{
     const out = [];
     const c = {id: 'a', name: 'Alpha', email: 'a@x.com', extraEmails: ['b@x.com', 'c@x.com', 'd@x.com']};
