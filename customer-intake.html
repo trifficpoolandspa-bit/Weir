@@ -7599,8 +7599,11 @@ function resetScheduleDates(){
 // The sidebar's WorkCenter sections: to WorkCenter if not there, then that section
 document.querySelectorAll('#wcNavSubs .nav-sub').forEach(b => b.addEventListener('click', ()=>{
   const page = document.getElementById('view-workcenter');
+  const from = page && page.classList.contains('active') ? workCenterMode : null;
   if(!page || !page.classList.contains('active')) switchView('workcenter');
   applyWorkCenterMode(b.dataset.type);
+  // A different section starts at the top of the page (Oct 19)
+  if(from && from !== b.dataset.type) window.scrollTo({top: 0, behavior: 'smooth'});
 }));
 
 function applyWorkCenterMode(mode){
@@ -10559,7 +10562,7 @@ function calHeadToPageStyle(head){
 // orders badges: done green, in the app gold, not sent yet blue, as on the
 // calendar. With onPick it's a menu: pick another status for just that one.
 function calStatusBadge(state, onPick){
-  const LOOK = {'': ['NOT SENT', '#8A9795'], app: ['IN THE APP', '#C68A17'], done: ['DONE', '#2E8B57']};   // the Jobs badges: Expired, Pending, Approved (Oct 18)
+  const LOOK = {'': ['NOT IN APP', '#8A9795'], app: ['IN THE APP', '#C68A17'], done: ['DONE', '#2E8B57']};   // the Jobs badges: Expired, Pending, Approved (Oct 18)
   const look = LOOK[state || ''] || LOOK[''];
   const css = 'display:inline-flex;align-items:center;justify-content:center;width:92px;padding:4px 0;border-radius:7px;border:0;margin:0;'
     + 'font-size:10.5px;font-weight:700;letter-spacing:.04em;color:#fff;white-space:nowrap;background:' + look[1] + ';';
@@ -10573,7 +10576,7 @@ function calStatusBadge(state, onPick){
   sel.className = 'cal-status-pick';
   sel.style.cssText = css + 'text-align:center;text-align-last:center;cursor:pointer;-webkit-appearance:none;-moz-appearance:none;appearance:none;font-family:inherit;';
   sel.title = 'Change the status';
-  [['', 'NOT SENT'], ['app', 'IN THE APP'], ['done', 'DONE']].forEach(([v, t])=>{
+  [['', 'NOT IN APP'], ['app', 'IN THE APP'], ['done', 'DONE']].forEach(([v, t])=>{
     const o = document.createElement('option'); o.value = v; o.textContent = t;
     o.style.cssText = 'color:var(--ink);background:#fff;';
     sel.appendChild(o);
@@ -10828,11 +10831,11 @@ function openWorkCalendar(startDay){
       cell.appendChild(num);
       // Up to four names, each tagged with what it is, then how many more
       const names = [];
-      const stWords = st => st === 'done' ? ' — done' : st === 'app' ? ' — in the app' : ' — not sent yet';
+      const stWords = st => st === 'done' ? ' — done' : st === 'app' ? ' — in the app' : ' — not in app';
       on.fc.forEach(g=>{ const done = fgCleanStatus(g); fgLiveIds(g).forEach(cid=>{ const c = custOf(cid); if(c){ const st = fcState(g, cid, done); names.push([displayName(c.name), st, 'Filter clean, ' + (g.solo ? 'on their own' : (g.name || 'Group')) + stWords(st), 'FC']); } }); });
       on.pd.forEach(e=>{ const st = pdState(e); names.push([displayName(custOf(e.customerId).name), st, pdEntryKindsText(e) + ' drain' + stWords(st), 'PD']); });
-      on.wo.forEach(j=>{ const st = j.status === 'done' ? 'done' : 'app'; names.push([displayName(custOf(j.customerId).name), st, 'Work order' + (j.workOrderNumber ? ' #' + quoteNumberText(j.workOrderNumber) : '') + stWords(st), 'WO']); });
-      on.tk.forEach(t=>{ const st = t.done ? 'done' : 'app'; const cs = taskCusts(t); names.push([cs.length ? displayName(cs[0].name) : (t.title || 'Task'), st, 'Task: ' + (t.title || '') + stWords(st), 'TK']); });
+      on.wo.forEach(j=>{ const st = j.status === 'done' ? 'done' : j.held ? '' : 'app'; names.push([displayName(custOf(j.customerId).name), st, 'Work order' + (j.workOrderNumber ? ' #' + quoteNumberText(j.workOrderNumber) : '') + stWords(st), 'WO']); });
+      on.tk.forEach(t=>{ const st = t.done ? 'done' : t.held ? '' : 'app'; const cs = taskCusts(t); names.push([cs.length ? displayName(cs[0].name) : (t.title || 'Task'), st, 'Task: ' + (t.title || '') + stWords(st), 'TK']); });
       names.slice(0, 4).forEach(x => cell.appendChild(calNameChip(x[0], x[1], x[2], x[3])));
       if(names.length > 4) cell.insertAdjacentHTML('beforeend', '<div style="font-size:10px;color:var(--muted);margin-top:2px;">+ ' + (names.length - 4) + ' more</div>');
       cell.addEventListener('click', ()=>{
@@ -10856,7 +10859,7 @@ function openWorkCalendar(startDay){
       s.appendChild(document.createTextNode(w));
       key.appendChild(s);
     });
-    [['', 'Not sent yet'], ['app', 'In the app'], ['done', 'Done']].forEach(([st, w])=>{
+    [['', 'Not in app'], ['app', 'In the app'], ['done', 'Done']].forEach(([st, w])=>{
       const k = calNameChip(w, st, '');
       k.style.display = 'inline-flex'; k.style.margin = '0';
       key.appendChild(k);
@@ -10998,7 +11001,7 @@ function openWorkCalendar(startDay){
         gh.children[0].textContent = g.solo ? 'Customers on their own' : (g.name || 'Untitled group');
         const blockers = filterGroupBlockers(g);
         gh.children[1].textContent = (g.solo ? 'not in a group' : (g.technicianId ? techName(g.technicianId) : 'No technician')) + ' · '
-          + (g.finalized ? 'on the route' : blockers.length ? 'needs ' + blockers.join(', ') : 'not sent yet');
+          + (g.finalized ? 'on the route' : blockers.length ? 'needs ' + blockers.join(', ') : 'not in app');
         if(g.finalized && !g.solo){
           const offB = smallBtn('Take off route', 'btn-ghost', 'margin-left:auto;padding:4px 10px;font-size:12px;color:var(--rust);border-color:#EFC9BC;');
           offB.addEventListener('click', async ()=>{
@@ -11179,7 +11182,7 @@ function openWorkCalendar(startDay){
         row.appendChild(nameCell(displayName(c.name)));
         const what = (j.title || (j.lineItems || []).map(li => li.description).join(', ') || 'Work order');
         row.appendChild(textCell((j.workOrderNumber ? '#' + quoteNumberText(j.workOrderNumber) + ' · ' : '') + what));
-        row.appendChild(calStatusBadge(j.status === 'done' ? 'done' : 'app', want => setJobStatus(j.id, want)));
+        row.appendChild(calStatusBadge(j.status === 'done' ? 'done' : j.held ? '' : 'app', want => setJobStatus(j.id, want)));
         row.appendChild(textCell(techName(j.technicianId)));
         row.appendChild(document.createElement('span'));
         listWrap.appendChild(row);
@@ -11198,7 +11201,7 @@ function openWorkCalendar(startDay){
         if(cs.length) row.appendChild(nameCell(cs.map(c => displayName(c.name)).join(', ')));
         else row.appendChild(textCell('No customer', true));
         row.appendChild(textCell(t.title || 'Task'));
-        row.appendChild(calStatusBadge(t.done ? 'done' : 'app', want => setTaskStatus(t.id, want)));
+        row.appendChild(calStatusBadge(t.done ? 'done' : t.held ? '' : 'app', want => setTaskStatus(t.id, want)));
         row.appendChild(textCell(techName(t.technicianId)));
         row.appendChild(document.createElement('span'));
         listWrap.appendChild(row);
@@ -11246,7 +11249,7 @@ function openWorkCalendar(startDay){
       }
     }
     saveFilterGroups(); renderFilterGroups(); draw();
-    showToast((c ? displayName(c.name) : 'Customer') + ': ' + (want === 'done' ? 'done' : want === 'app' ? 'in the app' : 'not sent'));
+    showToast((c ? displayName(c.name) : 'Customer') + ': ' + (want === 'done' ? 'done' : want === 'app' ? 'in the app' : 'not in app'));
   }
   // One customer's drain to another status: not sent (off the app), in the app
   // (sent to their technician, or back to not done), or done
@@ -11286,43 +11289,36 @@ function openWorkCalendar(startDay){
     pdCalSave(all);
     renderPoolDrains();
     draw();
-    showToast(displayName(c.name) + ': ' + (want === 'done' ? 'done' : want === 'app' ? 'in the app' : 'not sent'));
+    showToast(displayName(c.name) + ': ' + (want === 'done' ? 'done' : want === 'app' ? 'in the app' : 'not in app'));
   }
-  // A work order visit: done, back in the app, or not sent (taken off the
-  // route, as a work order is only made by sending it)
-  async function setJobStatus(jobId, want){
+  // A work order visit: done, in the app, or not in app (Oct 19: it stays on
+  // the day, held off the technician's route, as a filter clean or drain does)
+  function setJobStatus(jobId, want){
     const list = woJobs();
     const j = list.find(x => x && x.id === jobId); if(!j) { draw(); return; }
     const c = custOf(j.customerId);
-    if(want === ''){
-      const ok = await confirmDialog('Take this work order visit for ' + (c ? displayName(c.name) : 'this customer') + ' off the route? It comes off the app and off this day.', 'Take off');
-      if(!ok){ draw(); return; }
-      lsSet('scheduledWorkOrders', list.filter(x => !(x && x.id === jobId)));
-    } else {
-      if(want === 'done'){ if(j.status !== 'done'){ j.status = 'done'; j.doneAt = new Date().toISOString(); j.doneBy = 'office'; } }
-      else if(j.status === 'done'){ j.status = 'scheduled'; delete j.doneAt; delete j.doneBy; }
-      lsSet('scheduledWorkOrders', list);
+    if(want === 'done'){ delete j.held; if(j.status !== 'done'){ j.status = 'done'; j.doneAt = new Date().toISOString(); j.doneBy = 'office'; } }
+    else {
+      if(want === '') j.held = true; else delete j.held;
+      if(j.status === 'done'){ j.status = 'scheduled'; delete j.doneAt; delete j.doneBy; }
     }
+    lsSet('scheduledWorkOrders', list);
     try{ renderWorkOrderHistory(); }catch(e){}
     draw();
-    showToast((c ? displayName(c.name) : 'Work order') + ': ' + (want === 'done' ? 'done' : want === 'app' ? 'in the app' : 'taken off the route'));
+    showToast((c ? displayName(c.name) : 'Work order') + ': ' + (want === 'done' ? 'done' : want === 'app' ? 'in the app' : 'not in app'));
   }
-  // A task: done, back in the app, or not sent (taken off the route)
-  async function setTaskStatus(taskId, want){
+  // A task: done, in the app, or not in app (stays on the day, off the route)
+  function setTaskStatus(taskId, want){
     const t = (tasks || []).find(x => x && x.id === taskId); if(!t){ draw(); return; }
-    if(want === ''){
-      const ok = await confirmDialog('Take the task "' + (t.title || 'Task') + '" off the route? It comes off the app and off this day.', 'Take off');
-      if(!ok){ draw(); return; }
-      tasks = tasks.filter(x => !(x && x.id === taskId));
-    } else if(want === 'done'){
-      if(!t.done) Object.assign(t, {done: true, doneAt: new Date().toISOString(), doneBy: 'office'});
-    } else if(t.done){
-      t.done = false; delete t.doneAt; delete t.doneBy;
+    if(want === 'done'){ delete t.held; if(!t.done) Object.assign(t, {done: true, doneAt: new Date().toISOString(), doneBy: 'office'}); }
+    else {
+      if(want === '') t.held = true; else delete t.held;
+      if(t.done){ t.done = false; delete t.doneAt; delete t.doneBy; }
     }
     saveTasks();
     try{ renderTaskList(); }catch(e){}
     draw();
-    showToast((t.title || 'Task') + ': ' + (want === 'done' ? 'done' : want === 'app' ? 'in the app' : 'taken off the route'));
+    showToast((t.title || 'Task') + ': ' + (want === 'done' ? 'done' : want === 'app' ? 'in the app' : 'not in app'));
   }
   // The picked days' filter cleans and drains to the app
   function pushDays(days){

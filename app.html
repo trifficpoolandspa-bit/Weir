@@ -9196,7 +9196,8 @@ function techRouteJobsFor(techId, iso){
   const mine = x => String(x.technicianId || '') === String(techId)
     || (Array.isArray(x.technicianIds) && x.technicianIds.map(String).indexOf(String(techId)) !== -1);
   const out = [];
-  (lsGet('scheduledWorkOrders') || []).filter(j => j && j.date === iso && mine(j)).forEach(j=>{
+  // One set to Not in app on the website's calendar stays off the routes (Oct 19)
+  (lsGet('scheduledWorkOrders') || []).filter(j => j && j.date === iso && mine(j) && !j.held).forEach(j=>{
     out.push({kind: 'work order', id: j.id, key: 'work order:' + j.id, report: 'wo:' + j.id, title: j.title || 'Work order', customerId: j.customerId,
       done: j.status === 'done', doneAt: j.doneAt, date: j.date, technicianId: j.technicianId});
   });
@@ -9208,7 +9209,7 @@ function techRouteJobsFor(techId, iso){
     out.push({kind: 'pool drain', id: f.id, key: 'pool drain:' + f.id, report: 'pd:' + f.id, title: drainTitle(f), customerId: f.customerId,
       done: f.status === 'done', doneAt: f.doneAt, date: f.date, technicianId: f.technicianId});
   });
-  (lsGet('tasks') || []).filter(t => t && t.date === iso && mine(t)).forEach(t=>{
+  (lsGet('tasks') || []).filter(t => t && t.date === iso && mine(t) && !t.held).forEach(t=>{
     const ids = (t.customerIds || []).length ? t.customerIds : [''];
     ids.forEach(cid => out.push({kind: 'task', id: t.id, key: 'task:' + t.id + ':' + cid, report: '', title: t.title || 'Task', customerId: cid,
       done: !!t.done, doneAt: t.doneAt, date: t.date, technicianId: t.technicianId}));
@@ -10501,7 +10502,7 @@ function tasksForToday(){
   if(!selDate) return [];
   const day = new Date(selDate.getTime() - selDate.getTimezoneOffset() * 60000)
     .toISOString().slice(0, 10);
-  return all.filter(t => !t.done
+  return all.filter(t => !t.done && !t.held   // not one held off the app (Oct 19)
     && t.date === day
     && (currentUser ? t.technicianId === currentUser.id : false));
 }
@@ -10569,12 +10570,12 @@ function jobSubmitted(key){ return jobSubmissions().some(s => s.key === key); }
 function routeJobsFor(customerId, dayISO, techId){
   const mine = x => !techId || String(x.technicianId) === String(techId);
   const tasks = (lsGet('tasks') || [])
-    .filter(t => !t.done && t.date === dayISO && mine(t))
+    .filter(t => !t.done && !t.held && t.date === dayISO && mine(t))   // not one held off the app (Oct 19)
     .filter(t => (t.customerIds || []).indexOf(customerId) !== -1 || t.customerId === customerId)
     .map(t => ({key: 'task:' + t.id + ':' + customerId, kind: 'task', id: t.id,
                 title: t.title || 'Task', details: t.details || '', photoRequired: !!t.photoRequired, videoRequired: !!t.videoRequired}));
   const orders = (lsGet('scheduledWorkOrders') || [])
-    .filter(j => j.status === 'scheduled' && j.date === dayISO && j.customerId === customerId && mine(j))
+    .filter(j => j.status === 'scheduled' && !j.held && j.date === dayISO && j.customerId === customerId && mine(j))
     .map(j => ({key: 'work order:' + j.id, kind: 'work order', id: j.id, lineItems: j.lineItems || [],
                 title: j.title || 'Work order', details: j.notes || '', photoRequired: !!j.photoRequired, videoRequired: !!j.videoRequired}));
   // Filter cleans are jobs too, done on the job screen (Oct 3)
@@ -10706,7 +10707,7 @@ function setJobNameLine(el, kind, text){
 function routeLooseTasks(dayISO, techId){
   const mine = x => !techId || String(x.technicianId) === String(techId);
   return (lsGet('tasks') || [])
-    .filter(t => t && !t.done && t.date === dayISO && mine(t) && !(t.customerIds || []).length && !t.customerId)
+    .filter(t => t && !t.done && !t.held && t.date === dayISO && mine(t) && !(t.customerIds || []).length && !t.customerId)
     .map(t => ({key: 'task:' + t.id + ':none', kind: 'task', id: t.id, title: t.title || 'Task',
                 details: t.details || '', photoRequired: !!t.photoRequired, videoRequired: !!t.videoRequired}))
     .filter(j => !jobSubmitted(j.key));
@@ -10716,12 +10717,12 @@ function routeLooseTasks(dayISO, techId){
 function routeJobCustomerIds(dayISO, techId){
   const ids = new Set();
   const mine = x => !techId || String(x.technicianId) === String(techId);
-  (lsGet('tasks') || []).filter(t => !t.done && t.date === dayISO && mine(t))
+  (lsGet('tasks') || []).filter(t => !t.done && !t.held && t.date === dayISO && mine(t))
     .forEach(t => {
       (t.customerIds || []).concat(t.customerId ? [t.customerId] : [])
         .forEach(id => { if(!jobSubmitted('task:' + t.id + ':' + id)) ids.add(id); });
     });
-  (lsGet('scheduledWorkOrders') || []).filter(j => j.status === 'scheduled' && j.date === dayISO && mine(j))
+  (lsGet('scheduledWorkOrders') || []).filter(j => j.status === 'scheduled' && !j.held && j.date === dayISO && mine(j))
     .forEach(j => { if(!jobSubmitted('work order:' + j.id)) ids.add(j.customerId); });
   // Filter cleans in the order their group was put in (Oct 3: since they
   // became jobs they'd lost it and came in the order they were stored)
