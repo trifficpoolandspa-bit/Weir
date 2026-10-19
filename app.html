@@ -13055,9 +13055,21 @@ function askHeadsUpWay(customer){
 
 // Sent from the office, as "<the company> via Weir", so it arrives whether or
 // not this phone has signal a moment later.
+// A customer's emails (Oct 18, set on the website): the main one, then up to
+// two more. Every email sent to the customer goes to all of them.
+function customerEmailList(c){
+  const out = [];
+  [c && c.email].concat((c && Array.isArray(c.extraEmails)) ? c.extraEmails : []).forEach(e=>{
+    const v = String(e || '').trim();
+    if(v.indexOf('@') !== -1 && !out.some(x => x.toLowerCase() === v.toLowerCase())) out.push(v);
+  });
+  return out.slice(0, 3);
+}
+function customerEmailTo(c){ return customerEmailList(c).join(', '); }
+
 async function sendHeadsUpEmail(customer){
   const toName = (customer.notifyName || '').trim() || customer.name;
-  const toEmail = ((customer.notifyEmail || '').trim() || customer.email || '').trim();
+  const toEmail = ((customer.notifyEmail || '').trim() || customerEmailTo(customer) || '').trim();
   if(!toEmail || toEmail.indexOf('@') === -1) return false;
 
   const session = deviceGet('session');
@@ -16586,7 +16598,7 @@ async function awcSendQuote(){
       const subject = 'Quote from ' + awcCompanyName() + ' — ' + c.name;
       const res = await fieldAuthed('/functions/v1/send-report', {
         method: 'POST',
-        body: JSON.stringify({to: c.email, subject: subject, html: html, customerId: c.id, kind: 'quote'})
+        body: JSON.stringify({to: customerEmailTo(c), subject: subject, html: html, customerId: c.id, kind: 'quote'})
       });
       const ok = !!res.ok;
       // Kept as the website keeps it, and sent to the office whole
@@ -20023,7 +20035,7 @@ async function renderReport(customerId, readingId){
   currentReportText = `SERVICE SKIPPED\n${customer.name}${customer.address ? ' — '+customer.address : ''}\nDate: ${fmtDate(skipRecord.timestamp || skipRecord.date)}\n\nNo service was performed for this customer on this day.`;
 
   document.getElementById('reportActions').style.display = 'flex';
-  document.getElementById('reportActions').dataset.email = customer.email || '';
+  document.getElementById('reportActions').dataset.email = customerEmailTo(customer) || customer.email || '';
   document.getElementById('reportActions').dataset.customerName = customer.name;
   document.getElementById('reportActions').dataset.customerId = customerId;
   document.getElementById('reportActions').dataset.readingId = readingId;
@@ -20728,7 +20740,7 @@ async function adminVersion_renderFullCombinedReport(customerId, poolReadingId, 
   const photoCount = sections.filter(s => s.reading.photo).length;
 
   document.getElementById('reportActions').style.display = 'flex';
-  document.getElementById('reportActions').dataset.email = customer.email || '';
+  document.getElementById('reportActions').dataset.email = customerEmailTo(customer) || customer.email || '';
   document.getElementById('reportActions').dataset.customerName = customer.name;
   document.getElementById('reportActions').dataset.customerId = customerId;
   document.getElementById('reportActions').dataset.readingId = poolReadingId || spaReadingId || (fountainReadingRefs[0] && fountainReadingRefs[0].readingId) || '';
@@ -20915,7 +20927,7 @@ async function techVersion_renderFullCombinedReport(customerId, poolReadingId, s
   const photoCount = sections.filter(s => s.reading.photo).length;
 
   document.getElementById('reportActions').style.display = 'flex';
-  document.getElementById('reportActions').dataset.email = customer.email || '';
+  document.getElementById('reportActions').dataset.email = customerEmailTo(customer) || customer.email || '';
   document.getElementById('reportActions').dataset.customerName = customer.name;
   document.getElementById('reportActions').dataset.customerId = customerId;
   document.getElementById('reportActions').dataset.readingId = poolReadingId || spaReadingId || (fountainReadingRefs[0] && fountainReadingRefs[0].readingId) || '';
@@ -21209,7 +21221,7 @@ function buildJobEmailHtml(customer, job, techName){
 }
 
 function queueJobEmail(customer, job){
-  const to = String(customer.email || '').trim();
+  const to = customerEmailTo(customer);
   if(!to || to.indexOf('@') === -1) return;          // nobody to send it to
   const techName = job.doneBy && job.doneBy !== 'office' ? techNameFor(job.doneBy) : '';
   const isWO = job.kind === 'work order';
