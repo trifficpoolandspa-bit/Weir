@@ -1025,8 +1025,8 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     await wait(80);
     const list = () => d.getElementById('filterGroupList');
     const headings = () => Array.from(list().querySelectorAll(':scope > [data-reorder-key]')).map(c => c.dataset.reorderKey).join(',');
-    // Oct 13: groups go on days from the Schedule tab's calendar
-    check('the subtext says to press Select on the Schedule tab and mentions emails', /from the Schedule tab, then press Select there to push them onto the technician\u2019s route\. Customize emails/.test(d.getElementById('wcFiltersSection').textContent.replace(/'/g, '\u2019')));
+    // Oct 18: groups go on days from the Calendar
+    check('the subtext says to press Select for route on the Calendar and mentions emails', /from the Calendar, then press Select for route there to push them onto the technician\u2019s route\. Customize emails/.test(d.getElementById('wcFiltersSection').textContent.replace(/'/g, '\u2019')));
     check('no Save group button', !/Save group/.test(list().textContent));
     check('each group has a drag grip', list().querySelectorAll(':scope > [data-reorder-key] span[title="Drag to reorder"]').length === 3);
     check('each heading lights up under the pointer', list().querySelectorAll('.fg-head').length === 3);

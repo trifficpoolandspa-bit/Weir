@@ -230,16 +230,22 @@ function boot(){
             labels.indexOf('+ New group') === 0, labels.join(','));
       check('  then Email',
             labels.indexOf('Email') === 1 && labels.indexOf('Schedule') === -1, labels.join(','));
+      // Oct 18: Replacements moved off the calendar, to the right of Email
+      check('  then Replacements, right of Email', /^Replacements/.test(labels[2] || ''), labels.join(','));
+      check('  no Schedule tab any more: Groups is the page',
+            !d.getElementById('fcTabControl') && d.getElementById('wcFiltersSection').style.display !== 'none');
 
       const inCard = Array.from(d.querySelectorAll('#filterGroupList button')).map(b => b.textContent);
       check('  no Schedule button inside a group', inCard.indexOf('Schedule') === -1, inCard.join(','));
       check('  no Unschedule button either', inCard.indexOf('Unschedule') === -1, inCard.join(','));
 
-      // Oct 13: the calendar is on the page, on the Schedule tab
-      const cal = () => d.getElementById('wcFilterCalCard');
+      // Oct 18: one Calendar, its own WorkCenter tab
+      Array.from(d.querySelectorAll('#workCenterTypeControl .history-type-btn'))
+        .find(b => b.dataset.type === 'calendar').click();
+      const cal = () => d.getElementById('wcCalendarCard');
       const win = () => Array.from(d.querySelectorAll('.confirm-overlay')).pop();
-      check('  the calendar is on the Schedule tab', !!cal() && cal().style.display !== 'none' && /Filter clean schedule/.test(cal().textContent));
-      check('  with Replacements beside it', Array.from(cal().querySelectorAll('button')).some(b => /^Replacements/.test(b.textContent)));
+      check('  the Calendar tab shows the calendar', !!cal() && cal().style.display !== 'none' && /Calendar/.test(cal().querySelector('h2').textContent));
+      check('  and the groups page is hidden', d.getElementById('wcFiltersSection').style.display === 'none');
       const menu = cal().querySelector('select');
       check('  with a technician menu, All technicians first',
             menu && menu.options[0].textContent === 'All technicians' && menu.value === '', menu ? menu.options[0].textContent : 'none');
@@ -253,7 +259,8 @@ function boot(){
       const sep = cellFor('2026-09-22');
       check('  a group’s day shows its customers’ names', /Alpha/.test(sep.textContent) && /Bravo/.test(sep.textContent), sep.textContent);
       const oct = cellFor('2026-10-06');
-      check('  a group on the route shows gold with a clock', !!oct.querySelector('svg') && /251, 241, 221|FBF1DD/i.test(oct.querySelector('div[style*="background"]').getAttribute('style')));
+      // Oct 18: the Pending gold, white text, tagged FC
+      check('  a group on the route shows gold, tagged FC', /198, 138, 23|C68A17/i.test(oct.querySelector('div[style*="background"]').getAttribute('style')) && /FC/.test(oct.textContent));
       oct.click();
       check('  pressing a day opens a window with its customers', !!win() && /Already on route/.test(win().textContent)
             && Array.from(win().querySelectorAll('select.cal-status-pick')).some(sel => sel.value === 'app'));

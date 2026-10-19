@@ -603,7 +603,7 @@ console.log('\n=== The WorkCenter tab always matches what is shown ===');
   w.Element.prototype.scrollIntoView = function(){};
 
   const ids = ['wcQuotesSection','wcQuotesHistoryCard','wcCallsSection',
-               'wcCallsListCard','wcFilterTabsCard','wcFilterCalCard','wcFiltersSection','wcBroadcastSection'];   // the filter tabs and calendar (Oct 13)
+               'wcCallsListCard','wcCalendarCard','wcFiltersSection','wcDrainsSection','wcBroadcastSection'];   // the Calendar tab (Oct 18)
   const shown = ()=> ids.filter(id => {
     const e = d.getElementById(id);
     return e && e.style.display !== 'none';
@@ -636,16 +636,16 @@ console.log('\n=== The WorkCenter tab always matches what is shown ===');
 
     // Same for filter cleans
     press('filters');
-    // Oct 13: it opens on its Schedule tab: the tab strip and the calendar
+    // Oct 18: Groups is the page; the calendar is the Calendar tab
     check('  filter cleans shows only its own section',
-          shown().join(',') === 'wcFilterTabsCard,wcFilterCalCard', shown().join(','));
+          shown().join(',') === 'wcFiltersSection', shown().join(','));
     w.eval("switchView('settings'); webLeftAt = {}; switchView('workcenter');");  // past the page's 20 seconds (Sept 29)
     check('  and is hidden on returning',
-          shown().indexOf('wcFiltersSection') === -1 && shown().indexOf('wcFilterCalCard') === -1, shown().join(','));
+          shown().indexOf('wcFiltersSection') === -1 && shown().indexOf('wcCalendarCard') === -1, shown().join(','));
 
     // No mode may leave another's section visible
     let clean = true;
-    [['quotes',1],['filters',2],['broadcast',1]].forEach(([m,n])=>{   // filters: its tabs and the calendar (Oct 13)
+    [['quotes',1],['calendar',1],['filters',1],['drains',1],['broadcast',1]].forEach(([m,n])=>{   // one card each (Oct 18)
       w.eval("applyWorkCenterMode('" + m + "');");
       if(shown().length !== n) clean = false;
     });
