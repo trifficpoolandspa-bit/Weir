@@ -8882,9 +8882,9 @@ function wcCalResetOnLeave(which){
     if(which === 'filters'){
       const t = document.getElementById('filterGroupTech'); if(t) t.value = '';
     }
-    // The Calendar (Oct 18): drawn fresh on the way back, on the same month
+    // The Calendar (Oct 18): drawn fresh on the way back, on this month
     if(which === 'calendar'){
-      const h = document.getElementById('wcCalendarCard'); if(h) h._refresh = null;
+      const h = document.getElementById('wcCalendarCard'); if(h){ h._refresh = null; h._month = null; }
     }
   }catch(e){}
 }
@@ -11403,6 +11403,9 @@ function wcalOpenForm(kind, iso, onSaved){
   const prevView = wcView;
   const home = formCard.parentNode, homeNext = formCard.nextSibling;
   const prevCss = formCard.style.cssText;
+  // Found before the form leaves the page: getElementById can't see it while
+  // it's in a window not yet on the page
+  const saveBtn = document.getElementById(isTask ? 'btnSaveTask' : 'btnSendWorkOrder');
   // The form, blank, as that kind
   typeSel.value = kind;
   wcView = 'main';
@@ -11422,11 +11425,11 @@ function wcalOpenForm(kind, iso, onSaved){
   h.style.cssText = 'font-size:16px;margin:0 0 16px;';
   h.textContent = isTask ? 'New task' : 'New work order';
   panel.appendChild(h);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
   formCard.style.cssText = 'display:block;border:none;padding:0;margin:0;box-shadow:none;background:transparent;';
   panel.appendChild(formCard);
-  overlay.appendChild(panel);
   // Cancel at the end of the form's own buttons
-  const saveBtn = document.getElementById(isTask ? 'btnSaveTask' : 'btnSendWorkOrder');
   const cancel = document.createElement('button');
   cancel.type = 'button';
   cancel.className = 'btn btn-ghost';
@@ -11458,9 +11461,8 @@ function wcalOpenForm(kind, iso, onSaved){
     else formCard.style.display = 'none';
     overlay.remove();
   }
+  // A click outside presses Cancel, as in every window
   cancel.addEventListener('click', close);
-  overlay.addEventListener('click', ev=>{ if(ev.target === overlay) close(); });
-  document.body.appendChild(overlay);
 }
 
 // ---------- Pool drain emails (Oct 11) ----------
@@ -29256,6 +29258,7 @@ function freshTabOnArrival(view){
     emailHistMonthValue = ''; emailHistKindValue = ''; emailHistStatusValue = ''; emailHistTerm = '';
     emailHistPage = 1; openEmailHistKeys.clear();
     setVal('emailHistKind', ''); setVal('emailHistStatus', ''); setVal('emailHistorySearch', ''); hide('emailHistorySearchClear');
+    try{ setHistoryPane('service'); }catch(e){}   // back on Service history (Oct 18)
   }
   if(view === 'productsservices'){
     psCategory = 'all'; psSearchTerm = ''; psPage = 1;
@@ -29265,6 +29268,7 @@ function freshTabOnArrival(view){
   if(view === 'alerts'){ alertsView = 'new'; alertsKind = 'all'; }
   if(view === 'workcenter'){
     openFilterGroupIds.clear();
+    try{ wcCalResetOnLeave('calendar'); }catch(e){}   // the Calendar back on this month (Oct 18)
     globalHistPage = 1; globalHistSearch = ''; globalHistDate = ''; openGlobalHistIds.clear();
   }
 }
