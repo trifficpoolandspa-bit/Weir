@@ -144,7 +144,9 @@ Deno.serve(async (req: Request)=>{
   const to = String(body.to || '').trim();
   const subject = String(body.subject || '').trim();
   const html = String(body.html || '');
-  if(!to || to.indexOf('@') === -1) return reply(400, {error: 'No email address to send to'});
+  // Up to three addresses, comma separated: a customer can have more than one (Oct 18)
+  const toList = to.split(/[,;]/).map(x => x.trim()).filter(x => x.indexOf('@') !== -1).slice(0, 3);
+  if(!toList.length) return reply(400, {error: 'No email address to send to'});
   if(!subject || !html) return reply(400, {error: 'A report needs a subject and a body'});
 
   // Photos come as data the phone already has. They go inside the report
@@ -295,7 +297,7 @@ Deno.serve(async (req: Request)=>{
   const from = who.companyName.replace(/["<>]/g, '') + ' via Weir <' + SENDING_ADDRESS + '>';
   const payload: Record<string, unknown> = {
     from,
-    to: [to],
+    to: toList,
     subject,
     html: withPhotos(html),
     ...(who.replyTo ? {reply_to: who.replyTo} : {}),
@@ -322,7 +324,7 @@ Deno.serve(async (req: Request)=>{
   if(result.id){
     let kept = String(payload.html || '');
     shown.forEach(p => { if(p.link) kept = kept.split('cid:' + p.id + '"').join(p.link + '"'); });
-    await logSent(who.companyId, String(result.id), body, to, subject, kept);
+    await logSent(who.companyId, String(result.id), body, toList.join(', '), subject, kept);
   }
   return reply(200, {sent: true, id: result.id, from: from, replyTo: who.replyTo,
                      photos: attachments.length, linked: linkOnly.length});
