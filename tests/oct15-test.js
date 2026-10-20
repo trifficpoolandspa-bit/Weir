@@ -146,7 +146,9 @@ const HELPERS = `
     out.push(['the quote number shows', /#\s*\d{4}/.test(document.getElementById('awcQuoteNumber').textContent)]);
     // Video required under Photo required, one column
     const ph = document.getElementById('awcWoPhoto').closest('label'), vd = document.getElementById('awcWoVideo').closest('label');
-    out.push(['work order: Video required in the same column as Photo required', ph.parentElement === vd.parentElement && getComputedStyle(ph.parentElement).flexDirection === 'column']);
+    // Oct 19: four ticks in two even columns; Video still under Photo
+    out.push(['work order: Video required in the same column as Photo required', ph.parentElement === vd.parentElement && getComputedStyle(ph.parentElement).display === 'grid'
+      && (() => { const k = Array.from(ph.parentElement.children); return k.indexOf(ph) % 2 === k.indexOf(vd) % 2 && k.indexOf(vd) > k.indexOf(ph); })()]);
     const tph = document.getElementById('awcTaskPhoto').closest('label'), tvd = document.getElementById('awcTaskVideo').closest('label');
     out.push(['task: Video required in the same column as Photo required', tph.parentElement === tvd.parentElement]);
     // Line item suggestions

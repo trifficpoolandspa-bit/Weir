@@ -299,18 +299,298 @@ const SEED = `
     viewCustomer(customers.find(x => x.id === 'a'));
     const box = document.getElementById('profileLastDone');
     const t = box.textContent;
-    out.push(['on the profile: the last pool drain', /Last pool drain Mar 4, 2026/.test(t), t]);
-    out.push(['…the last spa drain', /Last spa drain Jun 18, 2026/.test(t)]);
-    out.push(['…an extra body by its own name', /Last Koi pond drain Not yet/.test(t)]);
-    out.push(['…the last filter clean done', /Last filter clean Sep 12, 2026/.test(t)]);
+    out.push(['on the profile: the last pool drain', /Last pool drain\s*Mar 4, 2026/.test(t), t]);
+    out.push(['…the last spa drain', /Last spa drain\s*Jun 18, 2026/.test(t)]);
+    out.push(['…an extra body by its own name', /Last Koi pond drain\s*Not yet/.test(t)]);
+    out.push(['…the last filter clean done', /Last filter clean\s*Sep 12, 2026/.test(t)]);
     const tops = Array.from(box.children).map(x => Math.round(x.getBoundingClientRect().top));
     out.push(['side by side on one line', tops.length === 4 && tops.every(y => y === tops[0]), tops.join(',')]);
     const nameLine = document.getElementById('profileName').parentElement.getBoundingClientRect();
     out.push(['a little below the name line', box.getBoundingClientRect().top - nameLine.bottom >= 10, box.getBoundingClientRect().top - nameLine.bottom]);
     viewCustomer(customers.find(x => x.id === 'b'));
-    out.push(['another customer shows their own (Not yet)', /Last pool drain Not yet/.test(box.textContent) && /Last filter clean Not yet/.test(box.textContent), box.textContent]);
+    out.push(['another customer shows their own (Not yet)', /Last pool drain\s*Not yet/.test(box.textContent) && /Last filter clean\s*Not yet/.test(box.textContent), box.textContent]);
     return out;
   }, {init: LAST_SEED});
+
+  // ===================== Later on Oct 19 =====================
+  const APP_OPEN = `
+    currentUser = {id: 't1', name: 'Amy'}; lsSet('technicians', [{id: 't1', name: 'Amy'}, {id: 't2', name: 'Ben'}]);
+    try{ hideLogin(); }catch(e){}
+    localStorage.setItem('weirdevice:membership', JSON.stringify({full_access: true}));
+    try{ applyRoleUI(); }catch(e){}
+  `;
+  // The app's own type (Inter), from node_modules/@fontsource/inter when there,
+  // so widths are measured as on a phone; without it the fallback type is wider
+  let FONTS = '';
+  try{
+    const F = path.join(path.dirname(require.resolve('@fontsource/inter/package.json')), 'files') + '/';
+    FONTS = "document.addEventListener('DOMContentLoaded',()=>{const st=document.createElement('style');st.textContent=\""
+      + [400, 500, 600, 700].map(w => "@font-face{font-family:'Inter';font-weight:" + w + ";src:url(file://" + F + "inter-latin-" + w + "-normal.woff2)}").join('')
+      + "\";document.head.appendChild(st);});";
+  }catch(e){ console.log('  (Inter not installed: npm i @fontsource/inter — widths measured in the fallback type)'); }
+  console.log('\n=== App: WorkCenter forms ===');
+  await run('app.html', 'App WorkCenter forms', new Function('return (async ()=>{' + APP_OPEN + `
+    const out = [];
+    try{ await document.fonts.ready; }catch(e){}
+    customers.push({id: 'c1', name: 'Jordan Ellis', email: 'jordan@example.com', address: '1 A St', active: true});
+    switchView('customers');
+    viewChangedAt = 0;
+    document.getElementById('btnCustPaneWork').click();
+    await wait(200);
+    try{ await document.fonts.ready; }catch(e){}
+    // Quote: Expires on the Date line, between Date and the number
+    const dateLab = document.getElementById('awcQuoteNumber').parentElement;
+    const kids = Array.from(dateLab.children);
+    const exp = document.getElementById('awcQuoteExpires').closest('label');
+    out.push(['quote: Expires in … days is on the Date line', kids.indexOf(exp) !== -1]);
+    out.push(['…between Date and the quote number', kids.indexOf(exp) > 0 && kids.indexOf(exp) < kids.indexOf(document.getElementById('awcQuoteNumber'))]);
+    out.push(['…and the date box on its own line below', document.getElementById('awcQuoteDate').parentElement === dateLab.parentElement]);
+    // Work order: four ticks in two even columns
+    document.querySelector('#awcKindRow [data-kind="Work Order"]').click();
+    await wait(80);
+    const grid = document.getElementById('awcWoPhoto').closest('label').parentElement;
+    const order = Array.from(grid.querySelectorAll('input')).map(i => i.id).join(',');
+    out.push(['work order: Photo, Email customer, Video, Include prices in two columns', getComputedStyle(grid).display === 'grid' && order === 'awcWoPhoto,awcWoEmail,awcWoVideo,awcWoPrices', order]);
+    const r = id => document.getElementById(id).closest('label').getBoundingClientRect();
+    out.push(['…evenly lined up', Math.abs(r('awcWoPhoto').left - r('awcWoVideo').left) < 1 && Math.abs(r('awcWoEmail').left - r('awcWoPrices').left) < 1]);
+    out.push(['…nothing runs off the phone', r('awcWoPrices').right <= document.getElementById('awc').getBoundingClientRect().right]);
+    out.push(['…Email customer and Include prices ticked to start', document.getElementById('awcWoEmail').checked && document.getElementById('awcWoPrices').checked]);
+    // Finalize with them unticked: saved on the visits
+    document.getElementById('awcWoEmail').checked = false;
+    awcWoCustomers = ['c1']; awcLineItems = [{description: 'Pump seal', qty: 1, price: 50}]; awcWoTechs = ['t1'];
+    document.getElementById('awcWoDate').value = '2026-10-21';
+    awcFinalize();
+    const job = (lsGet('scheduledWorkOrders') || []).find(j => j.customerId === 'c1');
+    out.push(['finalized: Email customer and Include prices saved on the visit', !!job && job.emailCustomer === false && job.emailPrices === true, JSON.stringify(job && [job.emailCustomer, job.emailPrices])]);
+    out.push(['Clear ticks them again', document.getElementById('awcWoEmail').checked && document.getElementById('awcWoPrices').checked]);
+    // Task: Saved tasks beside the date; ticks side by side under it
+    document.querySelector('#awcKindRow [data-kind="Task"]').click();
+    await wait(80);
+    const tDate = document.getElementById('awcTaskDate'), saved = document.getElementById('awcSavedTasks');
+    out.push(['task: Saved tasks on the date line, to the right of the date', saved.parentElement === tDate.parentElement && saved.getBoundingClientRect().left > tDate.getBoundingClientRect().right]);
+    out.push(['…narrower than the form', saved.getBoundingClientRect().width < document.getElementById('awc').getBoundingClientRect().width / 2]);
+    const tp = document.getElementById('awcTaskPhoto').closest('label').getBoundingClientRect(), tv = document.getElementById('awcTaskVideo').closest('label').getBoundingClientRect();
+    out.push(['…Photo and Video required side by side under it', Math.abs(tp.top - tv.top) < 2 && tv.left > tp.right && tp.top > tDate.getBoundingClientRect().bottom, JSON.stringify([tp.top, tv.top, tp.right, tv.left, tDate.getBoundingClientRect().bottom, document.getElementById('awc').getBoundingClientRect().width, tp.width, tv.width])]);
+    out.push(['…each label on one line', tp.height < 30 && tv.height < 30, tp.height + ' ' + tv.height]);
+    out.push(['the tick labels are plain text, not the headings’ small capitals', getComputedStyle(document.getElementById('awcTaskPhoto').closest('label')).textTransform === 'none']);
+    return out;
+  `+ '})()'), {width: 375, init: FONTS});
+
+  console.log('\n=== App: changing one from Current ===');
+  await run('app.html', 'App Current editing', new Function('return (async ()=>{' + APP_OPEN + `
+    const out = [];
+    customers.push({id: 'c1', name: 'Jordan Ellis', email: 'jordan@example.com', address: '1 A St', active: true});
+    lsSet('scheduledWorkOrders', [{id: 'j1', workOrderId: 'w1', workOrderNumber: 7, customerId: 'c1', technicianId: 't1', date: '2026-10-21', title: 'Pump seal',
+      lineItems: [{description: 'Pump seal', qty: 1, price: 50}], notes: 'Old note', status: 'scheduled', photoRequired: true}]);
+    lsSet('tasks', [{id: 'k1', title: 'Check timer', details: '', technicianId: 't1', date: '2026-10-22', customerIds: ['c1'], done: false}]);
+    switchView('customers'); viewChangedAt = 0;
+    document.getElementById('btnCustPaneWork').click(); await wait(150);
+    document.querySelector('#awcKindRow [data-kind="Work Order"]').click(); await wait(50);
+    awcView = 'current'; awcApply(); await wait(50);
+    const row = ()=> document.querySelector('#awcCurList .awc-row');
+    row().click(); await wait(50);
+    out.push(['pressing a work order opens it underneath', !!row().querySelector('input[type=date]') && /Save changes/.test(row().textContent)]);
+    const inputs = row().querySelectorAll('.awc-line input');
+    out.push(['…with its line items to change', inputs[0].value === 'Pump seal']);
+    row().querySelector('input[type=date]').value = '2026-10-25';
+    inputs[0].value = 'New seal'; inputs[0].dispatchEvent(new Event('input', {bubbles: true}));
+    row().querySelector('select').value = 't2';
+    Array.from(row().querySelectorAll('button')).find(b => b.textContent === 'Save changes').click(); await wait(50);
+    const j = lsGet('scheduledWorkOrders')[0];
+    out.push(['Save changes updates the visit', j.date === '2026-10-25' && j.title === 'New seal' && j.technicianId === 't2', JSON.stringify([j.date, j.title, j.technicianId])]);
+    out.push(['…and it goes to the office', (lsGet('officeWorkToSend') || []).some(x => x.kind === 'work_order' && x.id === 'j1')]);
+    out.push(['…and the row closes', !row().querySelector('input[type=date]')]);
+    row().click(); await wait(30);
+    Array.from(row().querySelectorAll('button')).find(b => b.textContent === 'Cancel').click(); await wait(30);
+    out.push(['Cancel closes it unchanged', !row().querySelector('input[type=date]') && lsGet('scheduledWorkOrders')[0].title === 'New seal']);
+    document.querySelector('#awcKindRow [data-kind="Task"]').click(); await wait(50);
+    awcView = 'current'; awcApply(); await wait(50);
+    row().click(); await wait(30);
+    const ins = Array.from(row().querySelectorAll('input:not([type=checkbox]):not([type=date])'));
+    ins[0].value = 'Check timer and clock';
+    Array.from(row().querySelectorAll('button')).find(b => b.textContent === 'Save changes').click(); await wait(30);
+    out.push(['a task changes the same way', lsGet('tasks')[0].title === 'Check timer and clock']);
+    return out;
+  `+ '})()'), {width: 375});
+
+  console.log('\n=== Website: changing one from Current ===');
+  await run('customer-intake.html', 'Website Current editing', async ()=>{
+    const out = [];
+    workOrders.push({id: 'w1', type: 'Work Order', number: 43, customerId: 'b', lineItems: [{description: 'Replace pump seal', qty: 1, price: 50}], total: 50});
+    switchView('workcenter'); applyWorkCenterMode('quotes');
+    document.getElementById('wcType').value = 'Work Order'; wcView = 'current'; applyWorkOrderType();
+    await wait(50);
+    const rowOf = ()=> Array.from(document.querySelectorAll('#wcCurrentList .wc-row')).find(r => /Replace pump seal|Clean salt/.test(r.textContent));
+    rowOf().click(); await wait(30);
+    const ed = document.querySelector('#wcCurrentList .wc-cur-editor');
+    out.push(['pressing a work order opens it underneath', !!ed && ed.previousElementSibling === rowOf()]);
+    out.push(['…with date, ticks, technician, line items and notes', !!ed.querySelector('input[type=date]') && ed.querySelectorAll('input[type=checkbox]').length === 4 && !!ed.querySelector('select') && !!ed.querySelector('textarea')]);
+    const desc = Array.from(ed.querySelectorAll('input')).find(i => i.value === 'Replace pump seal');
+    desc.value = 'Replace pump seal and o-ring'; desc.dispatchEvent(new Event('input', {bubbles: true}));
+    Array.from(ed.querySelectorAll('input')).find(i => i.value === '50').value = '80';
+    Array.from(ed.querySelectorAll('input')).find(i => i.value === '80').dispatchEvent(new Event('input', {bubbles: true}));
+    btnText(ed, /^Save changes$/).click(); await wait(30);
+    const j = (lsGet('scheduledWorkOrders') || []).find(x => x.id === 'j1');
+    out.push(['Save changes updates the visit', j.title === 'Replace pump seal and o-ring' && Number(j.lineItems[0].price) === 80]);
+    out.push(['…a one-visit work order’s own total follows', Number(workOrders.find(w => w.id === 'w1').total) === 80]);
+    out.push(['…and the row closes', !document.querySelector('#wcCurrentList .wc-cur-editor')]);
+    // Tasks
+    document.getElementById('wcType').value = 'Task'; applyWorkOrderType(); await wait(30);
+    const trow = Array.from(document.querySelectorAll('#wcCurrentList .wc-row')).find(r => /Check timer/.test(r.textContent));
+    trow.click(); await wait(30);
+    const ted = document.querySelector('#wcCurrentList .wc-cur-editor');
+    const title = Array.from(ted.querySelectorAll('input')).find(i => i.value === 'Check timer settings');
+    title.value = 'Check the timer';
+    btnText(ted, /^Save changes$/).click(); await wait(30);
+    out.push(['a task changes the same way', tasks.find(t => t.id === 'k1').title === 'Check the timer']);
+    // A repeat: its dates window, a date opens to change just that one
+    tasks.push({id: 'r1', title: 'Weekly check', technicianId: 't1', date: iso(2), customerIds: ['a'], seriesId: 's1', everyDays: 7, done: false},
+               {id: 'r2', title: 'Weekly check', technicianId: 't1', date: iso(9), customerIds: ['a'], seriesId: 's1', everyDays: 7, done: false});
+    saveTasks(); renderCurrentList('Task'); await wait(30);
+    Array.from(document.querySelectorAll('#wcCurrentList .wc-row')).find(r => /Weekly check/.test(r.textContent)).click(); await wait(30);
+    const win = topWin();
+    Array.from(win.querySelectorAll('[data-dates] > div')).filter(d => d.style.cursor === 'pointer')[1].click(); await wait(30);
+    const red = win.querySelector('.wc-cur-editor');
+    out.push(['in a repeat, pressing a date opens it to change', !!red && red.querySelector('input[type=date]').value === iso(9)]);
+    Array.from(red.querySelectorAll('input')).find(i => i.value === 'Weekly check').value = 'Weekly check (gate)';
+    btnText(red, /^Save changes$/).click(); await wait(30);
+    out.push(['…changing just that date', tasks.find(t => t.id === 'r2').title === 'Weekly check (gate)' && tasks.find(t => t.id === 'r1').title === 'Weekly check']);
+    return out;
+  }, SITE);
+
+  console.log('\n=== Website: Drains — Photo and Email columns ===');
+  await run('customer-intake.html', 'Drains ticks', async ()=>{
+    const out = [];
+    customers.forEach((c, i) => { c.drains = [{date: '2022-0' + (i + 1) + '-01'}]; });
+    customers.find(x => x.id === 'a').name = 'Castillo-Hernandez Wellington, Raymond and Josephine';
+    // Alpha has a drain in the app, not done
+    lsSet('scheduledPoolDrains', [{id: 'pdx', customerId: 'a', status: 'scheduled', technicianId: 't1', date: iso(3), photoRequired: true}]);
+    saveCustomers();
+    switchView('workcenter'); applyWorkCenterMode('drains');
+    await wait(40);
+    openDrainBuckets.add('overdue'); renderPoolDrains(); await wait(150);
+    const rows = ()=> Array.from(document.querySelectorAll('[data-pd-customer]'));
+    out.push(['each customer row has Photo and Email', rows().length >= 3 && rows().every(r => r.querySelectorAll('label input[type=checkbox]').length === 2)]);
+    out.push(['…ticked to start', rows().every(r => Array.from(r.querySelectorAll('label input[type=checkbox]')).every(b => b.checked))]);
+    const head = document.querySelector('[data-pd-rows]').previousElementSibling;
+    out.push(['…with Photo and Email headings', /Photo/.test(head.textContent) && /Email/.test(head.textContent)]);
+    // Lined up, whether scheduled or not
+    const photoLefts = rows().map(r => Math.round(r.querySelectorAll('label')[0].getBoundingClientRect().left));
+    out.push(['the tick columns line up, scheduled or not', photoLefts.every(x => Math.abs(x - photoLefts[0]) <= 1), photoLefts.join(',')]);
+    const hPhoto = Array.from(head.querySelectorAll('span')).find(x => x.textContent === 'Photo').getBoundingClientRect();
+    const firstPhoto = rows()[0].querySelectorAll('label')[0].getBoundingClientRect();
+    out.push(['…under their headings', Math.abs((hPhoto.left + hPhoto.right) / 2 - (firstPhoto.left + firstPhoto.right) / 2) <= 2]);
+    // Untick Photo for Alpha: saved and the drain in the app follows
+    const aRow = rows().find(r => r.dataset.pdCustomer === 'a');
+    aRow.querySelectorAll('label input')[0].click(); await wait(40);
+    out.push(['unticking saves it on the customer', customers.find(x => x.id === 'a').drainPhotoRequired === false]);
+    out.push(['…and their drain already in the app follows', pdScheduled().find(r => r.id === 'pdx').photoRequired === false]);
+    out.push(['pressing the column doesn’t open the customer', !document.querySelector('.confirm-overlay')]);
+    // Shift-click a run on Email
+    const r2 = rows();
+    r2[0].querySelectorAll('label')[1].dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}));
+    r2[0].querySelectorAll('label input')[1].click(); await wait(30);
+    const r3 = rows();
+    r3[2].querySelectorAll('label')[1].dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, shiftKey: true}));
+    r3[2].querySelectorAll('label input')[1].click(); await wait(30);
+    const ids = rows().slice(0, 3).map(r => r.dataset.pdCustomer);
+    out.push(['shift-click unticks Email for every customer between', ids.every(id => customers.find(x => x.id === id).drainEmailCustomer === false), ids.map(id => customers.find(x => x.id === id).drainEmailCustomer).join(',')]);
+    // A long name scrolls, on one line
+    const nm = rows().find(r => r.dataset.pdCustomer === 'a').querySelector('.pd-scroll-name');
+    await wait(80);
+    out.push(['a long name stays on one line and scrolls', nm.getBoundingClientRect().height < 24 && nm.classList.contains('marquee-on'), nm.getBoundingClientRect().height]);
+    // Sent from the calendar: the customer's settings go with it
+    customers.find(x => x.id === 'a').drainEmailCustomer = false; saveCustomers();
+    lsSet('scheduledPoolDrains', []);
+    applyWorkCenterMode('calendar'); openWorkCalendar(window.__D); await wait(40);
+    const pk = Array.from(topWin().querySelectorAll('select.cal-status-pick'))[2];
+    pk.value = 'app'; pk.dispatchEvent(new Event('change', {bubbles: true})); await wait(40);
+    const sent = pdScheduled().filter(r => r.customerId === 'a');
+    out.push(['a drain sent from the calendar carries the customer’s Photo and Email', sent.length === 2 && sent.every(r => r.photoRequired === false && r.emailCustomer === false), JSON.stringify(sent.map(r => [r.photoRequired, r.emailCustomer]))]);
+    return out;
+  }, SITE);
+
+  console.log('\n=== App: a finished drain emails the customer ===');
+  await run('app.html', 'App drain email', new Function('return (async ()=>{' + APP_OPEN + `
+    const out = [];
+    const c = {id: 'c1', name: 'Jordan Ellis', email: 'jordan@example.com'};
+    window.sendJobEmails = ()=>{};
+    queueJobEmail(c, {kind: 'pool drain', id: 'pd1', bodyName: 'Spa', doneAt: new Date().toISOString(), doneBy: 'office'});
+    const q = lsGet('jobEmailsToSend') || [];
+    const it = q.find(x => x.key === 'pool drain:pd1');
+    out.push(['a drain’s email says which body was drained', !!it && /Spa drain completed/.test(it.subject) && /Spa drain completed/.test(it.html), it && it.subject]);
+    out.push(['…and is logged as a pool drain', !!it && it.kind === 'drain']);
+    return out;
+  `+ '})()'));
+  {
+    // The app's finish only emails when Email customer is ticked
+    const src = fs.readFileSync('app.html', 'utf8');
+    const piece = src.slice(src.indexOf("} else if(job.kind === 'pool drain'){"), src.indexOf("} else if(job.kind === 'pool drain'){") + 2500);
+    check('finishing a drain in the app emails only with Email customer ticked', /wantEmail/.test(piece) && /if\(customer && wantEmail\) queueJobEmail\(customer, Object\.assign\(\{kind: 'pool drain'\}/.test(piece));
+  }
+
+  console.log('\n=== Last dates follow jobs finished in the app ===');
+  await run('app.html', 'App last dates follow', new Function('return (async ()=>{' + APP_OPEN + `
+    const out = [];
+    const c = {id: 'c1', name: 'Jordan Ellis', hasPool: true, hasSpa: true, drains: [{date: '2024-01-05'}]};
+    customers.push(c); lsSet('customers', customers);
+    lsSet('scheduledPoolDrains', [{id: 'p1', customerId: 'c1', status: 'done', doneAt: '2026-10-18T17:00:00Z', bodyKey: 'spa'}]);
+    openCustomerEditor(c);
+    const t = document.getElementById('ncLastDone').textContent;
+    out.push(['a drain finished on the routes counts at once', /Last spa drain Oct 18, 2026/.test(t) && /Last pool drain Jan 5, 2024/.test(t), t]);
+    lsSet('scheduledFilterCleans', [{id: 'f1', customerId: 'c1', status: 'done', doneAt: '2026-10-19T17:00:00Z'}]);
+    refreshNcLastDone();
+    out.push(['an open customer’s dates refresh when a job finishes', /Last filter clean Oct 19, 2026/.test(document.getElementById('ncLastDone').textContent)]);
+    return out;
+  `+ '})()'));
+  await run('customer-intake.html', 'Website last dates follow', async ()=>{
+    const out = [];
+    switchView('customers');
+    const c = customers.find(x => x.id === 'a');
+    viewCustomer(c);
+    const box = document.getElementById('profileLastDone');
+    out.push(['the last dates show as tiles', box.children.length === 3 && box.children[0].children.length === 2]);
+    const h = box.children[0].children[0], v = box.children[0].children[1];
+    out.push(['…an easy-to-read heading (not small capitals)', getComputedStyle(h).textTransform === 'none' && parseFloat(getComputedStyle(h).fontSize) >= 12.5 && h.textContent === 'Last pool drain']);
+    out.push(['…over a large date', parseFloat(getComputedStyle(v).fontSize) >= 15 && getComputedStyle(v).fontWeight >= 700]);
+    out.push(['…“Not yet” in grey', v.textContent === 'Not yet' && getComputedStyle(v).color === getComputedStyle(document.body).getPropertyValue('--muted').trim() || /Not yet/.test(v.textContent)]);
+    // A drain and a filter clean finished in the app arrive
+    syncApplyRecord('pool_drain', 'p9', {id: 'p9', customerId: 'a', status: 'done', doneAt: '2026-10-18T17:00:00Z', bodyKey: 'pool'}, false);
+    syncApplyRecord('filter_clean', 'f9', {id: 'f9', customerId: 'a', status: 'done', doneAt: '2026-10-19T17:00:00Z', date: '2026-10-19'}, false);
+    await wait(500);
+    const t = box.textContent;
+    out.push(['the open profile follows at once', /Oct 18, 2026/.test(t) && /Oct 19, 2026/.test(t), t]);
+    out.push(['…and the drain is logged on the customer for the Drains page', (customers.find(x => x.id === 'a').drains || []).some(d => d.date === '2026-10-18')]);
+    return out;
+  }, SITE);
+
+  console.log('\n=== Website: Email tab by technician and day ===');
+  await run('customer-intake.html', 'Email grouping', async ()=>{
+    const out = [];
+    customers.find(x => x.id === 'a').day = 'Tuesday';
+    customers.find(x => x.id === 'b').day = 'Monday'; customers.find(x => x.id === 'b').extraDays = ['Tuesday'];
+    customers.find(x => x.id === 'c').email = 'c@x.com'; customers.find(x => x.id === 'c').day = 'Tuesday'; customers.find(x => x.id === 'c').technicianId = 't2';
+    technicians.push({id: 't2', name: 'Ben'});
+    switchView('workcenter'); applyWorkCenterMode('broadcast'); await wait(30);
+    const tech = document.getElementById('wcRecipientTech'), day = document.getElementById('wcRecipientDay');
+    out.push(['a Technician menu starting on All technicians', !!tech && tech.options[0].textContent === 'All technicians' && tech.value === '']);
+    out.push(['a Day menu starting on All days', !!day && day.options[0].textContent === 'All days' && day.value === '']);
+    const shown = ()=> Array.from(document.querySelectorAll('#wcRecipientList > label')).length;
+    out.push(['all three listed to start', shown() === 3, shown()]);
+    tech.value = 't1'; tech.dispatchEvent(new Event('change')); await wait(20);
+    day.value = 'Tuesday'; day.dispatchEvent(new Event('change')); await wait(20);
+    out.push(['Amy + Tuesday shows her Tuesday customers (an extra day counts)', shown() === 2, shown()]);
+    document.getElementById('wcRecipientAll').click();
+    out.push(['Select all ticks just those', broadcastPicked.size === 2 && broadcastPicked.has('a') && broadcastPicked.has('b')]);
+    tech.value = 't2'; tech.dispatchEvent(new Event('change')); await wait(20);
+    document.getElementById('wcRecipientAll').click();
+    out.push(['changing the menus keeps those already ticked', broadcastPicked.size === 3]);
+    tech.value = ''; tech.dispatchEvent(new Event('change')); day.value = ''; day.dispatchEvent(new Event('change')); await wait(20);
+    out.push(['All and All shows everyone again', shown() === 3]);
+    tech.value = 't1'; applyWorkCenterMode('quotes'); applyWorkCenterMode('broadcast');
+    out.push(['back on Email later: All, All and nobody ticked', tech.value === '' && day.value === '' && broadcastPicked.size === 0]);
+    return out;
+  }, SITE);
 
   await browser.close();
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
