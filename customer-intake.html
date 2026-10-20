@@ -276,7 +276,9 @@ input::placeholder{color:#A9BCB9;}
 .section-head h2{margin-bottom:0;}
 .section-count{font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 .profile-field-col{display:inline-flex;flex-direction:column;align-items:flex-start;align-self:flex-start;margin-top:-1px;cursor:pointer;white-space:nowrap;position:relative;}
-.profile-field-col .pf-label{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;}
+/* Small headings (Oct 20): a light teal tag with black text, easier to read */
+.hd-tag{font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;}
+.profile-field-col .pf-label{font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;align-self:flex-start;margin-bottom:3px;}
 .profile-field-col .pf-value{font-size:15.5px;font-weight:700;color:var(--teal-deep);display:inline-flex;align-items:center;gap:4px;}
 /* The profile's delete bin: the height of a label and its value, its bottom
    on the line the letters stand on (placed by placeProfileBin, Oct 2) */
@@ -285,7 +287,7 @@ input::placeholder{color:#A9BCB9;}
 .big-num{display:inline-block;font-family:'Space Grotesk','Inter',sans-serif;font-size:22px;font-weight:700;color:var(--teal-deep);letter-spacing:-0.01em;white-space:nowrap;line-height:1;}
 .big-num .num-hash{color:#A9BCB9;font-weight:500;}
 .ps-tick:hover{border-color:var(--line) !important;background:var(--surface);}
-.ps-col{font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;white-space:nowrap;}
+.ps-col{white-space:nowrap;}
 /* Alerts (Oct 2): the count beside the tab, and the rows */
 .nav-badge{min-width:22px;height:20px;padding:0 7px;margin-left:8px;border-radius:10px;background:var(--gold);color:#fff;
   font-size:11.5px;font-weight:700;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;vertical-align:middle;}
@@ -400,8 +402,9 @@ input::placeholder{color:#A9BCB9;}
 .profile-meta-label{
   /* Larger and bolder than an eyebrow, in the lighter teal so it stands apart
      from the near-black value under it */
-  display:block;font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:700;
-  color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;
+  display:table;font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;
+  color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:5px;
+  padding:3px 8px;border-radius:6px;   /* a light teal tag, black text (Oct 20) */
 }
 .profile-meta-value{font-size:16px;color:var(--ink);line-height:1.4;}
 .pill{
@@ -497,8 +500,7 @@ input::placeholder{color:#A9BCB9;}
   padding:5px 10px;border-radius:7px;white-space:nowrap;flex-shrink:0;
 }
 .report-sec{
-  font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;
-  color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;
+  display:table;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;
   margin:16px 0 6px;
 }
 .report-sec:first-of-type{margin-top:0;}
@@ -737,15 +739,15 @@ input::placeholder{color:#A9BCB9;}
         <span style="margin-left:auto;display:inline-flex;align-items:flex-start;gap:28px;align-self:flex-start;">
         <!-- How often they're serviced (Oct 9) -->
         <span id="profileFrequencyWrap" style="display:inline-flex;flex-direction:column;align-items:flex-start;margin-top:-1px;cursor:pointer;white-space:nowrap;">
-          <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Frequency</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin-bottom:3px;">Frequency</span>
           <span id="profileFrequencyName" style="font-size:15.5px;font-weight:700;color:var(--teal-deep);"></span>
         </span>
         <span id="profilePropertyWrap" style="display:inline-flex;flex-direction:column;align-items:flex-start;margin-top:-1px;cursor:pointer;white-space:nowrap;">
-          <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Property</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin-bottom:3px;">Property</span>
           <span id="profilePropertyName" style="font-size:15.5px;font-weight:700;color:var(--teal-deep);"></span>
         </span>
         <span id="profileTechWrap" style="display:inline-flex;flex-direction:column;align-items:flex-start;margin-top:-1px;cursor:pointer;white-space:nowrap;">
-          <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Technician</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin-bottom:3px;">Technician</span>
           <span id="profileTechName" style="font-size:15.5px;font-weight:700;color:var(--teal-deep);"></span>
         </span>
         </span>
@@ -1301,7 +1303,7 @@ input::placeholder{color:#A9BCB9;}
         </div>
       </div>
       <div id="seasonStripBox" style="display:none;margin-top:14px;">
-        <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;margin:0 0 8px;">Seasons</div>
+        <div style="display:table;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin:0 0 8px;">Seasons</div>
         <div class="seg-control" id="seasonControl"></div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
           <p id="seasonNoteText" style="font-size:12.5px;color:var(--muted);margin:0;flex:1;min-width:0;"></p>
@@ -1335,14 +1337,14 @@ input::placeholder{color:#A9BCB9;}
       <!-- The heading sits the same distance from the line above it as from the
            line below, and each row's text the same distance under its line -->
       <div id="customGroupWrap" style="display:none;margin:14px 0 0;padding-top:14px;border-top:1px solid var(--line);">
-        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Groups</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;">Groups</span>
         <div id="customGroupList" style="margin-top:8px;"></div>
       </div>
 
 
       <div id="customExistingWrap" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line);">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
-          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;">Customers with a custom setup</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;">Customers with a custom setup</span>
           <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
             <!-- Every customized customer's quick buttons in one colour (Oct 8):
                  the one on Readings and Dosages only changes the standard lists -->
@@ -2331,11 +2333,11 @@ input::placeholder{color:#A9BCB9;}
       </div>
       <!-- What each column is (Oct 2) -->
       <div id="psColumnLabels" style="display:flex;align-items:center;gap:8px;padding:0 0 6px;border-bottom:1px solid var(--line);margin-bottom:6px;">
-        <span class="ps-col" style="flex:1 1 auto;min-width:0;">Name</span>
-        <span class="ps-col" style="flex:0 0 110px;">Price</span>
-        <span class="ps-col" style="flex:0 0 78px;">Unit</span>
-        <span class="ps-col" style="flex:0 0 168px;">Extra charge</span>
-        <span class="ps-col" style="flex:0 0 132px;">Category</span>
+        <span class="ps-col" style="flex:1 1 auto;min-width:0;"><span class="hd-tag">Name</span></span>
+        <span class="ps-col" style="flex:0 0 110px;"><span class="hd-tag">Price</span></span>
+        <span class="ps-col" style="flex:0 0 78px;"><span class="hd-tag">Unit</span></span>
+        <span class="ps-col" style="flex:0 0 168px;"><span class="hd-tag">Extra charge</span></span>
+        <span class="ps-col" style="flex:0 0 132px;"><span class="hd-tag">Category</span></span>
         <span style="flex:0 0 33px;"></span>
       </div>
       <div id="productsServicesList"></div>
@@ -5810,7 +5812,7 @@ function renderBilling(){
         vBlock.style.cssText = 'padding:12px 0;border-bottom:1px solid var(--line);';
 
         const vHead = document.createElement('div');
-        vHead.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:8px;";
+        vHead.style.cssText = "display:table;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin-bottom:8px;";
         vHead.textContent = fmtDate(v.date) + ' · ' + v.body;
         vBlock.appendChild(vHead);
 
@@ -22288,7 +22290,7 @@ function renderCustomBodies(){
   }
 
   const label = document.createElement('div');
-  label.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;margin:14px 0 8px;";
+  label.style.cssText = "display:table;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin:14px 0 8px;";
   label.textContent = 'Body of water';
   box.appendChild(label);
 
@@ -27393,7 +27395,7 @@ async function openPhotoWindow(shownList, dateLabel){
 
   const shot = (label, data)=> data ? `
     <div style="margin-bottom:14px;">
-      <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">${label}</div>
+      <div style="display:table;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin-bottom:6px;">${label}</div>
       <img src="${data}" style="width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="${label} photo">
     </div>` : '';
 
@@ -28533,7 +28535,7 @@ function openAddToCustomersModal(typeName){
 
         <!-- Quick buttons for this kind of equipment, set up while adding it (Oct 2) -->
         <div style="border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:12px 0;margin:0 0 14px;">
-          <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;margin:0 0 6px;">Quick buttons (optional)</div>
+          <div style="display:table;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin:0 0 6px;">Quick buttons (optional)</div>
           <p style="font-size:11.5px;color:var(--muted);margin:0 0 8px;">Choices to tap on this equipment. They show for every customer who has it.</p>
           <div id="addEqBtnRows"></div>
           <button type="button" class="btn btn-ghost" id="addEqBtnAdd" style="width:100%;padding:8px 12px;font-size:13px;margin-top:8px;">+ Add a button</button>
@@ -30555,7 +30557,7 @@ function inlineServices(cust){
 
     // Extra bodies of water, added by name
     const waterLabel = document.createElement('div');
-    waterLabel.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;";
+    waterLabel.style.cssText = "display:table;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin-bottom:6px;";
     waterLabel.textContent = 'Extra bodies of water';
     wrap.appendChild(waterLabel);
 
@@ -30887,6 +30889,9 @@ function renderProfileLastDone(c){
   box.style.display = 'flex';
 }
 
+// A profile list whose picker couldn't open by itself: shown as it was
+function pickAgain(sel, value){ try{ sel.value = value; }catch(e){} }
+
 function viewCustomer(c){
   saveOpenProfileEdits();
   // A profile opened afresh (from the list, Previous / Next) never opens a
@@ -30979,8 +30984,10 @@ function viewCustomer(c){
     // Open the list straight away, so changing technician is one tap rather
     // than tapping the name and then the closed dropdown.
     if(typeof sel.showPicker === 'function'){
-      try{ sel.showPicker(); }
-      catch(e){ /* not allowed in this context — the select is still focused */ }
+      // Nothing chosen while the list is open (Oct 19), so picking the one it
+      // already is still counts as a choice and closes back to the name
+      try{ sel.selectedIndex = -1; sel.showPicker(); }
+      catch(e){ /* not allowed in this context — the select is still focused */ pickAgain(sel, c.technicianId || ''); }
     } else {
       // Older browsers: a synthesised mouse press opens the list
       try{
@@ -30991,8 +30998,7 @@ function viewCustomer(c){
     const commit = ()=>{
       if(committed) return;
       committed = true;
-      c.technicianId = sel.value;
-      saveCustomerField();
+      if(sel.selectedIndex !== -1 && sel.value !== (c.technicianId || '')){ c.technicianId = sel.value; saveCustomerField(); }
       sel.remove();
       techWrap.style.display = 'inline-flex';
       techWrap.dataset.editing = 'false';
@@ -31000,6 +31006,8 @@ function viewCustomer(c){
     };
     sel.addEventListener('change', commit);
     sel.addEventListener('blur', commit);
+    sel.addEventListener('cancel', commit);   // closed without a pick: back as it was (Oct 19)
+    sel.addEventListener('keydown', e => { if(e.key === 'Escape') commit(); });
   };
 
   // Frequency (Oct 9): Every week to start. Tapped like Property; every 2, 3
@@ -31026,7 +31034,9 @@ function viewCustomer(c){
       freqWrap.style.display = 'none';
       freqWrap.after(sel);
       sel.focus();
-      if(typeof sel.showPicker === 'function'){ try{ sel.showPicker(); }catch(e){} }
+      // Nothing chosen while the list is open (Oct 19): the one it already is
+      // still counts as a choice, and it closes back to how it looked
+      if(typeof sel.showPicker === 'function'){ const was = sel.value; try{ sel.selectedIndex = -1; sel.showPicker(); }catch(e){ pickAgain(sel, was); } }
       else { try{ sel.dispatchEvent(new MouseEvent('mousedown', {bubbles:true})); }catch(e){} }
       let committed = false;
       const finish = ()=>{
@@ -31038,6 +31048,7 @@ function viewCustomer(c){
       const commit = async ()=>{
         if(committed) return;
         committed = true;
+        if(sel.selectedIndex === -1){ finish(); return; }   // closed without a pick
         const f = sel.value;
         if(f === (c.frequency || '') && f !== 'monthly' && !/^every/.test(f)){ finish(); return; }
         if(/^every/.test(f) || f === 'monthly'){
@@ -31054,6 +31065,8 @@ function viewCustomer(c){
       };
       sel.addEventListener('change', commit);
       sel.addEventListener('blur', commit);
+      sel.addEventListener('cancel', commit);   // closed without a pick: back as it was (Oct 19)
+      sel.addEventListener('keydown', e => { if(e.key === 'Escape') commit(); });
     };
   }
 
@@ -31082,14 +31095,15 @@ function viewCustomer(c){
       propWrap.style.display = 'none';
       propWrap.after(sel);
       sel.focus();
-      if(typeof sel.showPicker === 'function'){ try{ sel.showPicker(); }catch(e){} }
+      // Nothing chosen while the list is open (Oct 19): the one it already is
+      // still counts as a choice, and it closes back to how it looked
+      if(typeof sel.showPicker === 'function'){ const was = sel.value; try{ sel.selectedIndex = -1; sel.showPicker(); }catch(e){ pickAgain(sel, was); } }
       else { try{ sel.dispatchEvent(new MouseEvent('mousedown', {bubbles:true})); }catch(e){} }
       let committed = false;
       const commit = ()=>{
         if(committed) return;
         committed = true;
-        c.propertyType = sel.value;
-        saveCustomerField();
+        if(sel.selectedIndex !== -1 && sel.value !== (c.propertyType || '')){ c.propertyType = sel.value; saveCustomerField(); }
         sel.remove();
         propWrap.style.display = 'inline-flex';
         propWrap.dataset.editing = 'false';
@@ -31097,6 +31111,8 @@ function viewCustomer(c){
       };
       sel.addEventListener('change', commit);
       sel.addEventListener('blur', commit);
+      sel.addEventListener('cancel', commit);   // closed without a pick: back as it was (Oct 19)
+      sel.addEventListener('keydown', e => { if(e.key === 'Escape') commit(); });
     };
   }
 
@@ -31689,7 +31705,7 @@ function renderList(){
           + 'flex-shrink:0;line-height:1.25;margin-right:2px;cursor:pointer;';
         block.title = 'Change ' + eyebrowText.toLowerCase();
         const eyebrow = document.createElement('span');
-        eyebrow.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;";
+        eyebrow.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin-bottom:2px;";
         eyebrow.textContent = eyebrowText;
         const value = document.createElement('span');
         value.style.cssText = 'font-size:13px;font-weight:600;color:' + (set ? 'var(--teal-deep)' : 'var(--muted)') + ';white-space:nowrap;';
@@ -31720,7 +31736,7 @@ function renderList(){
       dayBlock.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0;line-height:1.25;';
       dayBlock.addEventListener('click', e => e.stopPropagation());
       const dayEyebrow = document.createElement('span');
-      dayEyebrow.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;";
+      dayEyebrow.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin-bottom:2px;";
       dayEyebrow.textContent = 'Day';
       const dayLine = document.createElement('div');
       dayLine.style.cssText = 'display:flex;align-items:center;gap:4px;white-space:nowrap;';
