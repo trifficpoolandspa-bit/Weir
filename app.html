@@ -9244,20 +9244,22 @@ function techRouteJobsFor(techId, iso){
   const mine = x => String(x.technicianId || '') === String(techId)
     || (Array.isArray(x.technicianIds) && x.technicianIds.map(String).indexOf(String(techId)) !== -1);
   const out = [];
-  // One set to Not in app on the website's calendar stays off the routes (Oct 19)
-  (lsGet('scheduledWorkOrders') || []).filter(j => j && j.date === iso && mine(j) && !j.held).forEach(j=>{
+  // One set to Not in app on the website's calendar stays off the routes (Oct 19).
+  // A done one put back in the app from the website keeps its record (reopened)
+  // and a fresh copy goes out in its place: only the copy is listed here.
+  (lsGet('scheduledWorkOrders') || []).filter(j => j && j.date === iso && mine(j) && !j.held && !j.reopened).forEach(j=>{
     out.push({kind: 'work order', id: j.id, key: 'work order:' + j.id, report: 'wo:' + j.id, title: j.title || 'Work order', customerId: j.customerId,
       done: j.status === 'done', doneAt: j.doneAt, date: j.date, technicianId: j.technicianId});
   });
-  (lsGet('scheduledFilterCleans') || []).filter(f => f && f.date === iso && mine(f)).forEach(f=>{
+  (lsGet('scheduledFilterCleans') || []).filter(f => f && f.date === iso && mine(f) && !f.reopened).forEach(f=>{
     out.push({kind: 'filter clean', id: f.id, key: 'filter clean:' + f.id, report: 'fc:' + f.id, title: 'Filter clean', customerId: f.customerId,
       done: f.status === 'done', doneAt: f.doneAt, date: f.date, technicianId: f.technicianId});
   });
-  (lsGet('scheduledPoolDrains') || []).filter(f => f && f.date === iso && mine(f)).forEach(f=>{
+  (lsGet('scheduledPoolDrains') || []).filter(f => f && f.date === iso && mine(f) && !f.reopened).forEach(f=>{
     out.push({kind: 'pool drain', id: f.id, key: 'pool drain:' + f.id, report: 'pd:' + f.id, title: drainTitle(f), customerId: f.customerId,
       done: f.status === 'done', doneAt: f.doneAt, date: f.date, technicianId: f.technicianId});
   });
-  (lsGet('tasks') || []).filter(t => t && t.date === iso && mine(t) && !t.held).forEach(t=>{
+  (lsGet('tasks') || []).filter(t => t && t.date === iso && mine(t) && !t.held && !t.reopened).forEach(t=>{
     const ids = (t.customerIds || []).length ? t.customerIds : [''];
     ids.forEach(cid => out.push({kind: 'task', id: t.id, key: 'task:' + t.id + ':' + cid, report: '', title: t.title || 'Task', customerId: cid,
       done: !!t.done, doneAt: t.doneAt, date: t.date, technicianId: t.technicianId}));
@@ -16027,13 +16029,16 @@ function awcBuild(pane){
           <label style="margin:0;">Scheduled date</label>
           <span class="awc-num" id="awcWoNumber"></span>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:nowrap;">
-          <input type="date" id="awcWoDate" style="width:auto;">
-          <!-- Photo and Video required stacked in one column beside the date (Oct 15) -->
-          <div style="display:flex;flex-direction:column;gap:8px;">
-            <label class="inline-check"><input type="checkbox" id="awcWoPhoto" checked> Photo required</label>
-            <label class="inline-check"><input type="checkbox" id="awcWoVideo"> Video required</label>
-          </div>
+        <input type="date" id="awcWoDate" style="width:auto;">
+        <!-- The four ticks in two even columns under the date (Oct 19): Photo and
+             Video required, then Email customer and Include prices, as on the
+             website. A label too long for its half wraps rather than running
+             off the phone. -->
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 16px;margin-top:12px;">
+          <label class="inline-check" style="white-space:normal;min-width:0;"><input type="checkbox" id="awcWoPhoto" checked> Photo required</label>
+          <label class="inline-check" style="white-space:normal;min-width:0;"><input type="checkbox" id="awcWoEmail" checked> Email customer</label>
+          <label class="inline-check" style="white-space:normal;min-width:0;"><input type="checkbox" id="awcWoVideo"> Video required</label>
+          <label class="inline-check" style="white-space:normal;min-width:0;"><input type="checkbox" id="awcWoPrices" checked> Include prices</label>
         </div>
       </div>
       <div class="field" style="position:relative;">
@@ -17086,6 +17091,8 @@ function awcClearWo(){
   document.getElementById('awcWoDate').value = todayDateStr();
   document.getElementById('awcWoPhoto').checked = true;
   document.getElementById('awcWoVideo').checked = false;
+  document.getElementById('awcWoEmail').checked = true;
+  document.getElementById('awcWoPrices').checked = true;
   document.getElementById('awcWoRepeat').value = 'none';
   document.getElementById('awcWoUntil').value = '';
   document.getElementById('awcWoUnit').value = 'weeks';
@@ -17126,6 +17133,8 @@ function awcFinalize(){
   const notes = document.getElementById('awcWoNotes').value.trim();
   const photoRequired = document.getElementById('awcWoPhoto').checked;
   const videoRequired = document.getElementById('awcWoVideo').checked;
+  const emailCustomer = document.getElementById('awcWoEmail').checked;   // Oct 19
+  const emailPrices = document.getElementById('awcWoPrices').checked;
   let dates = appWorkOrderDates(date, document.getElementById('awcWoRepeat').value,
     document.getElementById('awcWoEvery').value, document.getElementById('awcWoUnit').value);
   // Up to Until, when one is set (the first date always goes)
@@ -17161,6 +17170,8 @@ function awcFinalize(){
         notes,
         photoRequired,
         videoRequired,
+        emailCustomer,
+        emailPrices,
         status: 'scheduled',
         // Made in the app: the website has no copy of the work order itself
         // (that comes with quotes), so it mustn't call it deleted
@@ -17825,6 +17836,8 @@ function awcOpenForEditing(isTask, r){
   document.getElementById('awcWoDate').value = first.date || todayDateStr();
   document.getElementById('awcWoPhoto').checked = !!first.photoRequired;
   document.getElementById('awcWoVideo').checked = !!first.videoRequired;
+  document.getElementById('awcWoEmail').checked = first.emailCustomer !== false;
+  document.getElementById('awcWoPrices').checked = first.emailPrices !== false;
   document.getElementById('awcWoNotes').value = first.notes || '';
   awcWoCustomers = first.customerId ? [first.customerId] : [];
   awcWoTechs = first.technicianId ? [String(first.technicianId)] : [];

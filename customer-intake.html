@@ -8057,7 +8057,7 @@ function fgLiveIds(g){ return (g.customerIds || []).filter(cid => !fgPaused(g, c
 function fgCleanStatus(g){
   const out = {};
   (lsGet('scheduledFilterCleans') || []).forEach(f=>{
-    if(!f || f.groupId !== g.id || (g.date && f.date !== g.date)) return;
+    if(!f || f.reopened || f.groupId !== g.id || (g.date && f.date !== g.date)) return;   // a done one put back in the app counts no more (Oct 19)
     if(out[f.customerId] === 'done') return;
     out[f.customerId] = f.status === 'done' ? 'done' : 'scheduled';
   });
@@ -8187,11 +8187,12 @@ function fgSyncScheduledInner(){
     live.forEach((cid, i)=>{
       // This round's: still to do, or done since the group was last sent (one
       // done in an earlier round doesn't count)
-      const mine = sched.filter(sc => sc && sc.groupId === g.id && sc.customerId === cid
+      const mine = sched.filter(sc => sc && !sc.reopened && sc.groupId === g.id && sc.customerId === cid
         && (sc.status !== 'done' || !g.scheduledAt || String(sc.doneAt || sc.date || '') >= g.scheduledAt.slice(0, 10)));
       if(!mine.length){
         // Added to the group after it was scheduled: onto the route too
-        if(!g.date || !g.technicianId) return;
+        // (a customer on their own has their own technician, Oct 19)
+        if(!g.date || !fgCustTech(g, cid)) return;
         sched.push({
           id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
           groupId: g.id, groupName: g.name, customerId: cid, technicianId: fgCustTech(g, cid),
@@ -10674,12 +10675,12 @@ function openWorkCalendar(startDay){
       day(e.date).pd.push(e);
     });
     woJobs().forEach(j=>{
-      if(!j || !j.date || !custOf(j.customerId)) return;
+      if(!j || j.reopened || !j.date || !custOf(j.customerId)) return;   // its fresh copy is the one shown (Oct 19)
       if(viewTech && String(j.technicianId || '') !== String(viewTech)) return;
       day(j.date).wo.push(j);
     });
     (tasks || []).forEach(t=>{
-      if(!t || !t.date) return;
+      if(!t || t.reopened || !t.date) return;
       if(viewTech && String(t.technicianId || '') !== String(viewTech)) return;
       day(t.date).tk.push(t);
     });
@@ -11088,17 +11089,18 @@ function openWorkCalendar(startDay){
           }));
           row.appendChild(techSel);
           // A bin at the far right: out of the group for this day and off the
-          // app. Not on a clean that's already done.
-          if(!isDone){
+          // app. A done one too (Oct 19): it leaves the calendar, and the clean
+          // stays in their history.
+          {
             row.appendChild(binBtn('Take off this day', async ()=>{
-              const ok = await confirmDialog('Take ' + displayName(c.name) + ' off ' + (g.name || 'this group') + (g.finalized ? '? Their filter clean comes off the app.' : '?'), 'Take off');
+              const ok = await confirmDialog('Take ' + displayName(c.name) + ' off ' + (g.name || 'this group') + (isDone ? '? The finished filter clean stays in their history.' : g.finalized ? '? Their filter clean comes off the app.' : '?'), 'Take off');
               if(!ok) return;
               const it = filterGroups.find(x => x && x.id === g.id); if(!it) return;
               it.customerIds = (it.customerIds || []).filter(id => id !== cid);
               saveFilterGroups(); renderFilterGroups(); draw();
               showToast(displayName(c.name) + ' taken off');
             }));
-          } else row.appendChild(document.createElement('span'));
+          }
           // Extra work under the customer: ticked off on this filter clean in the app
           const [extra, tagsWrap] = extraLine();
           const exItems = fgCustExtra(g, cid);
@@ -11197,15 +11199,16 @@ function openWorkCalendar(startDay){
         row.appendChild(calStatusBadge(j.status === 'done' ? 'done' : j.held ? '' : 'app', want => setJobStatus(j.id, want)));
         row.appendChild(textCell(techName(j.technicianId)));
         // A bin (Oct 19): this visit off the app and off the day
-        if(j.status !== 'done') row.appendChild(binBtn('Take off this day', async ()=>{
-          const ok = await confirmDialog('Take this work order visit for ' + displayName(c.name) + ' off this day? It comes off the app too.', 'Take off');
+        row.appendChild(binBtn('Take off this day', async ()=>{
+          const ok = await confirmDialog(j.status === 'done'
+            ? 'Delete this finished work order visit for ' + displayName(c.name) + '? It comes off the calendar and out of their jobs.'
+            : 'Take this work order visit for ' + displayName(c.name) + ' off this day? It comes off the app too.', j.status === 'done' ? 'Delete' : 'Take off');
           if(!ok) return;
           lsSet('scheduledWorkOrders', woJobs().filter(x => !(x && x.id === j.id)));
           try{ renderWorkOrderHistory(); }catch(e){}
           draw();
           showToast(displayName(c.name) + ' taken off');
         }));
-        else row.appendChild(document.createElement('span'));
         listWrap.appendChild(row);
       });
     }
@@ -11225,8 +11228,10 @@ function openWorkCalendar(startDay){
         row.appendChild(calStatusBadge(t.done ? 'done' : t.held ? '' : 'app', want => setTaskStatus(t.id, want)));
         row.appendChild(textCell(techName(t.technicianId)));
         // A bin (Oct 19): this task off the app and off the day
-        if(!t.done) row.appendChild(binBtn('Take off this day', async ()=>{
-          const ok = await confirmDialog('Take the task "' + (t.title || 'Task') + '" off this day? It comes off the app too.', 'Take off');
+        row.appendChild(binBtn('Take off this day', async ()=>{
+          const ok = await confirmDialog(t.done
+            ? 'Delete the finished task "' + (t.title || 'Task') + '"? It comes off the calendar and out of their jobs.'
+            : 'Take the task "' + (t.title || 'Task') + '" off this day? It comes off the app too.', t.done ? 'Delete' : 'Take off');
           if(!ok) return;
           tasks = tasks.filter(x => !(x && x.id === t.id));
           saveTasks();
@@ -11234,7 +11239,6 @@ function openWorkCalendar(startDay){
           draw();
           showToast((t.title || 'Task') + ' taken off');
         }));
-        else row.appendChild(document.createElement('span'));
         listWrap.appendChild(row);
       });
     }
@@ -11256,12 +11260,17 @@ function openWorkCalendar(startDay){
     const g = filterGroups.find(x => x && x.id === gid); if(!g) return;
     const c = custOf(cid);
     const mine = ()=> (lsGet('scheduledFilterCleans') || []);
-    const recOf = list => list.find(sc => sc && sc.groupId === g.id && sc.customerId === cid && (!g.date || sc.date === g.date));
+    const ours = sc => sc && !sc.reopened && sc.groupId === g.id && sc.customerId === cid && (!g.date || sc.date === g.date);
+    // A finished one taken out of done (Oct 19): it stays as it is, in their
+    // Jobs, marked reopened; a fresh clean goes out in its place, as Reservice
+    const reopenDone = ()=>{ const list = mine(); let n = 0; list.forEach(sc => { if(ours(sc) && sc.status === 'done'){ sc.reopened = true; n++; } }); if(n) lsSet('scheduledFilterCleans', list); };
     g.custHold = g.custHold || {};
     if(want === ''){
-      lsSet('scheduledFilterCleans', mine().filter(sc => !(sc && sc.groupId === g.id && sc.customerId === cid && (!g.date || sc.date === g.date))));
+      reopenDone();
+      lsSet('scheduledFilterCleans', mine().filter(sc => !(ours(sc) && sc.status !== 'done')));
       if(g.finalized) g.custHold[cid] = true;
     } else {
+      if(want === 'app') reopenDone();
       if(!g.finalized){
         const blockers = filterGroupBlockers(g);
         if(blockers.length){ showToast((g.name || 'This group') + ' needs ' + blockers.join(', ') + ' first'); draw(); return; }
@@ -11271,12 +11280,10 @@ function openWorkCalendar(startDay){
       }
       delete g.custHold[cid];
       saveFilterGroups();   // puts their clean on the app
-      const list = mine();
-      const r = recOf(list);
-      if(r){
-        if(want === 'done'){ if(r.status !== 'done'){ r.status = 'done'; r.doneAt = new Date().toISOString(); r.doneBy = 'office'; } }
-        else if(r.status === 'done'){ r.status = 'scheduled'; delete r.doneAt; delete r.doneBy; }
-        lsSet('scheduledFilterCleans', list);
+      if(want === 'done'){
+        const list = mine();
+        const r = list.find(ours);
+        if(r && r.status !== 'done'){ r.status = 'done'; r.doneAt = new Date().toISOString(); r.doneBy = 'office'; lsSet('scheduledFilterCleans', list); }
       }
     }
     saveFilterGroups(); renderFilterGroups(); draw();
@@ -11291,11 +11298,19 @@ function openWorkCalendar(startDay){
     let recs = pdScheduled();
     pdEntryNormalize(e);
     e.pushed = e.pushed || {};
+    // A finished drain taken out of done (Oct 19): its record stays, in their
+    // Jobs and drain history, marked reopened; a fresh one goes out in its place
+    const reopenDone = ()=> Object.keys(e.pushed).forEach(k=>{
+      const r = recs.find(x => x.id === e.pushed[k]);
+      if(r && r.status === 'done'){ r.reopened = true; delete e.pushed[k]; }
+    });
     if(want === ''){
+      reopenDone();
       const ids = new Set(Object.values(e.pushed));
       recs = recs.filter(x => !ids.has(x.id));
       e.pushed = {};
     } else {
+      if(want === 'app') reopenDone();
       const tech = e.technicianId || c.technicianId || '';
       if(!tech){ showToast('Give ' + displayName(c.name) + ' a technician first'); draw(); return; }
       const order = all.filter(x => x.date === e.date).findIndex(x => x.id === e.id);
@@ -11323,29 +11338,47 @@ function openWorkCalendar(startDay){
     showToast(displayName(c.name) + ': ' + (want === 'done' ? 'done' : want === 'app' ? 'in the app' : 'not in app'));
   }
   // A work order visit: done, in the app, or not in app (Oct 19: it stays on
-  // the day, held off the technician's route, as a filter clean or drain does)
+  // the day, held off the technician's route, as a filter clean or drain does).
+  // A finished one taken out of done keeps its record, in their Jobs, marked
+  // reopened; a fresh copy goes out in its place, as Reservice does.
+  const freshId = p => p + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
   function setJobStatus(jobId, want){
     const list = woJobs();
-    const j = list.find(x => x && x.id === jobId); if(!j) { draw(); return; }
+    let j = list.find(x => x && x.id === jobId); if(!j) { draw(); return; }
     const c = custOf(j.customerId);
-    if(want === 'done'){ delete j.held; if(j.status !== 'done'){ j.status = 'done'; j.doneAt = new Date().toISOString(); j.doneBy = 'office'; } }
-    else {
-      if(want === '') j.held = true; else delete j.held;
-      if(j.status === 'done'){ j.status = 'scheduled'; delete j.doneAt; delete j.doneBy; }
+    if(want !== 'done' && j.status === 'done'){
+      j.reopened = true;
+      const copy = {};
+      ['workOrderId', 'workOrderNumber', 'customerId', 'technicianId', 'technicianIds', 'date', 'title', 'lineItems', 'notes',
+       'photoRequired', 'videoRequired', 'emailCustomer', 'emailPrices'].forEach(k => { if(j[k] !== undefined) copy[k] = JSON.parse(JSON.stringify(j[k])); });
+      copy.id = freshId('woJob_'); copy.status = 'scheduled';
+      list.push(copy);
+      j = copy;
     }
+    if(want === 'done'){ delete j.held; if(j.status !== 'done'){ j.status = 'done'; j.doneAt = new Date().toISOString(); j.doneBy = 'office'; } }
+    else if(want === '') j.held = true;
+    else delete j.held;
     lsSet('scheduledWorkOrders', list);
     try{ renderWorkOrderHistory(); }catch(e){}
     draw();
     showToast((c ? displayName(c.name) : 'Work order') + ': ' + (want === 'done' ? 'done' : want === 'app' ? 'in the app' : 'not in app'));
   }
-  // A task: done, in the app, or not in app (stays on the day, off the route)
+  // A task: done, in the app, or not in app (stays on the day, off the route);
+  // a finished one taken out of done the same way as a work order
   function setTaskStatus(taskId, want){
-    const t = (tasks || []).find(x => x && x.id === taskId); if(!t){ draw(); return; }
-    if(want === 'done'){ delete t.held; if(!t.done) Object.assign(t, {done: true, doneAt: new Date().toISOString(), doneBy: 'office'}); }
-    else {
-      if(want === '') t.held = true; else delete t.held;
-      if(t.done){ t.done = false; delete t.doneAt; delete t.doneBy; }
+    let t = (tasks || []).find(x => x && x.id === taskId); if(!t){ draw(); return; }
+    if(want !== 'done' && t.done){
+      t.reopened = true;
+      const copy = {};
+      ['title', 'details', 'technicianId', 'date', 'customerIds', 'customerId', 'everyWeeks', 'everyDays', 'seriesId', 'taskGroupId',
+       'photoRequired', 'videoRequired'].forEach(k => { if(t[k] !== undefined) copy[k] = JSON.parse(JSON.stringify(t[k])); });
+      copy.id = freshId('task_'); copy.done = false; copy.createdAt = new Date().toISOString();
+      tasks.push(copy);
+      t = copy;
     }
+    if(want === 'done'){ delete t.held; if(!t.done) Object.assign(t, {done: true, doneAt: new Date().toISOString(), doneBy: 'office'}); }
+    else if(want === '') t.held = true;
+    else delete t.held;
     saveTasks();
     try{ renderTaskList(); }catch(e){}
     draw();
@@ -31671,13 +31704,13 @@ function renderCustomerSearchSuggestions(term){
 }
 
 // No list of past searches under the customer search (Oct 19): the browser
-// files what's typed by the box's name, and ignores autocomplete="off" here,
-// so the box gets a new name each time the page opens and nothing old matches
+// files what's typed by the box's name, so the box gets a new name each time
+// the page opens and nothing old matches. (Search boxes' own treatment, further
+// down, sets autocomplete and keeps this name.)
 (function noPastSearches(){
   const el = document.getElementById('customerSearch');
   if(!el) return;
   el.setAttribute('name', 'cs-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
-  el.setAttribute('autocomplete', 'off');
 })();
 document.getElementById('customerSearch').addEventListener('input', (e)=>{
   customerSearchTerm = e.target.value;
