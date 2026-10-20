@@ -179,11 +179,13 @@ const SEED = `
     out.push(['…and its chip turns the Approved green with a tick', doneChip && getComputedStyle(doneChip).backgroundColor === 'rgb(46, 139, 87)' && /✓/.test(doneChip.textContent)]);
     choose(Array.from(topWin().querySelectorAll('select.cal-status-pick'))[3], 'app');
     await wait(30);
-    out.push(['back to In the app it is not done again', (lsGet('scheduledWorkOrders') || [])[0].status === 'scheduled']);
+    // Oct 19: the finished visit is kept (reopened); a fresh one goes out
+    const liveWo = ()=> (lsGet('scheduledWorkOrders') || []).find(x => !x.reopened);
+    out.push(['back to In the app it is not done again', !!liveWo() && liveWo().status === 'scheduled']);
     choose(Array.from(topWin().querySelectorAll('select.cal-status-pick'))[3], '');
     await wait(30);
     // Oct 19: Not in app keeps it on the day, held off the route
-    const held = (lsGet('scheduledWorkOrders') || [])[0];
+    const held = liveWo();
     out.push(['Not in app on a work order keeps it on the day', !!held && held.date === D && held.held === true && held.status === 'scheduled', JSON.stringify(held)]);
     const woChip = Array.from(cal.querySelector('[data-cal-day="' + D + '"]').querySelectorAll('div')).find(x => /WO/.test(x.textContent) && x.style.background);
     out.push(['…its chip goes the grey of Not in app', woChip && getComputedStyle(woChip).backgroundColor === 'rgb(138, 151, 149)']);
@@ -191,11 +193,11 @@ const SEED = `
     out.push(['…and its badge says NOT IN APP', pk[3].options[pk[3].selectedIndex].textContent === 'NOT IN APP', pk[3].options[pk[3].selectedIndex].textContent]);
     choose(pk[4], '');
     await wait(30);
-    const tk = (lsGet('tasks') || [])[0];
+    const tk = (lsGet('tasks') || []).find(x => !x.reopened);
     out.push(['Not in app on a task keeps it on the day, not done', !!tk && tk.held === true && tk.done === false && tk.date === D]);
     choose(Array.from(topWin().querySelectorAll('select.cal-status-pick'))[4], 'app');
     await wait(30);
-    out.push(['In the app sends it back', !(lsGet('tasks') || [])[0].held]);
+    out.push(['In the app sends it back', !(lsGet('tasks') || []).find(x => !x.reopened).held]);
     // A click outside closes the day
     clickOutside(topWin());
     await wait(20);
