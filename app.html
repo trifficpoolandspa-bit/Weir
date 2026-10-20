@@ -4126,6 +4126,7 @@ function syncApplyRecord(kind, id, data, deleted, agreed){
     const wrote = lsSet(key, list);
     syncApplyingRemote = false;
     if(!wrote) return false;
+    if(key === 'scheduledFilterCleans' || key === 'scheduledPoolDrains'){ try{ refreshNcLastDone(); }catch(e){} }
     try{ if(typeof renderRouteTasks === 'function') renderRouteTasks(); }catch(e){}
     try{ if(typeof renderHomeList === 'function') renderHomeList(); }catch(e){}
     if(key === 'scheduledWorkOrders'){
@@ -4314,6 +4315,7 @@ async function syncPullCustomers(state){
   }
   try{ if(typeof customers !== 'undefined') customers = list; }catch(e){}
   try{ if(beforeSave !== afterSave && typeof refreshOpenEquipment === 'function') refreshOpenEquipment(); }catch(e){}
+  try{ if(beforeSave !== afterSave) refreshNcLastDone(); }catch(e){}
   return {ok: true, count: list.length, changed: beforeSave !== afterSave};
 }
 
@@ -7520,8 +7522,13 @@ function renderNcLastDone(customer){
   const nice = iso => new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'});
   const dayOf = r => { const t = r.doneAt ? new Date(r.doneAt) : null; return t && !isNaN(t) ? new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10) : (r.date || ''); };
   const drains = (Array.isArray(customer.drains) ? customer.drains : []).filter(d => d && /^\d{4}-\d{2}-\d{2}$/.test(d.date || ''));
+  // Drains finished on the routes count straight away (Oct 19), before the
+  // website has logged them on the customer
+  const doneJobs = (lsGet('scheduledPoolDrains') || []).filter(r => r && String(r.customerId) === String(customer.id) && r.status === 'done')
+    .map(r => ({body: r.bodyKey || (r.bodyKind === 'spa' ? 'spa' : first), date: dayOf(r)})).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d.date));
   const lines = bodies.map(b=>{
-    const last = drains.filter(d => (d.body || first) === b.key).map(d => d.date).sort().pop();
+    const last = drains.filter(d => (d.body || first) === b.key).map(d => d.date)
+      .concat(doneJobs.filter(d => d.body === b.key).map(d => d.date)).sort().pop();
     return ['Last ' + b.label + ' drain', last ? nice(last) : 'Not yet'];
   });
   const cleans = (lsGet('scheduledFilterCleans') || []).filter(r => r && String(r.customerId) === String(customer.id) && r.status === 'done')
@@ -7536,6 +7543,15 @@ function renderNcLastDone(customer){
     box.appendChild(b);
   });
   box.style.display = '';
+}
+
+// The customer open under Edit customer: its last dates redrawn when a drain or
+// filter clean is finished, here or on another phone (Oct 19)
+function refreshNcLastDone(){
+  const card = document.getElementById('newCustomerCard');
+  if(!card || card.style.display === 'none' || !editingCustomerId) return;
+  const c = (lsGet('customers') || []).find(x => x && String(x.id) === String(editingCustomerId));
+  if(c) renderNcLastDone(c);
 }
 
 function resetCustomerForm(){
@@ -11428,6 +11444,7 @@ function openJobPage(customer, job){
         // Every extra work item was ticked to get here (Oct 13)
         if(Array.isArray(fc.lineItems) && fc.lineItems.length) fc.doneExtraWork = fc.lineItems.map(li => String((li && li.description) || '').trim()).filter(Boolean);
         lsSet('scheduledFilterCleans', cleans);
+        try{ refreshNcLastDone(); }catch(e){}
         // Unless the office unticked Email customer on its group (Oct 11)
         if(customer && fc.emailCustomer !== false) queueJobEmail(customer, Object.assign({kind: 'filter clean'}, fc));
       }
@@ -11449,6 +11466,10 @@ function openJobPage(customer, job){
         if(isPhotoRef(videoRef)) pd.doneVideo = videoRef;
         if(videoMore.length) pd.doneVideoMore = videoMore;
         lsSet('scheduledPoolDrains', drains);
+        try{ refreshNcLastDone(); }catch(e){}
+        // The customer's Email customer on the website's Drains page (Oct 19)
+        const wantEmail = pd.emailCustomer !== undefined ? pd.emailCustomer !== false : !(customer && customer.drainEmailCustomer === false);
+        if(customer && wantEmail) queueJobEmail(customer, Object.assign({kind: 'pool drain'}, pd));
       }
     } else {
       const jobs = lsGet('scheduledWorkOrders') || [];
@@ -15861,7 +15882,10 @@ function appWorkOrderDates(startISO, repeat, customEvery, customUnit){
     '.seg-control{display:flex;background:var(--surface-alt, #EAF3F1);border-radius:9px;padding:3px;gap:2px;margin-bottom:14px;}'
   + '.history-type-btn{flex:1;border:1px solid transparent;background:transparent;color:var(--muted);padding:8px 10px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'Inter\',sans-serif;}'
   + '.history-type-btn.active{background:#fff;color:var(--teal-deep);box-shadow:0 2px 5px rgba(11,36,34,0.18), 0 1px 1px rgba(11,36,34,0.10);border:1px solid rgba(11,36,34,0.07);}'
-  + '#awc .inline-check{display:inline-flex;align-items:center;gap:7px;font-size:14px;font-weight:500;color:var(--ink);cursor:pointer;margin:0;white-space:nowrap;}'
+  + '#awc .inline-check{display:inline-flex;align-items:center;gap:7px;font-size:14px;font-weight:500;color:var(--ink);cursor:pointer;margin:0;white-space:nowrap;'
+  // Plain text, as in the previews (Oct 19): inside a field these took the
+  // field heading's small capitals, which ran them off the phone
+  + 'font-family:\'Inter\',sans-serif;text-transform:none;letter-spacing:0;}'
   + '#awc .awc-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 6px 5px 11px;border-radius:999px;background:var(--teal-pale);color:var(--teal-deep);font-size:13.5px;font-weight:600;}'
   + '#awc .awc-chip button{border:none;background:none;color:var(--rust);font-size:16px;line-height:1;width:24px;height:24px;padding:0;cursor:pointer;}'
   + '#awc .awc-suggest{display:none;position:absolute;left:0;right:0;z-index:40;background:#fff;border:1px solid var(--line);border-radius:10px;margin-top:4px;box-shadow:0 4px 14px rgba(15,46,46,0.14);max-height:240px;overflow-y:auto;}'
@@ -15976,16 +16000,17 @@ function awcBuild(pane){
       <h2>New quote</h2>
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Emailed to the customer to approve or decline.</p>
       <div class="field">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px;">
+        <!-- Expires in ... days on the Date line, between Date and the number
+             (Oct 19): beside the date box it ran off the phone. On a very narrow
+             phone the number drops to a second line rather than off the edge. -->
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;flex-wrap:wrap;">
           <label style="margin:0;">Date</label>
-          <span class="awc-num" id="awcQuoteNumber"></span>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:nowrap;">
-          <input type="date" id="awcQuoteDate" style="width:auto;">
-          <label class="inline-check">Expires in
-            <input type="number" id="awcQuoteExpires" min="1" max="365" step="1" value="30" inputmode="numeric" style="width:64px;text-align:center;padding-left:6px;padding-right:6px;">
+          <label class="inline-check" style="font-size:12.5px;gap:4px;margin-left:auto;">Expires in
+            <input type="number" id="awcQuoteExpires" min="1" max="365" step="1" value="30" inputmode="numeric" style="width:42px;text-align:center;padding:5px 2px;font-size:14px;">
             days</label>
+          <span class="awc-num" id="awcQuoteNumber" style="margin-left:4px;"></span>
         </div>
+        <input type="date" id="awcQuoteDate" style="width:auto;">
       </div>
       <div class="field">
         <label>Quote name</label>
@@ -16100,17 +16125,19 @@ function awcBuild(pane){
     <div id="awcTaskForm" style="display:none;">
       <h2>New task</h2>
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">A job for a technician &mdash; for a customer, or on its own.</p>
+      <!-- Saved tasks, narrower, beside the date box; Photo and Video required
+           side by side under it, each label whole on its line (Oct 19) -->
       <div class="field">
         <label>Scheduled date</label>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:nowrap;">
+        <div style="display:flex;align-items:center;gap:10px;">
           <input type="date" id="awcTaskDate" style="width:auto;">
-          <div style="display:flex;flex-direction:column;gap:8px;">
-            <label class="inline-check"><input type="checkbox" id="awcTaskPhoto"> Photo required</label>
-            <label class="inline-check"><input type="checkbox" id="awcTaskVideo"> Video required</label>
-          </div>
+          <button type="button" class="btn btn-primary" id="awcSavedTasks" style="width:auto;margin-left:auto;padding:9px 14px;font-size:14px;white-space:nowrap;flex-shrink:0;">Saved tasks</button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:12px;">
+          <label class="inline-check"><input type="checkbox" id="awcTaskPhoto"> Photo required</label>
+          <label class="inline-check"><input type="checkbox" id="awcTaskVideo"> Video required</label>
         </div>
       </div>
-      <button type="button" class="btn btn-primary" id="awcSavedTasks" style="width:100%;margin-bottom:12px;">Saved tasks</button>
       <div class="field" style="position:relative;">
         <label>Customer (optional)</label>
         <div id="awcTaskChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
@@ -17575,8 +17602,23 @@ function awcOpenRepeatWindow(isTask, r, onClose){
       });
       row.appendChild(when); row.appendChild(done); row.appendChild(x);
       box.appendChild(row);
+      // Pressing the date opens it underneath, to change just that date (Oct 19)
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', e=>{
+        if(e.target.closest('button, input, a, select, textarea, label')) return;
+        openId = openId === item.id ? null : item.id;
+        draw();
+      });
+      if(openId === item.id){
+        row.style.background = 'var(--teal-pale)';
+        row.style.borderBottom = 'none';
+        row.style.padding = '8px';
+        row.style.borderRadius = '8px 8px 0 0';
+        box.appendChild(awcVisitEditor(isTask, item.id, ()=>{ openId = null; draw(); }));
+      }
     });
   };
+  let openId = null;
   draw();
 }
 
@@ -17863,6 +17905,121 @@ function awcOpenForEditing(isTask, r){
 }
 
 // Current: what's still on the routes, soonest first
+// ---- Changing one from Current (Oct 19) ----
+// Pressing a single work order or task on Current opens it underneath to
+// change: the date, the ticks, the technician, and line items and notes (a
+// work order) or what it is and its details (a task). Save changes updates that
+// one visit or task, on the route and at the office; Cancel leaves it as it was.
+let awcCurOpen = null;
+function awcVisitEditor(isTask, id, onDone){
+  const key = isTask ? 'tasks' : 'scheduledWorkOrders';
+  const item = (lsGet(key) || []).find(x => x && x.id === id);
+  const panel = document.createElement('div');
+  panel.style.cssText = 'border:1px solid var(--line);border-top:none;border-radius:0 0 12px 12px;padding:12px;margin:0 0 8px;background:#fff;';
+  panel.addEventListener('click', e => e.stopPropagation());
+  if(!item){ panel.textContent = 'This one is no longer on the schedule.'; return panel; }
+  const field = (t, el) => { const f = document.createElement('div'); f.className = 'field'; const l = document.createElement('label'); l.textContent = t; f.appendChild(l); f.appendChild(el); return f; };
+  const tick = (t, on) => { const l = document.createElement('label'); l.className = 'inline-check'; l.style.cssText = 'white-space:normal;min-width:0;'; const b = document.createElement('input'); b.type = 'checkbox'; b.checked = !!on; l.appendChild(b); l.appendChild(document.createTextNode(' ' + t)); l._box = b; return l; };
+  const date = document.createElement('input');
+  date.type = 'date'; date.value = item.date || ''; date.style.width = 'auto';
+  panel.appendChild(field('Scheduled date', date));
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 14px;margin:-2px 0 14px;';
+  const photo = tick('Photo required', item.photoRequired), video = tick('Video required', item.videoRequired);
+  let email = null, prices = null;
+  if(isTask){ grid.appendChild(photo); grid.appendChild(video); }
+  else {
+    email = tick('Email customer', item.emailCustomer !== false); prices = tick('Include prices', item.emailPrices !== false);
+    grid.appendChild(photo); grid.appendChild(email); grid.appendChild(video); grid.appendChild(prices);
+  }
+  panel.appendChild(grid);
+  const techSel = document.createElement('select');
+  const techs = (lsGet('technicians') || []).filter(t => t && t.id).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity: 'base'}));
+  if(!techs.some(t => String(t.id) === String(item.technicianId))){ const o = document.createElement('option'); o.value = ''; o.textContent = 'No technician'; techSel.appendChild(o); }
+  techs.forEach(t => { const o = document.createElement('option'); o.value = String(t.id); o.textContent = t.name || 'Technician'; techSel.appendChild(o); });
+  techSel.value = String(item.technicianId || '');
+  panel.appendChild(field('Technician', techSel));
+  let lines = null, notes = null, title = null, details = null;
+  if(isTask){
+    title = document.createElement('input'); title.value = item.title || '';
+    panel.appendChild(field('Task', title));
+    details = document.createElement('textarea'); details.rows = 3; details.value = item.details || '';
+    panel.appendChild(field('Details', details));
+  } else {
+    lines = (item.lineItems || []).map(li => ({description: li.description || '', qty: li.qty === undefined ? '' : li.qty, price: li.price === undefined ? '' : li.price, filterClean: li.filterClean}));
+    if(!lines.length) lines.push({description: '', qty: 1, price: ''});
+    const liBox = document.createElement('div');
+    const drawLines = ()=>{
+      liBox.innerHTML = '';
+      lines.forEach((li, i)=>{
+        const r = document.createElement('div');
+        r.className = 'awc-line';
+        const d = document.createElement('input'); d.value = li.description; d.placeholder = 'Description'; d.style.cssText = 'flex:1;min-width:0;';
+        const q = document.createElement('input'); q.value = li.qty; q.placeholder = 'Qty'; q.inputMode = 'decimal'; q.style.cssText = 'flex:0 0 46px;padding-left:6px;padding-right:6px;';
+        const pr = document.createElement('input'); pr.value = li.price; pr.placeholder = 'Price'; pr.inputMode = 'decimal'; pr.style.cssText = 'flex:0 0 66px;padding-left:6px;padding-right:6px;';
+        d.addEventListener('input', ()=>{ li.description = d.value; });
+        q.addEventListener('input', ()=>{ li.qty = q.value; });
+        pr.addEventListener('input', ()=>{ li.price = pr.value; });
+        const bin = document.createElement('button');
+        bin.type = 'button';
+        bin.innerHTML = '<svg class="weir-bin" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+        bin.title = 'Take this line off'; bin.setAttribute('aria-label', bin.title);
+        bin.addEventListener('click', ()=>{ lines.splice(i, 1); if(!lines.length) lines.push({description: '', qty: 1, price: ''}); drawLines(); });
+        r.appendChild(d); r.appendChild(q); r.appendChild(pr); r.appendChild(bin);
+        liBox.appendChild(r);
+      });
+    };
+    drawLines();
+    const add = awcSmallBtn('+ Add line item');
+    add.addEventListener('click', ()=>{ lines.push({description: '', qty: 1, price: ''}); drawLines(); });
+    const wrap = document.createElement('div'); wrap.appendChild(liBox); wrap.appendChild(add);
+    panel.appendChild(field('Line items', wrap));
+    notes = document.createElement('textarea'); notes.rows = 2; notes.value = item.notes || '';
+    panel.appendChild(field('Notes', notes));
+  }
+  const btns = document.createElement('div');
+  btns.style.cssText = 'display:flex;gap:8px;';
+  const save = document.createElement('button');
+  save.type = 'button'; save.className = 'btn btn-primary'; save.style.cssText = 'flex:1;';
+  save.textContent = 'Save changes';
+  const cancel = document.createElement('button');
+  cancel.type = 'button'; cancel.className = 'btn btn-ghost'; cancel.style.cssText = 'flex:1;';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', ()=>{ if(onDone) onDone(); });
+  save.addEventListener('click', ()=>{
+    if(!date.value){ showToast('Pick a date'); return; }
+    if(!techSel.value){ showToast('Choose a technician'); return; }
+    const all = lsGet(key) || [];
+    const it = all.find(x => x && x.id === id);
+    if(!it){ showToast('This one is no longer on the schedule'); return; }
+    if(isTask){
+      if(!title.value.trim()){ showToast('Say what needs doing'); return; }
+      Object.assign(it, {date: date.value, technicianId: techSel.value, title: title.value.trim(), details: details.value.trim(),
+        photoRequired: photo._box.checked, videoRequired: video._box.checked});
+    } else {
+      const valid = lines.filter(li => String(li.description || '').trim()).map(li=>{
+        const o = {description: String(li.description).trim(), qty: li.qty, price: li.price};
+        if(li.filterClean) o.filterClean = true;
+        return o;
+      });
+      if(!valid.length){ showToast('Add at least one line item'); return; }
+      Object.assign(it, {date: date.value, technicianId: techSel.value, lineItems: valid, title: valid.map(v => v.description).join(', '),
+        notes: notes.value.trim(), photoRequired: photo._box.checked, videoRequired: video._box.checked,
+        emailCustomer: email._box.checked, emailPrices: prices._box.checked});
+    }
+    queueOfficeWork(isTask ? 'task' : 'work_order', id, false);
+    if(!lsSet(key, all)){ showToast('Could not save — the phone is full'); return; }
+    if(isTask){ try{ if(typeof tasks !== 'undefined') tasks = all; }catch(e){} }
+    fieldNoteLocalChange();
+    try{ if(typeof renderHomeList === 'function') renderHomeList(); }catch(e){}
+    showToast('Saved');
+    if(onDone) onDone();
+  });
+  btns.appendChild(save); btns.appendChild(cancel);
+  panel.appendChild(btns);
+  return panel;
+}
+
 function awcRenderCurrent(){
   if(awcKind === 'Quote'){ awcRenderQuoteCurrent(); return; }
   const box = document.getElementById('awcCurList');
@@ -17949,12 +18106,25 @@ function awcRenderCurrent(){
       + '<div style="font-size:12px;color:var(--muted);margin-top:2px;">' + awcEsc(r.techName
         + (r.group && r.groupLeft > 1 ? ' \u00b7 ' + (r.every ? 'Every ' + awcRepeatWords(r.every) : 'Repeats') + ' \u00b7 ' + r.groupLeft + ' left' : '')) + '</div>';
     top.appendChild(when); top.appendChild(mid);
-    // A repeat opens its own window of dates; a single one doesn't open (Oct 2)
+    // A repeat opens its own window of dates; a single one opens underneath
+    // to change it (Oct 19), and closes when pressed again
+    let editorEl = null;
     if(r.groupLeft > 1){
       row.style.cursor = 'pointer';
       row.addEventListener('click', e=>{
         if(e.target.closest('button, input, a, select')) return;
         awcOpenRepeatWindow(isTask, r);
+      });
+    } else {
+      row.style.cursor = 'pointer';
+      if(awcCurOpen === r.id){
+        top.style.cssText += 'background:var(--teal-pale);border-radius:10px 10px 0 0;padding:11px 10px;margin:-11px -2px 0;';
+        editorEl = awcVisitEditor(isTask, r.id, ()=>{ awcCurOpen = null; awcRenderCurrent(); });
+      }
+      row.addEventListener('click', e=>{
+        if(e.target.closest('button, input, a, select, textarea, label')) return;
+        awcCurOpen = awcCurOpen === r.id ? null : r.id;
+        awcRenderCurrent();
       });
     }
     const acts = document.createElement('div');
@@ -18015,7 +18185,9 @@ function awcRenderCurrent(){
     });
     acts.appendChild(x);
     }
-    row.appendChild(top); row.appendChild(acts);
+    row.appendChild(top);
+    if(editorEl) row.appendChild(editorEl);
+    row.appendChild(acts);
     box.appendChild(row);
   });
   awcMoreButton(box, rows.length, awcRenderCurrent);
@@ -21227,7 +21399,8 @@ function buildJobEmailHtml(customer, job, techName){
   const company = (lsGet('companyName') || '').trim() || 'Your pool service';
   const isWO = job.kind === 'work order';
   const num = isWO && job.workOrderNumber ? ' #' + String(job.workOrderNumber).padStart(4, '0') : '';
-  const heading = (isWO ? 'Work order' + num : 'Filter clean') + ' completed';
+  const what = job.kind === 'pool drain' ? drainTitle(job) : 'Filter clean';   // a drain says which (Oct 19)
+  const heading = (isWO ? 'Work order' + num : what) + ' completed';
   const when = job.doneAt ? new Date(job.doneAt) : new Date((job.date || '') + 'T12:00:00');
   const whenText = when.toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
   const cell = 'padding:7px 0;border-bottom:1px solid #E6E9E8;';
@@ -21245,7 +21418,7 @@ function buildJobEmailHtml(customer, job, techName){
     if(rows && withPrices) rows += '<tr><td style="padding:7px 0;font-weight:700;color:#16302E;">Total</td>'
       + '<td style="padding:7px 0;text-align:right;font-weight:700;color:#16302E;">$' + total.toFixed(2) + '</td></tr>';
   } else {
-    rows = '<tr><td style="' + cell + '">Filter clean</td><td style="' + cell + '"></td></tr>';
+    rows = '<tr><td style="' + cell + '">' + esc(what) + '</td><td style="' + cell + '"></td></tr>';
   }
   const contact = b.showContact ? emailContactLine() : '';
   return '<!DOCTYPE html><html><head><meta charset="utf-8">'
@@ -21290,8 +21463,9 @@ function queueJobEmail(customer, job){
   const isWO = job.kind === 'work order';
   const num = isWO && job.workOrderNumber ? ' #' + String(job.workOrderNumber).padStart(4, '0') : '';
   const q = lsGet('jobEmailsToSend') || [];
-  q.push({key: job.kind + ':' + job.id, to: to, customerId: customer.id, kind: isWO ? 'workorder' : 'clean',
-          subject: (isWO ? 'Work order' + num : 'Filter clean') + ' completed \u2014 ' + customer.name,
+  const isDrain = job.kind === 'pool drain';
+  q.push({key: job.kind + ':' + job.id, to: to, customerId: customer.id, kind: isWO ? 'workorder' : isDrain ? 'drain' : 'clean',
+          subject: (isWO ? 'Work order' + num : isDrain ? drainTitle(job) : 'Filter clean') + ' completed \u2014 ' + customer.name,
           html: buildJobEmailHtml(customer, job, techName),
           photo: isPhotoRef(job.donePhoto) ? job.donePhoto : null,
           photoMore: (job.donePhotoMore || []).filter(isPhotoRef)});
