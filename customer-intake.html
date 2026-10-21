@@ -186,7 +186,7 @@ html{overflow-y:scroll;scrollbar-gutter:stable;}
 main{max-width:1100px;margin:0 auto;padding:22px 24px 60px;}
 
 .notice{
-  background:var(--teal-pale);border:1px solid #C9E6E2;color:var(--teal-deeper);
+  background:var(--teal-pale);border:1px solid #C9E6E2;color:var(--ink);
   border-radius:10px;padding:12px 14px;font-size:12.5px;line-height:1.5;margin-bottom:20px;
   display:flex;gap:10px;align-items:flex-start;
 }
@@ -259,7 +259,7 @@ input::placeholder{color:#A9BCB9;}
 }
 .btn-primary{background:var(--teal-deep);color:#fff;width:100%;}
 .btn-primary:active{background:#0c3a3d;}
-.btn-ghost{background:transparent;color:var(--teal-deep);border:1px solid var(--line);width:auto;}
+.btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--line);width:auto;}
 .btn-ghost:active{background:var(--surface-alt);}
 .btn-row{display:flex;gap:8px;flex-wrap:wrap;}
 .fountain-row{display:flex;gap:8px;margin-bottom:8px;align-items:center;}
@@ -277,14 +277,14 @@ input::placeholder{color:#A9BCB9;}
 .section-count{font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 .profile-field-col{display:inline-flex;flex-direction:column;align-items:flex-start;align-self:flex-start;margin-top:-1px;cursor:pointer;white-space:nowrap;position:relative;}
 /* Small headings (Oct 20): a light teal tag with black text, easier to read */
-.hd-tag{font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;}
-.profile-field-col .pf-label{font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;align-self:flex-start;margin-bottom:3px;}
-.profile-field-col .pf-value{font-size:15.5px;font-weight:700;color:var(--teal-deep);display:inline-flex;align-items:center;gap:4px;}
+.hd-tag{font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;}
+.profile-field-col .pf-label{font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;align-self:flex-start;margin-bottom:3px;}
+.profile-field-col .pf-value{font-size:15.5px;font-weight:700;color:var(--ink);display:inline-flex;align-items:center;gap:4px;}
 /* The profile's delete bin: the height of a label and its value, its bottom
    on the line the letters stand on (placed by placeProfileBin, Oct 2) */
 #btnDeleteProfileCustomer[data-x-drawn="bin"]{width:29px !important;height:29px !important;min-width:29px !important;max-width:29px !important;flex:0 0 29px !important;border-radius:8px !important;position:relative;}
 #btnDeleteProfileCustomer[data-x-drawn="bin"] > svg{width:17px !important;height:17px !important;}
-.big-num{display:inline-block;font-family:'Space Grotesk','Inter',sans-serif;font-size:22px;font-weight:700;color:var(--teal-deep);letter-spacing:-0.01em;white-space:nowrap;line-height:1;}
+.big-num{display:inline-block;font-family:'Space Grotesk','Inter',sans-serif;font-size:22px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;white-space:nowrap;line-height:1;}
 .big-num .num-hash{color:#A9BCB9;font-weight:500;}
 .ps-tick:hover{border-color:var(--line) !important;background:var(--surface);}
 .ps-col{white-space:nowrap;}
@@ -295,7 +295,7 @@ input::placeholder{color:#A9BCB9;}
 .alert-row:last-child{border-bottom:none;}
 .alert-row:hover{background:var(--teal-pale);}
 .alert-tag{flex:0 0 64px;text-align:center;font-size:11.5px;font-weight:700;padding:4px 0;border-radius:999px;margin-top:2px;}
-.alert-tag.video{background:var(--teal-pale);color:var(--teal-deep);}
+.alert-tag.video{background:var(--teal-pale);color:var(--ink);}
 /* Notes in the task badge's green (Oct 3) */
 .alert-tag.note{background:#E8F1E4;color:#4D6B3C;}
 .wc-tick-col{display:flex;flex-direction:column;gap:10px;padding-bottom:10px;}
@@ -321,7 +321,7 @@ input::placeholder{color:#A9BCB9;}
 .cust-left{display:flex;align-items:center;gap:11px;min-width:0;}
 .cust-avatar{
   width:34px;height:34px;border-radius:50%;flex-shrink:0;
-  background:var(--teal-pale);color:var(--teal-deep);
+  background:var(--teal-pale);color:var(--ink);
   display:flex;align-items:center;justify-content:center;
   font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:13.5px;
 }
@@ -371,7 +371,7 @@ input::placeholder{color:#A9BCB9;}
 .fg-head:hover{background:var(--teal-pale);}
 .pick-row{display:flex;align-items:center;gap:10px;padding:11px 8px;border-bottom:1px solid var(--line);font-size:13.5px;cursor:pointer;margin:0;}
 .pick-row:last-child{border-bottom:none;}
-.profile-meta-row.editable:hover .profile-meta-value{color:var(--teal-deep);}
+.profile-meta-row.editable:hover .profile-meta-value{color:var(--ink);}
 .profile-meta-value.placeholder{color:#A9BCB9;font-style:italic;}
 .profile-inline-input{
   width:100%;font-size:16px;padding:7px 9px;border:1px solid var(--teal-mid);
@@ -402,14 +402,14 @@ input::placeholder{color:#A9BCB9;}
 .profile-meta-label{
   /* Larger and bolder than an eyebrow, in the lighter teal so it stands apart
      from the near-black value under it */
-  display:table;font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;
+  display:table;font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;
   color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:5px;
-  padding:3px 8px;border-radius:6px;   /* a light teal tag, black text (Oct 20) */
+  padding:3px 9px;border-radius:6px;   /* a light teal tag, black text (Oct 20) */
 }
 .profile-meta-value{font-size:16px;color:var(--ink);line-height:1.4;}
 .pill{
   display:inline-block;padding:1px 7px;border-radius:20px;
-  background:var(--surface-alt);color:var(--teal-deep);
+  background:var(--surface-alt);color:var(--ink);
   font-size:10.5px;font-weight:600;letter-spacing:0.02em;
   margin-right:3px;
 }
@@ -479,7 +479,7 @@ input::placeholder{color:#A9BCB9;}
 /* The selected tab is lifted off the strip: a deeper shadow and a hairline,
    so which one is chosen reads at a glance rather than by shade of grey. */
 .history-type-btn.active{
-  background:#fff;color:var(--teal-deep);
+  background:#fff;color:var(--ink);
   box-shadow:0 2px 5px rgba(11,36,34,0.18), 0 1px 1px rgba(11,36,34,0.10);
   border:1px solid rgba(11,36,34,0.07);
 }
@@ -493,14 +493,14 @@ input::placeholder{color:#A9BCB9;}
   display:flex;justify-content:space-between;align-items:flex-start;
   border-bottom:2px solid var(--teal-deep);padding-bottom:14px;margin-bottom:16px;
 }
-.report-head h3{color:var(--teal-deep);font-size:17px;margin:0;font-family:'Space Grotesk',sans-serif;}
+.report-head h3{color:var(--ink);font-size:17px;margin:0;font-family:'Space Grotesk',sans-serif;}
 .report-head .rdate{font-size:12.5px;color:var(--muted);margin-top:3px;}
 .report-badge{
   background:var(--teal-deep);color:#fff;font-size:11px;font-weight:600;
   padding:5px 10px;border-radius:7px;white-space:nowrap;flex-shrink:0;
 }
 .report-sec{
-  display:table;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;
+  display:table;font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;
   margin:16px 0 6px;
 }
 .report-sec:first-of-type{margin-top:0;}
@@ -510,7 +510,7 @@ input::placeholder{color:#A9BCB9;}
 .report-table td:last-child{text-align:right;font-family:'JetBrains Mono',monospace;font-weight:600;}
 .report-notes{
   background:var(--teal-pale);border-radius:9px;padding:12px 14px;font-size:13px;
-  color:var(--teal-deep);margin-top:6px;white-space:pre-wrap;
+  color:var(--ink);margin-top:6px;white-space:pre-wrap;
 }
 .report-photos{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;}
 .report-photos img{width:130px;border-radius:9px;border:1px solid var(--line);cursor:zoom-in;display:block;}
@@ -671,7 +671,7 @@ input::placeholder{color:#A9BCB9;}
                font-size:12.5px;font-weight:600;cursor:pointer;">
         <span id="accountInitials"
           style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;
-                 border-radius:50%;background:#fff;color:var(--teal-deep);font-size:10.5px;
+                 border-radius:50%;background:#fff;color:var(--ink);font-size:10.5px;
                  font-weight:700;flex-shrink:0;">PL</span>
         <span id="accountButtonLabel">Account</span>
       </button>
@@ -720,7 +720,7 @@ input::placeholder{color:#A9BCB9;}
     </div>
 
     <div class="card" id="profileTabsCard" style="display:none;">
-      <h2 id="profileCustomerName" style="margin:0 0 14px;color:var(--teal-deep);font-size:26px;line-height:1.2;"></h2>
+      <h2 id="profileCustomerName" style="margin:0 0 14px;color:var(--ink);font-size:26px;line-height:1.2;"></h2>
       <div class="seg-control" id="profileTabControl">
         <button class="history-type-btn active" data-tab="profile" type="button">Profile</button>
         <button class="history-type-btn" data-tab="equipment" type="button">Equipment</button>
@@ -739,16 +739,16 @@ input::placeholder{color:#A9BCB9;}
         <span style="margin-left:auto;display:inline-flex;align-items:flex-start;gap:28px;align-self:flex-start;">
         <!-- How often they're serviced (Oct 9) -->
         <span id="profileFrequencyWrap" style="display:inline-flex;flex-direction:column;align-items:flex-start;margin-top:-1px;cursor:pointer;white-space:nowrap;">
-          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin-bottom:3px;">Frequency</span>
-          <span id="profileFrequencyName" style="font-size:15.5px;font-weight:700;color:var(--teal-deep);"></span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;margin-bottom:3px;">Frequency</span>
+          <span id="profileFrequencyName" style="font-size:15.5px;font-weight:700;color:var(--ink);"></span>
         </span>
         <span id="profilePropertyWrap" style="display:inline-flex;flex-direction:column;align-items:flex-start;margin-top:-1px;cursor:pointer;white-space:nowrap;">
-          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin-bottom:3px;">Property</span>
-          <span id="profilePropertyName" style="font-size:15.5px;font-weight:700;color:var(--teal-deep);"></span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;margin-bottom:3px;">Property</span>
+          <span id="profilePropertyName" style="font-size:15.5px;font-weight:700;color:var(--ink);"></span>
         </span>
         <span id="profileTechWrap" style="display:inline-flex;flex-direction:column;align-items:flex-start;margin-top:-1px;cursor:pointer;white-space:nowrap;">
-          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin-bottom:3px;">Technician</span>
-          <span id="profileTechName" style="font-size:15.5px;font-weight:700;color:var(--teal-deep);"></span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;margin-bottom:3px;">Technician</span>
+          <span id="profileTechName" style="font-size:15.5px;font-weight:700;color:var(--ink);"></span>
         </span>
         </span>
         <!-- Delete this customer: a larger bin at the far right (Oct 2) -->
@@ -1106,7 +1106,7 @@ input::placeholder{color:#A9BCB9;}
     </div>
 
     <div class="card">
-      <h2 id="techDetailHeading" style="margin:0 0 14px;color:var(--teal-deep);font-size:26px;line-height:1.2;"></h2>
+      <h2 id="techDetailHeading" style="margin:0 0 14px;color:var(--ink);font-size:26px;line-height:1.2;"></h2>
       <div class="seg-control" id="techTabControl">
         <button class="history-type-btn active" data-techtab="profile" type="button">Profile</button>
         <button class="history-type-btn" data-techtab="customers" type="button">Customers</button>
@@ -1264,7 +1264,7 @@ input::placeholder{color:#A9BCB9;}
         </label>
       </div>
       <div style="margin:0 0 14px;">
-        <div style="font-size:12.5px;color:var(--muted);margin:0 0 6px;">Which customers <span id="photoTaskCustCount" style="font-weight:600;color:var(--teal-deep);margin-left:4px;"></span></div>
+        <div style="font-size:12.5px;color:var(--muted);margin:0 0 6px;">Which customers <span id="photoTaskCustCount" style="font-weight:600;color:var(--ink);margin-left:4px;"></span></div>
         <input id="photoTaskCustSearch" placeholder="Search customers" autocomplete="off" style="margin-bottom:6px;">
         <div id="photoTaskCustList" style="max-height:180px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:0 8px;"></div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:5px;">Leave everyone unticked and it applies to all customers.</div>
@@ -1320,7 +1320,7 @@ input::placeholder{color:#A9BCB9;}
         </div>
       </div>
       <div id="seasonStripBox" style="display:none;margin-top:14px;">
-        <div style="display:table;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin:0 0 8px;">Seasons</div>
+        <div style="display:table;font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;margin:0 0 8px;">Seasons</div>
         <div class="seg-control" id="seasonControl"></div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
           <p id="seasonNoteText" style="font-size:12.5px;color:var(--muted);margin:0;flex:1;min-width:0;"></p>
@@ -1354,14 +1354,14 @@ input::placeholder{color:#A9BCB9;}
       <!-- The heading sits the same distance from the line above it as from the
            line below, and each row's text the same distance under its line -->
       <div id="customGroupWrap" style="display:none;margin:14px 0 0;padding-top:14px;border-top:1px solid var(--line);">
-        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;">Groups</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;">Groups</span>
         <div id="customGroupList" style="margin-top:8px;"></div>
       </div>
 
 
       <div id="customExistingWrap" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line);">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
-          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;">Customers with a custom setup</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;">Customers with a custom setup</span>
           <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
             <!-- Every customized customer's quick buttons in one colour (Oct 8):
                  the one on Readings and Dosages only changes the standard lists -->
@@ -1619,7 +1619,7 @@ input::placeholder{color:#A9BCB9;}
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
         <span style="font-size:13px;font-weight:600;color:var(--muted);">Total</span>
-        <span id="wcTotal" style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--teal-deep);">$0.00</span>
+        <span id="wcTotal" style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--ink);">$0.00</span>
       </div>
       <div class="btn-row">
         <button class="btn btn-primary" id="btnSendWorkOrder" style="width:auto;">Send to customer</button>
@@ -1880,9 +1880,9 @@ input::placeholder{color:#A9BCB9;}
         <div class="field" style="flex:0 0 auto;margin-bottom:0;">
           <label>Month</label>
           <div style="display:inline-flex;align-items:stretch;border:1px solid var(--line);border-radius:9px;background:#fff;overflow:hidden;">
-            <button type="button" id="billingMonthPrev" title="Previous month" style="flex:0 0 30px;padding:0;border:none;border-right:1px solid var(--line);background:#fff;color:var(--teal-deep);font-size:15px;cursor:pointer;">‹</button>
+            <button type="button" id="billingMonthPrev" title="Previous month" style="flex:0 0 30px;padding:0;border:none;border-right:1px solid var(--line);background:#fff;color:var(--ink);font-size:15px;cursor:pointer;">‹</button>
             <input type="month" id="billingMonth" style="width:auto;min-width:0;border:none;border-radius:0;padding:9px 8px;">
-            <button type="button" id="billingMonthNext" title="Next month" style="flex:0 0 30px;padding:0;border:none;border-left:1px solid var(--line);background:#fff;color:var(--teal-deep);font-size:15px;cursor:pointer;">›</button>
+            <button type="button" id="billingMonthNext" title="Next month" style="flex:0 0 30px;padding:0;border:none;border-left:1px solid var(--line);background:#fff;color:var(--ink);font-size:15px;cursor:pointer;">›</button>
           </div>
         </div>
         <div class="field" style="flex:0 0 200px;margin-bottom:0;">
@@ -1912,9 +1912,9 @@ input::placeholder{color:#A9BCB9;}
         <div class="field" style="flex:0 0 auto;margin-bottom:0;">
           <label>Month</label>
           <div style="display:inline-flex;align-items:stretch;border:1px solid var(--line);border-radius:9px;background:#fff;overflow:hidden;">
-            <button type="button" id="emailHistMonthPrev" title="Previous month" style="flex:0 0 30px;padding:0;border:none;border-right:1px solid var(--line);background:#fff;color:var(--teal-deep);font-size:15px;cursor:pointer;">‹</button>
+            <button type="button" id="emailHistMonthPrev" title="Previous month" style="flex:0 0 30px;padding:0;border:none;border-right:1px solid var(--line);background:#fff;color:var(--ink);font-size:15px;cursor:pointer;">‹</button>
             <input type="month" id="emailHistMonth" style="width:auto;min-width:0;border:none;border-radius:0;padding:9px 8px;">
-            <button type="button" id="emailHistMonthNext" title="Next month" style="flex:0 0 30px;padding:0;border:none;border-left:1px solid var(--line);background:#fff;color:var(--teal-deep);font-size:15px;cursor:pointer;">›</button>
+            <button type="button" id="emailHistMonthNext" title="Next month" style="flex:0 0 30px;padding:0;border:none;border-left:1px solid var(--line);background:#fff;color:var(--ink);font-size:15px;cursor:pointer;">›</button>
           </div>
         </div>
         <div class="field" style="flex:0 0 200px;margin-bottom:0;">
@@ -2400,7 +2400,7 @@ input::placeholder{color:#A9BCB9;}
 
   <div class="view" id="view-route-detail">
     <div class="card">
-      <a href="#" id="backToRoutes" style="font-size:12.5px;font-weight:600;color:var(--teal-deep);text-decoration:none;">← Back to routes</a>
+      <a href="#" id="backToRoutes" style="font-size:12.5px;font-weight:600;color:var(--ink);text-decoration:none;">← Back to routes</a>
       <div class="section-head" style="margin-top:12px;">
         <div>
           <h2 id="routeDetailName">Route</h2>
@@ -3227,7 +3227,7 @@ function renderRouteOrderList(){
       b.textContent = sym;
       b.title = title;
       b.style.cssText = 'width:26px;height:20px;padding:0;border:1px solid var(--line);border-radius:5px;'
-        + 'background:#fff;color:var(--teal-deep);font-size:11px;line-height:1;cursor:pointer;'
+        + 'background:#fff;color:var(--ink);font-size:11px;line-height:1;cursor:pointer;'
         + (disabled ? 'opacity:0.3;pointer-events:none;' : '');
       b.addEventListener('click', (e)=>{
         e.stopPropagation();
@@ -3515,7 +3515,7 @@ function renderOffWeeks(){
   h += '<div style="font-size:12px;font-weight:600;color:var(--muted);margin:0 0 6px;">Coming weeks</div>'
     + '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:16px;">'
     + weeks.map(w => '<div style="flex:0 0 auto;text-align:center;padding:7px 10px;border-radius:9px;min-width:64px;'
-        + (w.off ? 'background:#F1F3F2;border:1px dashed #C9D3D1;color:var(--muted);' : 'background:var(--teal-pale);border:1px solid #BFDAD6;color:var(--teal-deep);') + '">'
+        + (w.off ? 'background:#F1F3F2;border:1px dashed #C9D3D1;color:var(--muted);' : 'background:var(--teal-pale);border:1px solid #BFDAD6;color:var(--ink);') + '">'
         + '<div style="font-size:11px;font-weight:600;">' + owShort(w.mon) + '</div>'
         + '<div style="font-size:10.5px;font-weight:700;letter-spacing:.04em;margin-top:2px;">' + (w.off ? 'OFF' : 'ON') + '</div></div>').join('')
     + '</div>';
@@ -3531,7 +3531,7 @@ function renderOffWeeks(){
   const keepBox = body.querySelector('#owKeep');
   keep.forEach(c=>{
     const chip = document.createElement('span');
-    chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:var(--teal-pale);color:var(--teal-deep);font-size:12px;font-weight:600;padding:4px 8px;border-radius:8px;';
+    chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:var(--teal-pale);color:var(--ink);font-size:12px;font-weight:600;padding:4px 8px;border-radius:8px;';
     chip.appendChild(document.createTextNode(displayName(c.name)));
     const x = document.createElement('button');
     x.type = 'button';
@@ -3579,7 +3579,7 @@ function markOffWeekRoute(){
     const pill = document.createElement('span');
     pill.textContent = 'Every week';
     pill.title = 'Still visited on ' + (t.name || 'their') + '’s off weeks';
-    pill.style.cssText = 'flex-shrink:0;background:var(--teal-pale);color:var(--teal-deep);font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:7px;white-space:nowrap;';
+    pill.style.cssText = 'flex-shrink:0;background:var(--teal-pale);color:var(--ink);font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:7px;white-space:nowrap;';
     r.insertBefore(pill, r.lastChild);
   });
   if(!note) return;
@@ -3704,7 +3704,7 @@ function renderRoutesList(){
       manageBtn.className = 'btn btn-ghost';
       manageBtn.style.padding = '6px 10px';
       manageBtn.style.fontSize = '12px';
-      manageBtn.style.color = 'var(--teal-deep)';
+      manageBtn.style.color = 'var(--ink)';
       manageBtn.style.fontWeight = '700';
       manageBtn.textContent = 'Manage';
       manageBtn.addEventListener('click', ()=> openRouteDetail(r));
@@ -4973,7 +4973,7 @@ function renderProductsServicesList(){
     const prev = document.createElement('button');
     prev.type = 'button';
     prev.textContent = '‹';
-    prev.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:#fff;color:var(--teal-deep);border-radius:8px;cursor:pointer;font-size:14px;';
+    prev.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;cursor:pointer;font-size:14px;';
     prev.disabled = psPage === 1;
     if(prev.disabled) prev.style.opacity = '0.35';
     prev.addEventListener('click', ()=>{ if(psPage > 1){ psPage--; renderProductsServicesList(); } });
@@ -4987,7 +4987,7 @@ function renderProductsServicesList(){
       b.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;'
         + "font-family:'JetBrains Mono',monospace;"
         + (cur ? 'background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);'
-               : 'background:#fff;color:var(--teal-deep);border:1px solid var(--line);');
+               : 'background:#fff;color:var(--ink);border:1px solid var(--line);');
       b.addEventListener('click', ()=>{ psPage = p; renderProductsServicesList(); });
       pager.appendChild(b);
     }
@@ -4995,7 +4995,7 @@ function renderProductsServicesList(){
     const next = document.createElement('button');
     next.type = 'button';
     next.textContent = '›';
-    next.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:#fff;color:var(--teal-deep);border-radius:8px;cursor:pointer;font-size:14px;';
+    next.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;cursor:pointer;font-size:14px;';
     next.disabled = psPage === psTotalPages;
     if(next.disabled) next.style.opacity = '0.35';
     next.addEventListener('click', ()=>{ if(psPage < psTotalPages){ psPage++; renderProductsServicesList(); } });
@@ -5308,12 +5308,8 @@ document.querySelectorAll('#workCenterTypeControl .history-type-btn').forEach(bt
   btn.addEventListener('click', ()=>{
     const cameFrom = workCenterMode;
     applyWorkCenterMode(btn.dataset.type);
-    // Back to Quote / Work Order / Task from another WorkCenter tab: anything
-    // held from a moment ago comes back
-    if(btn.dataset.type === 'quotes' && cameFrom !== 'quotes'){
-      restoreWcDraft(document.getElementById('wcType').value);
-      applyWorkOrderType();
-    }
+    // (Back to Quote / Work Order / Task: what was held comes back, now done
+    // in applyWorkCenterMode so the sidebar does it too, Oct 20)
   });
 });
 
@@ -5471,7 +5467,7 @@ function renderGlobalHistory(){
         const tot = document.createElement('div');
         tot.style.cssText = 'display:flex;justify-content:space-between;margin-top:8px;';
         tot.innerHTML = '<span style="font-size:12.5px;font-weight:600;color:var(--muted);">Total</span>' +
-          '<span style="font-family:\'JetBrains Mono\',monospace;font-size:16px;font-weight:700;color:var(--teal-deep);">$' +
+          '<span style="font-family:\'JetBrains Mono\',monospace;font-size:16px;font-weight:700;color:var(--ink);">$' +
           (parseFloat(w.total) || 0).toFixed(2) + '</span>';
         body.appendChild(tot);
         if(w.notes){
@@ -5602,7 +5598,7 @@ function renderGlobalHistory(){
       b.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;'
         + "font-family:'JetBrains Mono',monospace;"
         + (cur ? 'background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);'
-               : 'background:#fff;color:var(--teal-deep);border:1px solid var(--line);');
+               : 'background:#fff;color:var(--ink);border:1px solid var(--line);');
       b.addEventListener('click', ()=>{ globalHistPage = p; renderGlobalHistory(); });
       pager.appendChild(b);
     }
@@ -5797,11 +5793,11 @@ function renderBilling(){
     totalEl.title = billingExtraOnly ? 'Extra charge items only' : 'All priced chemicals';
     totalEl.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;"
       + 'flex:0 0 96px;text-align:right;color:'
-      + (shown > 0 ? (billingExtraOnly ? 'var(--gold)' : 'var(--teal-deep)') : 'var(--muted)') + ';';
+      + (shown > 0 ? (billingExtraOnly ? 'var(--gold)' : 'var(--ink)') : 'var(--muted)') + ';';
     totalEl.textContent = '$' + shown.toFixed(2);
     // Extra charges: the total on pale teal, as one colour for every item (Oct 20)
     if(billingExtraOnly){
-      totalEl.style.color = shown > 0 ? 'var(--teal-deep)' : 'var(--muted)';
+      totalEl.style.color = shown > 0 ? 'var(--ink)' : 'var(--muted)';
       const inner = document.createElement('span');
       inner.style.cssText = 'background:var(--teal-pale);padding:5px 10px;border-radius:8px;';
       inner.textContent = totalEl.textContent;
@@ -5834,7 +5830,7 @@ function renderBilling(){
         vBlock.style.cssText = 'padding:12px 0;border-bottom:1px solid var(--line);';
 
         const vHead = document.createElement('div');
-        vHead.style.cssText = "display:table;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin-bottom:8px;";
+        vHead.style.cssText = "display:table;font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;margin-bottom:8px;";
         vHead.textContent = fmtDate(v.date) + ' · ' + v.body;
         vBlock.appendChild(vHead);
 
@@ -5898,7 +5894,7 @@ function renderBilling(){
       b.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;'
         + "font-family:'JetBrains Mono',monospace;"
         + (cur ? 'background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);'
-               : 'background:#fff;color:var(--teal-deep);border:1px solid var(--line);');
+               : 'background:#fff;color:var(--ink);border:1px solid var(--line);');
       b.addEventListener('click', ()=>{ billingPage = p; renderBilling(); });
       pager.appendChild(b);
     }
@@ -5913,7 +5909,7 @@ function renderBilling(){
       a.disabled = dead;
       a.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border-radius:8px;font-size:15px;'
         + 'background:#fff;border:1px solid var(--line);'
-        + (dead ? 'color:var(--line);cursor:default;' : 'color:var(--teal-deep);cursor:pointer;');
+        + (dead ? 'color:var(--line);cursor:default;' : 'color:var(--ink);cursor:pointer;');
       if(!dead) a.addEventListener('click', ()=>{ billingPage = to; renderBilling(); });
       return a;
     };
@@ -6036,7 +6032,7 @@ let emailHistError = '';
 let emailHistAsked = 0;
 
 const EH_KINDS = {
-  report: ['Report', 'var(--teal-pale)', 'var(--teal-deep)'],
+  report: ['Report', 'var(--teal-pale)', 'var(--ink)'],
   quote: ['Quote', '#F1E8F3', '#6B3E78'],
   workorder: ['Work order', '#E9EEF0', '#3E5560'],
   clean: ['Filter clean', '#FBF1DD', '#8A5E0B'],
@@ -6260,7 +6256,7 @@ function renderEmailHistory(){
       if(typeof text === 'number') b.dataset.emailHistPage = String(to);
       b.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border-radius:8px;font-size:' + (typeof text === 'number' ? '13px;font-weight:600;font-family:\'JetBrains Mono\',monospace;' : '15px;')
         + (cur ? 'background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);cursor:pointer;'
-          : 'background:#fff;border:1px solid var(--line);' + (dead ? 'color:var(--line);cursor:default;' : 'color:var(--teal-deep);cursor:pointer;'));
+          : 'background:#fff;border:1px solid var(--line);' + (dead ? 'color:var(--line);cursor:default;' : 'color:var(--ink);cursor:pointer;'));
       if(!dead) b.addEventListener('click', ()=>{ emailHistPage = to; renderEmailHistory(); });
       return b;
     };
@@ -7476,7 +7472,7 @@ function broadcastFromCheck(via, from, n){
       + '<h3 style="font-size:16px;margin:0 0 4px;">Open ' + (via === 'app' ? 'your email app' : via === 'gmail' ? 'Gmail' : 'Outlook') + '</h3>'
       + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">' + n + (n === 1 ? ' customer' : ' customers') + ' in the Bcc line, so nobody sees anyone else\u2019s address. Nothing goes until you press send there.</p>'
       + '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);">Sending from</div>'
-      + '<div data-from style="font-size:15px;font-weight:700;color:var(--teal-deep);margin:0 0 10px;word-break:break-all;"></div>'
+      + '<div data-from style="font-size:15px;font-weight:700;color:var(--ink);margin:0 0 10px;word-break:break-all;"></div>'
       + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;" data-what></p>'
       + (forced ? '' : '<label class="pick-row" style="border:none;padding:4px 0;font-size:13px;font-weight:600;color:var(--rust);"><input type="checkbox" data-tick style="width:auto;margin:0;"> I\u2019ll check the From line says this address before I press send</label>')
       + '<div class="btn-row" style="margin-top:14px;"><button type="button" class="btn btn-ghost" data-cancel>Cancel</button>'
@@ -7689,6 +7685,13 @@ function applyWorkCenterMode(mode){
   if(cameFrom === 'calendar' && mode !== 'calendar') wcCalResetOnLeave('calendar');
   if(cameFrom === 'quotes' && mode !== 'quotes') leaveWcForm();
   if(mode === 'quotes' && cameFrom !== 'quotes'){ resetScheduleDates(); wcView = 'main'; }
+  // Back to Quote / Work Order / Task from another WorkCenter tab, from the
+  // page's strip or the sidebar: anything held from a moment ago comes back.
+  // WorkCenter opens on the Calendar now (Oct 20), so this is the way back to
+  // a form left part filled.
+  if(mode === 'quotes' && cameFrom !== 'quotes'){
+    try{ restoreWcDraft(document.getElementById('wcType').value); applyWorkOrderType(); }catch(e){}
+  }
   // Leaving Drains for another WorkCenter tab: nobody stays ticked (Oct 13)
   if(cameFrom === 'drains' && mode !== 'drains') pdResetOnLeave();
   // Arriving on Drains: every list starts closed (Oct 11)
@@ -8429,7 +8432,7 @@ function renderFilterGroups(){
     // The day and date in a column of their own on the right, just left of
     // Photo required, the same width on every row so they line up (Oct 3)
     const dateCol = document.createElement('div');
-    dateCol.style.cssText = 'flex:0 0 112px;width:112px;font-size:13px;font-weight:600;color:var(--teal-deep);white-space:nowrap;';
+    dateCol.style.cssText = 'flex:0 0 112px;width:112px;font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;';
     const fillSub = ()=>{
       const n = (g.customerIds || []).length;
       const tech = technicianNameById(g.technicianId) || 'No technician';
@@ -8630,7 +8633,7 @@ function renderFilterGroups(){
         if(!cust) return;
         const chip = document.createElement('span');
         chip.dataset.reorderKey = cid;
-        chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:var(--teal-pale);color:var(--teal-deep);font-size:12px;font-weight:600;padding:4px 8px;border-radius:8px;';
+        chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:var(--teal-pale);color:var(--ink);font-size:12px;font-weight:600;padding:4px 8px;border-radius:8px;';
         // Drag by the grip: this order is the order on the technician's phone
         const cgrip = document.createElement('span');
         cgrip.textContent = '\u2261';
@@ -8802,7 +8805,7 @@ function openGroupCustomerPicker(g, opts){
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 4px;">
         <h3 style="font-size:15px;margin:0;">Add customers to ${g.name}</h3>
         <!-- How many are ticked, kept up to date (Oct 2) -->
-        <span id="gcpCount" style="flex:0 0 auto;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--teal-deep);white-space:nowrap;"></span>
+        <span id="gcpCount" style="flex:0 0 auto;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap;"></span>
       </div>
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 12px;">${opts.hint || 'Tick everyone who needs a filter clean in this batch.'}</p>
       <div style="position:relative;margin-bottom:10px;">
@@ -9365,7 +9368,7 @@ function pdRow(c, b){
   const g = pdOpenGroupFor(c.id);
   if(g){
     const tag = document.createElement('span');
-    tag.style.cssText = 'flex-shrink:0;background:var(--teal-pale);color:var(--teal-deep);font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;white-space:nowrap;';
+    tag.style.cssText = 'flex-shrink:0;background:var(--teal-pale);color:var(--ink);font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;white-space:nowrap;';
     tag.textContent = (g.name || 'Group') + (g.date ? ' · ' + new Date(g.date + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : '');
     tag.title = 'In the drain group "' + (g.name || '') + '"';
     row.appendChild(tag);
@@ -9419,7 +9422,7 @@ function pdRow(c, b){
              + '<span style="display:block;font-size:11px;' + (b.key === 'overdue' ? 'color:var(--rust);' : '') + '">'
              + esc(b.key === 'overdue' ? pdSpan(due).replace(/ ago$/, ' overdue') : pdSpan(due)) + '</span>'
            : '<span>Once a drain is added</span>')
-    + (custom || bodyName ? '<span style="display:block;font-size:11px;color:var(--teal-deep);font-weight:600;">'
+    + (custom || bodyName ? '<span style="display:block;font-size:11px;color:var(--ink);font-weight:600;">'
         + esc([bodyName, custom ? 'every ' + pdEveryText(custom) : ''].filter(Boolean).join(' \u00b7 ').replace(/^every/, 'Every')) + '</span>' : '');
   row.appendChild(dueCol);
 
@@ -9439,7 +9442,7 @@ function pdRenderSelBar(){
   bar.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding:9px 12px;border-radius:10px;background:var(--teal-pale);';
   bar.innerHTML = '';
   const t = document.createElement('span');
-  t.style.cssText = 'font-size:13px;font-weight:700;color:var(--teal-deep);margin-right:auto;';
+  t.style.cssText = 'font-size:13px;font-weight:700;color:var(--ink);margin-right:auto;';
   t.textContent = n + (n === 1 ? ' customer' : ' customers') + ' ticked';
   bar.appendChild(t);
   const rec = document.createElement('button');
@@ -9622,14 +9625,21 @@ function openDrainHistory(c){
         <label for="pdhBody" style="font-size:12.5px;font-weight:600;">Body of water</label>
         <select id="pdhBody" style="margin:4px 0 14px;"></select>
       </div>
-      <label class="pick-row" style="padding:4px 0 12px;border:none;font-weight:600;font-size:13px;"><input type="checkbox" id="pdhSelf" style="width:auto;margin:0;"> Customer performs drain</label>
+      <div style="padding:4px 0 12px;"><label class="pick-row" style="display:inline-flex;padding:0;border:none;font-weight:600;font-size:13px;"><input type="checkbox" id="pdhSelf" style="width:auto;margin:0;"> Customer performs drain</label></div>
       <label for="pdhEvery" style="font-size:12.5px;font-weight:600;">Drain every</label>
       <select id="pdhEvery" style="margin:4px 0 14px;"></select>
+      <!-- A price for this customer's drain, for each body of water (Oct 20) -->
+      <label for="pdhPrice" id="pdhPriceLabel" style="font-size:12.5px;font-weight:600;">Drain price</label>
+      <div style="position:relative;margin:4px 0 4px;">
+        <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:15px;pointer-events:none;">$</span>
+        <input id="pdhPrice" inputmode="decimal" placeholder="0.00" autocomplete="off" style="padding-left:24px;">
+      </div>
+      <p id="pdhPriceHint" style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Just for this customer.</p>
       <div style="font-size:12.5px;font-weight:600;margin-bottom:4px;">Drains</div>
       <div id="pdhList" style="border:1px solid var(--line);border-radius:10px;padding:2px 10px;margin-bottom:12px;max-height:36vh;overflow-y:auto;"></div>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
         <input type="date" id="pdhDate" aria-label="Date drained" style="flex:1;">
-        <button class="btn btn-ghost" id="pdhAdd" style="width:auto;">Add drain</button>
+        <button class="btn btn-primary" id="pdhAdd" style="width:auto;">Add drain</button>
       </div>
       <div id="pdhNext" style="font-size:12.5px;color:var(--muted);margin-bottom:14px;"></div>
       <div class="btn-row">
@@ -9646,7 +9656,7 @@ function openDrainHistory(c){
     overlay.querySelector('#pdhBodyWrap').style.display = 'block';
     bodies.forEach(b => { const o = document.createElement('option'); o.value = b.key; o.textContent = b.label; bodySel.appendChild(o); });
     bodySel.value = body;
-    bodySel.addEventListener('change', ()=>{ body = bodySel.value; fillEvery(); draw(); });
+    bodySel.addEventListener('change', ()=>{ savePrice(); body = bodySel.value; fillEvery(); fillPrice(); draw(); });
   }
   // Drains it themselves (Oct 10): kept in their own list, with no reminders
   const selfBox = overlay.querySelector('#pdhSelf');
@@ -9680,6 +9690,34 @@ function openDrainHistory(c){
     fillEvery();
     draw();
   });
+  // The drain price for the body shown: kept per body of water in
+  // c.drainPriceByBody, saved when the box is left (and by Done)
+  const priceIn = overlay.querySelector('#pdhPrice');
+  const bodyLabel = ()=>{ const b = bodies.find(x => x.key === body); return b ? b.label : 'Pool'; };
+  function fillPrice(){
+    const many = bodies.length > 1;
+    overlay.querySelector('#pdhPriceLabel').textContent = many ? bodyLabel() + ' drain price' : 'Drain price';
+    overlay.querySelector('#pdhPriceHint').textContent = many ? 'Just for this customer\u2019s ' + bodyLabel().toLowerCase() + '.' : 'Just for this customer.';
+    const v = (c.drainPriceByBody || {})[body];
+    priceIn.value = v === undefined || v === null || v === '' ? '' : Number(v).toFixed(2);
+  }
+  function savePrice(){
+    const raw = String(priceIn.value || '').replace(/[$,\s]/g, '');
+    const own = Object.assign({}, c.drainPriceByBody || {});
+    const had = own[body];
+    if(raw === ''){ delete own[body]; }
+    else {
+      const n = Number(raw);
+      if(!isFinite(n) || n < 0){ showToast('Enter a price, like 350.00'); fillPrice(); return; }
+      own[body] = n.toFixed(2);
+    }
+    if(String(had === undefined ? '' : had) === String(own[body] === undefined ? '' : own[body])) return;
+    if(Object.keys(own).length) c.drainPriceByBody = own; else delete c.drainPriceByBody;
+    saveCustomers();
+    priceIn.value = own[body] === undefined ? '' : own[body];
+  }
+  fillPrice();
+  priceIn.addEventListener('change', savePrice);
   const listEl = overlay.querySelector('#pdhList');
   const nextEl = overlay.querySelector('#pdhNext');
   const dateIn = overlay.querySelector('#pdhDate');
@@ -9697,9 +9735,9 @@ function openDrainHistory(c){
         + '<span style="display:block;font-size:11px;font-weight:400;color:var(--muted);">' + esc(pdSpan(d.date) + (g ? ' · ' + g.name : '') + (d.jobId ? ' · in the app' + pdJobTime(d.jobId) : '')) + '</span></span>';
       const x = document.createElement('button');
       x.type = 'button';
-      x.textContent = 'Remove';
-      x.className = 'btn btn-ghost';
-      x.style.cssText = 'width:auto;flex:0 0 auto;padding:4px 9px;font-size:11.5px;color:var(--rust);border-color:#EFC9BC;';
+      // A bin, not the word (Oct 20)
+      x.innerHTML = WEIR_BIN_SVG; x.dataset.xDrawn = 'bin'; x.dataset.binSize = 's';
+      x.title = 'Remove this drain'; x.setAttribute('aria-label', x.title);
       x.addEventListener('click', ()=>{
         c.drains = (c.drains || []).filter(o => !(o && o.date === d.date && pdBodyOf(c, o) === body));
         // One done in the app isn't logged again by the next sync (Oct 10)
@@ -9726,6 +9764,7 @@ function openDrainHistory(c){
     draw();
   });
   overlay.querySelector('#pdhDone').addEventListener('click', ()=>{
+    savePrice();
     // A date left in the box is a drain too (Oct 10)
     if(dateIn.value){
       pdRecord([c.id], dateIn.value, undefined, body);
@@ -9828,7 +9867,7 @@ function renderDrainGroups(){
       headRight.appendChild(badge);
     }
     const dateCol = document.createElement('div');
-    dateCol.style.cssText = 'flex:0 0 112px;width:112px;font-size:13px;font-weight:600;color:var(--teal-deep);white-space:nowrap;';
+    dateCol.style.cssText = 'flex:0 0 112px;width:112px;font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;';
     dateCol.textContent = g.date ? new Date(g.date + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'}) : 'No date';
     headRight.appendChild(dateCol);
     // Photo required, per group, on unless unticked, as filter cleans (Oct 10)
@@ -9923,7 +9962,7 @@ function renderDrainGroups(){
         const cust = customers.find(x => x.id === cid);
         const chip = document.createElement('span');
         chip.dataset.reorderKey = cid;
-        chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:var(--teal-pale);color:var(--teal-deep);font-size:12px;font-weight:600;padding:4px 8px;border-radius:8px;';
+        chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:var(--teal-pale);color:var(--ink);font-size:12px;font-weight:600;padding:4px 8px;border-radius:8px;';
         const cgrip = document.createElement('span');
         cgrip.textContent = '≡';
         cgrip.title = 'Drag to reorder';
@@ -10551,7 +10590,7 @@ function pdOpenDayPicker(iso, currentIds, onSave){
     <div class="confirm-box" style="max-width:520px;max-height:84vh;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 4px;">
         <h3 style="font-size:15px;margin:0;"></h3>
-        <span class="pdp-count" style="flex:0 0 auto;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--teal-deep);white-space:nowrap;"></span>
+        <span class="pdp-count" style="flex:0 0 auto;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap;"></span>
       </div>
       <p class="pdp-hint" style="font-size:11.5px;color:var(--muted);margin:0 0 12px;"></p>
       <input class="pdp-search" placeholder="Search by name, address, phone, or email" autocomplete="off" style="margin-bottom:10px;">
@@ -10882,7 +10921,7 @@ function openWorkCalendar(startDay){
       right.appendChild(selBtn);
     } else {
       const hint = document.createElement('span');
-      hint.style.cssText = 'font-size:12.5px;font-weight:600;color:var(--teal-deep);';
+      hint.style.cssText = 'font-size:12.5px;font-weight:600;color:var(--ink);';
       hint.textContent = 'Tap the days to send';
       right.appendChild(hint);
       const cancel = smallBtn('Cancel');
@@ -11143,7 +11182,7 @@ function openWorkCalendar(startDay){
       const addX = document.createElement('button');
       addX.type = 'button';
       addX.textContent = has ? 'Edit extra work' : '+ Extra work';
-      addX.style.cssText = 'width:auto;flex:0 0 auto;white-space:nowrap;border:1px dashed #BFDCD8;color:var(--teal-deep);background:#fff;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:700;cursor:pointer;';
+      addX.style.cssText = 'width:auto;flex:0 0 auto;white-space:nowrap;border:1px dashed #BFDCD8;color:var(--ink);background:#fff;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:700;cursor:pointer;';
       addX.addEventListener('click', fn);
       return addX;
     };
@@ -12090,7 +12129,7 @@ function openDrainEmail(){
       b.type = 'button';
       b.className = 'btn btn-ghost';
       b.style.cssText = 'width:auto;flex:0 0 auto;padding:6px 12px;font-size:12.5px;font-weight:700;'
-        + (tab === k ? 'background:var(--teal-pale);color:var(--teal-deep);border-color:#BFDCD8;' : 'color:var(--muted);');
+        + (tab === k ? 'background:var(--teal-pale);color:var(--ink);border-color:#BFDCD8;' : 'color:var(--muted);');
       b.textContent = t;
       b.addEventListener('click', ()=>{ tab = k; draw(); });
       tabs.appendChild(b);
@@ -12288,7 +12327,7 @@ document.getElementById('btnImportDrains').addEventListener('click', ()=>{
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
   const cell = 'padding:5px 8px;border:1px solid var(--line);font-size:12px;white-space:nowrap;';
-  const head = cell + 'background:var(--teal-pale);font-weight:700;color:var(--teal-deep);';
+  const head = cell + 'background:var(--teal-pale);font-weight:700;color:var(--ink);';
   overlay.innerHTML = '<div class="confirm-box" style="max-width:520px;width:100%;">'
     + '<h3 style="font-size:16px;margin:0 0 4px;">Import drains</h3>'
     + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Your spreadsheet needs a heading row, then one row per customer, like this:</p>'
@@ -14237,7 +14276,9 @@ const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'r
                          // Oct 14: kept only in the browser they were typed into until
                          // now: the filter clean, drain and mass email wording
                          'filterCleanEmail', 'drainEmailSoon', 'drainEmailScheduled',
-                         'broadcastTemplates', 'broadcastCategories'];
+                         'broadcastTemplates', 'broadcastCategories',
+                         // The WorkCenter ticks last chosen, shared with the app (Oct 20)
+                         'workCenterTicks'];
 const SYNC_COMPANY_SETTINGS = ['showBeforePhotos', 'showAfterPhotos', 'showGatePhoto',
   // The "Last 3 months" readings table on the phones' visits, and its chemicals added rows
   'showRecentReadings', 'showRecentDosages',
@@ -15261,7 +15302,7 @@ async function changeOwnPassword(){
   const say = (msg, ok)=>{
     if(!note) return;
     note.textContent = msg;
-    note.style.color = ok ? 'var(--teal-deep)' : 'var(--rust)';
+    note.style.color = ok ? 'var(--ink)' : 'var(--rust)';
     note.style.display = 'block';
   };
 
@@ -15855,7 +15896,7 @@ function renderTaskForm(){
   }
 }
 
-// ---- The ticks remembered on this computer (Oct 3) ----
+// ---- The ticks remembered (Oct 3; on every computer and the app, Oct 20) ----
 // Photo required, Video required and Email customer stay as last chosen for
 // every new work order or task, until changed again
 function wcTicks(){
@@ -18816,7 +18857,7 @@ function renderWcCustomerChips(){
     const cust = customers.find(x => x.id === id);
     if(!cust) return;
     const chip = document.createElement('span');
-    chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:var(--teal-pale);color:var(--teal-deep);font-size:12.5px;font-weight:600;padding:5px 9px;border-radius:8px;';
+    chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:var(--teal-pale);color:var(--ink);font-size:12.5px;font-weight:600;padding:5px 9px;border-radius:8px;';
     chip.textContent = displayName(cust.name);
     const x = document.createElement('button');
     x.type = 'button';
@@ -19859,7 +19900,7 @@ function qoBody(item, customerId){
     tl.style.cssText = 'font-size:12.5px;font-weight:600;color:var(--muted);';
     tl.textContent = 'Total';
     const tv = document.createElement('span');
-    tv.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:var(--teal-deep);";
+    tv.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:var(--ink);";
     tv.textContent = '$' + (parseFloat(w.total) || 0).toFixed(2);
     totalRow.appendChild(tl); totalRow.appendChild(tv);
     card.appendChild(totalRow);
@@ -20373,7 +20414,7 @@ function renderCustomerWorkOrders(customerId){
       clean: ['#FBF1DD', '#8A5E0B'], task: ['#E8F1E4', '#4D6B3C'],
       // Pool drains in the app's sky blue (Oct 15)
       drain: ['#C3DEF3', '#174C78']};
-    const tc = TAG_COLOURS[item.kind === 'series' ? item.of : item.kind] || ['var(--teal-pale)', 'var(--teal-deep)'];
+    const tc = TAG_COLOURS[item.kind === 'series' ? item.of : item.kind] || ['var(--teal-pale)', 'var(--ink)'];
     const tag = document.createElement('span');
     tag.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;white-space:nowrap;"
       + 'letter-spacing:0.07em;text-transform:uppercase;padding:3px 7px;border-radius:6px;'
@@ -21442,7 +21483,7 @@ function makeConfigRow(item, listKey){
     // One width with or without a count, so nothing beside it moves (Oct 2)
     rulesBtn.style.cssText = 'width:' + CFG_COL_RULES + 'px;flex:0 0 ' + CFG_COL_RULES + 'px;padding:6px 6px;font-size:11.5px;'
       + 'white-space:nowrap;justify-content:center;'
-      + (ruleCount ? 'color:var(--teal-deep);border-color:var(--teal-mid);font-weight:700;' : '');
+      + (ruleCount ? 'color:var(--ink);border-color:var(--teal-mid);font-weight:700;' : '');
     rulesBtn.textContent = ruleCount ? 'Dosage rules (' + ruleCount + ')' : 'Dosage rules';
     rulesBtn.addEventListener('click', ()=> openDoseRulesModal(item));
     row.appendChild(rulesBtn);
@@ -21651,7 +21692,7 @@ let customSetupPage = 1;
 function buildListPager(page, pages, total, go, wrapStyle){
   const pager = document.createElement('div');
   pager.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;' + wrapStyle;
-  const arrowCss = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:var(--card);color:var(--teal-deep);border-radius:8px;cursor:pointer;font-size:14px;';
+  const arrowCss = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;cursor:pointer;font-size:14px;';
 
   const prev = document.createElement('button');
   prev.type = 'button';
@@ -21670,7 +21711,7 @@ function buildListPager(page, pages, total, go, wrapStyle){
     b.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:\'JetBrains Mono\',monospace;'
       + (p === page
         ? 'background:var(--teal-deep);color:var(--card);border:1px solid var(--teal-deep);'
-        : 'background:var(--card);color:var(--teal-deep);border:1px solid var(--line);');
+        : 'background:var(--card);color:var(--ink);border:1px solid var(--line);');
     b.addEventListener('click', ()=> go(p));
     pager.appendChild(b);
   }
@@ -22357,7 +22398,7 @@ function renderCustomBodies(){
   }
 
   const label = document.createElement('div');
-  label.style.cssText = "display:table;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin:14px 0 8px;";
+  label.style.cssText = "display:table;font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;margin:14px 0 8px;";
   label.textContent = 'Body of water';
   box.appendChild(label);
 
@@ -24539,7 +24580,7 @@ function renderTechAssignList(techId){
       b.type = 'button';
       b.textContent = label;
       b.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);'
-        + 'background:#fff;color:var(--teal-deep);border-radius:8px;cursor:pointer;font-size:14px;';
+        + 'background:#fff;color:var(--ink);border-radius:8px;cursor:pointer;font-size:14px;';
       b.disabled = disabled;
       if(disabled) b.style.opacity = '0.35';
       b.addEventListener('click', ()=>{
@@ -24560,7 +24601,7 @@ function renderTechAssignList(techId){
         + "font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace;"
         + (isCurrent
           ? 'background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);'
-          : 'background:#fff;color:var(--teal-deep);border:1px solid var(--line);');
+          : 'background:#fff;color:var(--ink);border:1px solid var(--line);');
       b.addEventListener('click', ()=>{ techAssignPage = p; renderTechAssignList(techId); });
       pager.appendChild(b);
     }
@@ -24890,9 +24931,12 @@ function renderTechAssignedList(techId){
 
   if(countEl) countEl.textContent = assigned.length
     ? assigned.length + (assigned.length === 1 ? ' customer' : ' customers') : '';
+  // Add customers until they have one, then Edit customers (Oct 20)
+  const assignBtn = document.getElementById('btnShowAssignCustomers');
+  if(assignBtn) assignBtn.textContent = assigned.length ? 'Edit customers' : 'Add customers';
 
   if(assigned.length === 0){
-    container.innerHTML = emptyState('No customers assigned to this technician yet — press Edit customers to add some.');
+    container.innerHTML = emptyState('No customers assigned to this technician yet — press Add customers to add some.');
     techAssignedPage = 1;
     return;
   }
@@ -25009,7 +25053,7 @@ function renderTechAssignedList(techId){
       b.type = 'button';
       b.textContent = label;
       b.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);'
-        + 'background:#fff;color:var(--teal-deep);border-radius:8px;cursor:pointer;font-size:14px;';
+        + 'background:#fff;color:var(--ink);border-radius:8px;cursor:pointer;font-size:14px;';
       b.disabled = disabled;
       if(disabled) b.style.opacity = '0.35';
       b.addEventListener('click', ()=>{
@@ -25031,7 +25075,7 @@ function renderTechAssignedList(techId){
         + "font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace;"
         + (isCurrent
           ? 'background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);'
-          : 'background:#fff;color:var(--teal-deep);border:1px solid var(--line);');
+          : 'background:#fff;color:var(--ink);border:1px solid var(--line);');
       b.addEventListener('click', ()=>{ techAssignedPage = p; renderTechAssignedList(techId); });
       pager.appendChild(b);
     }
@@ -26368,7 +26412,7 @@ function renderPhotoRetentionNotice(){
   const urgent = expiring > 0;
   box.style.background = urgent ? '#FDF3E7' : 'var(--surface-alt)';
   box.style.border = '1px solid ' + (urgent ? '#EDC79B' : 'var(--line)');
-  box.style.color = 'var(--teal-deep)';
+  box.style.color = 'var(--ink)';
 
   const n = expiring || expired;
   const word = n === 1 ? 'photo' : 'photos';
@@ -27354,7 +27398,7 @@ function renderWorkOrderReportRow(histList, customerId, customer, name, v, repKe
   when.textContent = fmtDate(v.date);
   const tag = document.createElement('span');
   tag.style.cssText = 'margin-left:10px;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;font-weight:600;'
-    + 'letter-spacing:0.07em;text-transform:uppercase;color:var(--teal-deep);padding:3px 7px;border-radius:6px;'
+    + 'letter-spacing:0.07em;text-transform:uppercase;color:var(--ink);padding:3px 7px;border-radius:6px;'
     + 'background:' + (isOpen ? 'var(--card)' : 'var(--teal-pale)') + ';';
   tag.textContent = j._clean ? 'Filter clean' : 'Work order' + (j.workOrderNumber ? ' #' + quoteNumberText(j.workOrderNumber) : '');
   when.appendChild(tag);
@@ -27673,7 +27717,7 @@ function showHistory(customerId, name){
     const prev = document.createElement('button');
     prev.type = 'button';
     prev.textContent = '\u2039';
-    prev.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:var(--card);color:var(--teal-deep);border-radius:8px;cursor:pointer;font-size:14px;';
+    prev.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;cursor:pointer;font-size:14px;';
     prev.disabled = historyPage === 1;
     if(prev.disabled) prev.style.opacity = '0.35';
     prev.addEventListener('click', ()=>{ if(historyPage > 1){ historyPage--; again(); } });
@@ -27688,7 +27732,7 @@ function showHistory(customerId, name){
       b.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:\'JetBrains Mono\',monospace;'
         + (isCurrent
           ? 'background:var(--teal-deep);color:var(--card);border:1px solid var(--teal-deep);'
-          : 'background:var(--card);color:var(--teal-deep);border:1px solid var(--line);');
+          : 'background:var(--card);color:var(--ink);border:1px solid var(--line);');
       b.addEventListener('click', ()=>{ historyPage = p; again(); });
       pager.appendChild(b);
     }
@@ -27696,7 +27740,7 @@ function showHistory(customerId, name){
     const next = document.createElement('button');
     next.type = 'button';
     next.textContent = '\u203a';
-    next.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:var(--card);color:var(--teal-deep);border-radius:8px;cursor:pointer;font-size:14px;';
+    next.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;cursor:pointer;font-size:14px;';
     next.disabled = historyPage === totalPages;
     if(next.disabled) next.style.opacity = '0.35';
     next.addEventListener('click', ()=>{ if(historyPage < totalPages){ historyPage++; again(); } });
@@ -27744,7 +27788,7 @@ async function openPhotoWindow(shownList, dateLabel){
 
   const shot = (label, data)=> data ? `
     <div style="margin-bottom:14px;">
-      <div style="display:table;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin-bottom:6px;">${label}</div>
+      <div style="display:table;font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;margin-bottom:6px;">${label}</div>
       <img src="${data}" style="width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="${label} photo">
     </div>` : '';
 
@@ -28681,7 +28725,7 @@ function renderEquipmentTypeList(){
       addBtn.textContent = '+';
       addBtn.style.cssText = 'flex:0 0 26px;width:26px;height:26px;padding:0;line-height:1;'
         + 'border:1.5px solid var(--teal-mid);border-radius:7px;background:var(--teal-pale);'
-        + 'color:var(--teal-deep);font-size:16px;font-weight:700;cursor:pointer;';
+        + 'color:var(--ink);font-size:16px;font-weight:700;cursor:pointer;';
       addBtn.addEventListener('click', (e)=>{
         e.stopPropagation();
         // Next free number for this kind
@@ -28891,7 +28935,7 @@ function openAddToCustomersModal(typeName){
 
         <!-- Quick buttons for this kind of equipment, set up while adding it (Oct 2) -->
         <div style="border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:12px 0;margin:0 0 14px;">
-          <div style="display:table;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin:0 0 6px;">Quick buttons (optional)</div>
+          <div style="display:table;font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;margin:0 0 6px;">Quick buttons (optional)</div>
           <p style="font-size:11.5px;color:var(--muted);margin:0 0 8px;">Choices to tap on this equipment. They show for every customer who has it.</p>
           <div id="addEqBtnRows"></div>
           <button type="button" class="btn btn-ghost" id="addEqBtnAdd" style="width:100%;padding:8px 12px;font-size:13px;margin-top:8px;">+ Add a button</button>
@@ -28948,7 +28992,7 @@ function openAddToCustomersModal(typeName){
       list.concat(['Other']).forEach(o=>{
         const chip = document.createElement('span');
         chip.textContent = o;
-        chip.style.cssText = 'display:inline-flex;padding:6px 12px;border:1px solid var(--line);border-radius:9px;font-size:13px;color:var(--teal-deep);background:#fff;';
+        chip.style.cssText = 'display:inline-flex;padding:6px 12px;border:1px solid var(--line);border-radius:9px;font-size:13px;color:var(--ink);background:#fff;';
         qLine.appendChild(chip);
       });
     }
@@ -30001,6 +30045,9 @@ function switchView(view){
   // WorkCenter always opens on the Calendar (Oct 20)
   if(view === 'workcenter' && keep) applyWorkCenterMode('calendar');
   if(view === 'workcenter' && !keep){
+    // What was held on the way out stays held while the Calendar shows: the
+    // empty form isn't a reason to drop it (Oct 20)
+    const heldDrafts = Object.assign({}, wcDrafts);
     applyWorkCenterMode('calendar');
     resetWorkOrderForm(true);
     document.getElementById('wcCustomer').value = '';
@@ -30010,9 +30057,9 @@ function switchView(view){
     recalcWorkOrderTotal();
     renderWorkOrderHistory();
     renderServiceCallsList();
-    // Anything held from leaving a minute ago comes back, after the form above
-    // has been set up fresh
-    restoreWcDraft(document.getElementById('wcType').value);
+    // Anything held from leaving a minute ago stays held, and comes back on
+    // Work orders and quotes (applyWorkCenterMode puts it back, Oct 20)
+    Object.keys(heldDrafts).forEach(k => { if(!wcDrafts[k]) wcDrafts[k] = heldDrafts[k]; });
     applyWorkOrderType();
   }
   // Where it was scrolled to, when it's coming back as it was
@@ -30926,7 +30973,7 @@ function inlineServices(cust){
 
     // Extra bodies of water, added by name
     const waterLabel = document.createElement('div');
-    waterLabel.style.cssText = "display:table;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin-bottom:6px;";
+    waterLabel.style.cssText = "display:table;font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;margin-bottom:6px;";
     waterLabel.textContent = 'Extra bodies of water';
     wrap.appendChild(waterLabel);
 
@@ -31250,7 +31297,7 @@ function renderProfileLastDone(c){
     h.style.cssText = 'font-size:12.5px;font-weight:600;color:var(--ink);opacity:.72;';
     h.textContent = k;
     const v = document.createElement('div');
-    v.style.cssText = 'font-size:15.5px;font-weight:700;margin-top:2px;color:' + (iso ? 'var(--teal-deep)' : 'var(--muted)') + ';';
+    v.style.cssText = 'font-size:15.5px;font-weight:700;margin-top:2px;color:' + (iso ? 'var(--ink)' : 'var(--muted)') + ';';
     v.textContent = iso ? nice(iso) : 'Not yet';
     tile.appendChild(h); tile.appendChild(v);
     box.appendChild(tile);
@@ -32078,10 +32125,10 @@ function renderList(){
           + 'flex-shrink:0;line-height:1.25;margin-right:2px;cursor:pointer;';
         block.title = 'Change ' + eyebrowText.toLowerCase();
         const eyebrow = document.createElement('span');
-        eyebrow.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin-bottom:2px;";
+        eyebrow.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;margin-bottom:2px;";
         eyebrow.textContent = eyebrowText;
         const value = document.createElement('span');
-        value.style.cssText = 'font-size:13px;font-weight:600;color:' + (set ? 'var(--teal-deep)' : 'var(--muted)') + ';white-space:nowrap;';
+        value.style.cssText = 'font-size:13px;font-weight:600;color:' + (set ? 'var(--ink)' : 'var(--muted)') + ';white-space:nowrap;';
         value.textContent = valueText + ' \u25be';
         // The real menu lies over the block, unseen, so a press opens it at once
         const pick = document.createElement('select');
@@ -32109,7 +32156,7 @@ function renderList(){
       dayBlock.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0;line-height:1.25;';
       dayBlock.addEventListener('click', e => e.stopPropagation());
       const dayEyebrow = document.createElement('span');
-      dayEyebrow.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 7px;border-radius:6px;margin-bottom:2px;";
+      dayEyebrow.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;margin-bottom:2px;";
       dayEyebrow.textContent = 'Day';
       const dayLine = document.createElement('div');
       dayLine.style.cssText = 'display:flex;align-items:center;gap:4px;white-space:nowrap;';
@@ -32117,7 +32164,7 @@ function renderList(){
       const dayPart = (current, isMain)=>{
         const part = document.createElement('span');
         part.style.cssText = 'position:relative;font-size:13px;font-weight:600;cursor:pointer;color:'
-          + (current ? 'var(--teal-deep)' : 'var(--muted)') + ';';
+          + (current ? 'var(--ink)' : 'var(--muted)') + ';';
         part.textContent = (current || 'Not scheduled') + ' \u25be';
         part.title = isMain ? 'Change the service day' : 'Change or remove this extra day';
         const pick = document.createElement('select');
@@ -32214,7 +32261,7 @@ function renderList(){
     const prev = document.createElement('button');
     prev.type = 'button';
     prev.textContent = '‹';
-    prev.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:#fff;color:var(--teal-deep);border-radius:8px;cursor:pointer;font-size:14px;';
+    prev.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;cursor:pointer;font-size:14px;';
     prev.disabled = customerPage === 1;
     if(prev.disabled) prev.style.opacity = '0.35';
     prev.addEventListener('click', ()=>{ if(customerPage > 1){ customerPage--; renderList(); } });
@@ -32229,7 +32276,7 @@ function renderList(){
       b.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:\'JetBrains Mono\',monospace;'
         + (isCurrent
           ? 'background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);'
-          : 'background:#fff;color:var(--teal-deep);border:1px solid var(--line);');
+          : 'background:#fff;color:var(--ink);border:1px solid var(--line);');
       b.addEventListener('click', ()=>{ customerPage = p; renderList(); });
       pager.appendChild(b);
     }
@@ -32237,7 +32284,7 @@ function renderList(){
     const next = document.createElement('button');
     next.type = 'button';
     next.textContent = '›';
-    next.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:#fff;color:var(--teal-deep);border-radius:8px;cursor:pointer;font-size:14px;';
+    next.style.cssText = 'min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;cursor:pointer;font-size:14px;';
     next.disabled = customerPage === totalPages;
     if(next.disabled) next.style.opacity = '0.35';
     next.addEventListener('click', ()=>{ if(customerPage < totalPages){ customerPage++; renderList(); } });

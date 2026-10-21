@@ -4177,6 +4177,11 @@ function syncApplyRecord(kind, id, data, deleted, agreed){
     if(id === 'routeOrders') officeRouteOrderArrived(lsGet('routeOrders'), data.value);
     if(id === 'routeOrdersOnce') officeOnceOrderArrived(lsGet('routeOrdersOnce'), data.value);
     const saved = lsSet(id, data.value);
+    // The WorkCenter ticks changed on the website (Oct 20): a new work order or
+    // task here shows them, unless one is being changed right now
+    if(saved && id === 'workCenterTicks'){
+      try{ if(typeof awcEdit !== 'undefined' && !awcEdit && typeof awcApplyTicks === 'function') awcApplyTicks(); }catch(e){}
+    }
     // The app holds its own copy of the setup from when it started. Writing to
     // storage alone changed nothing on screen until the app was restarted,
     // which is why quick buttons set at the office never appeared out here.
@@ -10931,6 +10936,10 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
     row.addEventListener('click', ()=>{
       const open = row.nextElementSibling && row.nextElementSibling.classList.contains('route-job-brief');
       if(open){ row.nextElementSibling.remove(); chev.textContent = '\u203A'; return; }
+      // Only one open at a time (Oct 20): another job or customer closes
+      const list = row.parentElement || container;
+      list.querySelectorAll('.route-brief, .route-job-brief').forEach(p => p.remove());
+      list.querySelectorAll('.chev').forEach(x => x.textContent = '\u203A');
       const panel = document.createElement('div');
       panel.className = 'route-job-brief';
       panel.style.cssText = 'background:var(--surface-alt);border-radius:10px;padding:18px 20px;margin:0 0 14px;font-size:16px;line-height:1.85;animation:briefIn .16s ease;';
@@ -11052,6 +11061,10 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
     row.addEventListener('click', ()=>{
       const open = row.nextElementSibling && row.nextElementSibling.classList.contains('route-job-brief');
       if(open){ row.nextElementSibling.remove(); chev.textContent = '\u203A'; return; }
+      // Only one open at a time (Oct 20): another job or customer closes
+      const list = row.parentElement || container;
+      list.querySelectorAll('.route-brief, .route-job-brief').forEach(p => p.remove());
+      list.querySelectorAll('.chev').forEach(x => x.textContent = '\u203A');
       const panel = document.createElement('div');
       panel.className = 'route-job-brief';
       panel.style.cssText = 'background:var(--surface-alt);border-radius:10px;padding:18px 20px;margin:0 0 14px;font-size:16px;line-height:1.85;animation:briefIn .16s ease;';
@@ -11112,6 +11125,21 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
 // phone's own back button keep working exactly as they do now. What's
 // submitted stays on this phone for now; a place to keep submissions on the
 // server comes later.
+// Items to tick before Submit (Oct 20): each its own white tile with a bigger
+// box and bold words; ticked, it turns pale teal with a teal border, so what's
+// left stands out. The whole tile can be pressed.
+function jobTickTile(line, cb){
+  line.style.cssText = 'display:flex;align-items:center;gap:12px;padding:13px 14px;margin:0 0 8px;cursor:pointer;'
+    + 'border:1.5px solid #BFDCD8;border-radius:12px;background:#fff;font-size:15.5px;font-weight:700;color:var(--ink);'
+    + 'text-transform:none;letter-spacing:0;font-family:\'Inter\',sans-serif;';
+  cb.style.cssText = 'width:22px;height:22px;margin:0;flex-shrink:0;';
+  const paint = ()=>{
+    line.style.background = cb.checked ? 'var(--teal-pale)' : '#fff';
+    line.style.borderColor = cb.checked ? 'var(--teal-mid)' : '#BFDCD8';
+  };
+  cb.addEventListener('change', paint);
+  paint();
+}
 function openJobPage(customer, job){
   if(openJobPage.open) openJobPage.open.remove();
 
@@ -11173,11 +11201,9 @@ function openJobPage(customer, job){
       who.style.margin = '6px 0 14px';
       items.forEach((t, i)=>{
         const line = document.createElement('label');
-        line.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px 2px;cursor:pointer;'
-          + (i < items.length - 1 ? 'border-bottom:1px solid var(--line);' : '');
         const cb = document.createElement('input');
         cb.type = 'checkbox';
-        cb.style.cssText = 'width:22px;height:22px;margin:0;flex-shrink:0;';
+        jobTickTile(line, cb);
         lineChecks.push(cb);
         const span = document.createElement('span');
         span.textContent = t;
@@ -11203,11 +11229,9 @@ function openJobPage(customer, job){
       wrap.appendChild(hd);
       extra.forEach((t, i)=>{
         const line = document.createElement('label');
-        line.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px 2px;cursor:pointer;font-size:15px;color:var(--ink);'
-          + (i < extra.length - 1 ? 'border-bottom:1px solid var(--line);' : '');
         const cb = document.createElement('input');
         cb.type = 'checkbox';
-        cb.style.cssText = 'width:22px;height:22px;margin:0;flex-shrink:0;';
+        jobTickTile(line, cb);
         lineChecks.push(cb);
         const span = document.createElement('span');
         span.textContent = t;
@@ -11365,7 +11389,8 @@ function openJobPage(customer, job){
   const submit = document.createElement('button');
   submit.className = 'btn btn-primary';
   submit.style.cssText = 'width:100%;';
-  submit.textContent = 'Submit ' + job.kind;
+  // Drains of any body just say Submit (Oct 20)
+  submit.textContent = job.kind === 'pool drain' ? 'Submit' : 'Submit ' + job.kind;
   card.appendChild(submit);
 
   const close = ()=> page.remove();
@@ -11914,7 +11939,8 @@ function adminVersion_renderHomeList(){
     row.addEventListener('click', ()=>{
       // Slide open a briefing panel first, rather than jumping straight in
       const existing = container.querySelector('.route-brief[data-for="' + c.id + '"]');
-      container.querySelectorAll('.route-brief').forEach(p => p.remove());
+      // An open job closes too: only one open at a time (Oct 20)
+      container.querySelectorAll('.route-brief, .route-job-brief').forEach(p => p.remove());
       container.querySelectorAll('.chev').forEach(x => x.textContent = '\u203A');
       if(existing){ return; }
       chev.textContent = '\u2039';
@@ -12263,7 +12289,8 @@ function techVersion_renderHomeList(){
     row.addEventListener('click', ()=>{
       // Slide open a briefing panel first, rather than jumping straight in
       const existing = container.querySelector('.route-brief[data-for="' + c.id + '"]');
-      container.querySelectorAll('.route-brief').forEach(p => p.remove());
+      // An open job closes too: only one open at a time (Oct 20)
+      container.querySelectorAll('.route-brief, .route-job-brief').forEach(p => p.remove());
       container.querySelectorAll('.chev').forEach(x => x.textContent = '\u203A');
       if(existing){ return; }
       chev.textContent = '\u2039';
@@ -12852,6 +12879,14 @@ function openSkipReasonModal(customer){
 }
 
 function skipService(...args){
+  // The list's copy of the customer can be an old one: each sync puts fresh
+  // copies in customers without redrawing the list, so a skip marked on the old
+  // copy never got saved and the customer stayed on Today (Oct 20). Skip the
+  // live one.
+  if(args[0] && args[0].id){
+    const live = customers.find(x => x && String(x.id) === String(args[0].id));
+    if(live) args[0] = live;
+  }
   return isAdminUser() ? adminVersion_skipService.apply(this, args) : techVersion_skipService.apply(this, args);
 }
 async function adminVersion_skipService(customer){
@@ -16328,6 +16363,9 @@ function awcBuild(pane){
   document.getElementById('awcWoClear').addEventListener('click', awcClearWo);
   document.getElementById('awcAddTask').addEventListener('click', awcAddTask);
   document.getElementById('awcTaskClear').addEventListener('click', awcClearTask);
+  // The ticks as last chosen here or on the website, and kept when changed (Oct 20)
+  awcWireTicks();
+  if(!awcEdit) awcApplyTicks();
   document.getElementById('awcSaveTemplate').addEventListener('click', awcSaveTemplate);
   document.getElementById('awcSavedTasks').addEventListener('click', awcOpenTemplates);
   document.getElementById('awcCurTech').addEventListener('change', ()=>{ awcShown = 20; awcRenderCurrent(); });
@@ -17163,10 +17201,7 @@ function awcClearWo(){
   document.getElementById('awcWoSearch').value = '';
   document.getElementById('awcWoNotes').value = '';
   document.getElementById('awcWoDate').value = todayDateStr();
-  document.getElementById('awcWoPhoto').checked = true;
-  document.getElementById('awcWoVideo').checked = false;
-  document.getElementById('awcWoEmail').checked = true;
-  document.getElementById('awcWoPrices').checked = true;
+  awcApplyTicks('wo');      // as last chosen here or on the website (Oct 20)
   document.getElementById('awcWoRepeat').value = 'none';
   document.getElementById('awcWoUntil').value = '';
   document.getElementById('awcWoUnit').value = 'weeks';
@@ -17174,6 +17209,38 @@ function awcClearWo(){
   document.getElementById('awcWoEvery').max = '52';
   awcRenderChips(); awcRenderLines(); awcLabelTechs(); awcApplyRepeats();
   document.getElementById('awcWoNumber').textContent = '#' + String(awcNextWorkOrderNumber()).padStart(4, '0');
+}
+
+// ---- The WorkCenter ticks, shared with the website (Oct 20) ----
+// Photo required, Video required, Email customer and Include prices on a new
+// work order, and Photo / Video required on a new task, stay as last chosen
+// here or on the website: one company setting (workCenterTicks), the same
+// one the website keeps, synced both ways.
+function awcTicks(){
+  const t = lsGet('workCenterTicks') || {};
+  return {woPhoto: t.woPhoto !== false, woVideo: !!t.woVideo, woEmail: t.woEmail !== false, woPrices: t.woPrices !== false,
+          taskPhoto: !!t.taskPhoto, taskVideo: !!t.taskVideo};
+}
+function awcApplyTicks(which){
+  const t = awcTicks();
+  const set = (id, v)=>{ const el = document.getElementById(id); if(el) el.checked = v; };
+  if(which !== 'task'){ set('awcWoPhoto', t.woPhoto); set('awcWoVideo', t.woVideo); set('awcWoEmail', t.woEmail); set('awcWoPrices', t.woPrices); }
+  if(which !== 'wo'){ set('awcTaskPhoto', t.taskPhoto); set('awcTaskVideo', t.taskVideo); }
+}
+function awcWireTicks(){
+ [['awcWoPhoto', 'woPhoto'], ['awcWoVideo', 'woVideo'], ['awcWoEmail', 'woEmail'], ['awcWoPrices', 'woPrices'],
+ ['awcTaskPhoto', 'taskPhoto'], ['awcTaskVideo', 'taskVideo']].forEach(([id, key])=>{
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.addEventListener('change', ()=>{
+    // Ticks changed while changing a job that's already out are that job's own
+    if(awcEdit) return;
+    const t = Object.assign({}, lsGet('workCenterTicks') || {});
+    t[key] = el.checked;
+    lsSet('workCenterTicks', t);
+    queueSetupSend('workCenterTicks');
+  });
+ });
 }
 
 function awcClearTask(){
@@ -17184,8 +17251,7 @@ function awcClearTask(){
   document.getElementById('awcTaskTitle').value = '';
   document.getElementById('awcTaskDetails').value = '';
   document.getElementById('awcTaskDate').value = todayDateStr();
-  document.getElementById('awcTaskPhoto').checked = false;
-  document.getElementById('awcTaskVideo').checked = false;
+  awcApplyTicks('task');    // as last chosen here or on the website (Oct 20)
   document.getElementById('awcTaskRepeat').value = 'none';
   document.getElementById('awcTaskUntil').value = '';
   document.getElementById('awcTaskUnit').value = 'weeks';
