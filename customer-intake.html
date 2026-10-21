@@ -1937,10 +1937,6 @@ input::placeholder{color:#A9BCB9;}
             <option value="sent">Sent</option>
             <option value="delivered">Delivered</option>
             <option value="viewed">Viewed</option>
-            <option value="delayed">Delayed</option>
-            <option value="bounced">Bounced</option>
-            <option value="complained">Marked as spam</option>
-            <option value="failed">Failed</option>
           </select>
         </div>
       </div>
@@ -1953,10 +1949,6 @@ input::placeholder{color:#A9BCB9;}
         <div><span class="eh-st sent">SENT</span>Handed to the email service</div>
         <div><span class="eh-st delivered">DELIVERED</span>Reached their inbox</div>
         <div><span class="eh-st viewed">VIEWED</span>They opened it</div>
-        <div><span class="eh-st delayed">DELAYED</span>Their email server is slow; still trying</div>
-        <div><span class="eh-st bounced">BOUNCED</span>Address doesn&rsquo;t exist</div>
-        <div><span class="eh-st complained">SPAM</span>They marked it as spam</div>
-        <div><span class="eh-st failed">FAILED</span>Couldn&rsquo;t be sent</div>
       </div>
       <div id="emailHistList"></div>
     </div>
@@ -6099,10 +6091,17 @@ async function loadEmailHistory(ym){
 }
 
 // Everything for the month: the server's emails, plus ones that never went out
+// Only Not sent, Sent, Delivered and Viewed are shown (Oct 20): Delayed,
+// Bounced, Spam and Failed show as the furthest of those the email reached
+const EH_SHOWN = ['unsent', 'sent', 'delivered', 'viewed'];
+function ehShownStatus(e){
+  if(EH_SHOWN.includes(e.status)) return e.status;
+  return e.opened_at ? 'viewed' : e.delivered_at ? 'delivered' : 'sent';
+}
 function emailHistEntries(ym){
   const out = (emailHistRows || []).map(e => ({
     key: 'e:' + e.id, id: e.id, customerId: e.customer_id || '', to: e.to_address || '',
-    subject: e.subject || '', kind: EH_KINDS[e.kind] ? e.kind : 'email', status: EH_STATUS[e.status] ? e.status : 'sent',
+    subject: e.subject || '', kind: EH_KINDS[e.kind] ? e.kind : 'email', status: ehShownStatus(e),
     reason: e.reason || '', at: e.sent_at, deliveredAt: e.delivered_at, openedAt: e.opened_at, problemAt: e.problem_at
   }));
   const r = ehMonthRange(ym);
