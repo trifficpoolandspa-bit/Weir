@@ -9089,6 +9089,7 @@ function renderTechRoute(){
   if(!order.length) order = listAt(orders[forThisTech(selectedTechId)]);
   if(!order.length) order = listAt(orders['tech:' + forThisTech(selectedTechId)]);
   if(!order.length) order = listAt(orders[forThisTech()]);
+  timeOffTail(routeIso, ids, order);
   ids.forEach(id => { if(!order.includes(id)) order.push(id); });
   const list = order.map(id => all.find(x => x.id === id)).filter(Boolean);
   // As shown, for Remove changes to put back
@@ -9985,6 +9986,23 @@ function orderKey(day, dateISO){
   return (dateISO ? 'date:' + dateISO : 'day:' + day) + tech;
 }
 
+// Stops covered for a technician on time off (Oct 20) come after the cover's
+// own, in the order the away technician's day has
+function timeOffTail(iso, ids, order){
+  try{
+    const day = DAYS_OF_WEEK[new Date(iso + 'T12:00:00').getDay()];
+    const ro = (lsGet('routeOrders') || {})[day];
+    const froms = [];
+    (lsGet('rescheduledVisits') || []).forEach(r=>{
+      if(r && r.toDate === iso && r.timeOffId && r.coverFrom && ids.includes(r.customerId) && !froms.includes(String(r.coverFrom))) froms.push(String(r.coverFrom));
+    });
+    froms.forEach(f=>{
+      const theirs = ro && !Array.isArray(ro) && typeof ro === 'object' ? ro[f] : null;
+      (Array.isArray(theirs) ? theirs : []).forEach(id=>{ if(ids.includes(id) && !order.includes(id)) order.push(id); });
+    });
+  }catch(e){}
+  return order;
+}
 function orderCustomersForDay(...args){
   return isAdminUser() ? adminVersion_orderCustomersForDay.apply(this, args) : techVersion_orderCustomersForDay.apply(this, args);
 }
@@ -10005,6 +10023,7 @@ function adminVersion_orderCustomersForDay(day, list){
   if(order.length === 0){
     order = websiteOrderForDay(day).filter(id => ids.includes(id));
   }
+  timeOffTail(iso, ids, order);
   ids.forEach(id => { if(!order.includes(id)) order.push(id); });
   return order.map(id => list.find(c => c.id === id)).filter(Boolean);
 }
@@ -10028,6 +10047,7 @@ function techVersion_orderCustomersForDay(day, list){
   if(order.length === 0){
     order = websiteOrderForDay(day).filter(id => ids.includes(id));
   }
+  timeOffTail(iso, ids, order);
   ids.forEach(id => { if(!order.includes(id)) order.push(id); });
   return order.map(id => list.find(c => c.id === id)).filter(Boolean);
 }
@@ -13131,9 +13151,13 @@ function askHeadsUpWay(customer){
 // two more. Every email sent to the customer goes to all of them.
 function customerEmailList(c){
   const out = [];
+  // Two emails typed or imported on one line ("a@x.com, b@y.com") are two
+  // emails, each sent to on its own (Oct 20)
   [c && c.email].concat((c && Array.isArray(c.extraEmails)) ? c.extraEmails : []).forEach(e=>{
-    const v = String(e || '').trim();
-    if(v.indexOf('@') !== -1 && !out.some(x => x.toLowerCase() === v.toLowerCase())) out.push(v);
+    String(e || '').split(/[\s,;]+/).forEach(part=>{
+      const v = part.replace(/^[<("']+|[>)"'.]+$/g, '').trim();
+      if(v.indexOf('@') !== -1 && !out.some(x => x.toLowerCase() === v.toLowerCase())) out.push(v);
+    });
   });
   return out.slice(0, 3);
 }
@@ -13141,7 +13165,7 @@ function customerEmailTo(c){ return customerEmailList(c).join(', '); }
 
 async function sendHeadsUpEmail(customer){
   const toName = (customer.notifyName || '').trim() || customer.name;
-  const toEmail = ((customer.notifyEmail || '').trim() || customerEmailTo(customer) || '').trim();
+  const toEmail = (customerEmailTo({email: customer.notifyEmail}) || customerEmailTo(customer) || '').trim();
   if(!toEmail || toEmail.indexOf('@') === -1) return false;
 
   const session = deviceGet('session');
@@ -16800,6 +16824,29 @@ function awcRenderQuoteCurrent(){
   awcMoreButton(box, rows.length, awcRenderQuoteCurrent);
 }
 
+// A sent quote shown in a window (Oct 20): the Approve, Decline and Download
+// buttons as in the email, white words on both answers and Decline red, but
+// only a look (nothing in them can be pressed)
+function quoteHtmlForLook(html){
+  try{
+    const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+    doc.querySelectorAll('a[href*="quote-response"]').forEach(a=>{
+      const href = a.getAttribute('href') || '';
+      a.removeAttribute('href');
+      a.removeAttribute('target');
+      a.style.setProperty('pointer-events', 'none', 'important');
+      a.style.setProperty('cursor', 'default', 'important');
+      if(/[?&]a=deny/.test(href)){
+        a.style.setProperty('background', '#B8492E', 'important');
+        a.style.setProperty('color', '#ffffff', 'important');
+        a.style.setProperty('border', '1.5px solid #B8492E', 'important');
+      } else if(/[?&]a=approve/.test(href)){
+        a.style.setProperty('color', '#ffffff', 'important');
+      }
+    });
+    return '<!doctype html>' + doc.documentElement.outerHTML;
+  }catch(e){ return html; }
+}
 // A quote as the customer got it, with Copy to a new quote
 function awcOpenQuote(w){
   const overlay = document.createElement('div');
@@ -16816,7 +16863,7 @@ function awcOpenQuote(w){
   const frame = document.createElement('iframe');
   frame.style.cssText = 'flex:1;min-height:360px;width:100%;border:1px solid var(--line);border-radius:10px;background:#F4F6F5;';
   frame.setAttribute('sandbox', '');
-  frame.srcdoc = w.emailHtml || awcQuoteEmailHtml((customers || []).find(c => c && c.id === w.customerId) || {name: 'Customer'},
+  frame.srcdoc = w.emailHtml ? quoteHtmlForLook(w.emailHtml) : awcQuoteEmailHtml((customers || []).find(c => c && c.id === w.customerId) || {name: 'Customer'},
     'Quote', w.date || '', w.lineItems || [], Number(w.total) || 0, w.notes || '', null, null, w.number);
   const btns = document.createElement('div');
   btns.className = 'btn-row';
@@ -17003,7 +17050,7 @@ function awcQuoteEmailHtml(customer, type, dateText, items, total, notes, styleO
     // Approve / Deny, when the quote can take an answer
     + (respondUrl ? '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 6px;width:100%;"><tr>'
         + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">Approve</a></td>'
-        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#ffffff;color:#B8492E;border:1.5px solid #EFC9BC;font-weight:700;font-size:15px;text-decoration:none;">Decline</a></td>'
+        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#B8492E;color:#ffffff;border:1.5px solid #B8492E;font-weight:700;font-size:15px;text-decoration:none;">Decline</a></td>'
         + '</tr></table>'
         // Download quote (Oct 15): the breakdown as a PDF to keep
         + (!awcQuoteLinkCanDownload(respondUrl) ? '' : '<a href="' + respondUrl + '&a=download" style="display:block;text-align:center;margin:12px 0 6px;padding:12px 10px;border-radius:10px;'
@@ -17075,7 +17122,7 @@ function awcPickTechs(current, done){
   box.innerHTML = '<h3 style="font-size:17px;margin:0 0 12px;">Saved technician</h3>'
     + '<div class="btn-row" style="margin-bottom:10px;flex-wrap:nowrap;">'
     + '<button type="button" class="btn btn-ghost" data-all style="flex:1;">Select all</button>'
-    + '<button type="button" class="btn btn-ghost" data-none style="flex:1;">Clear</button></div>'
+    + '<button type="button" class="btn btn-ghost" data-none style="flex:1;">Unselect all</button></div>'
     + '<div data-list style="border:1px solid var(--line);border-radius:10px;padding:0 6px;overflow-y:auto;margin-bottom:14px;"></div>'
     + '<div class="btn-row"><button type="button" class="btn btn-ghost" data-cancel>Cancel</button>'
     + '<button type="button" class="btn btn-primary" data-save>Save</button></div>';

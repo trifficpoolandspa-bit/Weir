@@ -644,8 +644,8 @@ input::placeholder{color:#A9BCB9;}
       <button class="tab" data-view="productsservices">Products and Services</button>
       <button class="tab" data-view="workcenter">WorkCenter</button>
       <div class="nav-subs" id="wcNavSubs">
-        <button type="button" class="nav-sub" data-type="calendar"><span>Calendar</span></button>
-        <button type="button" class="nav-sub active" data-type="quotes"><span>Work orders and quotes</span></button>
+        <button type="button" class="nav-sub active" data-type="calendar"><span>Calendar</span></button>
+        <button type="button" class="nav-sub" data-type="quotes"><span>Work orders and quotes</span></button>
         <button type="button" class="nav-sub" data-type="filters"><span>Filter cleans</span></button>
         <button type="button" class="nav-sub" data-type="drains"><span>Drains</span></button>
         <button type="button" class="nav-sub" data-type="broadcast"><span>Email</span></button>
@@ -1010,6 +1010,23 @@ input::placeholder{color:#A9BCB9;}
       </div>
     </div>
 
+    <!-- Time off (Oct 20): whose route a technician's goes to while they're away -->
+    <div id="toOverlay" style="display:none;position:fixed;inset:0;z-index:260;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
+      <div style="background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);">
+        <h2 id="toHeading" style="font-size:18px;margin:0 0 4px;">Time off</h2>
+        <p id="toIntro" style="font-size:12.5px;color:var(--muted);margin:0 0 14px;"></p>
+        <div id="toList"></div>
+        <div class="field"><label>Covered by</label><select id="toCover"></select></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="field"><label>First day off</label><input type="date" id="toFrom"></div>
+          <div class="field"><label>Back on</label><input type="date" id="toBack"></div>
+        </div>
+        <p id="toError" style="display:none;font-size:12.5px;color:var(--rust);margin:0 0 10px;"></p>
+        <button class="btn btn-primary" id="toSave" type="button" style="width:100%;">Save time off</button>
+        <button class="btn btn-ghost" id="toCancel" type="button" style="width:100%;margin-top:8px;">Cancel</button>
+      </div>
+    </div>
+
     <div class="card" id="photoRequireCard" style="display:none;">
       <h2 style="margin:0 0 4px;">Photos a technician must take</h2>
       <p style="font-size:12.5px;color:var(--muted);margin:0 0 6px;">Checking a box requires that technician to take the photo before moving on to the next step of the service report.</p>
@@ -1210,7 +1227,7 @@ input::placeholder{color:#A9BCB9;}
       <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Tick everyone this is for. Each one gets their own copy on their route.</p>
       <div class="btn-row" style="margin-bottom:12px;">
         <button class="btn btn-ghost" id="btnTechPickAll" type="button" style="width:auto;padding:6px 12px;font-size:12px;">Select all</button>
-        <button class="btn btn-ghost" id="btnTechPickNone" type="button" style="width:auto;padding:6px 12px;font-size:12px;">Clear</button>
+        <button class="btn btn-ghost" id="btnTechPickNone" type="button" style="width:auto;padding:6px 12px;font-size:12px;">Unselect all</button>
       </div>
       <div id="techPickList" style="max-height:280px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:0 6px;"></div>
       <button class="btn btn-primary" id="btnSaveTechPick" style="width:100%;margin-top:14px;">Save</button>
@@ -1424,8 +1441,8 @@ input::placeholder{color:#A9BCB9;}
       <h2>WorkCenter</h2>
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Send work orders and quotes, and schedule one-off service calls outside a customer's regular route day.</p>
       <div class="seg-control" id="workCenterTypeControl">
-        <button class="history-type-btn" data-type="calendar">Calendar</button>
-        <button class="history-type-btn active" data-type="quotes">Work Orders & Quotes</button>
+        <button class="history-type-btn active" data-type="calendar">Calendar</button>
+        <button class="history-type-btn" data-type="quotes">Work Orders & Quotes</button>
         <button class="history-type-btn" data-type="filters">Filter Cleans</button>
         <button class="history-type-btn" data-type="drains">Drains</button>
         <button class="history-type-btn" data-type="broadcast">Email</button>
@@ -1447,7 +1464,7 @@ input::placeholder{color:#A9BCB9;}
             <option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option><option>Sunday</option>
           </select>
           <button class="btn btn-primary" id="wcRecipientAll" type="button" style="width:auto;padding:7px 14px;font-size:12.5px;font-weight:700;flex-shrink:0;">Select all</button>
-          <button class="btn btn-secondary" id="wcRecipientNone" type="button" style="width:auto;padding:7px 14px;font-size:12.5px;font-weight:700;flex-shrink:0;">Clear</button>
+          <button class="btn btn-secondary" id="wcRecipientNone" type="button" style="width:auto;padding:7px 14px;font-size:12.5px;font-weight:700;flex-shrink:0;">Unselect all</button>
         </div>
         <div id="wcRecipientList" style="border:1px solid var(--line);border-radius:10px;padding:4px 10px;max-height:240px;overflow-y:auto;"></div>
       </div>
@@ -4905,16 +4922,16 @@ function renderProductsServicesList(){
           renderProductsServicesList();
           return;
         }
-        const abbr = await promptDialog(
+        const got = await extraChargeDialog(
           'What abbreviation should "' + (item.name || 'this item') +
           '" use? Four characters at most \u2014 it has to fit the billing column.',
-          'e.g. MA');
-        if(!abbr){
+          item.abbr || '', item.extraColor);
+        if(!got){
           // Cancelled — leave it unchecked
           extraCb.checked = false;
           return;
         }
-        psSet(item, {extraCharge: true, abbr: abbr.trim().slice(0, 4)});
+        psSet(item, {extraCharge: true, abbr: got.abbr, extraColor: got.color});
         renderProductsServicesList();
       });
       extraWrap.appendChild(extraCb);
@@ -4929,16 +4946,16 @@ function renderProductsServicesList(){
 
       if(item.extraCharge && item.abbr){
         const abbrTag = document.createElement('span');
-        abbrTag.title = 'Billing abbreviation — tap to change';
-        abbrTag.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;background:var(--gold);color:#fff;padding:2px 6px;border-radius:5px;cursor:pointer;flex-shrink:0;";
+        abbrTag.title = 'Billing abbreviation and colour — tap to change';
+        abbrTag.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;background:" + extraColourOf(item) + ";color:#fff;padding:2px 6px;border-radius:5px;cursor:pointer;flex-shrink:0;";
         abbrTag.textContent = item.abbr;
         abbrTag.addEventListener('click', async (e)=>{
           e.preventDefault();
           e.stopPropagation();
-          const next = await promptDialog('Billing abbreviation for "' + (item.name || 'this item')
-            + '" \u2014 four characters at most', item.abbr);
+          const next = await extraChargeDialog('Billing abbreviation for "' + (item.name || 'this item')
+            + '" \u2014 four characters at most', item.abbr, item.extraColor, 'Save');
           if(!next) return;
-          psSet(item, {abbr: next.trim().slice(0, 4)});
+          psSet(item, {abbr: next.abbr, extraColor: next.color});
           renderProductsServicesList();
         });
         abbrSlot.appendChild(abbrTag);
@@ -5293,7 +5310,7 @@ function populateWorkCenterCustomerSelect(selectEl){
 }
 
 // ---------- WorkCenter: tab switching (Quotes vs Service Calls) ----------
-let workCenterMode = 'quotes';
+let workCenterMode = 'calendar';
 
 document.querySelectorAll('#workCenterTypeControl .history-type-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
@@ -5656,7 +5673,8 @@ function billingForCustomer(customer, ym){
         }
         products.push({
           label: d.label, unit: d.unit || '', amount: amt,
-          lineTotal: match ? line : null, isExtra
+          lineTotal: match ? line : null, isExtra,
+          extraColor: isExtra ? extraColourOf(match.product) : null
         });
       });
 
@@ -5772,9 +5790,10 @@ function renderBilling(){
           const n = data.extraCounts[key] || 0;
           const chip = document.createElement('span');
           chip.title = p.name;
+          // A badge in the item's own colour; grey at 0 (Oct 20)
           chip.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:700;white-space:nowrap;"
-            + 'flex:0 0 62px;text-align:left;color:'
-            + (n > 0 ? 'var(--gold)' : 'var(--muted)') + ';';
+            + 'flex:0 0 auto;min-width:62px;box-sizing:border-box;text-align:center;padding:3px 7px;border-radius:6px;'
+            + (n > 0 ? 'background:' + extraColourOf(p) + ';color:#fff;' : 'background:var(--surface-alt);color:var(--muted);');
           chip.textContent = key + ': ' + n;
           tallyWrap.appendChild(chip);
         });
@@ -5788,6 +5807,17 @@ function renderBilling(){
       + 'flex:0 0 96px;text-align:right;color:'
       + (shown > 0 ? (billingExtraOnly ? 'var(--gold)' : 'var(--teal-deep)') : 'var(--muted)') + ';';
     totalEl.textContent = '$' + shown.toFixed(2);
+    // Extra charges: the total on pale teal, as one colour for every item (Oct 20)
+    if(billingExtraOnly){
+      totalEl.style.color = shown > 0 ? 'var(--teal-deep)' : 'var(--muted)';
+      const inner = document.createElement('span');
+      inner.style.cssText = 'background:var(--teal-pale);padding:5px 10px;border-radius:8px;';
+      inner.textContent = totalEl.textContent;
+      totalEl.textContent = '';
+      totalEl.style.flex = '0 0 auto';
+      totalEl.style.minWidth = '96px';
+      totalEl.appendChild(inner);
+    }
     rightWrap.appendChild(totalEl);
 
     const chev = document.createElement('div');
@@ -5840,7 +5870,7 @@ function renderBilling(){
               ? '<span style="color:var(--muted);font-size:11.5px;">no price set</span>'
               : '$' + p.lineTotal.toFixed(2);
             const extraTag = p.isExtra
-              ? ' <span style="background:var(--gold);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;vertical-align:middle;">EXTRA</span>'
+              ? ' <span style="background:' + (p.extraColor || 'var(--gold)') + ';color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;vertical-align:middle;">EXTRA</span>'
               : '';
             tr.innerHTML = '<td>' + p.label + ' — ' + p.amount + (p.unit ? ' ' + p.unit : '') + extraTag + '</td><td>' + cost + '</td>';
             pt.appendChild(tr);
@@ -6279,7 +6309,8 @@ async function openEmailHistItem(e, g){
   // Shown as it was, but nothing in it can run
   frame.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox');
   frame.style.cssText = 'display:block;width:100%;height:62vh;border:none;background:#F4F6F5;';
-  frame.srcdoc = html.replace(/<a /gi, '<a target="_blank" ');
+  // A quote's Approve / Decline / Download only show (Oct 20)
+  frame.srcdoc = quoteHtmlForLook(html).replace(/<a /gi, '<a target="_blank" ');
   box.appendChild(frame);
 }
 
@@ -6705,7 +6736,8 @@ function broadcastCandidates(){
 function broadcastRecipients(){
   return broadcastCandidates()
     .filter(c => broadcastPicked.has(c.id))
-    .map(c => (c.email || '').trim())
+    // Each of a customer's emails on its own, even two typed on one line (Oct 20)
+    .flatMap(c => customerEmailList(c))
     .filter(Boolean)
     // one address each, even if two customers share one
     .filter((e, i, arr) => arr.indexOf(e) === i);
@@ -6722,6 +6754,13 @@ function broadcastShown(){
     .filter(c => !tech || String(c.technicianId || '') === tech)
     .filter(c => !day || customerServicedOn(c, day));
 }
+// Select all reads Unselect all once everyone shown is ticked (Oct 20)
+function syncRecipientAll(shown){
+  const b = document.getElementById('wcRecipientAll');
+  if(!b) return;
+  shown = shown || broadcastShown();
+  b.textContent = shown.length && shown.every(c => broadcastPicked.has(c.id)) ? 'Unselect all' : 'Select all';
+}
 function fillRecipientTechMenu(){
   const sel = document.getElementById('wcRecipientTech');
   if(!sel) return;
@@ -6737,6 +6776,7 @@ function renderRecipientPicker(){
   if(!box) return;
   fillRecipientTechMenu();
   const shown = broadcastShown();
+  syncRecipientAll(shown);
 
   box.innerHTML = '';
   if(shown.length === 0){
@@ -6756,6 +6796,7 @@ function renderRecipientPicker(){
     box2.addEventListener('change', ()=>{
       if(box2.checked) broadcastPicked.add(cust.id); else broadcastPicked.delete(cust.id);
       updateBroadcastCount();
+      syncRecipientAll();
     });
     row.appendChild(box2);
 
@@ -7166,7 +7207,10 @@ document.getElementById('wcRecipientSearch').addEventListener('input', renderRec
 document.getElementById('wcRecipientTech').addEventListener('change', renderRecipientPicker);
 document.getElementById('wcRecipientDay').addEventListener('change', renderRecipientPicker);
 document.getElementById('wcRecipientAll').addEventListener('click', ()=>{
-  broadcastShown().forEach(c => broadcastPicked.add(c.id));
+  // Everyone shown, or (once they all are) nobody shown (Oct 20)
+  const shown = broadcastShown();
+  const allOn = shown.length && shown.every(c => broadcastPicked.has(c.id));
+  shown.forEach(c => { if(allOn) broadcastPicked.delete(c.id); else broadcastPicked.add(c.id); });
   renderRecipientPicker();
   updateBroadcastCount();
 });
@@ -7480,7 +7524,7 @@ async function startBroadcast(via){
   // monthly cost and a way in for anyone who reads the page source. Going
   // through their own mail costs nothing, arrives from an address the
   // customer recognises, and puts replies where they belong.
-  const addresses = chosen.map(c => (c.email || '').trim()).filter(a => a.indexOf('@') !== -1);
+  const addresses = chosen.flatMap(c => customerEmailList(c)).filter((a, i, arr) => arr.indexOf(a) === i);
   if(!addresses.length){
     showToast('None of those customers has an email address on file');
     return;
@@ -7547,7 +7591,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const copy = document.getElementById('wcBroadcastCopy');
   if(copy) copy.addEventListener('click', async ()=>{
     const chosen = broadcastCandidates().filter(c => broadcastPicked.has(c.id));
-    const addresses = chosen.map(c => (c.email || '').trim()).filter(a => a.indexOf('@') !== -1);
+    const addresses = chosen.flatMap(c => customerEmailList(c)).filter((a, i, arr) => arr.indexOf(a) === i);
     if(!addresses.length){ showToast('Nobody chosen has an email address'); return; }
     try{
       await navigator.clipboard.writeText(addresses.join(', '));
@@ -7705,6 +7749,7 @@ function applyWorkCenterMode(mode){
 // A task opened on the Task form to change it; saving puts it back out (not done)
 function openTaskForEditing(t){
   switchView('workcenter');
+  applyWorkCenterMode('quotes');
   document.getElementById('wcType').value = 'Task';
   wcView = 'main';
   applyWorkOrderType();
@@ -9179,7 +9224,7 @@ function renderPoolDrains(){
         renderPoolDrains();
       });
       all.appendChild(allBox);
-      all.appendChild(document.createTextNode('Select all'));
+      all.appendChild(document.createTextNode(allBox.checked ? 'Unselect all' : 'Select all'));   // Oct 20
       // The two tick columns' headings, over them (Oct 19)
       const heads = document.createElement('span');
       heads.style.cssText = 'margin-left:auto;display:flex;gap:12px;align-items:center;';
@@ -10848,7 +10893,7 @@ function openWorkCalendar(startDay){
       // it clears them instead
       const monthDays = Object.keys(byDay).filter(d => d.slice(0, 7) === month && routable(byDay[d]));
       const allOn = monthDays.length && monthDays.every(d => picked.has(d));
-      const selAll = smallBtn(allOn ? 'Clear all' : 'Select all');
+      const selAll = smallBtn(allOn ? 'Unselect all' : 'Select all');
       selAll.addEventListener('click', ()=>{ if(allOn) picked.clear(); else monthDays.forEach(d => picked.add(d)); draw(); });
       if(!monthDays.length){ selAll.disabled = true; selAll.style.opacity = '0.5'; }
       right.appendChild(selAll);
@@ -17124,8 +17169,10 @@ function selectionBar(key, visibleIds, noun, onDelete, redraw, pager, onLeft, ex
     bar.appendChild(sel);
     return row;
   }
-  const all = b('Select all');
-  all.addEventListener('click', ()=>{ visibleIds.forEach(id => st.ids.add(id)); redraw(); });
+  // Select all, or Unselect all once everything shown is ticked (Oct 20)
+  const allOn = visibleIds.length && visibleIds.every(id => st.ids.has(id));
+  const all = b(allOn ? 'Unselect all' : 'Select all');
+  all.addEventListener('click', ()=>{ visibleIds.forEach(id => { if(allOn) st.ids.delete(id); else st.ids.add(id); }); redraw(); });
   // Words, not the bin (Oct 3): this one deletes everything ticked
   const del = b('Delete selected' + (st.ids.size ? ' (' + st.ids.size + ')' : ''), 'color:var(--rust);border-color:#EFC9BC;');
   del.disabled = !st.ids.size;
@@ -19124,7 +19171,7 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
     // Approve / Deny, when the quote can take an answer
     + (respondUrl ? '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 6px;width:100%;"><tr>'
         + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">Approve</a></td>'
-        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#ffffff;color:#B8492E;border:1.5px solid #EFC9BC;font-weight:700;font-size:15px;text-decoration:none;">Decline</a></td>'
+        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#B8492E;color:#ffffff;border:1.5px solid #B8492E;font-weight:700;font-size:15px;text-decoration:none;">Decline</a></td>'
         + '</tr></table>'
         // Download quote (Oct 15): the breakdown as a PDF to keep
         + (!quoteLinkCanDownload(respondUrl) ? '' : '<a href="' + respondUrl + '&a=download" style="display:block;text-align:center;margin:12px 0 6px;padding:12px 10px;border-radius:10px;'
@@ -19265,6 +19312,7 @@ function showNextQuoteNumber(){
 // itself is left as it is.
 function convertQuoteToWorkOrder(q){
   switchView('workcenter');
+  applyWorkCenterMode('quotes');
   setTimeout(()=>{
     document.getElementById('wcType').value = 'Work Order';
     wcView = 'main';
@@ -19309,6 +19357,29 @@ async function resendQuoteEmail(w, customer){
 }
 
 // ---------- A quote's email, as the customer sees it ----------
+// A sent quote shown in a window (Oct 20): the Approve, Decline and Download
+// buttons as in the email, white words on both answers and Decline red, but
+// only a look (nothing in them can be pressed)
+function quoteHtmlForLook(html){
+  try{
+    const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+    doc.querySelectorAll('a[href*="quote-response"]').forEach(a=>{
+      const href = a.getAttribute('href') || '';
+      a.removeAttribute('href');
+      a.removeAttribute('target');
+      a.style.setProperty('pointer-events', 'none', 'important');
+      a.style.setProperty('cursor', 'default', 'important');
+      if(/[?&]a=deny/.test(href)){
+        a.style.setProperty('background', '#B8492E', 'important');
+        a.style.setProperty('color', '#ffffff', 'important');
+        a.style.setProperty('border', '1.5px solid #B8492E', 'important');
+      } else if(/[?&]a=approve/.test(href)){
+        a.style.setProperty('color', '#ffffff', 'important');
+      }
+    });
+    return '<!doctype html>' + doc.documentElement.outerHTML;
+  }catch(e){ return html; }
+}
 function showSentQuoteEmail(w){
   const customer = customers.find(c => c.id === w.customerId) || {name: 'Customer'};
   let html = w.emailHtml;
@@ -19347,7 +19418,7 @@ function showSentQuoteEmail(w){
   view.appendChild(card);
   document.body.appendChild(view);
   const doc = frame.contentDocument || frame.contentWindow.document;
-  doc.open(); doc.write(html); doc.close();
+  doc.open(); doc.write(quoteHtmlForLook(html)); doc.close();
   // Quotes sent while the number sat on the date line: shown here with it on
   // the top line beside QUOTE, like quotes sent now
   try{
@@ -19364,13 +19435,9 @@ function showSentQuoteEmail(w){
       cell.remove();
     }
   }catch(e){}
-  // Only a look: the Approve / Decline buttons are the customer's, so they're
-  // left out here (they stay in the email itself), and no link can be followed
+  // Only a look: the Approve / Decline buttons show as they were sent (Oct 20),
+  // and no link can be followed
   try{
-    doc.querySelectorAll('a[href*="quote-response"]').forEach(a=>{
-      const holder = a.closest('table');
-      if(holder) holder.remove(); else a.remove();
-    });
     doc.querySelectorAll('a').forEach(a => a.addEventListener('click', e => e.preventDefault()));
   }catch(e){}
   shut.addEventListener('click', ()=> view.remove());
@@ -19535,6 +19602,7 @@ async function sendQuoteEmail(customer, subject, html, plainText){
 // Reopens an existing quote or work order in the WorkCenter form for editing
 function loadWorkOrderIntoForm(w){
   switchView('workcenter');
+  applyWorkCenterMode('quotes');
   setTimeout(()=>{
     document.getElementById('wcType').value = w.type || 'Quote';
     // Straight to its own tab, where the form is
@@ -23865,6 +23933,66 @@ function confirmDialog(message, confirmLabel){
 
 // value (Oct 3): text already in the box, selected, e.g. a name to keep or
 // type over; okLabel: the button's word (Add unless given)
+// Extra charge colours (Oct 20): each extra-charge item picks its own; gold
+// until one is chosen
+// Eight, each one already used elsewhere on the site: gold, quote purple,
+// reminder blue, green, raspberry, rust, filter clean brown, work order slate
+const EXTRA_COLOURS = ['#C68A17', '#6B3E78', '#1F5E86', '#3E8F5F', '#A8386A', '#B8492E', '#8A5E0B', '#3E5560'];
+// The first five picked before the colours were matched to the site's
+const EXTRA_COLOUR_WAS = {'#6B4FA0': '#6B3E78', '#2563A8': '#1F5E86', '#B03A6A': '#A8386A'};
+function extraColourMatch(c){ c = EXTRA_COLOUR_WAS[c] || c; return EXTRA_COLOURS.includes(c) ? c : EXTRA_COLOURS[0]; }
+function extraColourOf(item){ return extraColourMatch(item && item.extraColor); }
+// Asks for the billing abbreviation and the colour together. Resolves with
+// {abbr, color}, or null when cancelled.
+function extraChargeDialog(message, abbr, color, okLabel){
+  return new Promise((resolve)=>{
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = `
+      <div class="confirm-box">
+        <p>${message}</p>
+        <input id="promptInput" placeholder="e.g. MA" style="margin-bottom:14px;">
+        <div class="field" style="margin-bottom:18px;"><label>Colour</label><div id="extraDots" style="display:flex;gap:10px;"></div></div>
+        <div class="btn-row">
+          <button class="btn btn-ghost" id="promptCancel">Cancel</button>
+          <button class="btn btn-primary" id="promptOk">Add</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('#promptInput');
+    if(okLabel) overlay.querySelector('#promptOk').textContent = okLabel;
+    let picked = extraColourMatch(color);
+    const dots = overlay.querySelector('#extraDots');
+    const draw = ()=>{
+      dots.innerHTML = '';
+      EXTRA_COLOURS.forEach(c=>{
+        const d = document.createElement('button');
+        d.type = 'button';
+        d.setAttribute('aria-label', 'Colour');
+        d.style.cssText = 'width:34px;height:34px;min-width:34px;padding:0;border-radius:50%;border:3px solid #fff;cursor:pointer;background:' + c + ';'
+          + 'box-shadow:0 0 0 ' + (c === picked ? '2px var(--teal-deep)' : '1px var(--line)') + ';';
+        d.addEventListener('click', ()=>{ picked = c; draw(); input.focus(); });
+        dots.appendChild(d);
+      });
+    };
+    draw();
+    if(abbr){ input.value = abbr; }
+    const cleanup = (result)=>{
+      document.body.removeChild(overlay);
+      resolve(result);
+    };
+    const ok = ()=>{ const v = input.value.trim(); if(!v){ input.focus(); return; } cleanup({abbr: v.slice(0, 4), color: picked}); };
+    overlay.querySelector('#promptCancel').addEventListener('click', ()=>cleanup(null));
+    overlay.querySelector('#promptOk').addEventListener('click', ok);
+    input.addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter'){ e.preventDefault(); ok(); }
+      if(e.key === 'Escape') cleanup(null);
+    });
+    setTimeout(()=>{ try{ input.focus(); input.select(); }catch(e){} }, 50);
+  });
+}
+
 function promptDialog(message, placeholder, value, okLabel){
   return new Promise((resolve)=>{
     const overlay = document.createElement('div');
@@ -24016,6 +24144,193 @@ async function deleteTechnician(t){
   showToast('Technician deleted');
 }
 
+// ---------- Time off (Oct 20) ----------
+// A technician away for a few days or a week: on each of those days their
+// stops go on another technician's route, as "just this once" moves (so the
+// cover's phone may see and service them), and their work orders, filter
+// cleans, pool drains and tasks on those days go to the cover too. When the
+// time off is taken away, everything not yet done goes back. Nobody's
+// assigned technician changes. Kept on the technician as timeOff:
+// [{id, coverId, from, back}] (back = the day they're back on).
+function toLabel(iso){ return new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'}); }
+function toLastDay(o){ const d = new Date(o.back + 'T12:00:00'); d.setDate(d.getDate() - 1); return twLocalISO(d); }
+function toDays(o){
+  const out = [];
+  const d = new Date(o.from + 'T12:00:00');
+  for(let i = 0; i < 120; i++){ const iso = twLocalISO(d); if(iso >= o.back) break; out.push(iso); d.setDate(d.getDate() + 1); }
+  return out;
+}
+// Time off that hasn't ended yet, soonest first
+function toCurrent(t){
+  const today = twLocalISO(new Date());
+  return (Array.isArray(t && t.timeOff) ? t.timeOff : []).filter(o => o && o.back > today).sort((a, b) => a.from.localeCompare(b.from));
+}
+const TO_JOB_LISTS = ['scheduledWorkOrders', 'scheduledFilterCleans', 'scheduledPoolDrains'];
+// Puts one time off on the routes (again): anything already moved for it is left as it is
+function toApply(away, o){
+  const awayId = String(away.id), cover = String(o.coverId);
+  // Only today on: days already gone stay as they were
+  const today = twLocalISO(new Date());
+  const days = toDays(o).filter(d => d >= today);
+  if(!days.length) return;
+  const dset = new Set(days);
+  const moves = lsGet('rescheduledVisits') || [];
+  let movesChanged = false;
+  days.forEach(iso=>{
+    const day = twDayName(iso);
+    // Moved onto this day for them (from another day): to the cover
+    moves.forEach(r=>{
+      if(!r || r.toDate !== iso || r.timeOffId) return;
+      const c = customers.find(x => x && x.id === r.customerId);
+      const who = String(r.technicianId || (c && c.technicianId) || '');
+      if(who !== awayId) return;
+      r.coverPrevTech = r.technicianId || null;
+      r.technicianId = cover; r.timeOffId = o.id; r.coverFrom = awayId;
+      movesChanged = true;
+    });
+    // Their regular stops that day, unless already moved
+    customers.filter(c => c && c.active !== false && String(c.technicianId || '') === awayId
+      && customerServicedOn(c, day) && !skipsThisDay(c, iso)).forEach(c=>{
+      if(moves.some(r => r && r.customerId === c.id && (r.fromDate === iso || r.toDate === iso))) return;
+      moves.push({id: 'resched_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), customerId: c.id,
+        fromDate: iso, toDate: iso, technicianId: cover, timeOffId: o.id, coverFrom: awayId, createdAt: new Date().toISOString()});
+      movesChanged = true;
+    });
+  });
+  if(movesChanged) lsSet('rescheduledVisits', moves);
+  // Jobs on those days, not done yet
+  const moveJob = j=>{
+    if(!j || !dset.has(j.date) || j.timeOffId || j.status === 'done' || j.done) return false;
+    let hit = false;
+    if(String(j.technicianId || '') === awayId){ j.technicianId = cover; hit = true; }
+    if(Array.isArray(j.technicianIds) && j.technicianIds.map(String).includes(awayId)){
+      j.technicianIds = Array.from(new Set(j.technicianIds.map(String).map(x => x === awayId ? cover : x))); hit = true;
+    }
+    if(hit){ j.timeOffId = o.id; j.coverFrom = awayId; }
+    return hit;
+  };
+  TO_JOB_LISTS.forEach(key=>{
+    const list = lsGet(key) || [];
+    let changed = false;
+    list.forEach(j => { if(moveJob(j)) changed = true; });
+    if(changed) lsSet(key, list);
+  });
+  let tasksChanged = false;
+  (tasks || []).forEach(t => { if(moveJob(t)) tasksChanged = true; });
+  if(tasksChanged) saveTasks();
+}
+// Takes one time off back off the routes: what isn't done goes back to them
+function toUndo(o){
+  const moves = lsGet('rescheduledVisits') || [];
+  const kept = [];
+  let changed = false;
+  moves.forEach(r=>{
+    if(!r || r.timeOffId !== o.id){ kept.push(r); return; }
+    changed = true;
+    if(r.coverPrevTech === undefined) return;   // made for the time off: it goes
+    if(r.coverPrevTech) r.technicianId = r.coverPrevTech; else delete r.technicianId;
+    delete r.coverPrevTech; delete r.timeOffId; delete r.coverFrom;
+    kept.push(r);
+  });
+  if(changed) lsSet('rescheduledVisits', kept);
+  const back = j=>{
+    if(!j || j.timeOffId !== o.id) return false;
+    if(!(j.status === 'done' || j.done)){
+      const cover = String(o.coverId), awayId = String(j.coverFrom || '');
+      if(String(j.technicianId || '') === cover) j.technicianId = awayId;
+      if(Array.isArray(j.technicianIds)) j.technicianIds = Array.from(new Set(j.technicianIds.map(String).map(x => x === cover ? awayId : x)));
+    }
+    delete j.timeOffId; delete j.coverFrom;
+    return true;
+  };
+  TO_JOB_LISTS.forEach(key=>{
+    const list = lsGet(key) || [];
+    let ch = false;
+    list.forEach(j => { if(back(j)) ch = true; });
+    if(ch) lsSet(key, list);
+  });
+  let tch = false;
+  (tasks || []).forEach(t => { if(back(t)) tch = true; });
+  if(tch) saveTasks();
+}
+// Customers and jobs added since a time off was saved go to the cover too
+function toTopUp(){
+  try{ technicians.forEach(t => toCurrent(t).forEach(o => toApply(t, o))); }catch(e){}
+}
+function toRefreshAfter(){
+  try{ renderTechnicianList(); }catch(e){}
+  try{ renderTechRouteWeb(); }catch(e){}
+  try{ wcalRefresh(); }catch(e){}
+}
+let toFor = null;
+function toSay(m){ const el = document.getElementById('toError'); el.textContent = m; el.style.display = m ? 'block' : 'none'; }
+function toDrawList(){
+  const box = document.getElementById('toList');
+  box.innerHTML = '';
+  const t = technicians.find(x => x && x.id === toFor);
+  const list = toCurrent(t);
+  if(!list.length) return;
+  box.style.cssText = 'border-top:1px solid var(--line);margin:0 0 14px;';
+  list.forEach(o=>{
+    const r = document.createElement('div');
+    r.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--line);font-size:13.5px;';
+    const txt = document.createElement('span');
+    txt.style.cssText = 'flex:1 1 auto;min-width:0;';
+    txt.textContent = toLabel(o.from) + ' – ' + toLabel(toLastDay(o)) + ' · ' + twTechName(o.coverId) + ' covering';
+    const bin = document.createElement('button');
+    bin.type = 'button'; bin.innerHTML = WEIR_BIN_SVG; bin.dataset.xDrawn = 'bin'; bin.dataset.binSize = 's';
+    bin.title = 'Take this time off away'; bin.setAttribute('aria-label', bin.title);
+    bin.addEventListener('click', ()=>{
+      const tt = technicians.find(x => x && x.id === toFor); if(!tt) return;
+      toUndo(o);
+      tt.timeOff = (tt.timeOff || []).filter(x => x && x.id !== o.id);
+      saveTechnicians();
+      toDrawList(); toRefreshAfter();
+      showToast('Time off taken away: ' + (tt.name || 'their') + ' route is back with them');
+    });
+    r.appendChild(txt); r.appendChild(bin);
+    box.appendChild(r);
+  });
+}
+function toOpen(t){
+  toFor = t.id;
+  document.getElementById('toHeading').textContent = 'Time off for ' + (t.name || 'this technician');
+  document.getElementById('toIntro').textContent = 'Their route goes to the technician you pick for these days, then comes back to them.';
+  const sel = document.getElementById('toCover');
+  sel.innerHTML = '';
+  technicians.filter(x => x && x.id !== t.id).slice()
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity: 'base'}))
+    .forEach(x => { const op = document.createElement('option'); op.value = String(x.id); op.textContent = x.name || 'Technician'; sel.appendChild(op); });
+  document.getElementById('toFrom').value = '';
+  document.getElementById('toBack').value = '';
+  toSay('');
+  toDrawList();
+  document.getElementById('toOverlay').style.display = 'flex';
+}
+function toClose(){ document.getElementById('toOverlay').style.display = 'none'; toFor = null; }
+document.getElementById('toCancel').addEventListener('click', toClose);
+document.getElementById('toSave').addEventListener('click', ()=>{
+  const t = technicians.find(x => x && x.id === toFor); if(!t) return;
+  const cover = document.getElementById('toCover').value;
+  const from = document.getElementById('toFrom').value, back = document.getElementById('toBack').value;
+  const today = twLocalISO(new Date());
+  if(!cover){ toSay('Add another technician first, to cover the route.'); return; }
+  if(!from || !back){ toSay('Pick the first day off and the day they’re back on.'); return; }
+  if(back <= from){ toSay('The day they’re back on has to come after the first day off.'); return; }
+  if(back <= today){ toSay('Those days are already over.'); return; }
+  if(toDays({from, back}).length >= 120){ toSay('Time off can be up to 120 days at once.'); return; }
+  if(toCurrent(t).some(o => from < o.back && o.from < back)){ toSay('They already have time off on some of those days.'); return; }
+  const coverT = technicians.find(x => x && String(x.id) === cover);
+  if(coverT && toCurrent(coverT).some(o => from < o.back && o.from < back)){ toSay((coverT.name || 'That technician') + ' is off on some of those days too.'); return; }
+  const o = {id: 'off_' + Date.now(), coverId: cover, from, back};
+  t.timeOff = toCurrent(t).concat([o]);
+  saveTechnicians();
+  toApply(t, o);
+  toClose();
+  toRefreshAfter();
+  showToast((t.name || 'Their') + '’s route goes to ' + twTechName(cover) + ', ' + toLabel(from) + ' – ' + toLabel(toLastDay(o)));
+});
+
 function renderTechnicianList(){
   const container = document.getElementById('technicianList');
   const countEl = document.getElementById('techCount');
@@ -24025,6 +24340,7 @@ function renderTechnicianList(){
     return;
   }
   container.innerHTML = '';
+  toTopUp();
   technicians
     .forEach(t=>{
       const assignedCount = customers.filter(c => c.technicianId === t.id && c.active !== false).length;
@@ -24038,7 +24354,15 @@ function renderTechnicianList(){
       if(acct) metaParts.push('Signs in as ' + acct.username + (acct.is_admin ? ' · Admin' : ''));
       else if(techAccounts) metaParts.push('No sign-in yet');
       metaParts.push(assignedCount + (assignedCount === 1 ? ' customer assigned' : ' customers assigned'));
-      row.innerHTML = `<div class="cust-left"><div class="cust-avatar">${initialOf(t.name)}</div><div class="cust-info"><div class="cust-name">${t.name}</div><div class="cust-meta">${metaParts.join(' · ')}</div></div></div>`;
+      row.innerHTML = `<div class="cust-left"><div class="cust-avatar">${initialOf(t.name)}</div><div class="cust-info"><div class="cust-name" style="display:flex;align-items:center;gap:8px;min-width:0;"><span>${t.name}</span></div><div class="cust-meta">${metaParts.join(' · ')}</div></div></div>`;
+      // Time off coming up or under way (Oct 20)
+      const off = toCurrent(t)[0];
+      if(off){
+        const tag = document.createElement('span');
+        tag.style.cssText = 'font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--gold-pale);color:var(--gold);white-space:nowrap;';
+        tag.textContent = 'Off ' + toLabel(off.from) + ' \u2013 ' + toLabel(toLastDay(off)) + ' \u00b7 ' + twTechName(off.coverId) + ' covering';
+        row.querySelector('.cust-name').appendChild(tag);
+      }
       // (Sept 29: technicians are no longer reordered by dragging here)
 
       // The whole row opens their profile (not the grip or Delete)
@@ -24059,6 +24383,13 @@ function renderTechnicianList(){
       delBtn.style.borderColor = '#EFC9BC';
       delBtn.textContent = 'Delete';
       delBtn.addEventListener('click', ()=>deleteTechnician(t));
+      const offBtn = document.createElement('button');
+      offBtn.className = 'btn btn-ghost';
+      offBtn.style.padding = '6px 10px';
+      offBtn.style.fontSize = '12px';
+      offBtn.textContent = 'Time off';
+      offBtn.addEventListener('click', ()=> toOpen(t));
+      rightWrap.appendChild(offBtn);
       rightWrap.appendChild(delBtn);
       row.appendChild(rightWrap);
       container.appendChild(row);
@@ -24890,6 +25221,23 @@ function twServicedOn(c, iso){
   if(list.length) return list.some(x => x && x.day === iso);
   return c.lastServicedDate === iso;
 }
+// Stops covered for a technician on time off (Oct 20) come after the cover's
+// own, in the order the away technician's day has
+function timeOffTail(iso, ids, order){
+  try{
+    const day = DAYS_OF_WEEK[new Date(iso + 'T12:00:00').getDay()];
+    const ro = (lsGet('routeOrders') || {})[day];
+    const froms = [];
+    (lsGet('rescheduledVisits') || []).forEach(r=>{
+      if(r && r.toDate === iso && r.timeOffId && r.coverFrom && ids.includes(r.customerId) && !froms.includes(String(r.coverFrom))) froms.push(String(r.coverFrom));
+    });
+    froms.forEach(f=>{
+      const theirs = ro && !Array.isArray(ro) && typeof ro === 'object' ? ro[f] : null;
+      (Array.isArray(theirs) ? theirs : []).forEach(id=>{ if(ids.includes(id) && !order.includes(id)) order.push(id); });
+    });
+  }catch(e){}
+  return order;
+}
 function twRouteFor(techId, iso){
   const day = twDayName(iso);
   const moves = lsGet('rescheduledVisits') || [];
@@ -24912,6 +25260,7 @@ function twRouteFor(techId, iso){
   if(!order.length) order = listAt(once);
   if(!order.length) order = listAt(Array.isArray(dayOrder) ? dayOrder
     : (dayOrder && typeof dayOrder === 'object' ? dayOrder[techId] : null));
+  timeOffTail(iso, ids, order);
   ids.forEach(id => { if(!order.includes(id)) order.push(id); });
   return {list: order.map(id => all.find(c => c.id === id)).filter(Boolean), movedIn: new Set(movedIn.map(c => c.id))};
 }
@@ -25030,6 +25379,7 @@ document.getElementById('twTechSel').addEventListener('change', e=>{
   renderTechRouteWeb();
 });
 function renderTechRouteWeb(){
+  toTopUp();   // time off: anything added since goes to the cover too (Oct 20)
   const techId = twTechId;
   const box = document.getElementById('twList');
   if(!box) return;
@@ -28038,6 +28388,11 @@ function openDeleteEquipmentModal(typeName){
         : 'Delete from selected';
       goBtn.disabled = picked.size === 0;
       goBtn.style.opacity = picked.size ? '' : '0.45';
+      // Select all, or Unselect all once everyone shown is ticked (Oct 20)
+      const q0 = searchEl.value.trim().toLowerCase();
+      const shown0 = others.filter(x => !q0 || (x.name || '').toLowerCase().includes(q0));
+      const allBtn = overlay.querySelector('#delEqAll');
+      if(allBtn) allBtn.textContent = shown0.length && shown0.every(x => picked.has(x.id)) ? 'Unselect all' : 'Select all';
     }
 
     const finish = (choice)=>{ document.body.removeChild(overlay); resolve(choice); };
@@ -28057,10 +28412,12 @@ function openDeleteEquipmentModal(typeName){
     }
 
     searchEl.addEventListener('input', draw);
+    searchEl.addEventListener('input', ()=> updateGo());
     overlay.querySelector('#delEqAll').addEventListener('click', ()=>{
       const q = searchEl.value.trim().toLowerCase();
-      others.filter(x => !q || (x.name || '').toLowerCase().includes(q))
-            .forEach(x => picked.add(x.id));
+      const shown = others.filter(x => !q || (x.name || '').toLowerCase().includes(q));
+      const allOn = shown.length && shown.every(x => picked.has(x.id));
+      shown.forEach(x => { if(allOn) picked.delete(x.id); else picked.add(x.id); });
       draw(); updateGo();
     });
 
@@ -28677,6 +29034,11 @@ function openAddToCustomersModal(typeName){
         : 'Add to selected';
       goBtn.disabled = picked.size === 0;
       goBtn.style.opacity = picked.size ? '' : '0.45';
+      // Select all, or Unselect all once everyone shown is ticked (Oct 20)
+      const q0 = searchEl.value.trim().toLowerCase();
+      const shown0 = others.filter(x => !q0 || (x.name || '').toLowerCase().includes(q0));
+      const allBtn = overlay.querySelector('#addEqAll');
+      if(allBtn) allBtn.textContent = shown0.length && shown0.every(x => picked.has(x.id)) ? 'Unselect all' : 'Select all';
     }
 
     const finish = (choice)=>{
@@ -28715,10 +29077,12 @@ function openAddToCustomersModal(typeName){
       goBtn.style.display = 'none';
     });
     searchEl.addEventListener('input', draw);
+    searchEl.addEventListener('input', ()=> updateGo());
     overlay.querySelector('#addEqAll').addEventListener('click', ()=>{
       const q = searchEl.value.trim().toLowerCase();
-      others.filter(x => !q || (x.name || '').toLowerCase().includes(q))
-            .forEach(x => picked.add(x.id));
+      const shown = others.filter(x => !q || (x.name || '').toLowerCase().includes(q));
+      const allOn = shown.length && shown.every(x => picked.has(x.id));
+      shown.forEach(x => { if(allOn) picked.delete(x.id); else picked.add(x.id); });
       draw(); updateGo();
     });
 
@@ -29635,8 +29999,10 @@ function switchView(view){
     // As it was: what was typed on the form comes back (it was held on the way out)
     try{ restoreWcDraft(document.getElementById('wcType').value); applyWorkOrderType(); }catch(e){}
   }
+  // WorkCenter always opens on the Calendar (Oct 20)
+  if(view === 'workcenter' && keep) applyWorkCenterMode('calendar');
   if(view === 'workcenter' && !keep){
-    applyWorkCenterMode('quotes');
+    applyWorkCenterMode('calendar');
     resetWorkOrderForm(true);
     document.getElementById('wcCustomer').value = '';
     document.getElementById('scCustomer').value = '';
@@ -29947,9 +30313,13 @@ function inlineText(cust, field, type){
 const MAX_CUSTOMER_EMAILS = 3;
 function customerEmailList(c){
   const out = [];
+  // Two emails typed or imported on one line ("a@x.com, b@y.com") are two
+  // emails, each sent to on its own (Oct 20)
   [c && c.email].concat((c && Array.isArray(c.extraEmails)) ? c.extraEmails : []).forEach(e=>{
-    const v = String(e || '').trim();
-    if(v.indexOf('@') !== -1 && !out.some(x => x.toLowerCase() === v.toLowerCase())) out.push(v);
+    String(e || '').split(/[\s,;]+/).forEach(part=>{
+      const v = part.replace(/^[<("']+|[>)"'.]+$/g, '').trim();
+      if(v.indexOf('@') !== -1 && !out.some(x => x.toLowerCase() === v.toLowerCase())) out.push(v);
+    });
   });
   return out.slice(0, MAX_CUSTOMER_EMAILS);
 }
@@ -31606,13 +31976,17 @@ function openImportMapper(rows){
 
       const rawDay = val(row, 'day');
       const day = DAYS_OF_WEEK.find(d => d.toLowerCase() === rawDay.toLowerCase()) || '';
+      const impEmails = customerEmailList({email: val(row, 'email')});
 
       incoming.push({
         id: 'cust_imp_' + Date.now() + '_' + n,
         name,
         address: addr, city, state, zip,
         phone: val(row, 'phone'),
-        email: val(row, 'email'),
+        // Several emails in the one cell: the first is their main email, the
+        // rest go in as more emails (Oct 20)
+        email: impEmails[0] || '',
+        extraEmails: impEmails.slice(1),
         day: day || 'Monday',
         hasPool: true, hasSpa: false,
         poolGallons: val(row, 'poolGallons'),
@@ -32002,7 +32376,8 @@ function renderCustomerSearchSuggestions(term){
     return;
   }
   const matches = customers
-    .filter(c => c.active !== false && matchesSearch(c, term.toLowerCase()))
+    // Inactive customers too (Oct 20), marked as inactive
+    .filter(c => matchesSearch(c, term.toLowerCase()))
     .slice()
     .sort((a,b)=> sortKeyName(a.name).localeCompare(sortKeyName(b.name)))
     .slice(0, 8);
@@ -32018,7 +32393,7 @@ function renderCustomerSearchSuggestions(term){
     item.style.fontSize = '13px';
     item.style.cursor = 'pointer';
     item.style.borderBottom = '1px solid var(--line)';
-    item.innerHTML = `<div style="font-weight:600;">${displayName(c.name)}</div><div style="font-size:11.5px;color:var(--muted);">${c.address || 'No address on file'}</div>`;
+    item.innerHTML = `<div style="font-weight:600;">${displayName(c.name)}</div><div style="font-size:11.5px;color:var(--muted);">${c.address || 'No address on file'}${c.active === false ? ' \u00b7 Inactive' : ''}</div>`;
     item.addEventListener('mouseenter', ()=>{ item.style.background = 'var(--surface-alt)'; });
     item.addEventListener('mouseleave', ()=>{ item.style.background = '#fff'; });
     item.addEventListener('mousedown', (e)=>{
