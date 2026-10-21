@@ -277,6 +277,9 @@ input::placeholder{color:#A9BCB9;}
 .section-count{font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 .profile-field-col{display:inline-flex;flex-direction:column;align-items:flex-start;align-self:flex-start;margin-top:-1px;cursor:pointer;white-space:nowrap;position:relative;}
 /* Small headings (Oct 20): a light teal tag with black text, easier to read */
+/* Something a job needs before it can go out (Oct 21): a red ring, and a line under it */
+.need-it{border:2px solid var(--rust) !important;box-shadow:0 0 0 3px rgba(184,73,46,0.15) !important;}
+.need-msg{font-size:12.5px;color:var(--rust);font-weight:600;margin:6px 0 0;}
 .hd-tag{font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;}
 .profile-field-col .pf-label{font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;align-self:flex-start;margin-bottom:3px;}
 .profile-field-col .pf-value{font-size:15.5px;font-weight:700;color:var(--ink);display:inline-flex;align-items:center;gap:4px;}
@@ -7605,11 +7608,13 @@ arrangeBroadcastButtons();
 // the other — which is exactly how the Email section got left on screen while
 // the Quotes tab was selected.
 // Quote, Work Order and Task always open on today, whatever was picked last
+// New quotes, work orders and tasks start with no date: it has to be set (Oct 21)
 function resetScheduleDates(){
   ['wcDate', 'taskDate'].forEach(id=>{
     const el = document.getElementById(id);
-    if(el) el.value = taskTodayStr();
+    if(el) el.value = '';
   });
+  try{ clearNeeds(document.getElementById('wcQuotesSection')); clearNeeds(document.getElementById('wcTaskSection')); }catch(e){}
 }
 
 // The sidebar's Technicians sections press the page's own (hidden) tabs, and
@@ -14498,7 +14503,7 @@ function syncOfficeListArrived(kind){
       }
       if(kinds.indexOf('quote') !== -1){
         if(typeof renderWorkOrderHistory === 'function') renderWorkOrderHistory();
-        if(typeof qoCustomerId !== 'undefined' && qoCustomerId) renderCustomerWorkOrders(qoCustomerId);
+        if(typeof qoCustomerId !== 'undefined' && qoCustomerId) renderCustomerWorkOrders(qoCustomerId, true);
       }
       if(kinds.indexOf('service_call') !== -1 && typeof renderServiceCallsList === 'function') renderServiceCallsList();
       if(kinds.indexOf('job') !== -1){
@@ -14508,7 +14513,7 @@ function syncOfficeListArrived(kind){
           const c = profileCustomerId && customers.find(x => x && String(x.id) === String(profileCustomerId));
           if(c && card && card.style.display !== 'none') renderProfileLastDone(c);
         }catch(e){}
-        try{ if(typeof qoCustomerId !== 'undefined' && qoCustomerId) renderCustomerWorkOrders(qoCustomerId); }catch(e){}
+        try{ if(typeof qoCustomerId !== 'undefined' && qoCustomerId) renderCustomerWorkOrders(qoCustomerId, true); }catch(e){}
         try{ wcalRefresh(); }catch(e){}
         try{ if(workCenterMode === 'filters') renderFilterGroups(); }catch(e){}
         try{ if(workCenterMode === 'drains' && typeof renderPoolDrains === 'function') renderPoolDrains(); }catch(e){}
@@ -15891,9 +15896,6 @@ function renderTaskForm(){
   renderTaskChips();
   applyTaskRepeat();
 
-  if(!document.getElementById('taskDate').value){
-    document.getElementById('taskDate').value = taskTodayStr();
-  }
 }
 
 // ---- The ticks remembered (Oct 3; on every computer and the app, Oct 20) ----
@@ -15928,7 +15930,8 @@ function clearTaskForm(){
   setPickedTechIds(document.getElementById('taskTechnician'), []);
   document.getElementById('taskTitle').value = '';
   document.getElementById('taskDetails').value = '';
-  document.getElementById('taskDate').value = taskTodayStr();
+  document.getElementById('taskDate').value = '';   // set by hand each time (Oct 21)
+  try{ clearNeeds(document.getElementById('wcTaskSection')); }catch(e){}
   applyWcTicks('task');      // as last chosen (Oct 3)
   document.getElementById('taskRepeat').value = 'none';
   document.getElementById('taskRepeatUntil').value = '';
@@ -16063,14 +16066,16 @@ function renderTaskList(){
 
 document.getElementById('btnSaveTask').addEventListener('click', ()=>{
   const title = document.getElementById('taskTitle').value.trim();
-  if(!title){ showToast('Say what needs doing first'); return; }
-
   // Like a work order, a task needs at least one technician
   const techIds = pickedTechIds(document.getElementById('taskTechnician'));
-  if(!techIds.length){ showToast('Choose a technician'); return; }
-
   const date = document.getElementById('taskDate').value;
-  if(!date){ showToast('Choose a day'); return; }
+  // What it needs, all marked at once (Oct 21): a date, the task and a technician
+  const tDate = document.getElementById('taskDate');
+  if(!jobHasAll(document.getElementById('wcTaskSection'), [
+    [!date, tDate, 'Set a date first.', tDate.parentNode],
+    [!title, document.getElementById('taskTitle'), 'Say what needs doing.'],
+    [!techIds.length, document.getElementById('taskTechnician'), 'Choose a technician.']
+  ])) return;
 
   const details = document.getElementById('taskDetails').value.trim();
   const customerIds = Array.from(taskPicked);
@@ -16949,7 +16954,8 @@ function resetWorkOrderForm(backToQuote){
   document.getElementById('wcNotes').value = '';
   if(backToQuote === true) document.getElementById('wcType').value = 'Quote';
   const d = document.getElementById('wcDate');
-  if(d) d.value = taskTodayStr();
+  if(d) d.value = '';        // set by hand each time (Oct 21)
+  try{ clearNeeds(document.getElementById('wcQuotesSection')); }catch(e){}
   setPickedTechIds(document.getElementById('wcTechnician'), []);
   const r = document.getElementById('wcRepeat');
   if(r) r.value = 'none';
@@ -18542,6 +18548,37 @@ function openHistoryGroupWindow(kind, lead){
   draw();
 }
 
+// ---- What a job needs before it goes out (Oct 21) ----
+// Each missing thing gets a red ring and a line under it saying what's needed,
+// all at once; it clears as soon as it's filled in. after = where the line goes.
+function needIt(el, msg, after){
+  if(!el) return;
+  el.classList.add('need-it');
+  const spot = after || el;
+  let m = spot.nextElementSibling;
+  if(!(m && m.classList && m.classList.contains('need-msg'))){
+    m = document.createElement('p'); m.className = 'need-msg';
+    spot.parentNode.insertBefore(m, spot.nextSibling);
+  }
+  m.textContent = msg;
+  const off = ()=>{ el.classList.remove('need-it'); if(m.parentNode) m.parentNode.removeChild(m);
+    ['input', 'change', 'click'].forEach(ev => el.removeEventListener(ev, off)); };
+  ['input', 'change', 'click'].forEach(ev => el.addEventListener(ev, off));
+}
+function clearNeeds(root){
+  (root || document).querySelectorAll('.need-it').forEach(el => el.classList.remove('need-it'));
+  (root || document).querySelectorAll('.need-msg').forEach(m => m.remove());
+}
+// Checks a list of [missing?, element, message, where the line goes]: marks
+// every missing one and says the first. True when nothing is missing.
+function jobHasAll(form, checks){
+  clearNeeds(form);
+  const missing = checks.filter(c => c[0]);
+  missing.forEach(c => needIt(c[1], c[2], c[3]));
+  if(missing.length) showToast(missing.length === 1 ? missing[0][2] : 'Fill in what’s marked in red first');
+  return !missing.length;
+}
+
 function applyWorkOrderType(){
   const chosen = document.getElementById('wcType').value;
   const isTask = chosen === 'Task';
@@ -18621,6 +18658,9 @@ function applyWorkOrderType(){
   }
 
   document.getElementById('btnSendWorkOrder').textContent = isWO ? 'Finalize' : 'Send to customer';
+  // + Filter clean is for work orders only (Oct 21: not on quotes)
+  const fcBtn = document.getElementById('btnAddFilterClean');
+  if(fcBtn) fcBtn.style.display = isWO ? '' : 'none';
   // Only quotes are emailed, so only Quote offers to customise the email
   document.getElementById('btnCustomizeQuoteEmail').style.display = isWO ? 'none' : '';
 
@@ -18933,10 +18973,22 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
   const picked = wcSelectedCustomerIds
     .map(id => customers.find(c => c.id === id))
     .filter(Boolean);
-  if(picked.length === 0){ showToast('Add at least one customer'); return; }
-
   const validItems = currentLineItems.filter(item => item.description && item.description.trim());
-  if(validItems.length === 0){ showToast('Add at least one line item'); return; }
+  // Everything it needs, all marked at once (Oct 21): a date, a customer and a
+  // line item, and for a work order a technician. A name and notes can wait.
+  {
+    const isWOnow = document.getElementById('wcType').value === 'Work Order';
+    const dateEl = document.getElementById('wcDate');
+    const firstLine = document.querySelector('#wcLineItems .fountain-row input');
+    const addLine = document.getElementById('btnAddLineItem');
+    const ok = jobHasAll(document.getElementById('wcQuotesSection'), [
+      [!dateEl.value, dateEl, 'Set a date first.', dateEl.parentNode],
+      [picked.length === 0, document.getElementById('wcCustomerSearch'), 'Add a customer.'],
+      [validItems.length === 0, firstLine || addLine, 'Add a line item.', firstLine ? firstLine.closest('#wcLineItems') : addLine.parentNode],
+      [isWOnow && !pickedTechIds(document.getElementById('wcTechnician')).length, document.getElementById('wcTechnician'), 'Choose a technician.']
+    ]);
+    if(!ok) return;
+  }
 
   const type = document.getElementById('wcType').value;
   const notes = document.getElementById('wcNotes').value.trim();
@@ -18947,8 +18999,7 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
     const date = document.getElementById('wcDate').value;
     const techIds = pickedTechIds(document.getElementById('wcTechnician'));
     const repeat = document.getElementById('wcRepeat').value;
-    if(!date){ showToast('Pick a scheduled date'); return; }
-    if(!techIds.length){ showToast('Assign a technician'); return; }
+    if(!date || !techIds.length) return;   // marked above (Oct 21)
 
     let dates = workOrderDates(date, repeat,
       document.getElementById('wcCustomEvery').value,
@@ -20351,7 +20402,11 @@ document.getElementById('qoDateFilter').addEventListener('change', e=>{
   if(qoCustomerId) renderCustomerWorkOrders(qoCustomerId);
 });
 
-function renderCustomerWorkOrders(customerId){
+// What the Jobs list last drew, so a sync that changes nothing on it doesn't
+// draw it again: each redraw reloaded an open job's photos, and a steady run
+// of syncs made an open row flicker (Oct 21)
+let qoLastDrawn = '';
+function renderCustomerWorkOrders(customerId, fromSync){
   const container = document.getElementById('custWorkOrderList');
   const countEl = document.getElementById('custWorkOrderCount');
   if(!container) return;
@@ -20376,9 +20431,17 @@ function renderCustomerWorkOrders(customerId){
     return;
   }
   if(qoOpenId && !list.some(x => x.key === qoOpenId)) qoOpenId = null;
-  container.innerHTML = '';
   // Select, on the hint's line, as on Service Reports (Oct 3)
   const qoKey = 'qo:' + customerId;
+  let drawn = '';
+  try{
+    const sel = listSel(qoKey);
+    drawn = JSON.stringify([customerId, qoOpenId, qoDateFilter, kind, sel && sel.on, sel && sel.ids ? Array.from(sel.ids) : null,
+      list.map(x => [x.key, x.done, x.title, x.date, x.status, x.w || null, x.j || null, x.f || null, x.t || null, (x.items || []).length])]);
+  }catch(e){ drawn = ''; }
+  if(fromSync && drawn && drawn === qoLastDrawn && container.childElementCount) return;
+  qoLastDrawn = drawn;
+  container.innerHTML = '';
   const redrawQo = () => renderCustomerWorkOrders(customerId);
   const byKey = {};
   list.forEach(x => { byKey[x.key] = x; });
@@ -29481,6 +29544,27 @@ function collectAlerts(){
     if(items.length){
       out.push(Object.assign({id: 'repair:' + f.id, kind: 'repair', notes: 'Needs replacing: ' + items.join(', ')}, base));
     }
+  });
+  // Work orders and pool drains finished in the field with notes from the
+  // technician (Oct 21), and anything a drain said needs replacing
+  [['scheduledWorkOrders', 'wo', 'wonote'], ['scheduledPoolDrains', 'pd', 'pdnote']].forEach(([key, pre, idp])=>{
+    (lsGet(key) || []).forEach(j=>{
+      if(!j || j.status !== 'done' || !j.id) return;
+      const c = (customers || []).find(x => x && String(x.id) === String(j.customerId));
+      if(!c || c.deleted) return;
+      const tm = new Date(j.doneAt || ((j.date || '') + 'T12:00:00')).getTime();
+      if(!tm || isNaN(tm)) return;
+      const label = pre === 'wo' ? 'Work order' + (j.title ? ': ' + j.title : '')
+        : (j.bodyName ? j.bodyName + ' drain' : ({spa: 'Spa drain', fountain: 'Fountain drain', extra: 'Extra body drain'}[j.bodyKind] || 'Pool drain'));
+      const base = {customerId: c.id, name: displayName(c.name), body: label, t: tm, jobKey: pre + ':' + j.id,
+        tech: j.doneBy === 'office' ? 'the office' : techName(j.doneBy || j.technicianId)};
+      const notes = String(j.doneNotes || '').trim();
+      if(notes && now - tm <= ALERT_NOTE_DAYS * 86400000) out.push(Object.assign({id: idp + ':' + j.id, kind: 'note', notes: notes}, base));
+      if(pre === 'pd'){
+        const items = partsStillNeeded(j);
+        if(items.length) out.push(Object.assign({id: 'pdrepair:' + j.id, kind: 'repair', notes: 'Needs replacing: ' + items.join(', ')}, base));
+      }
+    });
   });
   // Work orders with a filter clean that need parts (Oct 3)
   (lsGet('scheduledWorkOrders') || []).forEach(j=>{

@@ -17,6 +17,9 @@ button[data-x-drawn] > svg{display:block;width:0.62em;height:0.62em;margin:auto;
 /* The bin (Tyrus, Oct 2, option B): a pale red square with a darker red
    bin, always square and the bin centred, wherever it is. Small ones sit
    inside tags and tight rows. */
+/* Something a job needs before it can go out (Oct 21): a red ring, and a line under it */
+.need-it{border:2px solid var(--rust) !important;box-shadow:0 0 0 3px rgba(184,73,46,0.15) !important;}
+.need-msg{font-size:12.5px;color:var(--rust);font-weight:600;margin:6px 0 0;}
 button[data-x-drawn="bin"],button:has(> svg.weir-bin){width:33px !important;height:33px !important;min-width:33px !important;max-width:33px !important;
   padding:0 !important;margin-top:0;border-radius:9px !important;background:#FBE3DC !important;color:#9E3D26 !important;
   border:1px solid #E9B3A3 !important;flex:0 0 33px !important;line-height:0 !important;opacity:1;
@@ -2068,6 +2071,7 @@ function applyDoseRules(type){
   // so whether a rule worked depended on where it sat in the list.
   const intended = {};   // doseFieldId -> value a matching rule wants
   const touched = {};    // doseFieldId -> some rule targets this field
+  const from = {};       // doseFieldId -> the readings whose rules fill it (Oct 21)
 
   const saltPool = isSaltPool();
 
@@ -2117,6 +2121,7 @@ function applyDoseRules(type){
       }
 
       touched[doseId] = true;
+      (from[doseId] = from[doseId] || {})[readEl.id] = true;
       // A later matching rule wins, so a more specific rule can sit below a
       // general one and override it
       if(matchesDoseRule(reading, rule)){
@@ -2128,6 +2133,10 @@ function applyDoseRules(type){
     });
   });
 
+  // Which readings feed each dosage, so clearing one is undone only by a
+  // change to its own readings (Oct 21)
+  Object.keys(from).forEach(id => { doseSources[id] = Object.keys(from[id]); });
+
   // Now write each field once
   Object.keys(touched).forEach(doseId=>{
     const el = document.getElementById(doseId);
@@ -2136,7 +2145,7 @@ function applyDoseRules(type){
 
     // Cleared by hand and the readings haven't changed since — leave it empty
     if(clearedDoses[doseId] !== undefined){
-      if(clearedDoses[doseId] === readingsFingerprint()) return;
+      if(clearedDoses[doseId] === readingsFingerprint(doseId)) return;
       delete clearedDoses[doseId];          // readings moved on, rules resume
     }
 
@@ -2164,7 +2173,10 @@ function applyDoseRules(type){
 // A dosage the technician cleared. Kept empty while the readings stay as they
 // are, but released as soon as a reading changes — clearing means "not for
 // this reading", not "never again this visit".
+// Oct 21: only a change to the readings that dosage comes from releases it.
+// Clearing chlorine's dose, then fixing the pH, brought the chlorine back.
 const clearedDoses = {};
+const doseSources = {};   // dosage field id -> the reading field ids whose rules fill it
 
 function markDoseEditedByHand(el){
   if(!el) return;
@@ -2173,7 +2185,7 @@ function markDoseEditedByHand(el){
   if(String(el.value || '').trim() === ''){
     // Remember what the readings were, so a change can release it
     delete manuallyEditedDoses[el.id];
-    clearedDoses[el.id] = readingsFingerprint();
+    clearedDoses[el.id] = readingsFingerprint(el.id);
     return;
   }
 
@@ -2181,8 +2193,11 @@ function markDoseEditedByHand(el){
   manuallyEditedDoses[el.id] = true;
 }
 
-// A cheap snapshot of every reading on screen, used only to notice a change
-function readingsFingerprint(){
+// A cheap snapshot of the readings on screen, used only to notice a change.
+// Given a dosage, just the readings that dosage comes from (Oct 21).
+function readingsFingerprint(doseId){
+  const only = doseId && doseSources[doseId] && doseSources[doseId].length ? doseSources[doseId] : null;
+  if(only) return only.map(id => { const el = document.getElementById(id); return id + '=' + (el ? el.value : ''); }).join('|');
   const vals = [];
   ['pool','spa','fountain'].forEach(t=>{
     const lists = chemConfig[t];
@@ -2197,6 +2212,7 @@ function readingsFingerprint(){
 function resetDoseRuleTracking(){
   ruleProblemsShown = {};
   Object.keys(clearedDoses).forEach(k => delete clearedDoses[k]);
+  Object.keys(doseSources).forEach(k => delete doseSources[k]);
   Object.keys(manuallyEditedDoses).forEach(k => delete manuallyEditedDoses[k]);
 }
 
@@ -10972,7 +10988,7 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
       btnRow.style.marginTop = '16px';
       const directions = document.createElement('button');
       directions.className = 'btn btn-ghost';
-      directions.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+      directions.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);';   // as on a customer (Oct 21)
       directions.textContent = 'Directions';
       directions.addEventListener('click', e => { e.stopPropagation(); openDirections(customer); });
       if(customer) btnRow.appendChild(directions);
@@ -11097,7 +11113,7 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
       btnRow.style.marginTop = '16px';
       const directions = document.createElement('button');
       directions.className = 'btn btn-ghost';
-      directions.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+      directions.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);';   // as on a customer (Oct 21)
       directions.textContent = 'Directions';
       directions.addEventListener('click', e => { e.stopPropagation(); openDirections(customer); });
       if(customer) btnRow.appendChild(directions);
@@ -11967,6 +11983,32 @@ function adminVersion_renderHomeList(){
         panel.appendChild(line);
       }
 
+      // Their email under the phone (Oct 21, admin app only): pressing it
+      // opens a new email in the phone's own mail app. Each of their emails
+      // on its own line; a long one scrolls rather than wrapping.
+      const emails = typeof customerEmailList === 'function' ? customerEmailList(c) : (c.email ? [c.email] : []);
+      emails.forEach((addr, i)=>{
+        const line = document.createElement('div');
+        line.style.cssText = 'margin-bottom:2px;display:flex;align-items:baseline;gap:4px;min-width:0;' + (i ? 'padding-left:28px;' : '');
+        if(!i){
+          const strong = document.createElement('strong');
+          strong.textContent = '\u2709\ufe0f Email: ';
+          strong.style.flex = '0 0 auto';
+          line.appendChild(strong);
+        }
+        const mail = document.createElement('a');
+        mail.href = 'mailto:' + encodeURIComponent(addr).replace(/%40/g, '@');
+        mail.textContent = addr;
+        mail.style.cssText = 'color:var(--teal-deep);font-weight:700;text-decoration:underline;';
+        mail.addEventListener('click', (ev)=> ev.stopPropagation());
+        const box = document.createElement('span');
+        box.style.cssText = 'flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap;';
+        box.appendChild(mail);
+        line.appendChild(box);
+        panel.appendChild(line);
+        try{ requestAnimationFrame(()=> marqueeIfCut(box)); }catch(e){}
+      });
+
       const bits = [];
       if(c.neighborhoodGateCode) bits.push(['\ud83d\udd11 Neighborhood gate', c.neighborhoodGateCode]);
       if(c.gateCode) bits.push(['\ud83d\udd11 Yard gate', c.gateCode]);
@@ -11990,7 +12032,7 @@ function adminVersion_renderHomeList(){
       if(true){
         const reschedBtn = document.createElement('button');
         reschedBtn.className = 'btn btn-ghost';
-        reschedBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+        reschedBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);';   // dark teal, white words (Oct 21)
         reschedBtn.textContent = 'Reschedule';
         reschedBtn.addEventListener('click', (e)=>{
           e.stopPropagation();
@@ -12001,7 +12043,7 @@ function adminVersion_renderHomeList(){
 
       const directionsBtn = document.createElement('button');
       directionsBtn.className = 'btn btn-ghost';
-      directionsBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+      directionsBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);';   // dark teal, white words (Oct 21)
       directionsBtn.textContent = 'Directions';
       directionsBtn.addEventListener('click', (e)=>{
         e.stopPropagation();
@@ -12012,7 +12054,7 @@ function adminVersion_renderHomeList(){
       if(isAdminUser()){
         const shareBtn = document.createElement('button');
         shareBtn.className = 'btn btn-ghost';
-        shareBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+        shareBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);';   // dark teal, white words (Oct 21)
         shareBtn.textContent = 'Share';
         shareBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openShareCustomer(c); });
         btnRow.appendChild(shareBtn);
@@ -12020,7 +12062,7 @@ function adminVersion_renderHomeList(){
 
       const skipBtn2 = document.createElement('button');
       skipBtn2.className = 'btn btn-ghost';
-      skipBtn2.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;color:var(--rust);border-color:#EFC9BC;';
+      skipBtn2.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;background:var(--rust);color:#fff;border:1px solid var(--rust);';   // red, white words (Oct 21)
       skipBtn2.textContent = 'Skip Service';
       skipBtn2.addEventListener('click', (e)=>{
         e.stopPropagation();
@@ -12340,7 +12382,7 @@ function techVersion_renderHomeList(){
       if(currentUser && currentUser.isAdmin){
         const reschedBtn = document.createElement('button');
         reschedBtn.className = 'btn btn-ghost';
-        reschedBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+        reschedBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);';   // dark teal, white words (Oct 21)
         reschedBtn.textContent = 'Reschedule';
         reschedBtn.addEventListener('click', (e)=>{
           e.stopPropagation();
@@ -12351,7 +12393,7 @@ function techVersion_renderHomeList(){
 
       const directionsBtn = document.createElement('button');
       directionsBtn.className = 'btn btn-ghost';
-      directionsBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+      directionsBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);';   // dark teal, white words (Oct 21)
       directionsBtn.textContent = 'Directions';
       directionsBtn.addEventListener('click', (e)=>{
         e.stopPropagation();
@@ -12361,7 +12403,7 @@ function techVersion_renderHomeList(){
 
       const skipBtn2 = document.createElement('button');
       skipBtn2.className = 'btn btn-ghost';
-      skipBtn2.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;color:var(--rust);border-color:#EFC9BC;';
+      skipBtn2.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;background:var(--rust);color:#fff;border:1px solid var(--rust);';   // red, white words (Oct 21)
       skipBtn2.textContent = 'Skip Service';
       skipBtn2.addEventListener('click', (e)=>{
         e.stopPropagation();
@@ -12676,7 +12718,78 @@ function servicedJobRow(job){
       window.scrollTo({top: 0, behavior: 'smooth'});
     });
   }
+  // Reschedule (Oct 21): the finished one stays in the records; a fresh copy
+  // goes on the date and technician chosen
+  const resched = document.createElement('button');
+  resched.type = 'button';
+  resched.className = 'btn btn-secondary';
+  resched.style.cssText = 'width:auto;padding:7px 12px;font-size:12px;flex-shrink:0;';
+  resched.textContent = 'Reschedule';
+  resched.addEventListener('click', e=>{ e.stopPropagation(); rescheduleDoneJob(job); });
+  row.appendChild(resched);
   return row;
+}
+
+// The window for it: a date (it has to be set) and whose route it goes on
+function rescheduleDoneJob(job){
+  const LISTS = {'work order': ['scheduledWorkOrders', 'work_order'], 'filter clean': ['scheduledFilterCleans', 'filter_clean'],
+    'pool drain': ['scheduledPoolDrains', 'pool_drain'], 'task': ['tasks', 'task']};
+  const where = LISTS[job.kind];
+  if(!where) return;
+  const list = lsGet(where[0]) || [];
+  const rec = list.find(x => x && String(x.id) === String(job.id));
+  if(!rec){ showToast('That job is no longer here'); return; }
+  const techs = techniciansInOrder().filter(t => t && t.id);
+  let who = null; try{ who = currentUser; }catch(e){}
+  if(who && who.id && !techs.some(t => String(t.id) === String(who.id))) techs.unshift({id: who.id, name: who.name || 'Me'});
+  const wasTech = String(rec.technicianId || (Array.isArray(rec.technicianIds) && rec.technicianIds[0]) || rec.doneBy || '');
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" id="rdjBox" style="max-width:420px;">'
+    + '<h3 style="font-size:16px;margin:0 0 4px;">Reschedule</h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;"></p>'
+    + '<div class="field"><label>Date</label><input type="date" id="rdjDate"></div>'
+    + '<div class="field"><label>Technician</label><select id="rdjTech"></select></div>'
+    + '<div class="btn-row" style="flex-wrap:nowrap;"><button type="button" class="btn btn-primary" id="rdjGo" style="flex:1 1 0;">Reschedule</button>'
+    + '<button type="button" class="btn btn-ghost" id="rdjCancel" style="flex:1 1 0;">Cancel</button></div></div>';
+  overlay.querySelector('p').textContent = (job.title || jobKindLabel(job.kind))
+    + ' goes back on the route for the day you pick. The one done today stays in the records.';
+  const sel = overlay.querySelector('#rdjTech');
+  techs.forEach(t => { const o = document.createElement('option'); o.value = String(t.id); o.textContent = t.name || 'Technician'; sel.appendChild(o); });
+  if(Array.from(sel.options).some(o => o.value === wasTech)) sel.value = wasTech;
+  document.body.appendChild(overlay);
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+  overlay.querySelector('#rdjCancel').addEventListener('click', close);
+  overlay.addEventListener('click', e=>{ if(e.target === overlay) close(); });
+  overlay.querySelector('#rdjGo').addEventListener('click', ()=>{
+    const dateEl = overlay.querySelector('#rdjDate');
+    if(!awcHasAll('rdjBox', [[!dateEl.value, dateEl, 'Set a date first.'], [!sel.value, sel, 'Choose a technician.']])) return;
+    const now = lsGet(where[0]) || [];
+    const done = now.find(x => x && String(x.id) === String(job.id));
+    if(!done){ close(); showToast('That job is no longer here'); return; }
+    const copy = JSON.parse(JSON.stringify(done));
+    // Nothing of the finished visit comes along, and nothing ties it to a
+    // group, which would take it back off
+    Object.keys(copy).forEach(k=>{ if(/^done/.test(k) || ['replacedItems', 'groupId', 'groupName', 'order', 'reopened', 'held', 'startedAt'].indexOf(k) !== -1) delete copy[k]; });
+    const pre = {work_order: 'job_', filter_clean: 'fc_', pool_drain: 'pd_', task: 'task_'}[where[1]];
+    copy.id = pre + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    copy.date = dateEl.value;
+    copy.technicianId = sel.value;
+    if(Array.isArray(copy.technicianIds)) copy.technicianIds = [sel.value];
+    if(where[1] === 'task'){ copy.done = false; delete copy.seriesId; } else copy.status = 'scheduled';
+    copy.createdAt = new Date().toISOString();
+    now.push(copy);
+    if(!lsSet(where[0], now)){ showToast('Could not save \u2014 the phone is full'); return; }
+    queueOfficeWork(where[1], copy.id, false);
+    try{ if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange(); }catch(e){}
+    close();
+    try{ renderServicedList(); }catch(e){}
+    try{ renderHomeList(); }catch(e){}
+    const t = techs.find(x => String(x.id) === sel.value);
+    showToast((job.title || jobKindLabel(job.kind)) + ' rescheduled for '
+      + new Date(copy.date + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})
+      + (t ? ' with ' + t.name : ''));
+  });
 }
 
 // An admin's Serviced: whose services to show (everyone, or one technician;
@@ -16086,7 +16199,6 @@ function awcBuild(pane){
         <div id="awcQuoteLines"></div>
         <div class="btn-row" style="gap:8px;margin-top:4px;">
           <button type="button" class="btn btn-ghost" id="awcQuoteAddLine" style="width:auto;">+ Add line item</button>
-          <button type="button" class="btn btn-ghost" id="awcQuoteAddFilterClean" style="width:auto;">+ Filter clean</button>
         </div>
       </div>
       <div class="field">
@@ -16270,8 +16382,9 @@ function awcBuild(pane){
   }));
 
   // Work order
-  document.getElementById('awcWoDate').value = todayDateStr();
-  document.getElementById('awcTaskDate').value = todayDateStr();
+  // New ones start with no date: it has to be set (Oct 21)
+  document.getElementById('awcWoDate').value = '';
+  document.getElementById('awcTaskDate').value = '';
   awcWireSearch('awcWoSearch', 'awcWoSuggest', ()=> awcWoCustomers, id=>{ awcWoCustomers.push(id); awcRenderChips(); });
   awcWireSearch('awcTaskSearch', 'awcTaskSuggest', ()=> awcTaskCustomers, id=>{ awcTaskCustomers.push(id); awcRenderChips(); });
   // + Filter clean (Oct 3), as on the website: with more than one filter clean
@@ -16510,7 +16623,9 @@ function awcRenderLines(boxId){
     const sug = document.createElement('div');
     sug.className = 'awc-suggest';
     sug.style.top = '100%';
-    descWrap.appendChild(desc); descWrap.appendChild(sug);
+    // Across the whole line, not just the description box (Oct 21), so names read in full
+    row.style.position = 'relative';
+    descWrap.appendChild(desc);
     const qty = document.createElement('input');
     qty.type = 'number'; qty.step = 'any'; qty.inputMode = 'decimal';
     qty.placeholder = 'Qty';
@@ -16539,14 +16654,16 @@ function awcRenderLines(boxId){
       sug.innerHTML = '';
       named.slice(0, 8).forEach(p=>{
         const opt = document.createElement('div');
-        opt.style.cssText = 'display:flex;align-items:center;gap:10px;';
+        opt.style.cssText = 'display:flex;align-items:center;gap:10px;padding:11px 14px;font-size:15px;';
         const nm = document.createElement('span');
-        nm.style.cssText = 'flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        // A name too long for the line scrolls across (Oct 21)
+        nm.style.cssText = 'flex:1;min-width:0;font-weight:600;overflow:hidden;white-space:nowrap;';
         nm.textContent = p.name;
         opt.appendChild(nm);
+        requestAnimationFrame(()=>{ try{ marqueeIfCut(nm); }catch(e){} });
         if(p.price !== undefined && p.price !== null && p.price !== ''){
           const pr = document.createElement('span');
-          pr.style.cssText = "flex-shrink:0;font-size:12.5px;color:var(--muted);font-family:'JetBrains Mono',monospace;";
+          pr.style.cssText = "flex-shrink:0;font-size:13.5px;font-weight:700;color:var(--teal-deep);font-family:'JetBrains Mono',monospace;";
           pr.textContent = '$' + (Number(p.price) || 0).toFixed(2);
           opt.appendChild(pr);
         }
@@ -16586,7 +16703,7 @@ function awcRenderLines(boxId){
     x.textContent = '×';
     x.setAttribute('aria-label', 'Remove line item');
     x.addEventListener('click', ()=>{ items.splice(i, 1); awcRenderLines(boxId); });
-    row.appendChild(descWrap); row.appendChild(qty); row.appendChild(priceWrap); row.appendChild(x);
+    row.appendChild(descWrap); row.appendChild(qty); row.appendChild(priceWrap); row.appendChild(x); row.appendChild(sug);
     box.appendChild(row);
   });
   total();
@@ -16668,13 +16785,14 @@ async function awcRegisterQuote(quoteId, expiresDays, details){
 }
 
 function awcWireQuote(){
-  document.getElementById('awcQuoteDate').value = todayDateStr();
+  document.getElementById('awcQuoteDate').value = '';   // set by hand (Oct 21)
   awcWireSearch('awcQuoteSearch', 'awcQuoteSuggest', ()=> awcQuoteCustomers, id=>{ awcQuoteCustomers.push(id); awcRenderChips(); });
   document.getElementById('awcQuoteAddLine').addEventListener('click', ()=>{
     awcQuoteLines.push({description: '', qty: '', price: ''});
     awcRenderLines('awcQuoteLines');
   });
-  document.getElementById('awcQuoteAddFilterClean').addEventListener('click', ()=>{
+  // (+ Filter clean is gone from quotes, Oct 21; the button isn't drawn)
+  if(document.getElementById('awcQuoteAddFilterClean')) document.getElementById('awcQuoteAddFilterClean').addEventListener('click', ()=>{
     awcPickFilterCleans(picks=>{
       picks.forEach(({product, count})=>{
         for(let i = 0; i < count; i++){
@@ -16700,19 +16818,60 @@ function awcClearQuote(){
   document.getElementById('awcQuoteSearch').value = '';
   document.getElementById('awcQuoteNotes').value = '';
   document.getElementById('awcQuoteName').value = '';
-  document.getElementById('awcQuoteDate').value = todayDateStr();
+  document.getElementById('awcQuoteDate').value = '';   // set by hand (Oct 21)
+  awcClearNeeds('awcQuoteForm');
   document.getElementById('awcQuoteExpires').value = String(AWC_QUOTE_ANSWER_DAYS);
   awcRenderChips(); awcRenderLines('awcQuoteLines'); awcShowQuoteNumber();
+}
+
+// ---- What a job needs before it goes out (Oct 21) ----
+// Each missing thing gets a red ring and a line under it saying what's needed,
+// all at once; it clears as soon as it's filled in. after = where the line goes.
+function awcNeedIt(el, msg, after){
+  if(!el) return;
+  el.classList.add('need-it');
+  const spot = after || el;
+  let m = spot.nextElementSibling;
+  if(!(m && m.classList && m.classList.contains('need-msg'))){
+    m = document.createElement('p'); m.className = 'need-msg';
+    spot.parentNode.insertBefore(m, spot.nextSibling);
+  }
+  m.textContent = msg;
+  const off = ()=>{ el.classList.remove('need-it'); if(m.parentNode) m.parentNode.removeChild(m);
+    ['input', 'change', 'click'].forEach(ev => el.removeEventListener(ev, off)); };
+  ['input', 'change', 'click'].forEach(ev => el.addEventListener(ev, off));
+}
+function awcClearNeeds(formId){
+  const root = document.getElementById(formId) || document;
+  root.querySelectorAll('.need-it').forEach(el => el.classList.remove('need-it'));
+  root.querySelectorAll('.need-msg').forEach(m => m.remove());
+}
+function awcHasAll(formId, checks){
+  awcClearNeeds(formId);
+  const missing = checks.filter(c => c[0]);
+  missing.forEach(c => awcNeedIt(c[1], c[2], c[3]));
+  if(missing.length) showToast(missing.length === 1 ? missing[0][2] : 'Fill in what’s marked in red first');
+  return !missing.length;
 }
 
 async function awcSendQuote(){
   const btn = document.getElementById('awcQuoteSend');
   if(btn.disabled) return;
   const picked = awcQuoteCustomers.map(id => (customers || []).find(c => c && String(c.id) === String(id))).filter(Boolean);
-  if(!picked.length){ showToast('Add at least one customer'); return; }
   const items = awcQuoteLines.filter(it => it && String(it.description || '').trim())
     .map(it => Object.assign({}, it, {description: String(it.description).trim()}));
-  if(!items.length){ showToast('Add at least one line item'); return; }
+  // A date, a customer and a line item, all marked at once (Oct 21); a name
+  // and notes can wait
+  {
+    const dateEl = document.getElementById('awcQuoteDate');
+    const firstLine = document.querySelector('#awcQuoteLines input');
+    const addLine = document.getElementById('awcQuoteAddLine');
+    if(!awcHasAll('awcQuoteForm', [
+      [!dateEl.value, dateEl, 'Set a date first.'],
+      [!picked.length, document.getElementById('awcQuoteSearch'), 'Add a customer.'],
+      [!items.length, firstLine || addLine, 'Add a line item.', firstLine ? document.getElementById('awcQuoteLines') : addLine.parentNode]
+    ])) return;
+  }
   if(!picked.some(c => c.email)){
     showToast(picked.length === 1 ? 'This customer has no email on file' : 'None of these customers has an email on file');
     return;
@@ -16921,7 +17080,7 @@ function awcOpenQuote(w){
     if(!awcQuoteLines.length) awcQuoteLines = [{description: '', qty: '', price: ''}];
     document.getElementById('awcQuoteName').value = w.name || '';
     document.getElementById('awcQuoteNotes').value = w.notes || '';
-    document.getElementById('awcQuoteDate').value = todayDateStr();
+    document.getElementById('awcQuoteDate').value = '';   // set by hand (Oct 21)
     awcView = 'main'; awcApply();
     awcRenderChips(); awcRenderLines('awcQuoteLines');
     showToast('Copied — change anything, then Send to customer');
@@ -17200,7 +17359,8 @@ function awcClearWo(){
   awcWoTechs = [];
   document.getElementById('awcWoSearch').value = '';
   document.getElementById('awcWoNotes').value = '';
-  document.getElementById('awcWoDate').value = todayDateStr();
+  document.getElementById('awcWoDate').value = '';   // set by hand (Oct 21)
+  awcClearNeeds('awcWoForm');
   awcApplyTicks('wo');      // as last chosen here or on the website (Oct 20)
   document.getElementById('awcWoRepeat').value = 'none';
   document.getElementById('awcWoUntil').value = '';
@@ -17250,7 +17410,8 @@ function awcClearTask(){
   document.getElementById('awcTaskSearch').value = '';
   document.getElementById('awcTaskTitle').value = '';
   document.getElementById('awcTaskDetails').value = '';
-  document.getElementById('awcTaskDate').value = todayDateStr();
+  document.getElementById('awcTaskDate').value = '';   // set by hand (Oct 21)
+  awcClearNeeds('awcTaskForm');
   awcApplyTicks('task');    // as last chosen here or on the website (Oct 20)
   document.getElementById('awcTaskRepeat').value = 'none';
   document.getElementById('awcTaskUntil').value = '';
@@ -17262,14 +17423,22 @@ function awcClearTask(){
 // Finalize: onto each technician's route, exactly as the website does it
 function awcFinalize(){
   const picked = awcWoCustomers.map(id => (customers || []).find(c => c && String(c.id) === String(id))).filter(Boolean);
-  if(!picked.length){ showToast('Add at least one customer'); return; }
   const validItems = awcLineItems.filter(it => it.description && it.description.trim())
     .map(it => ({description: it.description.trim(), qty: it.qty, price: it.price}));
-  if(!validItems.length){ showToast('Add at least one line item'); return; }
   const date = document.getElementById('awcWoDate').value;
-  if(!date){ showToast('Pick a scheduled date'); return; }
   const techIds = awcWoTechs.slice();
-  if(!techIds.length){ showToast('Assign a technician'); return; }
+  // A date, a customer, a line item and a technician, all marked at once (Oct 21)
+  {
+    const dateEl = document.getElementById('awcWoDate');
+    const firstLine = document.querySelector('#awcLines input');
+    const addLine = document.getElementById('awcAddLine');
+    if(!awcHasAll('awcWoForm', [
+      [!date, dateEl, 'Set a date first.'],
+      [!picked.length, document.getElementById('awcWoSearch'), 'Add a customer.'],
+      [!validItems.length, firstLine || addLine, 'Add a line item.', firstLine ? document.getElementById('awcLines') : addLine.parentNode],
+      [!techIds.length, document.getElementById('awcWoTech'), 'Choose a technician.']
+    ])) return;
+  }
   const notes = document.getElementById('awcWoNotes').value.trim();
   const photoRequired = document.getElementById('awcWoPhoto').checked;
   const videoRequired = document.getElementById('awcWoVideo').checked;
@@ -17357,11 +17526,14 @@ function awcRepeatWords(days){
 
 function awcAddTask(){
   const title = document.getElementById('awcTaskTitle').value.trim();
-  if(!title){ showToast('Say what needs doing first'); return; }
   const techIds = awcTaskTechs.slice();
-  if(!techIds.length){ showToast('Choose a technician'); return; }
   const date = document.getElementById('awcTaskDate').value;
-  if(!date){ showToast('Choose a day'); return; }
+  // A date, the task and a technician, all marked at once (Oct 21)
+  if(!awcHasAll('awcTaskForm', [
+    [!date, document.getElementById('awcTaskDate'), 'Set a date first.', document.getElementById('awcTaskDate').parentNode],
+    [!title, document.getElementById('awcTaskTitle'), 'Say what needs doing.'],
+    [!techIds.length, document.getElementById('awcTaskTech'), 'Choose a technician.']
+  ])) return;
   const details = document.getElementById('awcTaskDetails').value.trim();
   const customerIds = awcTaskCustomers.slice();
   const everyDays = awcTaskDays();
