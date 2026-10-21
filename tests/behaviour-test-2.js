@@ -176,7 +176,9 @@ console.log('\n=== Technician dropdown opens on the first tap ===');
     check('  every technician is listed',
           Array.from(sel.options).map(o=>o.textContent).join(',')
             === 'Unassigned,Alex Rivera,Sam Okafor');
-    check('  the current one is preselected', sel.value === 't1');
+    // Oct 20: opened with nothing chosen, so picking the one already set
+    // still counts and the dropdown closes back to the normal display
+    check('  it opens with nothing chosen, so the same one can be picked again', sel.selectedIndex === -1);
 
     sel.value = 't2';
     sel.dispatchEvent(new w.Event('change', {bubbles:true}));

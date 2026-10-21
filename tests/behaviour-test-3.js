@@ -618,7 +618,8 @@ console.log('\n=== The WorkCenter tab always matches what is shown ===');
 
   try{
     w.eval("switchView('workcenter');");
-    check('  it opens on Work Orders', activeTab() === 'quotes', activeTab());
+    // Oct 20: WorkCenter always opens on the Calendar
+    check('  it opens on the Calendar', activeTab() === 'calendar', activeTab());
 
     press('broadcast');
     check('  pressing Email selects it', activeTab() === 'broadcast');
@@ -627,12 +628,12 @@ console.log('\n=== The WorkCenter tab always matches what is shown ===');
 
     // The bug: leaving and returning left the email section on screen
     w.eval("switchView('customers'); webLeftAt = {}; switchView('workcenter');");  // past the page's 20 seconds (Sept 29)
-    check('  returning selects Work Orders again', activeTab() === 'quotes', activeTab());
+    check('  returning selects the Calendar again', activeTab() === 'calendar', activeTab());
     check('  and the email section is hidden',
           shown().indexOf('wcBroadcastSection') === -1, shown().join(','));
     // The sent history now lives on the History tab, so only the form shows
-    check('  showing the work order form instead',
-          shown().join(',') === 'wcQuotesSection', shown().join(','));
+    check('  showing the Calendar instead',
+          shown().join(',') === 'wcCalendarCard', shown().join(','));
 
     // Same for filter cleans
     press('filters');
@@ -640,8 +641,8 @@ console.log('\n=== The WorkCenter tab always matches what is shown ===');
     check('  filter cleans shows only its own section',
           shown().join(',') === 'wcFiltersSection', shown().join(','));
     w.eval("switchView('settings'); webLeftAt = {}; switchView('workcenter');");  // past the page's 20 seconds (Sept 29)
-    check('  and is hidden on returning',
-          shown().indexOf('wcFiltersSection') === -1 && shown().indexOf('wcCalendarCard') === -1, shown().join(','));
+    check('  and is hidden on returning (the Calendar shows)',
+          shown().join(',') === 'wcCalendarCard', shown().join(','));
 
     // No mode may leave another's section visible
     let clean = true;
@@ -826,7 +827,7 @@ console.log('\n=== Tasks sent to a route ===');
     w.console.warn = ()=>{};
     w.Element.prototype.scrollIntoView = function(){};
     try{
-      w.eval("switchView('workcenter');");
+      w.eval("switchView('workcenter'); applyWorkCenterMode('quotes');");   // opens on the Calendar now (Oct 20)
       const types = Array.from(d.querySelectorAll('#wcTypeToggle [data-wctype]')).map(b => b.textContent);
       check('  Task sits alongside Quote and Work Order',
             types.join('|') === 'Quote|Work Order|Task', types.join('|'));
@@ -1441,8 +1442,8 @@ setTimeout(()=>{
   const src = fs.readFileSync('customer-intake.html', 'utf8');
   check('emptying the form leaves the kind alone',
         /if\(backToQuote === true\) document\.getElementById\('wcType'\)\.value = 'Quote';/.test(src));
-  check('and only arriving at the WorkCenter starts on Quote',
-        /applyWorkCenterMode\('quotes'\);\s*\n\s*resetWorkOrderForm\(true\);/.test(src));
+  check('and only arriving at the WorkCenter starts on Quote (on the Calendar, Oct 20)',
+        /applyWorkCenterMode\('calendar'\);\s*\n\s*resetWorkOrderForm\(true\);/.test(src));
 
   const {dom} = load('customer-intake.html', {seed: {customers: [], technicians: []}});
   const w = dom.window, d = w.document;
@@ -1471,9 +1472,9 @@ setTimeout(()=>{
         /abbrSlot\.appendChild\(abbrTag\);/.test(src));
   check('four characters at most, and it says so',
         /Four characters at most/.test(src) && /four characters at most/.test(src));
+  // Oct 20: the abbreviation and its colour are asked together, cut to four there
   check('anything longer is cut to four',
-        (src.match(/\.trim\(\)\.slice\(0, 4\)/g) || []).length === 2,
-        String((src.match(/\.trim\(\)\.slice\(0, 4\)/g) || []).length));
+        /abbr: v\.slice\(0, 4\)/.test(src));
 
   const {dom} = load('customer-intake.html', {seed: {
     customers: [],
@@ -1680,7 +1681,7 @@ setTimeout(()=>{
   w.console.warn = ()=>{};
   w.Element.prototype.scrollIntoView = function(){};
   try{
-    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); switchView('workcenter');");
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); switchView('workcenter'); applyWorkCenterMode('quotes');");
     const kind = t => d.querySelector('#wcTypeToggle [data-wctype="' + t + '"]').click();
     const tab = v => d.querySelector('#wcViewControl [data-wcview="' + v + '"]').click();
     const shown = id => d.getElementById(id).style.display !== 'none';
@@ -1738,7 +1739,7 @@ setTimeout(()=>{
     kind('Work Order');
     check('and the work order kept its own', notes() === 'Pump seal');
     kind('Quote');
-    w.eval("switchView('customers'); switchView('workcenter');");
+    w.eval("switchView('customers'); switchView('workcenter'); applyWorkCenterMode('quotes');");   // opens on the Calendar now (Oct 20)
     check('another page and back within the minute keeps it', notes() === 'Heater quote', notes());
     kind('Task');
     const realNow = w.Date.now; w.Date.now = () => realNow() + 61000;

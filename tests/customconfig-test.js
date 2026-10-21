@@ -631,14 +631,15 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   await wait(1500);
   const w = dom.window, d = w.document;
   try{
-    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); switchView('workcenter');");
+    w.eval("siteUser={id:'u',companyId:'co',role:'owner'}; hideSiteLogin(); switchView('workcenter'); applyWorkCenterMode('quotes');");   // opens on the Calendar now (Oct 20)
     const type = t => d.querySelector('#wcTypeToggle [data-wctype="' + t + '"]').click();
     const tab = v => d.querySelector('#wcViewControl [data-wcview="' + v + '"]').click();
     const shown = id => d.getElementById(id).style.display !== 'none';
 
     // Tabs and History, each kind its own
     // Quote History holds answered quotes: mark this test's quotes approved first
-    w.eval("workOrders.forEach(x => { if((x.type || 'Quote') === 'Quote'){ x.closed = true; x.approved = true; } }); saveWorkOrders();");
+    // (Oct 20: dated a month back now, so it was marked expired when the page opened; answered, it isn't)
+    w.eval("workOrders.forEach(x => { if((x.type || 'Quote') === 'Quote'){ x.closed = true; x.approved = true; delete x.expired; } }); saveWorkOrders();");
     type('Quote'); tab('history');
     check('Quote History lists answered quotes only, tagged', shown('wcQuotesHistoryCard') && /APPROVED/.test(d.getElementById('wcHistoryList').textContent)
           && !/Work Order/.test(d.getElementById('wcHistoryList').textContent) && !shown('wcSubmittedCard'));
