@@ -154,7 +154,7 @@ const HELPERS = `
     // Line item suggestions
     const desc = document.querySelector('#awcQuoteLines input');
     desc.focus(); desc.value = 'pump'; desc.dispatchEvent(new Event('input', {bubbles: true}));
-    const sug = desc.parentElement.querySelector('.awc-suggest');
+    const sug = desc.closest('.awc-line').querySelector('.awc-suggest');   // across the whole line now (Oct 21)
     out.push(['typing a description lists matching products', sug && sug.style.display === 'block' && sug.children.length === 2, sug && sug.children.length]);
     sug.children[0].dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true}));
     out.push(['picking one fills its name and price', awcQuoteLines[0].description === 'Pump inspection' || awcQuoteLines[0].description === 'Pump install labour']);
@@ -166,6 +166,7 @@ const HELPERS = `
     awcQuoteCustomers = ['c1'];
     document.getElementById('awcQuoteName').value = 'Pump refresh';
     const before = Number(lsGet('quoteCounter')) || 0;
+    document.getElementById('awcQuoteDate').value = (()=>{ const x = new Date(); return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10); })();   // a date has to be set (Oct 21)
     await awcSendQuote();
     const reg = calls.find(c => /quote_responses/.test(c.p));
     const mail = calls.find(c => /send-report/.test(c.p));

@@ -837,7 +837,8 @@ console.log('\n=== Tasks sent to a route ===');
             d.getElementById('wcTaskSection').style.display === 'block');
       check('  and hides the quote history',
             d.getElementById('wcQuotesHistoryCard').style.display === 'none');
-      check('  the day is prefilled', !!d.getElementById('taskDate').value);
+      // Oct 21: the date starts empty and has to be set
+      check('  the day starts empty, to be set by hand', d.getElementById('taskDate').value === '');
       // Technicians are chosen in a window opened from one button
       d.getElementById('taskTechnician').click();
       check('  technicians are listed',
@@ -856,6 +857,7 @@ console.log('\n=== Tasks sent to a route ===');
       Array.from(d.querySelectorAll('#techPickList input[type=checkbox]'))
         .find(i => i.value === 't1').click();
       d.getElementById('btnSaveTechPick').click();
+      if(!d.getElementById('taskDate').value) d.getElementById('taskDate').value = (()=>{ const x = new Date(); return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10); })();   // set by hand now (Oct 21)
       d.getElementById('btnSaveTask').click();
 
       saved = JSON.parse(w.eval("JSON.stringify(lsGet('tasks') || [])"));
@@ -1582,6 +1584,7 @@ setTimeout(()=>{
 
     // A task for two: a copy each, and a repeating one repeats for each
     d.getElementById('taskTitle').value = 'Check pump';
+    if(!d.getElementById('taskDate').value) d.getElementById('taskDate').value = (()=>{ const x = new Date(); return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10); })();   // set by hand now (Oct 21)
     d.getElementById('btnSaveTask').click();
     const tasks = () => JSON.parse(w.eval("JSON.stringify(tasks)"));
     const pump = tasks().filter(t => t.title === 'Check pump');
@@ -1593,6 +1596,7 @@ setTimeout(()=>{
     d.getElementById('taskRepeat').value = '2';
     d.getElementById('taskRepeat').dispatchEvent(new w.Event('change'));
     taskBtn.click(); tick('t1'); tick('t3'); d.getElementById('btnSaveTechPick').click();
+    if(!d.getElementById('taskDate').value) d.getElementById('taskDate').value = (()=>{ const x = new Date(); return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10); })();   // set by hand now (Oct 21)
     d.getElementById('btnSaveTask').click();
     const clean = tasks().filter(t => t.title === 'Clean filter');
     const series = [...new Set(clean.map(t => t.seriesId))];
@@ -1606,8 +1610,9 @@ setTimeout(()=>{
     toasts.length = 0;
     d.getElementById('taskTitle').value = 'Nobody';
     d.getElementById('taskRepeat').value = 'none';
+    if(!d.getElementById('taskDate').value) d.getElementById('taskDate').value = (()=>{ const x = new Date(); return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10); })();   // set by hand now (Oct 21)
     d.getElementById('btnSaveTask').click();
-    check('a task with nobody chosen is not saved', !tasks().some(t => t.title === 'Nobody') && toastsNow().indexOf('Choose a technician') !== -1, toastsNow().join(' | '));
+    check('a task with nobody chosen is not saved', !tasks().some(t => t.title === 'Nobody') && toastsNow().some(t => /Choose a technician/.test(t)), toastsNow().join(' | '));
 
     // Editing: its technician ticked; ticking another gives them a copy of that date
     w.eval("document.getElementById('taskTitle').value=''; clearTaskForm();");
@@ -1617,6 +1622,7 @@ setTimeout(()=>{
     taskBtn.click();
     check('editing shows its technician ticked', boxes().find(b => b.value === 't1').checked);
     tick('t3'); d.getElementById('btnSaveTechPick').click();
+    if(!d.getElementById('taskDate').value) d.getElementById('taskDate').value = (()=>{ const x = new Date(); return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10); })();   // set by hand now (Oct 21)
     d.getElementById('btnSaveTask').click();
     check('ticking another as well gives them their own copy',
           tasks().filter(t => t.title === 'Check pump').map(t => t.technicianId).sort().join() === 't1,t2,t3');
@@ -1631,6 +1637,7 @@ setTimeout(()=>{
     tick('t2'); tick('t3'); d.getElementById('btnSaveTechPick').click();
     w.eval("wcSelectedCustomerIds.push('c1'); renderWcCustomerChips();"
       + " currentLineItems = [{description: 'Replace pump seal', qty: 1, price: 40}]; renderLineItems();");
+    if(!d.getElementById('wcDate').value) d.getElementById('wcDate').value = (()=>{ const x = new Date(); return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10); })();   // set by hand now (Oct 21)
     d.getElementById('btnSendWorkOrder').click();
     const jobs = JSON.parse(w.localStorage.getItem('weir:scheduledWorkOrders') || '[]');
     check('a work order for two technicians puts a separate job on each route',
@@ -1640,26 +1647,27 @@ setTimeout(()=>{
     toasts.length = 0;
     w.eval("wcSelectedCustomerIds.push('c1'); renderWcCustomerChips();"
       + " currentLineItems = [{description: 'Again', qty: 1, price: 1}]; renderLineItems();");
+    if(!d.getElementById('wcDate').value) d.getElementById('wcDate').value = (()=>{ const x = new Date(); return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10); })();   // set by hand now (Oct 21)
     d.getElementById('btnSendWorkOrder').click();
-    check('a work order with nobody chosen is not finalised', toastsNow().indexOf('Assign a technician') !== -1, toastsNow().join(' | '));
+    check('a work order with nobody chosen is not finalised', toastsNow().some(t => /Choose a technician/.test(t)), toastsNow().join(' | '));
 
-    // Dates start on today, whichever way in
+    // Dates start empty, whichever way in (they were today until Oct 21)
     const wc = () => d.getElementById('wcDate').value, tk = () => d.getElementById('taskDate').value;
     d.getElementById('wcDate').value = '2027-01-05';
     type('Quote');
-    check('changing to Quote puts the date back to today', wc() === today, wc());
+    check('changing to Quote empties the date again (Oct 21)', wc() === '', wc());
     d.getElementById('wcDate').value = '2027-01-05';
     type('Task');
     d.getElementById('taskDate').value = '2027-02-02';
     type('Work Order'); type('Task');
-    check('coming back to Task puts its date back to today', tk() === today, tk());
+    check('coming back to Task empties its date again', tk() === '', tk());
     Array.from(d.querySelectorAll('#workCenterTypeControl .history-type-btn')).find(b => b.dataset.type === 'broadcast').click();
     d.getElementById('wcDate').value = '2027-01-05';
     Array.from(d.querySelectorAll('#workCenterTypeControl .history-type-btn')).find(b => b.dataset.type === 'quotes').click();
-    check('and after another WorkCenter tab', wc() === today, wc());
+    check('and after another WorkCenter tab', wc() === '', wc());
     d.getElementById('wcDate').value = '2027-01-05';
     w.eval("switchView('customers'); webLeftAt = {}; switchView('workcenter');");  // past the page's 20 seconds (Sept 29)
-    check('and after another page', wc() === today, wc());
+    check('and after another page', wc() === '', wc());
   }catch(e){ check('several technicians', false, e.message); }
 }
 

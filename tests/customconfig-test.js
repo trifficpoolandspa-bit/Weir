@@ -675,6 +675,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     // Quote email: the report's style, through the report function
     w.eval("window.__sent=[]; sbFetch = async (path, o)=>{ window.__sent.push({path, body: JSON.parse(o.body)}); return {ok:true,status:200,body:{}}; };");
     w.eval("wcSelectedCustomerIds=['a']; renderWcCustomerChips(); currentLineItems=[{description:'Acid wash',qty:1,price:'250'}]; renderLineItems();");
+    if(!d.getElementById('wcDate').value) d.getElementById('wcDate').value = (()=>{ const x = new Date(); return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10); })();   // set by hand now (Oct 21)
     d.getElementById('btnSendWorkOrder').click(); await wait(300);
     const calls = JSON.parse(w.eval("JSON.stringify(window.__sent)"));
     // First the quote's code is saved (for the Approve / Decline buttons), then the email goes
@@ -843,6 +844,8 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     check('Task \u2192 Current lists open tasks only', /Check seal/.test(cur()) && !/Drop kit/.test(cur()));
     tab('history');
     check('Task History shows tasks finished in the field', /Drop kit/.test(d.getElementById('wcSubmittedList').textContent) && /Left at gate/.test(d.getElementById('wcSubmittedList').textContent));
+    // (Oct 21: the seeded quotes are a month old now, so they'd be expired; made today here)
+    w.eval("workOrders.forEach(x => { if((x.type || 'Quote') === 'Quote' && x.expired){ delete x.expired; delete x.expiredAt; x.closed = false; x.createdAt = new Date().toISOString(); } }); saveWorkOrders();");
     kind('Quote'); tab('current');
     check('each open quote has Mark approved and Mark declined', Array.from(d.querySelectorAll('#wcCurrentList button')).some(b => b.textContent === 'Mark approved')
           && Array.from(d.querySelectorAll('#wcCurrentList button')).some(b => b.textContent === 'Mark declined'));
@@ -873,6 +876,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     check('no "Editing\u2026" heading is written any more', src.indexOf("heading.textContent = 'Editing a saved '") === -1 && src.indexOf("'Editing \"' + t.title") === -1);
     d.getElementById('taskTitle').value = 'Photo test'; d.getElementById('taskPhotoRequired').checked = true;
     w.eval("setPickedTechIds(document.getElementById('taskTechnician'), ['t1']);");
+    if(!d.getElementById('taskDate').value) d.getElementById('taskDate').value = (()=>{ const x = new Date(); return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10); })();   // set by hand now (Oct 21)
     d.getElementById('btnSaveTask').click(); await wait(80);
     check('Photo required is saved with a task', w.eval("tasks.some(t => t.title === 'Photo test' && t.photoRequired === true)"));
     // Saved tasks: one per name

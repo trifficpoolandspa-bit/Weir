@@ -637,6 +637,7 @@ function boot(){
     d.querySelector('#wcTypeToggle [data-wctype="Quote"]').click();
     w.eval("wcSelectedCustomerIds=['a']; renderWcCustomerChips(); currentLineItems=[{description:'Acid wash',qty:1,price:'250'},{description:'Filter clean',qty:2,price:'85'}]; renderLineItems();");
     d.getElementById('wcNotes').value = 'Price holds for 30 days.';
+    if(!d.getElementById('wcDate').value) d.getElementById('wcDate').value = (()=>{ const x = new Date(); return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10); })();   // set by hand now (Oct 21)
     d.getElementById('btnSendWorkOrder').click();
     await new Promise(r => setTimeout(r, 400));
     const calls = JSON.parse(w.eval("JSON.stringify(window.__calls)"));
@@ -652,6 +653,7 @@ function boot(){
     check('  no company name written into the page', !/Triffic Pool &(amp;)? Spa/.test(fs.readFileSync('customer-intake.html', 'utf8')));
     w.eval("window.__calls=[]; window.__plain=[]; sbFetch = async ()=>({ok:false,status:0,body:null,offline:true}); sendCustomerEmail = async (to, subj, msg)=>{ window.__plain.push(msg); return true; };");
     w.eval("wcSelectedCustomerIds=['a']; renderWcCustomerChips(); currentLineItems=[{description:'Acid wash',qty:1,price:'250'}]; renderLineItems();");
+    if(!d.getElementById('wcDate').value) d.getElementById('wcDate').value = (()=>{ const x = new Date(); return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10); })();   // set by hand now (Oct 21)
     d.getElementById('btnSendWorkOrder').click();
     await new Promise(r => setTimeout(r, 400));
     // Oct 3: no second route any more (EmailJS sent from one shared mailbox) —
