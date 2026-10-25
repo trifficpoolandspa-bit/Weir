@@ -33,6 +33,15 @@
   .dl-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;margin-top:20px;padding:13px 22px;border-radius:12px;border:0;
           background:var(--teal);color:#fff;font:inherit;font-size:15px;font-weight:700;cursor:pointer !important;}
   .dl-btn svg{width:18px;height:18px;}
+  /* Send a message (Oct 22): the one place here with something to type */
+  .msg-box{width:100%;min-height:120px;margin-top:18px;padding:12px 13px;border-radius:12px;border:1.5px solid #CFE0DD;
+           font:inherit;font-size:15px;line-height:1.45;color:var(--ink);resize:vertical;outline:none;
+           caret-color:auto !important;user-select:text !important;-webkit-user-select:text !important;cursor:text !important;}
+  .msg-box:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(19,78,74,.12);}
+  .msg-send{width:100%;margin-top:12px;padding:13px;border:0;border-radius:12px;background:var(--teal);color:#fff;
+            font:inherit;font-size:15px;font-weight:700;cursor:pointer !important;}
+  .msg-send:disabled{opacity:.6;}
+  .msg-need{display:none;margin-top:8px;font-size:13px;font-weight:700;color:var(--rust);text-align:left;}
   .wait .badge path{display:none;}
   .wait .badge{animation:pulse 1.2s ease-in-out infinite;}
   @keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
@@ -56,6 +65,8 @@
   const token = q.get('t') || '';
   // Download quote (Oct 15): the quote as a PDF, not an answer
   if(q.get('a') === 'download'){ downloadQuote(q.get('s') || '', token); return; }
+  // Send a message (Oct 22): a box to write in, nothing answered
+  if(q.get('a') === 'message'){ messageQuote(q.get('s') || '', token); return; }
   const action = q.get('a') === 'deny' ? 'deny' : 'approve';
   const server = q.get('s') || '';
   const card = document.getElementById('card');
@@ -119,6 +130,90 @@
     });
   send(2);
 })();
+
+// ---------- Send a message (Oct 22) ----------
+// The email's Send a message button lands here: a box for the customer's
+// question, sent to the company with the quote. Approving or declining is
+// still done with the email's own buttons.
+function messageQuote(server, token){
+  const card = document.getElementById('card');
+  const $ = id => document.getElementById(id);
+  document.title = 'Send a message';
+  let fn = '';
+  try{
+    const u = new URL(server);
+    if(u.protocol === 'https:' && /\.supabase\.co$/.test(u.hostname)) fn = u.origin + '/functions/v1/quote-response';
+  }catch(e){}
+  card.classList.remove('wait');
+  card.querySelector('.badge').style.display = 'none';
+  $('title').textContent = 'Send a message';
+  $('text').textContent = 'Ask a question or let us know anything about this quote.';
+  if(!token || !fn){
+    $('text').textContent = 'We couldn\u2019t match this link to a quote. Please reply to the email or give us a call.';
+    return;
+  }
+  const box = document.createElement('textarea');
+  box.className = 'msg-box';
+  box.placeholder = 'Type your message';
+  box.maxLength = 2000;
+  const need = document.createElement('div');
+  need.className = 'msg-need';
+  need.textContent = 'Write a message first.';
+  const send = document.createElement('button');
+  send.type = 'button';
+  send.className = 'msg-send';
+  send.textContent = 'Send';
+  const foot = $('foot');
+  card.insertBefore(box, foot);
+  card.insertBefore(need, foot);
+  card.insertBefore(send, foot);
+  const post = body => fetch(fn, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)}).then(r => r.json());
+  // Who it goes to, and which quote
+  post({t: token, a: 'message'}).then(res=>{
+    if(res.company) foot.textContent = res.company;
+    if(res.state === 'missing'){
+      $('text').textContent = 'We couldn\u2019t match this link to a quote. Please reply to the email or give us a call.';
+      box.remove(); send.remove();
+      return;
+    }
+    $('text').textContent = 'About ' + (res.number ? 'quote #' + res.number : 'your quote')
+      + (res.company ? ' from ' + res.company : '') + '.';
+  }).catch(()=>{});
+  box.addEventListener('input', ()=>{ need.style.display = 'none'; box.style.borderColor = ''; });
+  send.addEventListener('click', ()=>{
+    const m = box.value.trim();
+    if(!m){ need.style.display = 'block'; box.style.borderColor = 'var(--rust)'; box.focus(); return; }
+    send.disabled = true;
+    send.textContent = 'Sending\u2026';
+    post({t: token, a: 'message', m: m}).then(res=>{
+      if(res.state === 'sent'){
+        box.remove(); need.remove(); send.remove();
+        const badge = card.querySelector('.badge');
+        badge.style.display = '';
+        $('title').textContent = 'Message sent';
+        $('text').textContent = (res.company || 'We') + (res.company ? ' has' : ' have') + ' your message and will get back to you.';
+        const again = document.createElement('button');
+        again.type = 'button';
+        again.className = 'close-link';
+        again.textContent = 'Send another message';
+        again.addEventListener('click', ()=> location.reload());
+        card.insertBefore(again, foot);
+      } else {
+        send.disabled = false;
+        send.textContent = 'Send';
+        need.textContent = res.state === 'full'
+          ? 'This quote has too many messages. Please reply to the email instead.'
+          : 'We couldn\u2019t send that just now. Please try again in a moment.';
+        need.style.display = 'block';
+      }
+    }).catch(()=>{
+      send.disabled = false;
+      send.textContent = 'Send';
+      need.textContent = 'We couldn\u2019t reach our system. Check your connection and try again.';
+      need.style.display = 'block';
+    });
+  });
+}
 
 // ---------- Download quote (Oct 15) ----------
 // The email's Download button lands here. The quote's breakdown, kept on the

@@ -279,6 +279,21 @@ input::placeholder{color:#A9BCB9;}
 /* Small headings (Oct 20): a light teal tag with black text, easier to read */
 /* Something a job needs before it can go out (Oct 21): a red ring, and a line under it */
 .need-it{border:2px solid var(--rust) !important;box-shadow:0 0 0 3px rgba(184,73,46,0.15) !important;}
+/* Where a job goes in the route (Oct 23): tap a gap, then Assign */
+.rp-box{border:1px solid var(--line);border-radius:10px;max-height:340px;overflow-y:auto;background:#fff;}
+.rp-stop{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line);font-size:13.5px;}
+.rp-stop:last-child{border-bottom:0;}
+.rp-num{width:22px;height:22px;border-radius:50%;background:var(--teal-pale);color:var(--teal-deep);font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.rp-addr{font-size:11.5px;color:var(--muted);}
+.rp-own{font-size:10.5px;font-weight:700;color:var(--teal-deep);background:var(--teal-pale);padding:2px 7px;border-radius:6px;margin-left:auto;white-space:nowrap;}
+.rp-gap{height:16px;position:relative;cursor:pointer;}
+.rp-gap::after{content:"+ Put it here";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:11px;font-weight:700;color:var(--teal-deep);background:#fff;border:1.5px dashed #9CC5BF;border-radius:999px;padding:0 10px;opacity:.35;transition:opacity .12s;white-space:nowrap;}
+.rp-gap:hover::after{opacity:1;}
+.rp-job{display:flex;align-items:center;gap:8px;padding:9px 12px;margin:4px 6px;font-size:13.5px;font-weight:600;border-radius:10px;border:2px solid #3E5560;background:#E9EEF0;color:#3E5560;}
+.rp-job.pending{border-style:dashed;}
+.rp-job span:last-child{margin-left:auto;font-size:11.5px;font-weight:600;color:var(--muted);}
+.rp-note{font-size:12px;color:var(--muted);margin-top:8px;}
+.rp-done{font-size:12.5px;font-weight:600;color:var(--teal-deep);margin-top:8px;}
 .need-msg{font-size:12.5px;color:var(--rust);font-weight:600;margin:6px 0 0;}
 .hd-tag{font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;}
 .profile-field-col .pf-label{font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;align-self:flex-start;margin-bottom:3px;}
@@ -1595,6 +1610,7 @@ input::placeholder{color:#A9BCB9;}
         <label>Saved technician</label>
         <button type="button" class="btn btn-ghost tech-pick-btn" id="wcTechnician" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;"></button>
       </div>
+      <div class="field" id="wcRoutePlace" style="display:none;"></div>
       <div class="field" id="wcRepeatField">
         <label>Repeat</label>
         <!-- The same choices as a task's Repeat (Oct 2) -->
@@ -1676,6 +1692,7 @@ input::placeholder{color:#A9BCB9;}
         <label>Saved technician</label>
         <button type="button" class="btn btn-ghost tech-pick-btn" id="taskTechnician" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;"></button>
       </div>
+      <div class="field" id="taskRoutePlace" style="display:none;"></div>
 
       <div class="field">
         <label>Repeat</label>
@@ -1797,6 +1814,8 @@ input::placeholder{color:#A9BCB9;}
         <div style="display:flex;gap:8px;margin-left:auto;align-items:center;">
           <select id="filterGroupTech" aria-label="Technician" title="Show one technician's groups" style="width:auto;min-width:160px;"></select>
           <button class="btn btn-ghost" id="btnNewFilterGroup" style="width:auto;">+ New group</button>
+          <!-- Customers on their own, not in a group (Oct 25) -->
+          <button class="btn btn-primary" id="btnSingleFilterClean" style="width:auto;">+ Single filter clean</button>
           <button class="btn btn-primary" id="btnEmailFilterGroups" style="width:auto;">Email</button>
           <!-- Who needs parts replaced, from their filter cleans (Oct 3); right of Email (Oct 18) -->
           <button class="btn btn-primary" id="btnFilterReplacements" style="width:auto;">Replacements</button>
@@ -2063,14 +2082,6 @@ input::placeholder{color:#A9BCB9;}
     <div class="card acct-panel" id="acctEmailPanel" style="display:none;">
       <h2>How your reports look</h2>
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">The service report your customers receive. Your company name, phone and license come from the other tabs.</p>
-
-      <div class="field">
-        <label>Header colour</label>
-        <div style="display:flex;gap:10px;align-items:center;">
-          <input type="color" id="acctEmailColour" style="width:56px;height:38px;padding:3px;">
-          <span style="font-size:12.5px;color:var(--muted);">The bar across the top of the email</span>
-        </div>
-      </div>
 
       <div class="field">
         <label>Opening line</label>
@@ -6492,6 +6503,125 @@ function fcPickCustomersForDay(iso, after){
   });
 }
 
+// ---------- + Single filter clean (Oct 25) ----------
+// Customers on their own, not in a group, straight from the Filter cleans tab:
+// who, the day, the technician (each customer's own to start), Photo required
+// and Email the customer. Add to route puts them on that day's "on their own"
+// list, the same one the Calendar's + Filter clean customer uses, and sends
+// them to the app.
+function openSingleFilterClean(){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.id = 'sfcBox';
+  box.style.cssText = 'max-width:440px;width:100%;max-height:88vh;overflow-y:auto;text-align:left;';
+  box.innerHTML = '<h3 style="font-size:17px;margin:0 0 4px;">Single filter clean</h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">For customers on their own, not in a group.</p>'
+    + '<div class="field" style="position:relative;"><label>Customers</label><div data-chips style="display:flex;flex-wrap:wrap;gap:6px;"></div>'
+    + '<input type="text" id="sfcSearch" placeholder="Start typing a name\u2026" autocomplete="off">'
+    + '<div data-sug style="display:none;position:absolute;left:0;right:0;z-index:40;background:#fff;border:1px solid var(--line);border-radius:10px;margin-top:4px;box-shadow:0 4px 14px rgba(15,46,46,0.14);max-height:240px;overflow-y:auto;"></div></div>'
+    + '<div style="display:flex;gap:10px;">'
+    + '<div class="field" style="flex:1;min-width:0;"><label>Date</label><input type="date" id="sfcDate"></div>'
+    + '<div class="field" style="flex:1;min-width:0;"><label>Technician</label><select id="sfcTech"></select></div></div>'
+    + '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:500;text-transform:none;letter-spacing:0;color:var(--ink);margin:2px 0 8px;cursor:pointer;"><input type="checkbox" id="sfcPhoto" checked style="width:auto;margin:0;"> Photo required</label>'
+    + '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:500;text-transform:none;letter-spacing:0;color:var(--ink);margin:0 0 16px;cursor:pointer;"><input type="checkbox" id="sfcEmail" checked style="width:auto;margin:0;"> Email the customer</label>'
+    + '<div class="btn-row" style="flex-wrap:nowrap;"><button type="button" class="btn btn-primary" data-go style="flex:1 1 0;">Add to route</button>'
+    + '<button type="button" class="btn btn-ghost" data-cancel style="flex:1 1 0;">Cancel</button></div>';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const close = ()=> overlay.remove();
+  overlay.addEventListener('click', e=>{ if(e.target === overlay) close(); });
+  box.querySelector('[data-cancel]').addEventListener('click', close);
+  const picked = [];
+  const chips = box.querySelector('[data-chips]');
+  const search = box.querySelector('#sfcSearch');
+  const sug = box.querySelector('[data-sug]');
+  const techSel = box.querySelector('#sfcTech');
+  const addOpt = (v, t)=>{ const o = document.createElement('option'); o.value = v; o.textContent = t; techSel.appendChild(o); };
+  addOpt('', 'Each customer\u2019s own');
+  technicians.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity: 'base'}))
+    .forEach(t => { if(t && t.id) addOpt(String(t.id), t.name || 'Technician'); });
+  function drawChips(){
+    chips.innerHTML = '';
+    chips.style.marginBottom = picked.length ? '8px' : '0';
+    picked.forEach(id=>{
+      const c = customers.find(x => x && x.id === id);
+      if(!c) return;
+      const chip = document.createElement('span');
+      chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:var(--teal-pale);color:var(--ink);font-size:12.5px;font-weight:600;padding:5px 9px;border-radius:8px;';
+      chip.textContent = displayName(c.name);
+      const x = document.createElement('button');
+      x.type = 'button'; x.textContent = '\u00d7'; x.setAttribute('aria-label', 'Remove');
+      x.style.cssText = 'border:0;background:none;padding:0 2px;font-size:15px;line-height:1;cursor:pointer;color:var(--muted);';
+      x.addEventListener('click', ()=>{ picked.splice(picked.indexOf(id), 1); drawChips(); });
+      chip.appendChild(x);
+      chips.appendChild(chip);
+    });
+  }
+  function drawSug(){
+    const term = search.value.trim().toLowerCase();
+    sug.innerHTML = '';
+    if(!term){ sug.style.display = 'none'; return; }
+    const list = customers.filter(c => c && !c.deleted && c.active !== false && picked.indexOf(c.id) === -1
+      && [c.name, c.address, c.phone, c.email].some(v => String(v || '').toLowerCase().indexOf(term) !== -1)).slice(0, 12);
+    if(!list.length){ sug.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:9px 12px;">Nobody matches.</div>'; sug.style.display = 'block'; return; }
+    list.forEach(c=>{
+      const row = document.createElement('div');
+      row.className = 'press-row';
+      row.style.cssText = 'padding:8px 12px;cursor:pointer;border-top:1px solid var(--line);font-size:13px;';
+      row.innerHTML = '<div style="font-weight:600;"></div><div style="font-size:11.5px;color:var(--muted);"></div>';
+      row.children[0].textContent = displayName(c.name);
+      row.children[1].textContent = (c.address || 'No address on file') + ' \u00b7 ' + (technicianNameById(c.technicianId) || 'No technician');
+      row.addEventListener('mousedown', e=>{ e.preventDefault(); picked.push(c.id); search.value = ''; drawSug(); drawChips(); });
+      sug.appendChild(row);
+    });
+    sug.style.display = 'block';
+  }
+  search.addEventListener('input', drawSug);
+  search.addEventListener('focus', drawSug);
+  search.addEventListener('blur', ()=> setTimeout(()=>{ sug.style.display = 'none'; }, 150));
+  setTimeout(()=> search.focus(), 0);
+  box.querySelector('[data-go]').addEventListener('click', ()=>{
+    const dateEl = box.querySelector('#sfcDate');
+    const iso = dateEl.value;
+    const tech = techSel.value;
+    const noTech = !tech ? picked.filter(id => !((customers.find(x => x && x.id === id) || {}).technicianId)) : [];
+    if(!jobHasAll(box, [
+      [!picked.length, search, 'Add a customer.'],
+      [!iso, dateEl, 'Set a date first.'],
+      [!!noTech.length, techSel, (noTech.length === 1 ? displayName((customers.find(x => x.id === noTech[0]) || {}).name || '') + ' has' : 'Some have') + ' no technician of their own. Choose one.']
+    ])) return;
+    const g = fgSoloFor(iso);
+    const wasSent = !!g.finalized;
+    g.custTech = g.custTech || {}; g.custPhoto = g.custPhoto || {}; g.custEmail = g.custEmail || {};
+    const photo = box.querySelector('#sfcPhoto').checked, email = box.querySelector('#sfcEmail').checked;
+    picked.forEach(id=>{
+      if((g.customerIds || []).indexOf(id) === -1) g.customerIds.push(id);
+      const own = String((customers.find(x => x && x.id === id) || {}).technicianId || '');
+      if(tech && tech !== own) g.custTech[id] = tech; else delete g.custTech[id];
+      g.custPhoto[id] = photo;
+      g.custEmail[id] = email;
+      if(g.custHold) delete g.custHold[id];
+    });
+    if(!wasSent){
+      // Anyone already on that day's list but not sent yet stays as they were
+      g.custHold = g.custHold || {};
+      (g.customerIds || []).forEach(id=>{ if(picked.indexOf(id) === -1) g.custHold[id] = true; });
+      scheduleFilterGroup(g);
+    }
+    saveFilterGroups();   // puts each one on its technician's route, with its own photo and email
+    close();
+    try{ renderFilterGroups(); }catch(e){}
+    try{ wcalRefresh(); }catch(e){}
+    const nice = new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
+    showToast(picked.length === 1
+      ? displayName((customers.find(x => x.id === picked[0]) || {}).name || '') + '\u2019s filter clean added to the route for ' + nice
+      : picked.length + ' filter cleans added to the route for ' + nice);
+  });
+}
+document.getElementById('btnSingleFilterClean').addEventListener('click', openSingleFilterClean);
+
 let openFilterGroupIds = new Set();
 
 
@@ -7774,6 +7904,7 @@ function openTaskForEditing(t){
   document.getElementById('taskRepeat').value = 'none';
   applyTaskRepeat();
   document.getElementById('btnSaveTask').textContent = 'Save changes';
+  routePlaceRefresh(); if(rpTask) rpTask.set(t.placeAfter);   // where it was put in the route (Oct 23)
   try{ document.getElementById('wcTaskSection').scrollIntoView({behavior: 'smooth', block: 'start'}); }catch(e){}
 }
 
@@ -8169,6 +8300,8 @@ function fgChipState(g, cid){
 // Photo required is on to start for every customer (Tyrus, Oct 13); the
 // group's own tick on the Groups tab sets all of its customers at once
 function fgCustPhoto(g, cid){ return (g && g.custPhoto && typeof g.custPhoto[cid] === 'boolean') ? g.custPhoto[cid] : true; }
+// Email the customer, for one customer on their own (Oct 25); otherwise the group's
+function fgCustEmail(g, cid){ return (g && g.custEmail && typeof g.custEmail[cid] === 'boolean') ? g.custEmail[cid] : (!g || g.emailCustomer !== false); }
 function fgCustTech(g, cid){
   const own = g && g.custTech && g.custTech[cid];
   if(own) return own;
@@ -8278,14 +8411,14 @@ function fgSyncScheduledInner(){
           id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
           groupId: g.id, groupName: g.name, customerId: cid, technicianId: fgCustTech(g, cid),
           date: g.date, order: i, photoRequired: fgCustPhoto(g, cid), lineItems: fgCustLineItems(g, cid),
-          emailCustomer: g.emailCustomer !== false, status: 'scheduled'
+          emailCustomer: fgCustEmail(g, cid), status: 'scheduled'
         });
         changed = true;
         return;
       }
       mine.forEach(sc=>{
         if(sc.status === 'done') return;
-        const want = {groupName: g.name, order: i, photoRequired: fgCustPhoto(g, cid), emailCustomer: g.emailCustomer !== false};
+        const want = {groupName: g.name, order: i, photoRequired: fgCustPhoto(g, cid), emailCustomer: fgCustEmail(g, cid)};
         if(g.date) want.date = g.date;
         const tech = fgCustTech(g, cid);
         if(tech) want.technicianId = tech;
@@ -12704,7 +12837,6 @@ function saveEmailStyle(s){ lsSet('reportEmailStyle', s); }
 function renderAccountEmail(){
   const s = loadEmailStyle();
   const set = (id, val)=>{ const el = document.getElementById(id); if(el) el.value = val; };
-  set('acctEmailColour', s.colour);
   set('acctEmailGreeting', s.greeting);
   set('acctEmailSignoff', s.signoff);
   const c1 = document.getElementById('acctEmailContact');
@@ -12713,7 +12845,8 @@ function renderAccountEmail(){
   if(c2) c2.checked = s.showReadings !== false;
 }
 
-[['acctEmailColour','colour'], ['acctEmailGreeting','greeting'], ['acctEmailSignoff','signoff']]
+// The header colour is no longer chosen here (Oct 23)
+[['acctEmailGreeting','greeting'], ['acctEmailSignoff','signoff']]
   .forEach(([id, key])=>{
     const el = document.getElementById(id);
     if(!el) return;
@@ -15659,6 +15792,7 @@ const taskPicked = new Set();
 function renderTaskChips(){
   const box = document.getElementById('taskCustomerChips');
   if(!box) return;
+  if(typeof routePlaceRefresh === 'function') setTimeout(routePlaceRefresh, 0);
   box.innerHTML = '';
 
   Array.from(taskPicked).forEach(id=>{
@@ -15788,6 +15922,7 @@ function labelTechPickButton(btn){
   arrow.textContent = '\u203a';
   arrow.style.cssText = 'color:var(--muted);flex-shrink:0;';
   btn.appendChild(span); btn.appendChild(arrow);
+  if(typeof routePlaceRefresh === 'function') setTimeout(routePlaceRefresh, 0);   // the route picker follows (Oct 23)
 }
 // Called when the technician list may have changed: drops anyone no longer on
 // it and relabels. withUnassigned offers "Unassigned" as a choice.
@@ -15941,6 +16076,7 @@ function clearTaskForm(){
   taskPicked.clear();
   renderTaskChips();
   renderTaskSuggest('');
+  if(rpTask) rpTask.reset();
   applyTaskRepeat();
   const heading = document.getElementById('wcTaskHeading');
   heading.textContent = '';
@@ -16074,8 +16210,12 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
   if(!jobHasAll(document.getElementById('wcTaskSection'), [
     [!date, tDate, 'Set a date first.', tDate.parentNode],
     [!title, document.getElementById('taskTitle'), 'Say what needs doing.'],
-    [!techIds.length, document.getElementById('taskTechnician'), 'Choose a technician.']
+    [!techIds.length, document.getElementById('taskTechnician'), 'Choose a technician.'],
+    // A place tapped in the route has to be assigned (Oct 23)
+    [!!(rpTask && rpTask.unassigned()), rpTask && rpTask.assignBtn(), 'Press Assign to put it there, or Put it back.']
   ])) return;
+  const placeAfter = rpTask ? rpTask.value() : undefined;
+  const placed = placeAfter !== undefined ? {placeAfter: placeAfter} : {};
 
   const details = document.getElementById('taskDetails').value.trim();
   const customerIds = Array.from(taskPicked);
@@ -16092,6 +16232,7 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
       Object.assign(t, {title, details, technicianId: techIds[0], date,
                         customerIds, everyWeeks, everyDays, until, done: false,
                         photoRequired: document.getElementById('taskPhotoRequired').checked, videoRequired: document.getElementById('taskVideoRequired').checked});
+      if(placeAfter !== undefined) t.placeAfter = placeAfter; else delete t.placeAfter;
       techIds.slice(1).forEach(techId=>{
         tasks.push({
           id: 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2,9),
@@ -16152,7 +16293,7 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
       ? 'series_' + Date.now() + '_' + Math.random().toString(36).slice(2,7)
       : '';
     dates.forEach(dt=>{
-      tasks.push({
+      tasks.push(Object.assign({
         id: 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2,9),
         title, details,
         technicianId: techId,
@@ -16165,7 +16306,7 @@ document.getElementById('btnSaveTask').addEventListener('click', ()=>{
         photoRequired: document.getElementById('taskPhotoRequired').checked, videoRequired: document.getElementById('taskVideoRequired').checked,
         done: false,
         createdAt: new Date().toISOString()
-      });
+      }, placed));
     });
   });
 
@@ -16956,6 +17097,7 @@ function resetWorkOrderForm(backToQuote){
   const d = document.getElementById('wcDate');
   if(d) d.value = '';        // set by hand each time (Oct 21)
   try{ clearNeeds(document.getElementById('wcQuotesSection')); }catch(e){}
+  if(rpWo) rpWo.reset();
   setPickedTechIds(document.getElementById('wcTechnician'), []);
   const r = document.getElementById('wcRepeat');
   if(r) r.value = 'none';
@@ -17063,6 +17205,7 @@ function renderWorkOrderHistory(){
       row.className = 'cust-row wc-row';
       const dateStr = new Date(wo.createdAt).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'});
       row.innerHTML = `<div><div class="cust-name">${wo.type} — ${customer ? displayName(customer.name) : 'Unknown customer'}</div><div class="cust-meta">${dateStr} · $${wo.total.toFixed(2)}</div></div>`;
+      addQuoteMessagePill(row.querySelector('.cust-meta'), wo);
       if((wo.type || 'Quote') === 'Quote'){
         // A quote: the customer and the quote's name (no "Quote —"), then a
         // bold APPROVED (green) or DECLINED (red) tag, the height of the buttons
@@ -17775,7 +17918,7 @@ function openCurrentForEditing(kind, r){
   }
   loadWorkOrderIntoForm({type: 'Work Order', customerId: first.customerId, date: first.date,
     photoRequired: !!first.photoRequired, videoRequired: !!first.videoRequired, emailCustomer: first.emailCustomer !== false, emailPrices: first.emailPrices !== false, lineItems: first.lineItems || [], notes: first.notes || '',
-    technicianIds: [String(first.technicianId || '')], repeat: rep.repeat});
+    technicianIds: [String(first.technicianId || '')], repeat: rep.repeat, placeAfter: first.placeAfter});
   setTimeout(()=>{
     if(rep.repeat === 'custom'){
       document.getElementById('wcCustomEvery').value = String(rep.unit === 'weeks' ? rep.every / 7 : rep.every);
@@ -18139,6 +18282,7 @@ function renderCurrentList(kind){
       bits.push((r.every ? 'Every ' + repeatWords(r.every) : 'Repeats') + ' \u00b7 ' + r.groupLeft + ' left');
     }
     l2.textContent = bits.join(' \u00b7 ');
+    if(kind === 'Quote') addQuoteMessagePill(l2, workOrders.find(x => x.id === r.id));
     if(r.orphan){
       const tag = document.createElement('span');
       tag.style.cssText = 'color:var(--rust);font-weight:600;margin-left:6px;';
@@ -18579,7 +18723,138 @@ function jobHasAll(form, checks){
   return !missing.length;
 }
 
+// ---------- Where a job goes in the route (Oct 23) ----------
+// On a work order or task with a date and one technician, that technician's
+// route for the day shows under the form with the job in it. A tap on a gap
+// moves it there; Assign keeps that place (saving with a place tapped but not
+// assigned is stopped). Saved as placeAfter on each copy: the stop it comes
+// straight after, '' for first. Never assigned: under its own customer.
+// o = {host, active(), date(), techIds(), customerIds(), label(), stopsFor(techId, iso),
+//      techName(id), nameOf(c)}
+function makeRoutePlace(o){
+  const st = {assigned: undefined, pending: undefined};
+  const el = () => document.getElementById(o.host);
+  const esc2 = t => String(t == null ? '' : t).replace(/[&<>"]/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[ch]));
+  const ctx = ()=>{
+    if(o.active && !o.active()) return {off: true};
+    const techs = o.techIds(), iso = o.date(), cids = o.customerIds();
+    if(!iso || !techs.length) return {off: true};
+    if(techs.length > 1) return {note: 'With more than one technician, the job goes under its customer on each route.'};
+    if(cids.length > 1) return {note: 'With more than one customer, each goes under its own customer.'};
+    return {techId: techs[0], iso: iso, own: cids[0] || '', stops: o.stopsFor(techs[0], iso) || []};
+  };
+  function draw(){
+    const host = el();
+    if(!host) return;
+    const c = ctx();
+    if(c.off){ host.style.display = 'none'; host.innerHTML = ''; return; }
+    host.style.display = '';
+    if(c.note){
+      st.pending = undefined;
+      host.innerHTML = '<label>Where in the route</label><div class="rp-note">' + esc2(c.note) + '</div>';
+      return;
+    }
+    const ids = c.stops.map(s => String(s.id));
+    const ok = v => typeof v === 'string' && (v === '' || ids.indexOf(v) !== -1);
+    if(st.pending !== undefined && !ok(st.pending)) st.pending = undefined;
+    // Where it shows: tapped, else assigned, else under its own customer
+    const ownAt = c.own && ids.indexOf(String(c.own)) !== -1 ? String(c.own) : null;
+    const shown = st.pending !== undefined ? st.pending : (ok(st.assigned) ? st.assigned : ownAt);
+    const dayText = new Date(c.iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
+    host.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px;">'
+      + '<label style="margin:0;">Where in ' + esc2(o.techName(c.techId)) + '’s route</label>'
+      + '<span style="font-size:12px;color:var(--muted);white-space:nowrap;">' + esc2(dayText) + ' · ' + c.stops.length + (c.stops.length === 1 ? ' stop' : ' stops') + '</span></div>'
+      + '<div class="rp-box"></div><div class="rp-foot"></div>';
+    const box = host.querySelector('.rp-box');
+    const jobRow = ()=>{
+      const j = document.createElement('div');
+      j.className = 'rp-job' + (st.pending !== undefined ? ' pending' : '');
+      j.innerHTML = '<span>' + esc2(o.label()) + '</span><span>' + (st.pending !== undefined ? 'not assigned yet' : 'here') + '</span>';
+      return j;
+    };
+    const gap = after=>{
+      const g = document.createElement('div');
+      g.className = 'rp-gap';
+      g.title = 'Put it here';
+      g.addEventListener('click', e=>{
+        e.stopPropagation();
+        // Back where it already is: nothing to assign
+        st.pending = (ok(st.assigned) ? st.assigned : ownAt) === after ? undefined : after;
+        draw();
+      });
+      return g;
+    };
+    if(shown === '') box.appendChild(jobRow()); else box.appendChild(gap(''));
+    c.stops.forEach((s, i)=>{
+      const r = document.createElement('div');
+      r.className = 'rp-stop';
+      r.innerHTML = '<span class="rp-num">' + (i + 1) + '</span><div style="min-width:0;"><div>' + esc2(o.nameOf(s)) + '</div><div class="rp-addr">'
+        + esc2(s.address || 'No address on file') + '</div></div>'
+        + (String(s.id) === String(c.own) ? '<span class="rp-own">its customer</span>' : '');
+      box.appendChild(r);
+      if(shown === String(s.id)) box.appendChild(jobRow()); else box.appendChild(gap(String(s.id)));
+    });
+    if(shown === null) box.appendChild(jobRow());
+    const foot = host.querySelector('.rp-foot');
+    const after = v => v === '' ? 'at the start of the route' : 'after ' + o.nameOf(c.stops.find(s => String(s.id) === v) || {});
+    if(st.pending !== undefined){
+      foot.innerHTML = '<div class="btn-row" style="flex-wrap:nowrap;margin-top:10px;">'
+        + '<button type="button" class="btn btn-primary" data-rp-assign style="flex:1 1 0;min-width:0;">Assign</button>'
+        + '<button type="button" class="btn btn-ghost" data-rp-back style="flex:1 1 0;min-width:0;">Put it back</button></div>';
+      foot.querySelector('[data-rp-assign]').addEventListener('click', e=>{ e.stopPropagation(); st.assigned = st.pending; st.pending = undefined; draw(); });
+      foot.querySelector('[data-rp-back]').addEventListener('click', e=>{ e.stopPropagation(); st.pending = undefined; draw(); });
+    } else if(ok(st.assigned)){
+      foot.innerHTML = '<div class="rp-done">✓ Assigned ' + esc2(after(st.assigned)) + '</div>'
+        + '<button type="button" class="btn btn-ghost" data-rp-own style="width:auto;margin-top:6px;padding:5px 10px;font-size:12px;">Put it under its customer</button>';
+      foot.querySelector('[data-rp-own]').addEventListener('click', e=>{ e.stopPropagation(); st.assigned = undefined; draw(); });
+    } else {
+      foot.innerHTML = '<div class="rp-note">' + (ownAt ? 'It goes under its customer. ' : (c.own ? 'Its customer isn’t on this route that day, so it goes at the end. ' : 'It goes at the end. '))
+        + 'Tap a gap to move it, then press Assign.</div>';
+    }
+  }
+  return {
+    refresh: draw,
+    // The place to save: only an assigned one, and only for one technician and one customer
+    value: ()=>{ const c = ctx(); return (!c.off && !c.note && typeof st.assigned === 'string') ? st.assigned : undefined; },
+    unassigned: ()=> st.pending !== undefined && !!el() && !!el().querySelector('[data-rp-assign]'),
+    assignBtn: ()=> el() && el().querySelector('[data-rp-assign]'),
+    set: v=>{ st.assigned = typeof v === 'string' ? v : undefined; st.pending = undefined; draw(); },
+    reset: ()=>{ st.assigned = undefined; st.pending = undefined; draw(); }
+  };
+}
+
+// The work order and task forms' pickers
+var rpWo = null, rpTask = null;
+function routePlaceRefresh(){
+  try{
+    if(!rpWo) rpWo = makeRoutePlace({host: 'wcRoutePlace',
+      active: ()=> document.getElementById('wcType').value === 'Work Order' && (typeof wcView === 'undefined' || wcView === 'main'),
+      date: ()=> document.getElementById('wcDate').value,
+      techIds: ()=> pickedTechIds(document.getElementById('wcTechnician')),
+      customerIds: ()=> wcSelectedCustomerIds.slice(),
+      label: ()=> '\ud83d\udee0 ' + ((currentLineItems || []).map(i => i && i.description).filter(Boolean).join(', ') || 'Work order')
+        + (wcSelectedCustomerIds.length === 1 ? ' \u00b7 ' + displayName((customers.find(c => c.id === wcSelectedCustomerIds[0]) || {}).name || '') : ''),
+      stopsFor: (t, iso)=> twRouteFor(t, iso).list,
+      techName: id => twTechName(id), nameOf: c => displayName(c.name || '')});
+    if(!rpTask) rpTask = makeRoutePlace({host: 'taskRoutePlace',
+      active: ()=> document.getElementById('wcType').value === 'Task' && (typeof wcView === 'undefined' || wcView === 'main'),
+      date: ()=> document.getElementById('taskDate').value,
+      techIds: ()=> pickedTechIds(document.getElementById('taskTechnician')),
+      customerIds: ()=> Array.from(taskPicked),
+      label: ()=> '\ud83d\udccb ' + (document.getElementById('taskTitle').value.trim() || 'Task')
+        + (taskPicked.size === 1 ? ' \u00b7 ' + displayName((customers.find(c => c.id === Array.from(taskPicked)[0]) || {}).name || '') : ''),
+      stopsFor: (t, iso)=> twRouteFor(t, iso).list,
+      techName: id => twTechName(id), nameOf: c => displayName(c.name || '')});
+    rpWo.refresh(); rpTask.refresh();
+  }catch(e){}
+}
+['wcDate', 'taskDate'].forEach(id=>{
+  const d = document.getElementById(id);
+  if(d){ d.addEventListener('change', routePlaceRefresh); d.addEventListener('input', routePlaceRefresh); }
+});
+
 function applyWorkOrderType(){
+  setTimeout(routePlaceRefresh, 0);
   const chosen = document.getElementById('wcType').value;
   const isTask = chosen === 'Task';
   const isWO = chosen === 'Work Order';
@@ -18892,6 +19167,7 @@ let wcSelectedCustomerIds = [];
 function renderWcCustomerChips(){
   const box = document.getElementById('wcCustomerChips');
   if(!box) return;
+  if(typeof routePlaceRefresh === 'function') setTimeout(routePlaceRefresh, 0);
   box.innerHTML = '';
   wcSelectedCustomerIds.forEach(id=>{
     const cust = customers.find(x => x.id === id);
@@ -18985,7 +19261,9 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
       [!dateEl.value, dateEl, 'Set a date first.', dateEl.parentNode],
       [picked.length === 0, document.getElementById('wcCustomerSearch'), 'Add a customer.'],
       [validItems.length === 0, firstLine || addLine, 'Add a line item.', firstLine ? firstLine.closest('#wcLineItems') : addLine.parentNode],
-      [isWOnow && !pickedTechIds(document.getElementById('wcTechnician')).length, document.getElementById('wcTechnician'), 'Choose a technician.']
+      [isWOnow && !pickedTechIds(document.getElementById('wcTechnician')).length, document.getElementById('wcTechnician'), 'Choose a technician.'],
+      // A place tapped in the route has to be assigned (Oct 23)
+      [isWOnow && !!(rpWo && rpWo.unassigned()), rpWo && rpWo.assignBtn(), 'Press Assign to put it there, or Put it back.']
     ]);
     if(!ok) return;
   }
@@ -19023,6 +19301,9 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
         wcEditSeries = null; resetWorkOrderForm(); showToast('No visits left'); return; }
     }
     const jobs = (lsGet('scheduledWorkOrders') || []).filter(j => !gone.has(j.id));
+    // Where in the route, when one was assigned (Oct 23): the same for every date
+    const placeAfter = rpWo ? rpWo.value() : undefined;
+    const placed = placeAfter !== undefined ? {placeAfter: placeAfter} : {};
     picked.forEach((customer, ci)=>{
       const keep = editing && ci === 0 && editing.workOrderId;
       const woId = keep ? editing.workOrderId : 'wo_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
@@ -19031,7 +19312,7 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
       if(!(keep && editing.number)) lsSet('workOrderCounter', woNumber);
       // A separate job for each technician, each ticked off by its own person
       techIds.forEach(techId => dates.forEach(d=>{
-        jobs.push({
+        jobs.push(Object.assign({
           id: 'woJob_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
           workOrderId: woId,
           workOrderNumber: woNumber,
@@ -19045,7 +19326,7 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
           emailCustomer: document.getElementById('wcEmailCustomer').checked,
           emailPrices: document.getElementById('wcEmailPrices').checked,
           status: 'scheduled'
-        });
+        }, placed));
       }));
       const header = {
         number: woNumber,
@@ -19267,7 +19548,11 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
         // Download quote (Oct 15): the breakdown as a PDF to keep
         + (!quoteLinkCanDownload(respondUrl) ? '' : '<a href="' + respondUrl + '&a=download" style="display:block;text-align:center;margin:12px 0 6px;padding:12px 10px;border-radius:10px;'
         + 'background:#F1F8F7;color:' + esc(colour) + ';border:1.5px solid #BFDCD8;font-weight:700;font-size:14.5px;text-decoration:none;">'
-        + '&#8615;&nbsp; Download ' + esc(String(type || 'Quote').toLowerCase()) + ' (PDF)</a>') : '')
+        + '&#8615;&nbsp; Download ' + esc(String(type || 'Quote').toLowerCase()) + ' (PDF)</a>')
+        // Send a message (Oct 22): the customer asks something without answering
+        + '<a href="' + respondUrl + '&a=message" style="display:block;text-align:center;margin:12px 0 6px;padding:12px 10px;border-radius:10px;'
+        + 'background:#F1F8F7;color:' + esc(colour) + ';border:1.5px solid #BFDCD8;font-weight:700;font-size:14.5px;text-decoration:none;">'
+        + '&#9993;&nbsp; Send a message</a>' : '')
     + (((q.closing || '').trim() || signoff) ? '<div style="font-size:14px;color:#4A5A58;padding-top:18px;border-top:1px solid #E6E9E8;white-space:pre-wrap;">'
         + esc((q.closing || '').trim())
         + ((q.closing || '').trim() && signoff ? '<br>' : '') + (signoff ? esc(signoff) : '') + '</div>' : '')
@@ -19636,6 +19921,21 @@ function expireOldQuotes(){
   return changed;
 }
 
+// "✉ 1 message" beside a quote that has some (Oct 22); pressing it opens the
+// quote in the customer's Jobs tab, where the messages are
+function addQuoteMessagePill(el, w){
+  const n = (w && w.customerMessages || []).length;
+  if(!el || !n) return;
+  const pill = document.createElement('button');
+  pill.type = 'button';
+  pill.style.cssText = 'margin-left:8px;padding:2px 8px;border-radius:7px;border:0;background:#FBEAE4;color:var(--rust);'
+    + 'font:inherit;font-size:11.5px;font-weight:700;cursor:pointer;';
+  pill.textContent = '\u2709 ' + n + (n === 1 ? ' message' : ' messages');
+  pill.title = 'See the customer\u2019s ' + (n === 1 ? 'message' : 'messages');
+  pill.addEventListener('click', e=>{ e.stopPropagation(); try{ openJobReport(w.customerId, 'q:' + w.id); }catch(err){} });
+  el.appendChild(pill);
+}
+
 async function takeQuoteAnswers(){
   if(typeof restoringBackup !== 'undefined' && restoringBackup) return;   // restoring: nothing writes
   try{
@@ -19662,8 +19962,23 @@ async function takeQuoteAnswers(){
       w.answeredByCustomer = true;
       changed = true;
     });
+    // Messages the customer sent from the quote email (Oct 22, snippet 37)
+    try{
+      const mr = await sbFetch('/rest/v1/quote_responses?select=quote_id,messages&messages=neq.%5B%5D', {method: 'GET'});
+      if(mr && mr.ok && Array.isArray(mr.body)) mr.body.forEach(a=>{
+        const w = workOrders.find(x => x.id === a.quote_id);
+        if(!w || !Array.isArray(a.messages)) return;
+        const now = a.messages.filter(m => m && m.text).map(m => ({at: String(m.at || ''), text: String(m.text)}));
+        if(JSON.stringify(now) === JSON.stringify(w.customerMessages || [])) return;
+        w.customerMessages = now;
+        changed = true;
+      });
+    }catch(e){}
     if(changed){
       saveWorkOrders();
+      // A customer's Jobs tab that's open shows the message straight away
+      try{ if(typeof editingId !== 'undefined' && editingId) renderCustomerWorkOrders(editingId, true); }catch(e){}
+      try{ const cl = document.getElementById('wcCurrentList'); if(cl && cl.offsetParent && workCenterMode === 'quotes' && wcView === 'current' && !wcCurOpen) renderCurrentList(document.getElementById('wcType').value); }catch(e){}
       const wcPage = document.getElementById('view-workcenter');
       if(wcPage && wcPage.classList.contains('active') && workCenterMode === 'quotes') applyWorkOrderType();
       // The answer shows in Alerts straight away (Oct 15)
@@ -19737,6 +20052,9 @@ function loadWorkOrderIntoForm(w){
 
     // No "Editing a saved …" heading: it only took up space
 
+    // Where it was put in the route (Oct 23)
+    routePlaceRefresh(); if(rpWo) rpWo.set(w.placeAfter);
+
     window.scrollTo({top: 0, behavior: 'smooth'});
     showToast('Loaded — make your changes, then send or finalize');
   }, 60);
@@ -19761,14 +20079,14 @@ function qoEntriesFor(customerId){
       const outcome = w.approved ? 'Approved' : w.denied ? 'Declined' : w.expired ? 'Expired' : (w.status === 'draft' ? 'Draft' : 'Sent');
       // The badge says where the customer stands; the row says what's on it (Oct 3)
       const status = w.approved ? 'approved' : w.denied ? 'declined' : w.expired ? 'expired' : 'pending';
-      out.push({key: 'q:' + w.id, kind: 'quote', w: w, tag: 'Quote' + num, outcome: outcome, status: status,
+      out.push({key: 'q:' + w.id, kind: 'quote', w: w, tag: 'Quote' + num, badge: 'Quote', num: num.trim(), outcome: outcome, status: status,
         title: (w.lineItems || []).map(li => li.description).filter(Boolean).join(', ') || w.name || '',
         done: !!w.closed, date: w.createdAt || ''});
       return;
     }
     const mine = jobs.filter(j => j && j.workOrderId === w.id);
     if(!mine.length){
-      out.push({key: 'wh:' + w.id, kind: 'workorder', w: w, tag: 'Work order' + num,
+      out.push({key: 'wh:' + w.id, kind: 'workorder', w: w, tag: 'Work order' + num, badge: 'Work order', num: num.trim(),
         title: (w.lineItems || []).map(li => li.description).filter(Boolean).join(', '), done: false,
         date: w.date ? w.date + 'T12:00:00' : (w.createdAt || '')});
       return;
@@ -19777,13 +20095,13 @@ function qoEntriesFor(customerId){
     // finished ones keep a row each
     const upcoming = mine.filter(j => j.status !== 'done').sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
     if(upcoming.length > 1){
-      out.push({key: 'ws:' + w.id, kind: 'series', of: 'workorder', w: w, items: upcoming, tag: 'Work order' + num,
+      out.push({key: 'ws:' + w.id, kind: 'series', of: 'workorder', w: w, items: upcoming, tag: 'Work order' + num, badge: 'Work order', num: num.trim(),
         title: (upcoming[0].title || '') + ' \u00b7 ' + upcoming.length + ' scheduled', done: false,
         date: (upcoming[0].date || '') + 'T12:00:00'});
     }
     mine.forEach(j=>{
       if(upcoming.length > 1 && j.status !== 'done') return;
-      out.push({key: 'wo:' + j.id, kind: 'workorder', w: w, j: j, tag: 'Work order' + num,
+      out.push({key: 'wo:' + j.id, kind: 'workorder', w: w, j: j, tag: 'Work order' + num, badge: 'Work order', num: num.trim(),
         title: j.title || '', done: j.status === 'done',
         date: j.status === 'done' && j.doneAt ? j.doneAt : (j.date || '') + 'T12:00:00'});
     });
@@ -19919,7 +20237,247 @@ function qoMarkCompleted(item, customerId){
   showToast('Completed');
 }
 
-function qoBody(item, customerId){
+// ---------- Email to customer and Download, inside an opened job (Oct 25) ----------
+// On the same line as the job's heading, at the far right: the job as the
+// customer would read it, emailed (from "<company> via Weir", replies to the
+// company) or saved as a PDF. A quote is resent exactly as it first went, with
+// its Approve and Decline buttons.
+function qoJobInfo(item){
+  const when = d => d ? fmtDate(String(d).length === 10 ? d + 'T12:00:00' : d) : '';
+  const at = d => { try{ return new Date(d).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'}); }catch(e){ return ''; } };
+  const tech = id => id === 'office' ? 'the office' : (technicianNameById(id) || '');
+  const info = {title: '', lines: [], items: [], itemsLabel: 'Line items', sections: [], photos: [], kind: 'email', prices: true};
+  const done = (x, word)=>{
+    if(x.doneAt) info.lines.push((word || 'Completed') + ' ' + when(x.doneAt) + (at(x.doneAt) ? ' at ' + at(x.doneAt) : '')
+      + (x.doneBy ? ' by ' + (tech(x.doneBy) || 'a technician') : ''));
+    if(x.doneDurationMs) info.lines.push('Time on the job: ' + jobDurationText(x.doneDurationMs));
+    if((x.doneReplacements || []).length) info.sections.push(['Needs replacing', x.doneReplacements.join(', ')]);
+    if(Array.isArray(x.doneExtraWork) && x.doneExtraWork.length) info.sections.push(['Extra work done', x.doneExtraWork.map(e => (e && (e.description || e)) || '').filter(Boolean).join(', ')]);
+    if(x.doneNotes) info.sections.push(['Technician’s notes', x.doneNotes]);
+    info.photos = [x.donePhoto].concat(x.donePhotoMore || []).filter(Boolean);
+  };
+  if(item.kind === 'quote'){
+    const w = item.w;
+    info.title = 'Quote' + (w.number ? ' #' + quoteNumberText(w.number) : '');
+    info.kind = 'quote';
+    if(w.createdAt) info.lines.push('Written ' + when(w.createdAt));
+    info.lines.push('Status: ' + item.outcome);
+    info.items = w.lineItems || [];
+    if(w.notes) info.sections.push(['Notes', w.notes]);
+  } else if(item.kind === 'workorder'){
+    const w = item.w, j = item.j || w;
+    info.title = 'Work order' + (w.number ? ' #' + quoteNumberText(w.number) : (j.workOrderNumber ? ' #' + quoteNumberText(j.workOrderNumber) : ''));
+    info.kind = 'workorder';
+    info.prices = j.emailPrices !== false;
+    if(j.date) info.lines.push('Scheduled for ' + when(j.date));
+    if(!j.doneAt && tech(j.technicianId)) info.lines.push('Technician: ' + tech(j.technicianId));
+    info.items = j.lineItems || w.lineItems || [];
+    if(j.notes || w.notes) info.sections.push(['Work order notes', j.notes || w.notes]);
+    if(item.j) done(item.j, 'Submitted');
+  } else if(item.kind === 'clean'){
+    const f = item.f;
+    info.title = 'Filter clean';
+    info.kind = 'clean';
+    if(f.date) info.lines.push('Scheduled for ' + when(f.date));
+    if(!f.doneAt && tech(f.technicianId)) info.lines.push('Technician: ' + tech(f.technicianId));
+    info.items = f.lineItems || [];
+    info.itemsLabel = 'Extra work';
+    done(f);
+  } else if(item.kind === 'drain'){
+    const f = item.f;
+    info.title = item.tag || 'Pool drain';
+    info.kind = 'drain';
+    if(f.date) info.lines.push('Scheduled for ' + when(f.date));
+    if(!f.doneAt && tech(f.technicianId)) info.lines.push('Technician: ' + tech(f.technicianId));
+    info.items = f.lineItems || [];
+    info.itemsLabel = 'Extra work';
+    if(f.notes) info.sections.push(['Notes', f.notes]);
+    done(f);
+  } else {
+    const t = item.t;
+    info.title = 'Task' + (t.title ? ': ' + t.title : '');
+    if(t.date) info.lines.push('Scheduled for ' + when(t.date));
+    if(!t.done && tech(t.technicianId)) info.lines.push('Technician: ' + tech(t.technicianId));
+    if(t.details) info.sections.push(['Details', t.details]);
+    if(t.done) done(t);
+  }
+  info.items = (info.items || []).filter(li => li && String(li.description || '').trim());
+  return info;
+}
+function qoJobEmailHtml(customer, info){
+  const esc = escapeSyncText;
+  const style = loadEmailStyle();
+  const colour = style.colour || '#134E4A';
+  const money = n => '$' + (Number(n) || 0).toFixed(2);
+  let rows = '', total = 0;
+  info.items.forEach(li=>{
+    const qty = Number(li.qty) || 1, price = Number(li.price) || 0;
+    total += qty * price;
+    rows += '<tr><td style="padding:9px 10px;border-bottom:1px solid #E6E9E8;font-size:14px;color:#16302E;">' + esc(li.description) + '</td>'
+      + (info.prices ? '<td style="padding:9px 10px;border-bottom:1px solid #E6E9E8;font-size:14px;color:#4A5A58;text-align:center;white-space:nowrap;">' + qty + '</td>'
+        + '<td style="padding:9px 10px;border-bottom:1px solid #E6E9E8;font-size:14px;color:#16302E;font-weight:600;text-align:right;white-space:nowrap;">' + money(qty * price) + '</td>' : '') + '</tr>';
+  });
+  const bits = [];
+  if(style.showContact !== false){
+    if(lsGet('accountPhone')) bits.push(esc(lsGet('accountPhone')));
+    if(lsGet('accountEmail')) bits.push(esc(lsGet('accountEmail')));
+  }
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#F4F6F5;">'
+    + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F4F6F5;padding:24px 12px;"><tr><td align="center">'
+    + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:580px;background:#FFFFFF;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Arial,sans-serif;">'
+    + '<tr><td style="background:' + esc(colour) + ';padding:22px 26px;"><div style="font-size:19px;font-weight:700;color:#ffffff;">' + esc(companyName()) + '</div>'
+    + (bits.length ? '<div style="font-size:12.5px;color:#DCEDEA;margin-top:4px;">' + bits.join(' &nbsp;&middot;&nbsp; ') + '</div>' : '') + '</td></tr>'
+    + '<tr><td style="padding:22px 26px 0;"><div style="font-size:18px;font-weight:700;color:#16302E;">' + esc(info.title) + '</div>'
+    + '<div style="font-size:14px;color:#4A5A58;margin-top:4px;">' + esc(customer.name || '') + (customer.address ? ' &middot; ' + esc(customer.address) : '') + '</div>'
+    + info.lines.map(l => '<div style="font-size:13.5px;color:#4A5A58;margin-top:3px;">' + esc(l) + '</div>').join('') + '</td></tr>'
+    + (rows ? '<tr><td style="padding:18px 26px 0;"><div style="font-size:12px;font-weight:700;color:#0F766E;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">' + esc(info.itemsLabel) + '</div>'
+      + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">' + rows
+      + (info.prices && total ? '<tr><td colspan="2" style="padding:12px 10px 0;font-size:14.5px;font-weight:700;color:#16302E;text-align:right;">Total</td><td style="padding:12px 10px 0;font-size:16px;font-weight:700;color:#16302E;text-align:right;white-space:nowrap;">' + money(total) + '</td></tr>' : '')
+      + '</table></td></tr>' : '')
+    + info.sections.map(([h, t]) => '<tr><td style="padding:18px 26px 0;"><div style="font-size:12px;font-weight:700;color:#0F766E;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">' + esc(h) + '</div>'
+      + '<div style="font-size:14px;color:#4A5A58;line-height:1.5;white-space:pre-wrap;">' + esc(t) + '</div></td></tr>').join('')
+    + '<tr><td style="padding:26px;"><div style="font-size:14px;color:#4A5A58;padding-top:18px;border-top:1px solid #E6E9E8;">' + esc(style.signoff || 'Thank you for your business.') + '</div>'
+    + '<div style="font-size:13.5px;font-weight:600;color:#16302E;margin-top:10px;">' + esc(companyName()) + '</div></td></tr>'
+    + '</table></td></tr></table></body></html>';
+}
+async function qoEmailJob(item, customerId){
+  const customer = customers.find(c => c.id === customerId);
+  if(!customer){ showToast('This customer is no longer on file'); return; }
+  if(item.kind === 'quote'){
+    const ok = await confirmDialog('Email this quote to ' + esc(customerEmailTo(customer) || 'the customer') + ' again, exactly as it first went?', 'Send');
+    if(ok) await resendQuoteEmail(item.w, customer);
+    return;
+  }
+  const to = customerEmailTo(customer);
+  if(!to){ showToast('This customer has no email on file'); return; }
+  const info = qoJobInfo(item);
+  const ok = await confirmDialog('Email this ' + info.title.replace(/:.*/, '').toLowerCase() + ' to ' + esc(to) + '?', 'Send');
+  if(!ok) return;
+  showToast('Sending…');
+  const photos = [];
+  for(let i = 0; i < Math.min(info.photos.length, 10); i++){
+    try{
+      const src = await resolvePhoto(info.photos[i]);
+      const m = String(src || '').match(/^data:image\/[a-z]+;base64,(.+)$/);
+      if(m) photos.push({filename: 'photo-' + (i + 1) + '.jpg', content: m[1], caption: info.photos.length > 1 ? 'Photo ' + (i + 1) : 'Photo'});
+    }catch(e){}
+  }
+  const subject = info.title.replace(/^Task: /, '') + ' — ' + companyName();
+  const res = await sbFetch('/functions/v1/send-report', {method: 'POST',
+    body: JSON.stringify({to: to, subject: subject, html: qoJobEmailHtml(customer, info), customerId: customer.id, kind: info.kind, photos: photos})});
+  if(res && res.ok){ showToast('Emailed to ' + to); return; }
+  recordEmailFailure(customer, info.title, to, emailFailReason(res));
+  showToast('Could not send it — the office could not be reached. Try again in a moment.');
+}
+function qoLoadPdfLib(){
+  if(window.jspdf) return Promise.resolve(true);
+  return new Promise(resolve=>{
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    sc.onload = ()=> resolve(!!window.jspdf);
+    sc.onerror = ()=> resolve(false);
+    document.head.appendChild(sc);
+  });
+}
+async function qoDownloadJob(item, customerId){
+  const customer = customers.find(c => c.id === customerId) || {};
+  const info = qoJobInfo(item);
+  if(!(await qoLoadPdfLib())){ showToast('The PDF maker couldn’t load. Check the connection and try again.'); return; }
+  const {jsPDF} = window.jspdf;
+  const doc = new jsPDF({unit: 'pt', format: 'letter'});
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), L = 48, R = W - 48;
+  let y = 56;
+  const room = need => { if(y + need > H - 48){ doc.addPage(); y = 56; } };
+  const style = loadEmailStyle();
+  const hex = String(style.colour || '#134E4A').replace('#', '');
+  const rgb = [0, 2, 4].map(i => parseInt(hex.substr(i, 2), 16) || 0);
+  doc.setFillColor(rgb[0], rgb[1], rgb[2]); doc.rect(0, 0, W, 40, 'F');
+  doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+  doc.text(companyName(), L, 26);
+  doc.setTextColor(22, 48, 46); doc.setFontSize(18); y = 76;
+  doc.text(info.title, L, y); y += 20;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(74, 90, 88);
+  [String(customer.name || '') + (customer.address ? ' · ' + customer.address : '')].concat(info.lines).forEach(l=>{
+    doc.splitTextToSize(l, R - L).forEach(t => { room(16); doc.text(t, L, y); y += 15; });
+  });
+  const heading = t => { y += 12; room(24); doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(15, 118, 110); doc.text(t.toUpperCase(), L, y); y += 14; doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(22, 48, 46); };
+  if(info.items.length){
+    heading(info.itemsLabel);
+    let total = 0;
+    info.items.forEach(li=>{
+      const qty = Number(li.qty) || 1, price = Number(li.price) || 0;
+      total += qty * price;
+      const desc = doc.splitTextToSize(String(li.description), info.prices ? R - L - 150 : R - L);
+      room(desc.length * 14 + 6);
+      desc.forEach((t, i) => doc.text(t, L, y + i * 14));
+      if(info.prices){ doc.text(qty + ' × $' + price.toFixed(2), R - 70, y, {align: 'right'}); doc.text('$' + (qty * price).toFixed(2), R, y, {align: 'right'}); }
+      y += desc.length * 14 + 6;
+      doc.setDrawColor(230, 233, 232); doc.line(L, y - 10, R, y - 10);
+    });
+    if(info.prices && total){ room(18); doc.setFont('helvetica', 'bold'); doc.text('Total', R - 70, y + 4, {align: 'right'}); doc.text('$' + total.toFixed(2), R, y + 4, {align: 'right'}); doc.setFont('helvetica', 'normal'); y += 18; }
+  }
+  info.sections.forEach(([h, t])=>{
+    heading(h);
+    doc.setTextColor(74, 90, 88);
+    doc.splitTextToSize(String(t), R - L).forEach(line => { room(15); doc.text(line, L, y); y += 15; });
+  });
+  if(info.photos.length){
+    heading(info.photos.length === 1 ? 'Photo' : 'Photos');
+    const w = (R - L - 12) / 2;
+    let col = 0, rowH = 0;
+    for(const ref of info.photos){
+      let src = null;
+      try{ src = await resolvePhoto(ref); }catch(e){}
+      if(!src || !/^data:image\//.test(src)) continue;
+      const dims = await new Promise(res=>{ const im = new Image(); im.onload = ()=> res([im.naturalWidth, im.naturalHeight]); im.onerror = ()=> res([4, 3]); im.src = src; });
+      const h = w * dims[1] / (dims[0] || 1);
+      if(col === 0) room(h + 10);
+      try{ doc.addImage(src, /png/.test(src.slice(0, 20)) ? 'PNG' : 'JPEG', L + col * (w + 12), y, w, h); }catch(e){}
+      rowH = Math.max(rowH, h);
+      col++;
+      if(col === 2){ col = 0; y += rowH + 10; rowH = 0; }
+    }
+    if(col) y += rowH + 10;
+  }
+  const safe = s => String(s || '').replace(/[^A-Za-z0-9 #-]+/g, '').trim().replace(/\s+/g, ' ');
+  doc.save(safe(info.title.replace(/^Task: .*/, 'Task')) + ' - ' + safe(customer.name || 'customer') + '.pdf');
+}
+// Puts the two buttons at the far right of the job's heading line, before
+// Mark completed and the Current / Completed badge
+function qoAddJobButtons(doc, item, customerId){
+  try{
+    if(!doc || item.kind === 'series') return doc;
+    const head = doc.querySelector('.report-head');
+    if(!head) return doc;
+    let right = head.lastElementChild;
+    if(!right || right === head.firstElementChild) return doc;
+    if(right.classList.contains('report-badge')){
+      const wrap = document.createElement('div');
+      head.insertBefore(wrap, right);
+      wrap.appendChild(right);
+      right = wrap;
+    }
+    right.style.display = 'flex'; right.style.alignItems = 'center'; right.style.gap = '8px';
+    right.style.flexWrap = 'wrap'; right.style.justifyContent = 'flex-end'; right.style.flexShrink = '0';
+    const mk = (label, svg, fn)=>{
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'btn btn-ghost';
+      b.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px;';
+      b.innerHTML = svg + '<span></span>';
+      b.lastChild.textContent = label;
+      b.addEventListener('click', e=>{ e.stopPropagation(); fn(); });
+      return b;
+    };
+    const email = mk('Email to customer', '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>', ()=> qoEmailJob(item, customerId));
+    const dl = mk('Download', '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>', ()=> qoDownloadJob(item, customerId));
+    right.insertBefore(dl, right.firstChild);
+    right.insertBefore(email, dl);
+  }catch(e){}
+  return doc;
+}
+
+function qoBody(item, customerId){ return qoAddJobButtons(qoBodyInner(item, customerId), item, customerId); }
+function qoBodyInner(item, customerId){
   const when = d => d ? fmtDate(String(d).length === 10 ? d + 'T12:00:00' : d) : '';
   const complete = ()=> qoMarkCompleted(item, customerId);
   const tech = id => id === 'office' ? 'the office' : (technicianNameById(id) || '');
@@ -19962,6 +20520,37 @@ function qoBody(item, customerId){
       n.style.marginTop = '10px';
       n.textContent = w.notes;
       card.appendChild(n);
+    }
+
+    // Messages the customer sent from the email (Oct 22)
+    if((w.customerMessages || []).length){
+      const cust = (customers || []).find(x => x && String(x.id) === String(w.customerId));
+      const head = document.createElement('div');
+      head.style.cssText = 'font-size:12px;font-weight:700;color:var(--ink);text-transform:uppercase;letter-spacing:.06em;margin-top:14px;';
+      head.textContent = w.customerMessages.length === 1 ? 'Message from the customer' : 'Messages from the customer';
+      card.appendChild(head);
+      w.customerMessages.forEach(m=>{
+        const b = document.createElement('div');
+        b.style.cssText = 'margin-top:8px;background:var(--surface-alt, #F6F8F7);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.45;white-space:pre-wrap;';
+        const who = document.createElement('div');
+        who.style.cssText = 'font-size:11.5px;color:var(--muted);margin-bottom:3px;white-space:normal;';
+        const t = m.at ? new Date(m.at) : null;
+        who.textContent = (cust ? displayName(cust.name) : 'Customer')
+          + (t && !isNaN(t) ? ' \u00b7 ' + t.toLocaleString(undefined, {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'}) : '');
+        b.appendChild(who);
+        b.appendChild(document.createTextNode(m.text));
+        card.appendChild(b);
+      });
+      const to = cust ? customerEmailTo(cust) : '';
+      if(to){
+        const reply = document.createElement('a');
+        reply.className = 'btn btn-ghost';
+        reply.style.cssText = 'display:inline-flex;width:auto;margin-top:10px;padding:7px 12px;font-size:12.5px;text-decoration:none;';
+        reply.href = 'mailto:' + to + '?subject=' + encodeURIComponent('Re: Quote' + (w.number ? ' #' + quoteNumberText(w.number) : ''));
+        reply.textContent = 'Reply by email';
+        reply.addEventListener('click', e => e.stopPropagation());
+        card.appendChild(reply);
+      }
     }
 
     const actions = document.createElement('div');
@@ -20482,14 +21071,23 @@ function renderCustomerWorkOrders(customerId, fromSync){
     tag.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;white-space:nowrap;"
       + 'letter-spacing:0.07em;text-transform:uppercase;padding:3px 7px;border-radius:6px;'
       + 'color:' + tc[1] + ';background:' + tc[0] + ';';
-    tag.textContent = item.tag;
+    // Just what it is (Oct 25): the number goes with the contents beside it
+    tag.textContent = item.badge || item.tag;
+    tag.className = 'qo-kind-tag';
     tagCell.appendChild(tag);
     when.appendChild(tagCell);
     const what = document.createElement('span');
     what.style.cssText = 'flex:1 1 auto;min-width:0;font-weight:500;color:var(--muted);font-size:12.5px;'
       + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:10px;';
     if(item.titleHtml) what.innerHTML = item.titleHtml; else what.textContent = item.title || '';
-    what.title = item.title || '';
+    what.title = (item.num ? item.num + ' ' : '') + (item.title || '');
+    // The quote or work order's number first, dark and bold (Oct 25)
+    if(item.num){
+      const n = document.createElement('b');
+      n.textContent = item.num;
+      n.style.cssText = "color:var(--ink);font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;margin-right:6px;";
+      what.insertBefore(n, what.firstChild);
+    }
     when.appendChild(what);
     const right = document.createElement('div');
     right.style.cssText = 'display:flex;align-items:center;gap:10px;flex-shrink:0;';
@@ -20539,6 +21137,21 @@ function renderCustomerWorkOrders(customerId, fromSync){
     container.appendChild(bar);
     if(isOpen) container.appendChild(qoBody(item, customerId));
   });
+  // Every badge as wide as the widest (Oct 25), centred, so they line up
+  const tags = Array.from(container.querySelectorAll('.qo-kind-tag'));
+  tags.forEach(t => { t.style.display = 'inline-block'; t.style.textAlign = 'center'; t.style.width = ''; });
+  // At least as wide as "Work order", whatever kinds this customer has
+  let widest = 0;
+  if(tags.length){
+    const probe = tags[0].cloneNode(false);
+    probe.textContent = 'Work order';
+    probe.style.position = 'absolute'; probe.style.visibility = 'hidden';
+    tags[0].parentNode.appendChild(probe);
+    widest = probe.getBoundingClientRect().width;
+    probe.remove();
+  }
+  widest = tags.reduce((m, t) => Math.max(m, t.getBoundingClientRect().width), widest);
+  if(widest) tags.forEach(t => { t.style.width = Math.ceil(widest) + 'px'; });
 }
 
 // ---------- Service Calls ----------
@@ -22846,7 +23459,7 @@ function photoTechnicianList(step, bodies){
     return box;
   }
   // The gate and the skip rule are one each per person; the rest are per body
-  const single = step === 'gate' || step === 'skip' || step === 'video';
+  const single = step === 'gate' || step === 'skip' || step === 'video' || step === 'saltcell';
   const columns = single
     ? [[step, '']]
     : PHOTO_BODIES.filter(([key]) => bodies[key]);
@@ -22854,7 +23467,7 @@ function photoTechnicianList(step, bodies){
   // is only ever optional, so its tick is all there is
   // After photo is always shown now, so it has no Optional button (Oct 3)
   // Skip has Optional too (Oct 3): the photo-and-note window, nothing in it needed
-  const offersOptional = step !== 'video' && step !== 'after';
+  const offersOptional = step !== 'video' && step !== 'after' && step !== 'saltcell';   // it's the button or nothing
 
   // Always the technician as they are in the list right now. A sync replaces
   // the whole list with fresh objects, so the one captured when this was drawn
@@ -22865,6 +23478,7 @@ function photoTechnicianList(step, bodies){
   const ownTick = (t, key)=>{
     const cur = live(t);
     return step === 'gate' ? cur.requireGatePhoto === true
+      : step === 'saltcell' ? cur.requireSaltCellPhoto === true
       : step === 'skip' ? cur.requireSkipProof === true
       : step === 'video' ? cur.allowVideo === true
       : photoRuleFor(cur, step, key) === true;
@@ -22872,6 +23486,7 @@ function photoTechnicianList(step, bodies){
   const setOwnTick = (t, key, on)=>{
     const cur = live(t);
     if(step === 'gate') cur.requireGatePhoto = on;
+    else if(step === 'saltcell') cur.requireSaltCellPhoto = on;
     else if(step === 'skip') cur.requireSkipProof = on;
     else if(step === 'video') cur.allowVideo = on;
     else setPhotoRule(cur, step, key, on);
@@ -23036,6 +23651,7 @@ function photoRowCountText(step, bodies){
   }
   const must = technicians.filter(t=>
     step === 'gate' ? (t.requireGatePhoto === true || photoEveryoneOn('gate', 'gate'))
+    : step === 'saltcell' ? (t.requireSaltCellPhoto === true || photoEveryoneOn('saltcell', 'saltcell'))
     : step === 'skip' ? (t.requireSkipProof === true || photoEveryoneOn('skip', 'skip'))
     : PHOTO_BODIES.some(([k]) => bodies[k] && (photoRuleFor(t, step, k) || photoEveryoneOn(step, k)))
   );
@@ -23079,6 +23695,10 @@ function renderPhotoRequirements(){
      bodies: {pool: true, spa: true, fountain: true}},
     // One photo for the whole visit, so its list is a single tick per person
     {step: 'gate', label: 'Closed gate photo', off: false, why: '',
+     bodies: {}, oneTick: true},
+    // Pressing Salt cell cleaned opens the camera (Oct 22); one per visit
+    {step: 'saltcell', label: 'Salt cell clean photo', off: false, why: '',
+     note: 'When Salt cell cleaned is pressed, the technician has to take a photo of the cell before the button turns on. Only for customers with a salt cell.',
      bodies: {}, oneTick: true},
     // Not a photo step of its own: what a technician must do before skipping
     {step: 'skip', label: 'Skip body of water photo and note', off: false,
@@ -25344,6 +25964,13 @@ function timeOffTail(iso, ids, order){
   }catch(e){}
   return order;
 }
+// The stop a job comes straight after (Oct 23): the office's choice when that
+// stop is on the route ('' = first), otherwise its own customer; null when
+// neither is on the route (it goes at the end)
+function jobPlacedUnder(j, onRoute){
+  if(typeof j.placeAfter === 'string' && (j.placeAfter === '' || onRoute.has(String(j.placeAfter)))) return String(j.placeAfter);
+  return onRoute.has(String(j.customerId)) ? String(j.customerId) : null;
+}
 function twRouteFor(techId, iso){
   const day = twDayName(iso);
   const moves = lsGet('rescheduledVisits') || [];
@@ -25383,7 +26010,7 @@ function twJobsFor(techId, iso){
   const out = [];
   (lsGet('scheduledWorkOrders') || []).filter(j => j && j.date === iso && mine(j)).forEach(j=>{
     out.push({key: 'wo:' + j.id, label: '\ud83d\udee0 Work order', kind: 'work order', title: j.title || '', customerId: j.customerId,
-      done: j.status === 'done', doneAt: j.doneAt});
+      done: j.status === 'done', doneAt: j.doneAt, placeAfter: j.placeAfter});
   });
   (lsGet('scheduledFilterCleans') || []).filter(f => f && f.date === iso && mine(f)).forEach(f=>{
     out.push({key: 'fc:' + f.id, label: '\ud83d\udebf Filter clean', kind: 'filter clean', title: '', customerId: f.customerId,
@@ -25397,7 +26024,7 @@ function twJobsFor(techId, iso){
     const ids = (t.customerIds || []).length ? t.customerIds : [''];
     ids.forEach(cid=>{
       out.push({key: 'tk:' + t.id, label: '\ud83d\udccb Task', kind: 'task', title: t.title || '', customerId: cid,
-        done: !!t.done, doneAt: t.doneAt});
+        done: !!t.done, doneAt: t.doneAt, placeAfter: t.placeAfter});
     });
   });
   return out;
@@ -25514,6 +26141,10 @@ function renderTechRouteWeb(){
   if(head) head.style.display = (list.length || jobs.length) ? '' : 'none';
   box.innerHTML = '';
   if(!list.length && !jobs.length){ box.innerHTML = emptyState('No customers on this day.'); return; }
+  // Where each job sits (Oct 23): after the stop the office chose, or under
+  // its own customer
+  const under = j => jobPlacedUnder(j, onRoute);
+  jobs.filter(j => under(j) === '').forEach(j => box.appendChild(twJobRow(j, !onRoute.has(String(j.customerId)))));
   list.forEach((c, i)=>{
     const served = twServicedOn(c, twDateISO);
     const row = document.createElement('div');
@@ -25571,10 +26202,11 @@ function renderTechRouteWeb(){
     });
     box.appendChild(row);
     // Their work orders, filter cleans and tasks that day, just under them
-    jobs.filter(j => String(j.customerId) === String(c.id)).forEach(j => box.appendChild(twJobRow(j, false)));
+    jobs.filter(j => under(j) === String(c.id) && String(j.customerId) === String(c.id)).forEach(j => box.appendChild(twJobRow(j, false)));
+    jobs.filter(j => under(j) === String(c.id) && String(j.customerId) !== String(c.id)).forEach(j => box.appendChild(twJobRow(j, !onRoute.has(String(j.customerId)))));
   });
   // Jobs at customers who aren't on the route that day, and tasks with no customer
-  jobs.filter(j => !onRoute.has(String(j.customerId))).forEach(j => box.appendChild(twJobRow(j, true)));
+  jobs.filter(j => under(j) === null).forEach(j => box.appendChild(twJobRow(j, true)));
 }
 
 // Takes away a one-off move onto this day, so they're back on their usual
@@ -27537,6 +28169,8 @@ function buildWorkOrderDoc(customerId, j){
     + '</div><div class="report-badge">Completed</div></div>'
     + (items.length ? '<div class="report-sec">' + (j._drain ? 'Extra work' : 'Line items') + '</div><table class="report-table">' + rows + '</table>' : '')
     + (j.notes ? '<div class="report-sec">Work order notes</div><div class="report-notes">' + esc(j.notes) + '</div>' : '')
+    + ((j.doneReplacements || []).length ? '<div class="report-sec">Needs replacing</div><div class="report-notes">' + esc(j.doneReplacements.join(', ')) + '</div>' : '')
+    + (Array.isArray(j.doneExtraWork) && j.doneExtraWork.length ? '<div class="report-sec">Extra work done</div><div class="report-notes">' + esc(j.doneExtraWork.map(e => (e && (e.description || e)) || '').filter(Boolean).join(', ')) + '</div>' : '')
     + (j.doneNotes ? '<div class="report-sec">Technician\u2019s notes</div><div class="report-notes">' + esc(j.doneNotes) + '</div>' : '')
     + (j.donePhoto ? '<div class="report-sec">' + ((j.donePhotoMore || []).length ? 'Photos' : 'Photo') + '</div><div class="report-photos" data-wo-photo>'
        + '<span style="font-size:12.5px;color:var(--muted);">Loading the photo\u2026</span></div>' : '');
@@ -29610,6 +30244,21 @@ function collectAlerts(){
       body: 'Quote' + (w.number ? ' #' + quoteNumberText(w.number) : ''), t: tm, jobKey: 'q:' + w.id, tech: '',
       notes: (w.approved ? 'Approved' : 'Declined') + ' by the customer'
         + (w.total ? ' — ' + qoMoney(w.total) : '') + (what ? '\n' + what : '')});
+  });
+  // Messages customers sent about a quote (Oct 22), on the Repairs tab with
+  // the answers; pressing one opens the quote in their Jobs tab
+  (typeof workOrders !== 'undefined' ? workOrders : []).forEach(w=>{
+    if(!w || !w.id || !(w.customerMessages || []).length) return;
+    const c = (customers || []).find(x => x && String(x.id) === String(w.customerId));
+    if(!c || c.deleted) return;
+    w.customerMessages.forEach(m=>{
+      const tm = new Date(m.at || 0).getTime();
+      if(!tm || isNaN(tm) || now - tm > ALERT_NOTE_DAYS * 86400000) return;
+      out.push({id: 'qmsg:' + w.id + ':' + m.at, kind: 'repair', tagText: 'Message',
+        customerId: c.id, name: displayName(c.name),
+        body: 'Message about quote' + (w.number ? ' #' + quoteNumberText(w.number) : ''), t: tm, jobKey: 'q:' + w.id, tech: '',
+        notes: m.text});
+    });
   });
   // Emails that didn't go out (Oct 8)
   const fails = lsGet('emailFailures');

@@ -19,6 +19,21 @@ button[data-x-drawn] > svg{display:block;width:0.62em;height:0.62em;margin:auto;
    inside tags and tight rows. */
 /* Something a job needs before it can go out (Oct 21): a red ring, and a line under it */
 .need-it{border:2px solid var(--rust) !important;box-shadow:0 0 0 3px rgba(184,73,46,0.15) !important;}
+/* Where a job goes in the route (Oct 23): tap a gap, then Assign */
+.rp-box{border:1px solid var(--line);border-radius:10px;max-height:340px;overflow-y:auto;background:#fff;}
+.rp-stop{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line);font-size:13.5px;}
+.rp-stop:last-child{border-bottom:0;}
+.rp-num{width:22px;height:22px;border-radius:50%;background:var(--teal-pale);color:var(--teal-deep);font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.rp-addr{font-size:11.5px;color:var(--muted);}
+.rp-own{font-size:10.5px;font-weight:700;color:var(--teal-deep);background:var(--teal-pale);padding:2px 7px;border-radius:6px;margin-left:auto;white-space:nowrap;}
+.rp-gap{height:16px;position:relative;cursor:pointer;}
+.rp-gap::after{content:"+ Put it here";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:11px;font-weight:700;color:var(--teal-deep);background:#fff;border:1.5px dashed #9CC5BF;border-radius:999px;padding:0 10px;opacity:.35;transition:opacity .12s;white-space:nowrap;}
+.rp-gap:hover::after{opacity:1;}
+.rp-job{display:flex;align-items:center;gap:8px;padding:9px 12px;margin:4px 6px;font-size:13.5px;font-weight:600;border-radius:10px;border:2px solid #3E5560;background:#E9EEF0;color:#3E5560;}
+.rp-job.pending{border-style:dashed;}
+.rp-job span:last-child{margin-left:auto;font-size:11.5px;font-weight:600;color:var(--muted);}
+.rp-note{font-size:12px;color:var(--muted);margin-top:8px;}
+.rp-done{font-size:12.5px;font-weight:600;color:var(--teal-deep);margin-top:8px;}
 .need-msg{font-size:12.5px;color:var(--rust);font-weight:600;margin:6px 0 0;}
 button[data-x-drawn="bin"],button:has(> svg.weir-bin){width:33px !important;height:33px !important;min-width:33px !important;max-width:33px !important;
   padding:0 !important;margin-top:0;border-radius:9px !important;background:#FBE3DC !important;color:#9E3D26 !important;
@@ -65,6 +80,11 @@ input, textarea, select, [contenteditable], [contenteditable] *{
   --shadow-md:0 2px 4px rgba(15,46,46,0.05), 0 8px 24px rgba(15,46,46,0.07);
 }
 *{box-sizing:border-box;}
+/* Photos: a thick white mat with a fine outline and squarer corners (Oct 23).
+   Not the full-size view (no-mat) or the map's own pictures. */
+img:not(.no-mat){border:5px solid #fff !important;border-radius:6px !important;
+  box-shadow:0 0 0 1px #D5E3E0,0 1px 3px rgba(0,0,0,0.08) !important;background:#fff;}
+.leaflet-container img{border:0 !important;border-radius:0 !important;box-shadow:none !important;background:none;}
 body{
   margin:0;
   background:var(--surface);
@@ -603,6 +623,14 @@ select#customerSelect{font-weight:600;}
 
   <!-- HOME VIEW -->
   <div class="view active" id="view-home">
+    <!-- Today | Calendar, for admins (Oct 25), like Customers | WorkCenter -->
+    <div class="card" id="homeTabCard" style="padding:10px;display:none;">
+      <div class="btn-row" style="gap:6px;">
+        <button type="button" class="btn btn-primary" id="btnHomeTabToday" style="flex:1;">Today</button>
+        <button type="button" class="btn btn-ghost" id="btnHomeTabCal" style="flex:1;">Calendar</button>
+      </div>
+    </div>
+    <div class="card" id="appCalCard" style="display:none;"></div>
     <div class="sticky-head" id="homeHeaderWrap">
     <div class="card" id="homeHeaderCard">
       <!-- Day and the reverse button on one line, the counts on their own line
@@ -2239,6 +2267,7 @@ function customPhotosTakenFor(type){
 // built long after the visit, so this can't rely on which visit is open.
 function customPhotoLabelFor(id){
   if(!id) return '';
+  if(id === 'saltcell') return 'Salt cell';      // taken with Salt cell cleaned (Oct 22)
   const look = list => {
     const hit = (list || []).find(p => p && p.id === id && p.label);
     return hit ? hit.label : '';
@@ -3345,6 +3374,9 @@ function applyRoleUI(){
   applyTechniciansTabVisibility();
   // Settings
   show('adminSettingsCards', admin, 'block');
+  // Today | Calendar for admins only (Oct 25); a technician always sees Today
+  show('homeTabCard', admin, 'block');
+  if(!admin && typeof acalMode !== 'undefined' && acalMode === 'calendar'){ try{ showHomeTab('today'); }catch(e){} }
   show('backupRestoreCard', admin, 'block');
   show('voiceButtonCard', admin, 'block');
   show('techVoiceCard', !admin, 'block');
@@ -6074,6 +6106,13 @@ function customerWantsGatePhoto(){
   return Object.keys(forCust).some(k => forCust[k] && forCust[k].requireGatePhoto === true);
 }
 
+// Salt cell cleaned needs a photo of the cell (Oct 22), set on the Photo
+// requirements tab for this technician or everyone
+function saltCellPhotoRequired(){
+  const me = liveMe();
+  return !!(me && me.requireSaltCellPhoto === true) || photoEveryoneOn('saltcell', 'saltcell');
+}
+
 function gatePhotoApplies(){
   // Set per technician or per body of water — there is no app-wide tick to
   // fall back on now that Settings only turns the step on and off.
@@ -7701,6 +7740,16 @@ function canRecordClips(){
             && typeof MediaRecorder !== 'undefined');
 }
 
+// The flip button on the camera picture (Oct 22): back camera and selfie.
+// Shown only when the phone has more than one camera.
+const CAM_FLIP_HTML = '<button type="button" data-camflip aria-label="Switch camera" style=position:absolute;top:14px;right:14px;width:46px;height:46px;border-radius:50%;border:none;background:rgba(0,0,0,0.45);display:none;align-items:center;justify-content:center;cursor:pointer;padding:0;"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;"><path d="M4 9a8 8 0 0 1 14.5-3.5L20 7"/><path d="M20 3v4h-4"/><path d="M20 15a8 8 0 0 1-14.5 3.5L4 17"/><path d="M4 21v-4h4"/><circle cx="12" cy="12" r="2.6"/></svg></button>';
+async function showCamFlipIfTwo(btn){
+  try{
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    if(devices.filter(d => d.kind === 'videoinput').length > 1) btn.style.display = 'flex';
+  }catch(e){}
+}
+
 async function recordClip(opts){
   opts = opts || {};
   if(!canRecordClips()){
@@ -7723,9 +7772,10 @@ async function recordClip(opts){
   };
 
   let stream;
+  let clipFacing = 'environment';
   try{
     stream = await navigator.mediaDevices.getUserMedia({
-      video: {facingMode: {ideal: 'environment'}, width: {ideal: 1280}, height: {ideal: 720}},
+      video: {facingMode: {ideal: clipFacing}, width: {ideal: 1280}, height: {ideal: 720}},
       audio: true            // a noise is often the whole point
     });
   }catch(e){
@@ -7740,8 +7790,10 @@ async function recordClip(opts){
     overlay.style.cssText = 'position:fixed;inset:0;z-index:500;background:#000;'
       + 'display:flex;flex-direction:column;';
     overlay.innerHTML = `
+      <div style="flex:1;min-height:0;position:relative;display:flex;">
       <video id="clipPreview" autoplay playsinline muted
         style="flex:1;width:100%;min-height:0;object-fit:contain;background:#000;"></video>
+      ${CAM_FLIP_HTML}</div>
       <div style="flex:0 0 auto;padding:18px 20px calc(18px + env(safe-area-inset-bottom));
                   display:flex;align-items:center;justify-content:space-between;gap:16px;background:#000;">
         <button type="button" id="clipCancel"
@@ -7779,6 +7831,22 @@ async function recordClip(opts){
     };
 
     overlay.querySelector('#clipCancel').addEventListener('click', ()=> finish(null));
+
+    // Back camera / selfie (Oct 22), before recording starts
+    const clipFlip = overlay.querySelector('[data-camflip]');
+    showCamFlipIfTwo(clipFlip);
+    clipFlip.addEventListener('click', async ()=>{
+      if(done || (recorder && recorder.state === 'recording')) return;
+      const want = clipFacing === 'environment' ? 'user' : 'environment';
+      try{
+        const next = await navigator.mediaDevices.getUserMedia({
+          video: {facingMode: {ideal: want}, width: {ideal: 1280}, height: {ideal: 720}}, audio: true
+        });
+        try{ stream.getTracks().forEach(t => t.stop()); }catch(e){}
+        stream = next; clipFacing = want;
+        video.srcObject = stream;
+      }catch(e){ showToast('That camera could not be opened'); }
+    });
 
     goBtn.addEventListener('click', ()=>{
       if(recorder && recorder.state === 'recording'){
@@ -7911,8 +7979,10 @@ function captureFromCamera(maxDim, quality){
     overlay.style.cssText = 'position:fixed;inset:0;z-index:500;background:#000;'
       + 'display:flex;flex-direction:column;';
     overlay.innerHTML = `
+      <div style="flex:1;min-height:0;position:relative;display:flex;">
       <video id="camPreview" autoplay playsinline muted
         style="flex:1;width:100%;min-height:0;object-fit:contain;background:#000;"></video>
+      ${CAM_FLIP_HTML}</div>
       <div style="flex:0 0 auto;padding:18px 20px calc(18px + env(safe-area-inset-bottom));
                   display:flex;align-items:center;justify-content:space-between;gap:16px;background:#000;">
         <button type="button" id="camCancel"
@@ -8000,8 +8070,11 @@ function captureFromCamera(maxDim, quality){
       try{
         const devices = await navigator.mediaDevices.enumerateDevices();
         const cams = devices.filter(d => d.kind === 'videoinput');
+        // Only a back lens (Oct 22): some phones call the selfie camera
+        // "ultra wide" too, and it was being picked
         const wide = cams.find(d=>{
           const l = (d.label || '').toLowerCase();
+          if(/front|user|selfie|facetime/.test(l)) return false;
           return l.includes('ultra') || l.includes('0.5') || l.includes('wide angle');
         });
         return wide ? wide.deviceId : null;
@@ -8019,7 +8092,7 @@ function captureFromCamera(maxDim, quality){
       }catch(e){ /* not supported — the default view is what we get */ }
     }
 
-    async function open(){
+    async function open(flipping){
       try{
         if(stream) stream.getTracks().forEach(t => t.stop());
 
@@ -8073,11 +8146,28 @@ function captureFromCamera(maxDim, quality){
           const t = stream.getVideoTracks()[0];
           if(t) await zoomOut(t);
         }catch(err2){
+          // A flip that fails goes back to the camera it was on
+          if(flipping){
+            facing = facing === 'environment' ? 'user' : 'environment';
+            showToast('That camera could not be opened');
+            return open(false);
+          }
           stop();
           if(!done){ done = true; reject(err2); }
         }
       }
     }
+
+    // Back camera / selfie (Oct 22)
+    const camFlip = overlay.querySelector('[data-camflip]');
+    showCamFlipIfTwo(camFlip);
+    let flipBusy = false;
+    camFlip.addEventListener('click', async ()=>{
+      if(done || flipBusy) return;
+      flipBusy = true;
+      facing = facing === 'environment' ? 'user' : 'environment';
+      try{ await open(true); }finally{ flipBusy = false; }
+    });
 
     overlay.querySelector('#camCancel').addEventListener('click', ()=>{
       if(done) return;
@@ -8168,6 +8258,7 @@ function openPhotoFullSize(dataUrl, onDelete){
   const img = document.createElement('img');
   img.src = dataUrl;
   img.alt = 'Photo';
+  img.className = 'no-mat';   // the full-size view stays edge to edge (Oct 23)
   img.style.cssText = 'flex:1;width:100%;min-height:0;object-fit:contain;padding:16px;'
     + 'box-sizing:border-box;display:block;';
   overlay.appendChild(img);
@@ -9089,29 +9180,12 @@ function renderTechRoute(){
   // order from the route it is meant to be showing.
   const ids = all.map(x => x.id);
   const routeIso = techRouteDateISO();
-  const orders = Object.assign({}, lsGet('routeOrders') || {}, fieldRouteOrder || {});
-  const forThisTech = suffix => 'day:' + techRouteDay + (suffix ? '|' + suffix : '');
-  // Only a list counts; anything else stored under a key reads as no order
-  const listAt = v => (Array.isArray(v) ? v : []).filter(id => ids.includes(id));
-  // The office's weekly order for this technician's day comes first: it is
-  // what dragging here saves, what the website shows, and what the
-  // technician's phone follows. The day's single list from before orders were
-  // kept per technician is read the same way.
-  const officeDay = lsGet('routeOrders') || {};
-  const dayOrder = officeDay[techRouteDay];
+  // Exactly the order Today shows for this technician and date (Oct 22),
+  // unless a drag here is waiting on Just today / Every week
   const pendingHere = techOrderPending && techOrderPending.techId === selectedTechId && techOrderPending.iso === routeIso;
-  const onceHere = ((lsGet('routeOrdersOnce') || {})[routeIso] || {})[selectedTechId];
-  let order = pendingHere ? listAt(techOrderPending.ids) : [];
-  if(!order.length) order = listAt(onceHere);
-  if(!order.length) order = listAt(Array.isArray(dayOrder) ? dayOrder
-    : (dayOrder && typeof dayOrder === 'object' ? dayOrder[selectedTechId] : null));
-  // Older orders kept on this phone only, for a day the office has none for
-  if(!order.length) order = listAt(orders['date:' + routeIso + '|' + selectedTechId]);
-  if(!order.length) order = listAt(orders[forThisTech(selectedTechId)]);
-  if(!order.length) order = listAt(orders['tech:' + forThisTech(selectedTechId)]);
-  if(!order.length) order = listAt(orders[forThisTech()]);
-  timeOffTail(routeIso, ids, order);
-  ids.forEach(id => { if(!order.includes(id)) order.push(id); });
+  let order = pendingHere ? (techOrderPending.ids || []).filter(id => ids.includes(id)) : [];
+  if(order.length){ ids.forEach(id => { if(!order.includes(id)) order.push(id); }); }
+  else order = adminRouteOrderIds(techRouteDay, routeIso, ids, selectedTechId);
   const list = order.map(id => all.find(x => x.id === id)).filter(Boolean);
   // As shown, for Remove changes to put back
   techOrderShown = list.map(x => x.id);
@@ -9261,8 +9335,13 @@ function renderTechRoute(){
   // Jobs at customers who aren't on the route that day, and tasks with no customer
   const onRoute = new Set(list.map(x => String(x.id)));
   jobs.filter(j => !onRoute.has(String(j.customerId))).forEach(j => container.appendChild(techRouteJobRow(j, iso, onReorderTech)));
+  placeChosenJobs(container);
   // A job that was dragged sits where it was left, as on Today (Oct 3)
-  const rawSaved = pendingHere ? techOrderPending.ids : (Array.isArray(onceHere) && onceHere.length ? onceHere
+  const onceHere = ((lsGet('routeOrdersOnce') || {})[routeIso] || {})[selectedTechId];
+  const dayOrder = (lsGet('routeOrders') || {})[techRouteDay];
+  const localDay = fieldRouteOrder['date:' + routeIso + '|' + selectedTechId];   // as Today reads first (Oct 22)
+  const rawSaved = pendingHere ? techOrderPending.ids : (Array.isArray(localDay) && localDay.length ? localDay
+    : Array.isArray(onceHere) && onceHere.length ? onceHere
     : (Array.isArray(dayOrder) ? dayOrder : (dayOrder && typeof dayOrder === 'object' ? dayOrder[selectedTechId] : null)));
   if(Array.isArray(rawSaved) && rawSaved.some(k => String(k).indexOf('job:') === 0)){
     const rowFor = key => container.querySelector('[data-reorder-key="' + String(key).replace(/"/g, '\\"') + '"]');
@@ -9287,7 +9366,7 @@ function techRouteJobsFor(techId, iso){
   // and a fresh copy goes out in its place: only the copy is listed here.
   (lsGet('scheduledWorkOrders') || []).filter(j => j && j.date === iso && mine(j) && !j.held && !j.reopened).forEach(j=>{
     out.push({kind: 'work order', id: j.id, key: 'work order:' + j.id, report: 'wo:' + j.id, title: j.title || 'Work order', customerId: j.customerId,
-      done: j.status === 'done', doneAt: j.doneAt, date: j.date, technicianId: j.technicianId});
+      done: j.status === 'done', doneAt: j.doneAt, date: j.date, technicianId: j.technicianId, placeAfter: j.placeAfter});
   });
   (lsGet('scheduledFilterCleans') || []).filter(f => f && f.date === iso && mine(f) && !f.reopened).forEach(f=>{
     out.push({kind: 'filter clean', id: f.id, key: 'filter clean:' + f.id, report: 'fc:' + f.id, title: 'Filter clean', customerId: f.customerId,
@@ -9300,7 +9379,7 @@ function techRouteJobsFor(techId, iso){
   (lsGet('tasks') || []).filter(t => t && t.date === iso && mine(t) && !t.held && !t.reopened).forEach(t=>{
     const ids = (t.customerIds || []).length ? t.customerIds : [''];
     ids.forEach(cid => out.push({kind: 'task', id: t.id, key: 'task:' + t.id + ':' + cid, report: '', title: t.title || 'Task', customerId: cid,
-      done: !!t.done, doneAt: t.doneAt, date: t.date, technicianId: t.technicianId}));
+      done: !!t.done, doneAt: t.doneAt, date: t.date, technicianId: t.technicianId, placeAfter: t.placeAfter}));
   });
   return out;
 }
@@ -9315,6 +9394,7 @@ function techRouteJobRow(job, iso, onReorder){
   if(job.done) row.style.opacity = '0.85';
   // Its own place in the route, dragged like a stop (Oct 3)
   row.dataset.reorderKey = 'job:' + job.key;
+  markJobPlace(row, job, job.customerId);
   const grip = document.createElement('div');
   grip.textContent = '\u2261';
   grip.title = 'Drag to reorder';
@@ -10029,16 +10109,21 @@ function orderCustomersForDay(...args){
 }
 function adminVersion_orderCustomersForDay(day, list){
   const ids = list.map(c => c.id);
-
-  // A "Just today" order for this exact date wins for that date only.
-  // Otherwise the admin app follows the company's route order, the same one
-  // the website's route scheduling shows, so a change made on either side
-  // shows on the other after a sync.
-  const iso = isoForDay(day);
-  let order = (fieldRouteOrder[orderKey(day, iso)] || []).filter(id => ids.includes(id));
+  const order = adminRouteOrderIds(day, isoForDay(day), ids, adminViewTechId);
+  return order.map(id => list.find(c => c.id === id)).filter(Boolean);
+}
+// The admin app's order for one technician's day (Oct 22): Today and the
+// Technicians tab both use this, so the two lists always match.
+// A "Just today" order for this exact date wins for that date only.
+// Otherwise the admin app follows the company's route order, the same one
+// the website's route scheduling shows, so a change made on either side
+// shows on the other after a sync.
+function adminRouteOrderIds(day, iso, ids, techId){
+  const key = 'date:' + iso + (techId ? '|' + techId : '');
+  let order = (fieldRouteOrder[key] || []).filter(id => ids.includes(id));
   // The office's Just today for the technician being looked at
-  if(order.length === 0 && adminViewTechId){
-    const once = ((lsGet('routeOrdersOnce') || {})[iso] || {})[adminViewTechId];
+  if(order.length === 0 && techId){
+    const once = ((lsGet('routeOrdersOnce') || {})[iso] || {})[techId];
     order = (Array.isArray(once) ? once : []).filter(id => ids.includes(id));
   }
   if(order.length === 0){
@@ -10046,7 +10131,7 @@ function adminVersion_orderCustomersForDay(day, list){
   }
   timeOffTail(iso, ids, order);
   ids.forEach(id => { if(!order.includes(id)) order.push(id); });
-  return order.map(id => list.find(c => c.id === id)).filter(Boolean);
+  return order;
 }
 function techVersion_orderCustomersForDay(day, list){
   const ids = list.map(c => c.id);
@@ -10257,6 +10342,8 @@ async function techRouteOrderEveryWeek(){
   ['day:', 'tech:day:'].forEach(k => { delete store[k + p.day + '|' + p.techId]; });
   lsSet('routeOrders', store);
   delete fieldRouteOrder['day:' + p.day + '|' + p.techId];
+  // and this phone's own Just today for that date, which Today reads first (Oct 22)
+  delete fieldRouteOrder['date:' + p.iso + '|' + p.techId];
   saveFieldRouteOrder();
   // A Just today for that date would still win over it
   const once = lsGet('routeOrdersOnce') || {};
@@ -10280,6 +10367,8 @@ async function techRouteOrderToday(){
   once[p.iso] = once[p.iso] || {};
   once[p.iso][p.techId] = p.ids.slice();
   lsSet('routeOrdersOnce', once);
+  // This phone's own Just today from Today would win over it (Oct 22)
+  if(fieldRouteOrder['date:' + p.iso + '|' + p.techId]){ delete fieldRouteOrder['date:' + p.iso + '|' + p.techId]; saveFieldRouteOrder(); }
   lsSet('routeOrdersOnceToSend', Date.now());
   endTechOrder();
   renderTechRoute();
@@ -10679,11 +10768,11 @@ function routeJobsFor(customerId, dayISO, techId){
   const tasks = (lsGet('tasks') || [])
     .filter(t => !t.done && !t.held && t.date === dayISO && mine(t))   // not one held off the app (Oct 19)
     .filter(t => (t.customerIds || []).indexOf(customerId) !== -1 || t.customerId === customerId)
-    .map(t => ({key: 'task:' + t.id + ':' + customerId, kind: 'task', id: t.id,
+    .map(t => ({key: 'task:' + t.id + ':' + customerId, kind: 'task', id: t.id, placeAfter: t.placeAfter,
                 title: t.title || 'Task', details: t.details || '', photoRequired: !!t.photoRequired, videoRequired: !!t.videoRequired}));
   const orders = (lsGet('scheduledWorkOrders') || [])
     .filter(j => j.status === 'scheduled' && !j.held && j.date === dayISO && j.customerId === customerId && mine(j))
-    .map(j => ({key: 'work order:' + j.id, kind: 'work order', id: j.id, lineItems: j.lineItems || [],
+    .map(j => ({key: 'work order:' + j.id, kind: 'work order', id: j.id, lineItems: j.lineItems || [], placeAfter: j.placeAfter,
                 title: j.title || 'Work order', details: j.notes || '', photoRequired: !!j.photoRequired, videoRequired: !!j.videoRequired}));
   // Filter cleans are jobs too, done on the job screen (Oct 3)
   const cleans = (lsGet('scheduledFilterCleans') || [])
@@ -10815,7 +10904,7 @@ function routeLooseTasks(dayISO, techId){
   const mine = x => !techId || String(x.technicianId) === String(techId);
   return (lsGet('tasks') || [])
     .filter(t => t && !t.done && !t.held && t.date === dayISO && mine(t) && !(t.customerIds || []).length && !t.customerId)
-    .map(t => ({key: 'task:' + t.id + ':none', kind: 'task', id: t.id, title: t.title || 'Task',
+    .map(t => ({key: 'task:' + t.id + ':none', kind: 'task', id: t.id, title: t.title || 'Task', placeAfter: t.placeAfter,
                 details: t.details || '', photoRequired: !!t.photoRequired, videoRequired: !!t.videoRequired}))
     .filter(j => !jobSubmitted(j.key));
 }
@@ -10857,6 +10946,35 @@ function routeJobCounts(dayISO, techId){
   return {open: open, done: done};
 }
 
+// Where the office put a job in the route (Oct 23): placeAfter on the work
+// order or task is the stop it comes straight after ('' = first). Not set, or
+// that stop isn't on the route that day: under its own customer as before.
+// A drag on this phone still wins (placeMovedJobs runs after).
+function markJobPlace(row, job, customerId){
+  row.dataset.jobCust = customerId ? String(customerId) : '';
+  if(job && typeof job.placeAfter === 'string') row.dataset.placeAfter = job.placeAfter;
+}
+function placeChosenJobs(container){
+  if(!container) return;
+  const isStop = el => el && el.classList.contains('cust-row') && el.dataset.reorderKey && String(el.dataset.reorderKey).indexOf('job:') !== 0;
+  Array.from(container.querySelectorAll('[data-place-after]')).forEach(row=>{
+    const after = row.dataset.placeAfter;
+    if(after === ''){
+      const first = Array.from(container.children).find(el => el !== row && (isStop(el) || el.dataset.reorderKey));
+      if(first) container.insertBefore(row, first);
+      return;
+    }
+    const target = Array.from(container.children).find(el => isStop(el) && String(el.dataset.reorderKey) === String(after));
+    if(!target) return;
+    // Past its drop-down and that customer's own jobs
+    let anchor = target;
+    const next = () => anchor.nextElementSibling;
+    while(next() && next() !== row && (/route-brief|route-job-brief/.test(next().className)
+      || (next().dataset.jobCust === String(after) && next().dataset.placeAfter === undefined))) anchor = next();
+    if(anchor !== row) anchor.after(row);
+  });
+}
+
 // A job that was dragged sits where it was left; one that wasn't stays under
 // its customer. The saved route order holds customers and jobs together.
 function placeMovedJobs(container, day){
@@ -10890,6 +11008,7 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
     row.className = 'route-job';
     // A job has its own place in the route, saved with the customers' order
     row.dataset.reorderKey = 'job:' + job.key;
+    markJobPlace(row, job, customer ? customer.id : '');
     // No gap between the parts, the same as a customer row, so the names start
     // at the same place whether or not there's a grip
     // The row in its kind's pale badge colour (Oct 3)
@@ -10988,7 +11107,7 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
       btnRow.style.marginTop = '16px';
       const directions = document.createElement('button');
       directions.className = 'btn btn-ghost';
-      directions.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);';   // as on a customer (Oct 21)
+      directions.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
       directions.textContent = 'Directions';
       directions.addEventListener('click', e => { e.stopPropagation(); openDirections(customer); });
       if(customer) btnRow.appendChild(directions);
@@ -10999,6 +11118,14 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
       // under the job's own date
       start.textContent = 'Start job';
       start.addEventListener('click', e => { e.stopPropagation(); openJobPage(customer, Object.assign({}, job, {dayISO: dayISO})); });
+      // Reschedule (Oct 21, admin app only): the job itself moves to the
+      // date and technician chosen
+      const resched = document.createElement('button');
+      resched.className = 'btn btn-ghost';
+      resched.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+      resched.textContent = 'Reschedule';
+      resched.addEventListener('click', e => { e.stopPropagation(); rescheduleDoneJob(job, true); });
+      btnRow.appendChild(resched);
       btnRow.appendChild(start);
       panel.appendChild(btnRow);
       panel.addEventListener('click', e => e.stopPropagation());
@@ -11015,6 +11142,7 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
     row.className = 'route-job';
     // A job has its own place in the route, saved with the customers' order
     row.dataset.reorderKey = 'job:' + job.key;
+    markJobPlace(row, job, customer ? customer.id : '');
     // No gap between the parts, the same as a customer row, so the names start
     // at the same place whether or not there's a grip
     // The row in its kind's pale badge colour (Oct 3)
@@ -11113,7 +11241,7 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
       btnRow.style.marginTop = '16px';
       const directions = document.createElement('button');
       directions.className = 'btn btn-ghost';
-      directions.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);';   // as on a customer (Oct 21)
+      directions.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
       directions.textContent = 'Directions';
       directions.addEventListener('click', e => { e.stopPropagation(); openDirections(customer); });
       if(customer) btnRow.appendChild(directions);
@@ -12032,7 +12160,7 @@ function adminVersion_renderHomeList(){
       if(true){
         const reschedBtn = document.createElement('button');
         reschedBtn.className = 'btn btn-ghost';
-        reschedBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);';   // dark teal, white words (Oct 21)
+        reschedBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
         reschedBtn.textContent = 'Reschedule';
         reschedBtn.addEventListener('click', (e)=>{
           e.stopPropagation();
@@ -12043,7 +12171,7 @@ function adminVersion_renderHomeList(){
 
       const directionsBtn = document.createElement('button');
       directionsBtn.className = 'btn btn-ghost';
-      directionsBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);';   // dark teal, white words (Oct 21)
+      directionsBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
       directionsBtn.textContent = 'Directions';
       directionsBtn.addEventListener('click', (e)=>{
         e.stopPropagation();
@@ -12054,7 +12182,7 @@ function adminVersion_renderHomeList(){
       if(isAdminUser()){
         const shareBtn = document.createElement('button');
         shareBtn.className = 'btn btn-ghost';
-        shareBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);';   // dark teal, white words (Oct 21)
+        shareBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
         shareBtn.textContent = 'Share';
         shareBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openShareCustomer(c); });
         btnRow.appendChild(shareBtn);
@@ -12139,6 +12267,7 @@ function adminVersion_renderHomeList(){
     added.forEach(r => { anchor.after(r); anchor = r; });
   });
   if(looseTasks.length) appendRouteJobRows(container, null, looseTasks, selectedDayISO, canReorder);
+  placeChosenJobs(container);
   placeMovedJobs(container, selectedHomeDay);
 }
 function techVersion_renderHomeList(){
@@ -12382,7 +12511,7 @@ function techVersion_renderHomeList(){
       if(currentUser && currentUser.isAdmin){
         const reschedBtn = document.createElement('button');
         reschedBtn.className = 'btn btn-ghost';
-        reschedBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);';   // dark teal, white words (Oct 21)
+        reschedBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
         reschedBtn.textContent = 'Reschedule';
         reschedBtn.addEventListener('click', (e)=>{
           e.stopPropagation();
@@ -12393,7 +12522,7 @@ function techVersion_renderHomeList(){
 
       const directionsBtn = document.createElement('button');
       directionsBtn.className = 'btn btn-ghost';
-      directionsBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;background:var(--teal-deep);color:#fff;border:1px solid var(--teal-deep);';   // dark teal, white words (Oct 21)
+      directionsBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
       directionsBtn.textContent = 'Directions';
       directionsBtn.addEventListener('click', (e)=>{
         e.stopPropagation();
@@ -12492,6 +12621,7 @@ function techVersion_renderHomeList(){
     added.forEach(r => { anchor.after(r); anchor = r; });
   });
   if(looseTasks.length) appendRouteJobRows(container, null, looseTasks, selectedDayISO, canReorder);
+  placeChosenJobs(container);
   placeMovedJobs(container, selectedHomeDay);
 }
 
@@ -12731,7 +12861,8 @@ function servicedJobRow(job){
 }
 
 // The window for it: a date (it has to be set) and whose route it goes on
-function rescheduleDoneJob(job){
+// move (Oct 21): a job still on Today's list is moved rather than copied
+function rescheduleDoneJob(job, move){
   const LISTS = {'work order': ['scheduledWorkOrders', 'work_order'], 'filter clean': ['scheduledFilterCleans', 'filter_clean'],
     'pool drain': ['scheduledPoolDrains', 'pool_drain'], 'task': ['tasks', 'task']};
   const where = LISTS[job.kind];
@@ -12753,7 +12884,8 @@ function rescheduleDoneJob(job){
     + '<div class="btn-row" style="flex-wrap:nowrap;"><button type="button" class="btn btn-primary" id="rdjGo" style="flex:1 1 0;">Reschedule</button>'
     + '<button type="button" class="btn btn-ghost" id="rdjCancel" style="flex:1 1 0;">Cancel</button></div></div>';
   overlay.querySelector('p').textContent = (job.title || jobKindLabel(job.kind))
-    + ' goes back on the route for the day you pick. The one done today stays in the records.';
+    + (move ? ' moves to the route for the day and technician you pick.'
+            : ' goes back on the route for the day you pick. The one done today stays in the records.');
   const sel = overlay.querySelector('#rdjTech');
   techs.forEach(t => { const o = document.createElement('option'); o.value = String(t.id); o.textContent = t.name || 'Technician'; sel.appendChild(o); });
   if(Array.from(sel.options).some(o => o.value === wasTech)) sel.value = wasTech;
@@ -12767,6 +12899,21 @@ function rescheduleDoneJob(job){
     const now = lsGet(where[0]) || [];
     const done = now.find(x => x && String(x.id) === String(job.id));
     if(!done){ close(); showToast('That job is no longer here'); return; }
+    if(move){
+      done.date = dateEl.value;
+      done.technicianId = sel.value;
+      if(Array.isArray(done.technicianIds)) done.technicianIds = [sel.value];
+      if(!lsSet(where[0], now)){ showToast('Could not save \u2014 the phone is full'); return; }
+      queueOfficeWork(where[1], done.id, false);
+      try{ if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange(); }catch(e){}
+      close();
+      try{ renderHomeList(); }catch(e){}
+      const t = techs.find(x => String(x.id) === sel.value);
+      showToast((job.title || jobKindLabel(job.kind)) + ' moved to '
+        + new Date(done.date + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})
+        + (t ? ' with ' + t.name : ''));
+      return;
+    }
     const copy = JSON.parse(JSON.stringify(done));
     // Nothing of the finished visit comes along, and nothing ties it to a
     // group, which would take it back off
@@ -14725,8 +14872,24 @@ async function renderPoolServiceChecks(customer){
       + "font-family:'Inter',sans-serif;cursor:pointer;"
       + 'transition:background-color .15s ease,color .15s ease;';
     btn.style.cssText = base + (wasOn ? on : off);
-    btn.addEventListener('click', ()=>{
-      const nowOn = btn.dataset.on !== 'true';
+    // The cell's photo, when one is required (Oct 22): the button turns on
+    // only once it's taken, and off again takes the photo away
+    const needsShot = ch.id === 'chkSaltCell' && saltCellPhotoRequired();
+    const shots = ()=> customPhotosTakenFor('pool');
+    if(needsShot && wasOn && shots().saltcell) lastLine.textContent = '\ud83d\udcf7 Photo taken';
+    btn.addEventListener('click', async ()=>{
+      let nowOn = btn.dataset.on !== 'true';
+      if(needsShot && nowOn){
+        let data = null;
+        try{ data = await captureFromCamera(900, 0.5); }
+        catch(err){ showToast('Could not open the camera'); return; }
+        if(!data){ showToast('A photo of the salt cell is needed'); return; }
+        shots().saltcell = data;
+        lastLine.textContent = '\ud83d\udcf7 Photo taken';
+      } else if(needsShot && !nowOn){
+        delete shots().saltcell;
+        lastLine.textContent = lastDoneText(ch.field);
+      }
       btn.dataset.on = nowOn ? 'true' : 'false';
       btn.style.cssText = base + (nowOn ? on : off);
       if(poolServicePressed.customerId !== customer.id){
@@ -16260,6 +16423,7 @@ function awcBuild(pane){
         <label>Saved technician</label>
         <button type="button" class="btn btn-ghost" id="awcWoTech" style="width:100%;justify-content:space-between;gap:10px;"></button>
       </div>
+      <div class="field" id="awcWoRoutePlace" style="display:none;"></div>
       <div class="field">
         <label>Repeat</label>
         <!-- The same choices as a task's Repeat (Oct 2) -->
@@ -16327,6 +16491,7 @@ function awcBuild(pane){
         <label>Saved technician</label>
         <button type="button" class="btn btn-ghost" id="awcTaskTech" style="width:100%;justify-content:space-between;gap:10px;"></button>
       </div>
+      <div class="field" id="awcTaskRoutePlace" style="display:none;"></div>
       <div class="field">
         <label>Repeat</label>
         <select id="awcTaskRepeat">
@@ -16386,6 +16551,8 @@ function awcBuild(pane){
   document.getElementById('awcWoDate').value = '';
   document.getElementById('awcTaskDate').value = '';
   awcWireSearch('awcWoSearch', 'awcWoSuggest', ()=> awcWoCustomers, id=>{ awcWoCustomers.push(id); awcRenderChips(); });
+  ['awcWoDate', 'awcTaskDate'].forEach(id=>{ const d = document.getElementById(id);
+    if(d){ d.addEventListener('change', awcRoutePlaceRefresh); d.addEventListener('input', awcRoutePlaceRefresh); } });
   awcWireSearch('awcTaskSearch', 'awcTaskSuggest', ()=> awcTaskCustomers, id=>{ awcTaskCustomers.push(id); awcRenderChips(); });
   // + Filter clean (Oct 3), as on the website: with more than one filter clean
   // in Products and Services, a window to choose how many of each
@@ -16490,6 +16657,7 @@ function awcBuild(pane){
 }
 
 function awcApply(){
+  setTimeout(awcRoutePlaceRefresh, 0);   // the route picker shows only on its own form (Oct 23)
   const isTask = awcKind === 'Task';
   document.querySelectorAll('#awcKindRow [data-kind]').forEach(b=>{
     b.className = 'btn ' + (b.dataset.kind === awcKind ? 'btn-primary' : 'btn-ghost');
@@ -16569,6 +16737,7 @@ function awcWireSearch(inputId, boxId, picked, onPick){
 }
 
 function awcRenderChips(){
+  setTimeout(awcRoutePlaceRefresh, 0);
   [['awcQuoteChips', ()=> awcQuoteCustomers, ids => { awcQuoteCustomers = ids; }],
    ['awcWoChips', ()=> awcWoCustomers, ids => { awcWoCustomers = ids; }],
    ['awcTaskChips', ()=> awcTaskCustomers, ids => { awcTaskCustomers = ids; }]].forEach(([boxId, get, set])=>{
@@ -16806,7 +16975,11 @@ function awcWireQuote(){
     });
   });
   document.getElementById('awcQuoteSend').addEventListener('click', awcSendQuote);
-  document.getElementById('awcQuoteClear').addEventListener('click', awcClearQuote);
+  // Asks first (Oct 22)
+  document.getElementById('awcQuoteClear').addEventListener('click', async ()=>{
+    const ok = await confirmDialog('Are you sure you want to clear this quote? Everything filled in will be removed.', 'Clear');
+    if(ok) awcClearQuote();
+  });
   document.getElementById('awcQuoteCustomize').addEventListener('click', awcCustomizeQuoteEmail);
   awcRenderLines('awcQuoteLines');
   awcShowQuoteNumber();
@@ -17111,8 +17284,10 @@ function awcCustomizeQuoteEmail(){
     + '<div class="btn-row" style="flex-wrap:nowrap;margin-bottom:10px;">'
     + '<button type="button" class="btn btn-ghost" data-preview style="flex:1 1 0;min-width:0;">Preview</button>'
     + '<button type="button" class="btn btn-ghost" data-reset style="flex:1 1 0;min-width:0;">Reset to default</button></div>'
-    + '<button type="button" class="btn btn-primary" data-save style="margin-bottom:8px;">Save</button>'
-    + '<button type="button" class="btn btn-ghost" data-cancel>Cancel</button>';
+    // Save and Cancel side by side, the same width as Preview and Reset (Oct 22)
+    + '<div class="btn-row" style="flex-wrap:nowrap;">'
+    + '<button type="button" class="btn btn-primary" data-save style="flex:1 1 0;min-width:0;">Save</button>'
+    + '<button type="button" class="btn btn-ghost" data-cancel style="flex:1 1 0;min-width:0;">Cancel</button></div>';
   const f = k => card.querySelector('[data-f="' + k + '"]');
   const fill = v=>{
     f('header').value = v.header || '';
@@ -17252,7 +17427,11 @@ function awcQuoteEmailHtml(customer, type, dateText, items, total, notes, styleO
         // Download quote (Oct 15): the breakdown as a PDF to keep
         + (!awcQuoteLinkCanDownload(respondUrl) ? '' : '<a href="' + respondUrl + '&a=download" style="display:block;text-align:center;margin:12px 0 6px;padding:12px 10px;border-radius:10px;'
         + 'background:#F1F8F7;color:' + awcEsc(colour) + ';border:1.5px solid #BFDCD8;font-weight:700;font-size:14.5px;text-decoration:none;">'
-        + '&#8615;&nbsp; Download ' + awcEsc(String(type || 'Quote').toLowerCase()) + ' (PDF)</a>') : '')
+        + '&#8615;&nbsp; Download ' + awcEsc(String(type || 'Quote').toLowerCase()) + ' (PDF)</a>')
+        // Send a message (Oct 22): the customer asks something without answering
+        + '<a href="' + respondUrl + '&a=message" style="display:block;text-align:center;margin:12px 0 6px;padding:12px 10px;border-radius:10px;'
+        + 'background:#F1F8F7;color:' + awcEsc(colour) + ';border:1.5px solid #BFDCD8;font-weight:700;font-size:14.5px;text-decoration:none;">'
+        + '&#9993;&nbsp; Send a message</a>' : '')
     + (((q.closing || '').trim() || signoff) ? '<div style="font-size:14px;color:#4A5A58;padding-top:18px;border-top:1px solid #E6E9E8;white-space:pre-wrap;">'
         + awcEsc((q.closing || '').trim())
         + ((q.closing || '').trim() && signoff ? '<br>' : '') + (signoff ? awcEsc(signoff) : '') + '</div>' : '')
@@ -17294,7 +17473,143 @@ function awcQuoteDownloadDetails(customer, type, dateText, items, total, notes, 
   };
 }
 
+// ---------- Where a job goes in the route (Oct 23) ----------
+// On a work order or task with a date and one technician, that technician's
+// route for the day shows under the form with the job in it. A tap on a gap
+// moves it there; Assign keeps that place (saving with a place tapped but not
+// assigned is stopped). Saved as placeAfter on each copy: the stop it comes
+// straight after, '' for first. Never assigned: under its own customer.
+// o = {host, active(), date(), techIds(), customerIds(), label(), stopsFor(techId, iso),
+//      techName(id), nameOf(c)}
+function makeRoutePlace(o){
+  const st = {assigned: undefined, pending: undefined};
+  const el = () => document.getElementById(o.host);
+  const esc2 = t => String(t == null ? '' : t).replace(/[&<>"]/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[ch]));
+  const ctx = ()=>{
+    if(o.active && !o.active()) return {off: true};
+    const techs = o.techIds(), iso = o.date(), cids = o.customerIds();
+    if(!iso || !techs.length) return {off: true};
+    if(techs.length > 1) return {note: 'With more than one technician, the job goes under its customer on each route.'};
+    if(cids.length > 1) return {note: 'With more than one customer, each goes under its own customer.'};
+    return {techId: techs[0], iso: iso, own: cids[0] || '', stops: o.stopsFor(techs[0], iso) || []};
+  };
+  function draw(){
+    const host = el();
+    if(!host) return;
+    const c = ctx();
+    if(c.off){ host.style.display = 'none'; host.innerHTML = ''; return; }
+    host.style.display = '';
+    if(c.note){
+      st.pending = undefined;
+      host.innerHTML = '<label>Where in the route</label><div class="rp-note">' + esc2(c.note) + '</div>';
+      return;
+    }
+    const ids = c.stops.map(s => String(s.id));
+    const ok = v => typeof v === 'string' && (v === '' || ids.indexOf(v) !== -1);
+    if(st.pending !== undefined && !ok(st.pending)) st.pending = undefined;
+    // Where it shows: tapped, else assigned, else under its own customer
+    const ownAt = c.own && ids.indexOf(String(c.own)) !== -1 ? String(c.own) : null;
+    const shown = st.pending !== undefined ? st.pending : (ok(st.assigned) ? st.assigned : ownAt);
+    const dayText = new Date(c.iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
+    host.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px;">'
+      + '<label style="margin:0;">Where in ' + esc2(o.techName(c.techId)) + '’s route</label>'
+      + '<span style="font-size:12px;color:var(--muted);white-space:nowrap;">' + esc2(dayText) + ' · ' + c.stops.length + (c.stops.length === 1 ? ' stop' : ' stops') + '</span></div>'
+      + '<div class="rp-box"></div><div class="rp-foot"></div>';
+    const box = host.querySelector('.rp-box');
+    const jobRow = ()=>{
+      const j = document.createElement('div');
+      j.className = 'rp-job' + (st.pending !== undefined ? ' pending' : '');
+      j.innerHTML = '<span>' + esc2(o.label()) + '</span><span>' + (st.pending !== undefined ? 'not assigned yet' : 'here') + '</span>';
+      return j;
+    };
+    const gap = after=>{
+      const g = document.createElement('div');
+      g.className = 'rp-gap';
+      g.title = 'Put it here';
+      g.addEventListener('click', e=>{
+        e.stopPropagation();
+        // Back where it already is: nothing to assign
+        st.pending = (ok(st.assigned) ? st.assigned : ownAt) === after ? undefined : after;
+        draw();
+      });
+      return g;
+    };
+    if(shown === '') box.appendChild(jobRow()); else box.appendChild(gap(''));
+    c.stops.forEach((s, i)=>{
+      const r = document.createElement('div');
+      r.className = 'rp-stop';
+      r.innerHTML = '<span class="rp-num">' + (i + 1) + '</span><div style="min-width:0;"><div>' + esc2(o.nameOf(s)) + '</div><div class="rp-addr">'
+        + esc2(s.address || 'No address on file') + '</div></div>'
+        + (String(s.id) === String(c.own) ? '<span class="rp-own">its customer</span>' : '');
+      box.appendChild(r);
+      if(shown === String(s.id)) box.appendChild(jobRow()); else box.appendChild(gap(String(s.id)));
+    });
+    if(shown === null) box.appendChild(jobRow());
+    const foot = host.querySelector('.rp-foot');
+    const after = v => v === '' ? 'at the start of the route' : 'after ' + o.nameOf(c.stops.find(s => String(s.id) === v) || {});
+    if(st.pending !== undefined){
+      foot.innerHTML = '<div class="btn-row" style="flex-wrap:nowrap;margin-top:10px;">'
+        + '<button type="button" class="btn btn-primary" data-rp-assign style="flex:1 1 0;min-width:0;">Assign</button>'
+        + '<button type="button" class="btn btn-ghost" data-rp-back style="flex:1 1 0;min-width:0;">Put it back</button></div>';
+      foot.querySelector('[data-rp-assign]').addEventListener('click', e=>{ e.stopPropagation(); st.assigned = st.pending; st.pending = undefined; draw(); });
+      foot.querySelector('[data-rp-back]').addEventListener('click', e=>{ e.stopPropagation(); st.pending = undefined; draw(); });
+    } else if(ok(st.assigned)){
+      foot.innerHTML = '<div class="rp-done">✓ Assigned ' + esc2(after(st.assigned)) + '</div>'
+        + '<button type="button" class="btn btn-ghost" data-rp-own style="width:auto;margin-top:6px;padding:5px 10px;font-size:12px;">Put it under its customer</button>';
+      foot.querySelector('[data-rp-own]').addEventListener('click', e=>{ e.stopPropagation(); st.assigned = undefined; draw(); });
+    } else {
+      foot.innerHTML = '<div class="rp-note">' + (ownAt ? 'It goes under its customer. ' : (c.own ? 'Its customer isn’t on this route that day, so it goes at the end. ' : 'It goes at the end. '))
+        + 'Tap a gap to move it, then press Assign.</div>';
+    }
+  }
+  return {
+    refresh: draw,
+    // The place to save: only an assigned one, and only for one technician and one customer
+    value: ()=>{ const c = ctx(); return (!c.off && !c.note && typeof st.assigned === 'string') ? st.assigned : undefined; },
+    unassigned: ()=> st.pending !== undefined && !!el() && !!el().querySelector('[data-rp-assign]'),
+    assignBtn: ()=> el() && el().querySelector('[data-rp-assign]'),
+    set: v=>{ st.assigned = typeof v === 'string' ? v : undefined; st.pending = undefined; draw(); },
+    reset: ()=>{ st.assigned = undefined; st.pending = undefined; draw(); }
+  };
+}
+
+// A technician's stops on a date, in the order Today shows them
+function appRouteStopsFor(techId, iso){
+  const day = DAYS_OF_WEEK[new Date(iso + 'T12:00:00').getDay()];
+  const moves = lsGet('rescheduledVisits') || [];
+  const movedAway = new Set(moves.filter(r => r && r.fromDate === iso).map(r => r.customerId));
+  const base = (customers || []).filter(c => c && String(c.technicianId || '') === String(techId) && customerServicedOn(c, day)
+    && c.active !== false && !skipsThisDay(c, iso) && !movedAway.has(c.id));
+  const movedWho = movedOntoDate(moves, iso);
+  const movedIn = (customers || []).filter(c => c && movedHereFor(movedWho, c, techId) && c.active !== false && !base.some(b => b.id === c.id));
+  const all = base.concat(movedIn);
+  const order = adminRouteOrderIds(day, iso, all.map(c => c.id), techId);
+  return order.map(id => all.find(c => c.id === id)).filter(Boolean);
+}
+var awcRpWo = null, awcRpTask = null;
+function awcRoutePlaceRefresh(){
+  try{
+    const custName = id => ((customers || []).find(c => c && String(c.id) === String(id)) || {}).name || '';
+    if(!awcRpWo) awcRpWo = makeRoutePlace({host: 'awcWoRoutePlace',
+      active: ()=> awcKind === 'Work Order' && awcView === 'main',
+      date: ()=> document.getElementById('awcWoDate').value,
+      techIds: ()=> awcWoTechs.slice(), customerIds: ()=> awcWoCustomers.slice(),
+      label: ()=> '\ud83d\udee0 ' + ((awcLineItems || []).map(i => i && i.description).filter(Boolean).join(', ') || 'Work order')
+        + (awcWoCustomers.length === 1 ? ' \u00b7 ' + custName(awcWoCustomers[0]) : ''),
+      stopsFor: appRouteStopsFor, techName: id => awcTechNames([id]), nameOf: c => c.name || ''});
+    if(!awcRpTask) awcRpTask = makeRoutePlace({host: 'awcTaskRoutePlace',
+      active: ()=> awcKind === 'Task' && awcView === 'main',
+      date: ()=> document.getElementById('awcTaskDate').value,
+      techIds: ()=> awcTaskTechs.slice(), customerIds: ()=> awcTaskCustomers.slice(),
+      label: ()=> '\ud83d\udccb ' + (document.getElementById('awcTaskTitle').value.trim() || 'Task')
+        + (awcTaskCustomers.length === 1 ? ' \u00b7 ' + custName(awcTaskCustomers[0]) : ''),
+      stopsFor: appRouteStopsFor, techName: id => awcTechNames([id]), nameOf: c => c.name || ''});
+    awcRpWo.refresh(); awcRpTask.refresh();
+  }catch(e){}
+}
+
 function awcLabelTechs(){
+  setTimeout(awcRoutePlaceRefresh, 0);   // the route picker follows (Oct 23)
   [['awcWoTech', awcWoTechs], ['awcTaskTech', awcTaskTechs]].forEach(([id, ids])=>{
     const btn = document.getElementById(id);
     if(!btn) return;
@@ -17369,6 +17684,7 @@ function awcClearWo(){
   document.getElementById('awcWoEvery').max = '52';
   awcRenderChips(); awcRenderLines(); awcLabelTechs(); awcApplyRepeats();
   document.getElementById('awcWoNumber').textContent = '#' + String(awcNextWorkOrderNumber()).padStart(4, '0');
+  if(awcRpWo) awcRpWo.reset();
 }
 
 // ---- The WorkCenter ticks, shared with the website (Oct 20) ----
@@ -17418,6 +17734,7 @@ function awcClearTask(){
   document.getElementById('awcTaskUnit').value = 'weeks';
   document.getElementById('awcTaskWeeks').max = '52';
   awcRenderChips(); awcLabelTechs(); awcApplyRepeats();
+  if(awcRpTask) awcRpTask.reset();
 }
 
 // Finalize: onto each technician's route, exactly as the website does it
@@ -17436,9 +17753,12 @@ function awcFinalize(){
       [!date, dateEl, 'Set a date first.'],
       [!picked.length, document.getElementById('awcWoSearch'), 'Add a customer.'],
       [!validItems.length, firstLine || addLine, 'Add a line item.', firstLine ? document.getElementById('awcLines') : addLine.parentNode],
-      [!techIds.length, document.getElementById('awcWoTech'), 'Choose a technician.']
+      [!techIds.length, document.getElementById('awcWoTech'), 'Choose a technician.'],
+      // A place tapped in the route has to be assigned (Oct 23)
+      [!!(awcRpWo && awcRpWo.unassigned()), awcRpWo && awcRpWo.assignBtn(), 'Press Assign to put it there, or Put it back.']
     ])) return;
   }
+  const placeAfter = awcRpWo ? awcRpWo.value() : undefined;
   const notes = document.getElementById('awcWoNotes').value.trim();
   const photoRequired = document.getElementById('awcWoPhoto').checked;
   const videoRequired = document.getElementById('awcWoVideo').checked;
@@ -17486,6 +17806,7 @@ function awcFinalize(){
         // (that comes with quotes), so it mustn't call it deleted
         madeOnPhone: true
       };
+      if(placeAfter !== undefined) job.placeAfter = placeAfter;   // where in the route (Oct 23)
       jobs.push(job);
       made.push(job.id);
     }));
@@ -17532,8 +17853,10 @@ function awcAddTask(){
   if(!awcHasAll('awcTaskForm', [
     [!date, document.getElementById('awcTaskDate'), 'Set a date first.', document.getElementById('awcTaskDate').parentNode],
     [!title, document.getElementById('awcTaskTitle'), 'Say what needs doing.'],
-    [!techIds.length, document.getElementById('awcTaskTech'), 'Choose a technician.']
+    [!techIds.length, document.getElementById('awcTaskTech'), 'Choose a technician.'],
+    [!!(awcRpTask && awcRpTask.unassigned()), awcRpTask && awcRpTask.assignBtn(), 'Press Assign to put it there, or Put it back.']
   ])) return;
+  const placeAfter = awcRpTask ? awcRpTask.value() : undefined;
   const details = document.getElementById('awcTaskDetails').value.trim();
   const customerIds = awcTaskCustomers.slice();
   const everyDays = awcTaskDays();
@@ -17588,6 +17911,7 @@ function awcAddTask(){
         done: false,
         createdAt: new Date().toISOString()
       };
+      if(placeAfter !== undefined) t.placeAfter = placeAfter;   // where in the route (Oct 23)
       list.push(t);
       made.push(t.id);
     });
@@ -18145,6 +18469,7 @@ function awcOpenForEditing(isTask, r){
       document.getElementById('awcTaskUntil').value = '';
     }
     awcRenderChips(); awcLabelTechs(); awcApplyRepeats();
+    awcRoutePlaceRefresh(); if(awcRpTask) awcRpTask.set(first.placeAfter);   // where it was put (Oct 23)
     awcEdit = {kind: 'task', ids: left.map(t => t.id), groupId: first.taskGroupId || ''};
     document.getElementById('awcAddTask').textContent = 'Save changes';
     awcRenderEditDates();
@@ -18180,6 +18505,7 @@ function awcOpenForEditing(isTask, r){
     document.getElementById('awcWoUnit').value = rep.unit;
   }
   awcRenderChips(); awcRenderLines(); awcLabelTechs(); awcApplyRepeats();
+  awcRoutePlaceRefresh(); if(awcRpWo) awcRpWo.set(first.placeAfter);   // where it was put (Oct 23)
   awcEdit = {kind: 'wo', ids: left.map(j => j.id), workOrderId: first.workOrderId || '',
     number: first.workOrderNumber || 0, lastDate: left[left.length - 1].date || ''};
   if(awcEdit.number) document.getElementById('awcWoNumber').textContent = '#' + String(awcEdit.number).padStart(4, '0');
@@ -18573,6 +18899,357 @@ function awcRenderHistory(){
   });
   awcMoreButton(box, list.length, awcRenderHistory);
 }
+
+
+// ---------- Calendar on the admin app's Today tab (Oct 25) ----------
+// Today | Calendar at the top, like the Customers | WorkCenter row. The month
+// mirrors the website's Calendar: filter cleans, pool drains, work orders and
+// tasks on each day, coloured by where they're up to (grey not in the app,
+// gold in the app, green done), for everyone or one technician. A phone is too
+// narrow for names in each day, so each day shows a tag per kind with a count;
+// a tap opens the day underneath with every name. The website's filter clean
+// groups and drain calendar are read from the server for this (the phones
+// don't otherwise keep them).
+var acalMode = 'today', acalMonth = '', acalSel = '', acalTech = '', acalPick = false, acalPickYear = 0, acalJobMenu = false;
+var acalOffice = {filterGroups: null, drainCalendar: null, at: 0};
+const ACAL_TAGS = {fc: ['FC', 'Filter cleans', '#FBF1DD', '#8A5E0B'], pd: ['PD', 'Pool drains', '#C3DEF3', '#174C78'],
+  wo: ['WO', 'Work orders', '#E9EEF0', '#3E5560'], tk: ['TK', 'Tasks', '#E8F1E4', '#4D6B3C']};
+const ACAL_STATES = {'': ['Not in app', '#8A9795'], app: ['In the app', '#C68A17'], done: ['Done', '#2E8B57']};
+function acalEsc(t){ return String(t == null ? '' : t).replace(/[&<>"]/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[ch])); }
+function acalCust(id){ return (customers || []).find(c => c && String(c.id) === String(id)) || null; }
+function acalTechName(id){ const t = (lsGet('technicians') || []).find(x => x && String(x.id) === String(id)); return (t && t.name) || (id ? 'Technician' : 'No technician'); }
+async function acalFetchOffice(force){
+  if(!force && Date.now() - acalOffice.at < 60000) return;
+  try{
+    const res = await fieldAuthed('/rest/v1/company_records?select=id,data,deleted&kind=eq.setup&id=in.(filterGroups,drainCalendar)');
+    if(res && res.ok && Array.isArray(res.body)){
+      acalOffice.at = Date.now();
+      res.body.forEach(r=>{ if(r && !r.deleted && r.data && 'value' in r.data && (r.id === 'filterGroups' || r.id === 'drainCalendar')) acalOffice[r.id] = Array.isArray(r.data.value) ? r.data.value : []; });
+      if(acalMode === 'calendar') acalDraw();
+    }
+  }catch(e){}
+}
+function showHomeTab(which){
+  acalMode = which === 'calendar' && isAdminUser() ? 'calendar' : 'today';
+  const cal = acalMode === 'calendar';
+  const a = document.getElementById('btnHomeTabToday'), b = document.getElementById('btnHomeTabCal');
+  if(a) a.className = 'btn ' + (cal ? 'btn-ghost' : 'btn-primary');
+  if(b) b.className = 'btn ' + (cal ? 'btn-primary' : 'btn-ghost');
+  ['homeHeaderWrap', 'homeListCard'].forEach(id=>{ const el = document.getElementById(id); if(el) el.style.display = cal ? 'none' : ''; });
+  const card = document.getElementById('appCalCard');
+  if(card) card.style.display = cal ? 'block' : 'none';
+  if(cal){ acalDraw(); acalFetchOffice(); }
+  else { acalJobMenu = false; try{ renderHomeList(); }catch(e){} }
+}
+// Everything on each day, for the technician chosen
+function acalOnDays(){
+  const by = {};
+  const day = d => (by[d] = by[d] || {fc: [], pd: [], wo: [], tk: []});
+  const mineTech = id => !acalTech || String(id || '') === String(acalTech);
+  const fcRecs = lsGet('scheduledFilterCleans') || [];
+  const pdRecs = lsGet('scheduledPoolDrains') || [];
+  if(Array.isArray(acalOffice.filterGroups)){
+    acalOffice.filterGroups.forEach(g=>{
+      if(!g || !g.date) return;
+      const paused = id => Array.isArray(g.pausedIds) && g.pausedIds.indexOf(id) !== -1;
+      const techOf = cid => (g.custTech && g.custTech[cid]) || g.technicianId || (g.solo ? ((acalCust(cid) || {}).technicianId || '') : '');
+      const rows = (g.customerIds || []).filter(cid => !paused(cid) && acalCust(cid)).map(cid=>{
+        const rec = fcRecs.find(f => f && !f.reopened && f.groupId === g.id && f.customerId === cid && f.date === g.date && f.status === 'done')
+          || fcRecs.find(f => f && !f.reopened && f.groupId === g.id && f.customerId === cid && f.date === g.date);
+        const st = rec && rec.status === 'done' ? 'done' : (g.finalized && !(g.custHold && g.custHold[cid]) ? 'app' : '');
+        return {cid: cid, st: st, tech: (rec && rec.technicianId) || techOf(cid)};
+      }).filter(r => mineTech(r.tech));
+      if(rows.length) day(g.date).fc.push({name: g.solo ? 'On their own' : (g.name || 'Group'), solo: !!g.solo, tech: g.technicianId, rows: rows});
+    });
+  } else {
+    // Not reached the server yet: what's in the app
+    const groups = {};
+    fcRecs.forEach(f=>{
+      if(!f || f.reopened || !f.date || !acalCust(f.customerId) || !mineTech(f.technicianId)) return;
+      const k = f.date + '\u0002' + (f.groupId || '');
+      (groups[k] = groups[k] || {date: f.date, name: f.groupName || 'Filter cleans', rows: []}).rows.push({cid: f.customerId, st: f.status === 'done' ? 'done' : 'app', tech: f.technicianId});
+    });
+    Object.keys(groups).forEach(k => day(groups[k].date).fc.push(groups[k]));
+  }
+  if(Array.isArray(acalOffice.drainCalendar)){
+    acalOffice.drainCalendar.forEach(e=>{
+      const c = e && acalCust(e.customerId);
+      if(!c || !e.date) return;
+      const tech = e.technicianId || c.technicianId || '';
+      if(!mineTech(tech)) return;
+      const ids = Object.keys(e.pushed || {}).map(k => e.pushed[k]).concat(e.pushedId ? [e.pushedId] : []);
+      const recs = pdRecs.filter(r => r && ids.indexOf(r.id) !== -1);
+      const st = !recs.length ? '' : (recs.every(r => r.status === 'done') ? 'done' : 'app');
+      const kinds = (Array.isArray(e.bodyKinds) && e.bodyKinds.length ? e.bodyKinds : [e.bodyKind || 'pool']);
+      const bodies = recs.length ? recs.map(r => r.bodyName || r.bodyKind) : kinds.map(k => ({pool: 'Pool', spa: 'Spa', fountain: 'Fountain', extra: 'Extra'})[k] || 'Body of water');
+      day(e.date).pd.push({cid: e.customerId, st: st, tech: tech, bodies: bodies});
+    });
+  } else {
+    const seen = {};
+    pdRecs.forEach(r=>{
+      if(!r || r.reopened || !r.date || !acalCust(r.customerId) || !mineTech(r.technicianId)) return;
+      const k = r.date + '\u0002' + r.customerId;
+      if(seen[k]){ seen[k].bodies.push(r.bodyName || r.bodyKind); if(r.status !== 'done') seen[k].st = 'app'; return; }
+      seen[k] = {cid: r.customerId, st: r.status === 'done' ? 'done' : 'app', tech: r.technicianId, bodies: [r.bodyName || r.bodyKind]};
+      day(r.date).pd.push(seen[k]);
+    });
+  }
+  (lsGet('scheduledWorkOrders') || []).forEach(j=>{
+    if(!j || j.reopened || !j.date || !acalCust(j.customerId) || !mineTech(j.technicianId)) return;
+    day(j.date).wo.push({rec: j, cid: j.customerId, st: j.status === 'done' ? 'done' : j.held ? '' : 'app', tech: j.technicianId});
+  });
+  (lsGet('tasks') || []).forEach(t=>{
+    if(!t || t.reopened || !t.date || !mineTech(t.technicianId)) return;
+    day(t.date).tk.push({rec: t, cid: (t.customerIds || [])[0] || t.customerId || '', st: t.done ? 'done' : t.held ? '' : 'app', tech: t.technicianId});
+  });
+  return by;
+}
+function acalCount(on, k){ return k === 'fc' ? on.fc.reduce((n, g) => n + g.rows.length, 0) : on[k].length; }
+function acalAllRows(on, k){ return k === 'fc' ? on.fc.reduce((a, g) => a.concat(g.rows), []) : on[k]; }
+// One state for a kind's tag: not in app if any are, done if all are, else in the app
+function acalTagState(rows){
+  if(rows.some(r => r.st === '')) return '';
+  return rows.every(r => r.st === 'done') ? 'done' : 'app';
+}
+function acalDraw(){
+  const card = document.getElementById('appCalCard');
+  if(!card) return;
+  const today = todayDateStr();
+  if(!acalMonth) acalMonth = today.slice(0, 7);
+  const byDay = acalOnDays();
+  const [yy, mm] = acalMonth.split('-').map(Number);
+  const btn = (text, cls, css) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn ' + (cls || 'btn-ghost'); b.style.cssText = 'width:auto;flex:0 0 auto;' + (css || ''); b.innerHTML = text; return b; };
+  card.innerHTML = '';
+  const head = document.createElement('div');
+  head.style.cssText = 'display:flex;align-items:center;gap:6px;';
+  const prev = btn('‹', 'btn-ghost', 'width:36px;padding:7px 0;');
+  const next = btn('›', 'btn-ghost', 'width:36px;padding:7px 0;');
+  const label = document.createElement('b');
+  label.style.cssText = 'flex:1;text-align:center;font-size:15px;';
+  label.textContent = new Date(yy, mm - 1, 1).toLocaleDateString(undefined, {month: 'long', year: 'numeric'});
+  const go = d => { acalMonth = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); acalSel = ''; acalJobMenu = false; acalDraw(); };
+  prev.addEventListener('click', ()=> go(new Date(yy, mm - 2, 1)));
+  next.addEventListener('click', ()=> go(new Date(yy, mm, 1)));
+  const pickBtn = btn('<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+    'btn-ghost', 'width:36px;padding:7px 0;display:inline-flex;align-items:center;justify-content:center;' + (acalPick ? 'background:var(--teal-pale);' : ''));
+  pickBtn.title = 'Pick a month and year';
+  pickBtn.addEventListener('click', ()=>{ acalPick = !acalPick; acalPickYear = yy; acalDraw(); });
+  head.appendChild(prev); head.appendChild(label); head.appendChild(next); head.appendChild(pickBtn);
+  card.appendChild(head);
+  // Whose: everyone, or one technician
+  const techSel = document.createElement('select');
+  techSel.style.cssText = 'width:100%;margin-top:10px;';
+  const opt = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; techSel.appendChild(o); };
+  opt('', 'All technicians');
+  techniciansInOrder().forEach(t => { if(t && t.id) opt(String(t.id), t.name || 'Technician'); });
+  techSel.value = acalTech;
+  techSel.addEventListener('change', ()=>{ acalTech = techSel.value; acalDraw(); });
+  card.appendChild(techSel);
+  if(acalPick){
+    const mp = document.createElement('div');
+    mp.style.cssText = 'border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:10px;';
+    const yr = document.createElement('div');
+    yr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;';
+    const yP = btn('‹', 'btn-ghost', 'width:32px;padding:4px 0;'), yN = btn('›', 'btn-ghost', 'width:32px;padding:4px 0;');
+    const yL = document.createElement('b'); yL.textContent = String(acalPickYear);
+    yP.addEventListener('click', ()=>{ acalPickYear--; acalDraw(); });
+    yN.addEventListener('click', ()=>{ acalPickYear++; acalDraw(); });
+    yr.appendChild(yP); yr.appendChild(yL); yr.appendChild(yN);
+    mp.appendChild(yr);
+    const mg = document.createElement('div');
+    mg.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:6px;';
+    for(let i = 0; i < 12; i++){
+      const here = acalPickYear === yy && i === mm - 1;
+      const mb = btn(new Date(2000, i, 1).toLocaleDateString(undefined, {month: 'short'}), here ? 'btn-primary' : 'btn-ghost', 'width:100%;padding:6px 0;font-size:12.5px;');
+      mb.addEventListener('click', ()=>{ acalPick = false; go(new Date(acalPickYear, i, 1)); });
+      mg.appendChild(mb);
+    }
+    mp.appendChild(mg);
+    card.appendChild(mp);
+  }
+  // The month: six weeks, the same height always
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin-top:10px;';
+  ['S', 'M', 'T', 'W', 'T', 'F', 'S'].forEach(d => grid.insertAdjacentHTML('beforeend', '<div style="font-size:10.5px;font-weight:700;color:var(--muted);text-align:center;padding:2px 0;">' + d + '</div>'));
+  const first = new Date(yy, mm - 1, 1).getDay(), daysIn = new Date(yy, mm, 0).getDate();
+  for(let i = 0; i < first; i++) grid.appendChild(document.createElement('div'));
+  for(let d = 1; d <= daysIn; d++){
+    const iso = acalMonth + '-' + String(d).padStart(2, '0');
+    const on = byDay[iso] || {fc: [], pd: [], wo: [], tk: []};
+    const cell = document.createElement('div');
+    cell.dataset.acalDay = iso;
+    const isSel = iso === acalSel;
+    cell.style.cssText = 'height:66px;overflow:hidden;border:1px solid var(--line);border-radius:7px;padding:3px;background:#fff;cursor:pointer;min-width:0;'
+      + (isSel ? 'background:var(--teal-pale);border-color:var(--teal-deep);box-shadow:inset 0 0 0 1px var(--teal-deep);' : '');
+    cell.innerHTML = '<div style="font-size:11px;font-weight:700;' + (iso === today ? 'color:#fff;background:var(--teal-deep);border-radius:50%;width:19px;height:19px;display:flex;align-items:center;justify-content:center;' : 'color:var(--ink);') + '">' + d + '</div>';
+    const tags = document.createElement('div');
+    tags.style.cssText = 'display:flex;flex-wrap:wrap;gap:2px;margin-top:2px;';
+    ['fc', 'pd', 'wo', 'tk'].forEach(k=>{
+      const n = acalCount(on, k);
+      if(!n) return;
+      const st = acalTagState(acalAllRows(on, k));
+      const t = document.createElement('span');
+      t.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:700;padding:1px 3px;border-radius:4px;line-height:1.25;color:#fff;background:" + ACAL_STATES[st][1] + ';';
+      t.textContent = ACAL_TAGS[k][0] + (n > 1 ? ' ' + n : '');
+      t.title = ACAL_TAGS[k][1] + ' — ' + ACAL_STATES[st][0];
+      tags.appendChild(t);
+    });
+    cell.appendChild(tags);
+    // Another day: its window, with the + Job list closed
+    cell.addEventListener('click', ()=>{ acalSel = acalSel === iso ? '' : iso; acalJobMenu = false; acalDraw(); });
+    grid.appendChild(cell);
+  }
+  card.appendChild(grid);
+  const key = document.createElement('div');
+  key.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px 12px;font-size:11px;color:var(--muted);margin-top:10px;align-items:center;';
+  key.innerHTML = Object.keys(ACAL_TAGS).map(k => "<span><b style=\"font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ink);\">" + ACAL_TAGS[k][0] + '</b> ' + ACAL_TAGS[k][1].replace(/s$/, '') + '</span>').join('')
+    + Object.keys(ACAL_STATES).map(s => '<span style="font-size:10px;font-weight:700;color:#fff;background:' + ACAL_STATES[s][1] + ';padding:2px 6px;border-radius:5px;">' + ACAL_STATES[s][0] + '</span>').join('');
+  card.appendChild(key);
+  if(acalSel) card.appendChild(acalDayWindow(byDay[acalSel] || {fc: [], pd: [], wo: [], tk: []}));
+}
+function acalDayWindow(on){
+  const iso = acalSel;
+  const sheet = document.createElement('div');
+  sheet.id = 'acalDay';
+  sheet.style.cssText = 'position:relative;margin-top:14px;border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff;box-shadow:0 -4px 16px rgba(19,78,74,.08);';
+  const top = document.createElement('div');
+  top.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:6px;';
+  const h = document.createElement('b');
+  h.style.cssText = 'flex:1;font-size:15px;';
+  h.textContent = new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
+  const add = document.createElement('button');
+  add.type = 'button'; add.className = 'btn btn-ghost'; add.style.cssText = 'width:auto;flex:0 0 auto;padding:7px 12px;font-size:13px;';
+  add.textContent = '+ Job';
+  add.addEventListener('click', e=>{ e.stopPropagation(); acalJobMenu = !acalJobMenu; acalDraw(); });
+  const close = document.createElement('button');
+  close.type = 'button'; close.className = 'btn btn-primary'; close.style.cssText = 'width:auto;flex:0 0 auto;padding:7px 12px;font-size:13px;';
+  close.textContent = 'Close';
+  close.addEventListener('click', ()=>{ acalSel = ''; acalJobMenu = false; acalDraw(); });
+  top.appendChild(h); top.appendChild(add); top.appendChild(close);
+  sheet.appendChild(top);
+  if(acalJobMenu){
+    const menu = document.createElement('div');
+    menu.id = 'acalJobMenu';
+    menu.style.cssText = 'position:absolute;top:50px;right:12px;z-index:5;width:200px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 6px 18px rgba(19,78,74,.18);padding:4px;';
+    [['wo', 'Work order', 'Work Order'], ['tk', 'Task', 'Task']].forEach(([k, label, kind])=>{
+      const it = document.createElement('div');
+      it.className = 'press-row';
+      it.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;';
+      it.innerHTML = "<span style=\"font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;width:30px;text-align:center;padding:3px 0;border-radius:6px;background:" + ACAL_TAGS[k][2] + ';color:' + ACAL_TAGS[k][3] + ';">' + ACAL_TAGS[k][0] + '</span>' + label;
+      it.addEventListener('click', ()=>{ acalJobMenu = false; acalNewJob(kind, iso); });
+      menu.appendChild(it);
+    });
+    sheet.appendChild(menu);
+  }
+  const empty = !['fc', 'pd', 'wo', 'tk'].some(k => acalCount(on, k));
+  if(empty){
+    const p = document.createElement('div');
+    p.style.cssText = 'font-size:13px;color:var(--muted);padding:6px 0 2px;';
+    p.textContent = 'Nothing on this day yet.';
+    sheet.appendChild(p);
+    return sheet;
+  }
+  const badge = (k, extra)=>{
+    const d = document.createElement('div');
+    d.style.cssText = 'display:flex;align-items:center;gap:8px;margin:14px 0 4px;';
+    d.innerHTML = "<span style=\"font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:6px;background:" + ACAL_TAGS[k][2] + ';color:' + ACAL_TAGS[k][3] + ';">' + ACAL_TAGS[k][1] + '</span>'
+      + (extra ? '<span style="font-size:11.5px;font-weight:600;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + acalEsc(extra) + '</span>' : '');
+    sheet.appendChild(d);
+  };
+  const row = (name, sub, st, right)=>{
+    const r = document.createElement('div');
+    r.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;';
+    r.innerHTML = '<div style="flex:1;min-width:0;"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div><div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div></div>'
+      + '<span style="font-size:10px;font-weight:700;color:#fff;padding:3px 7px;border-radius:6px;white-space:nowrap;flex-shrink:0;background:' + ACAL_STATES[st][1] + ';">' + ACAL_STATES[st][0] + '</span>';
+    r.children[0].children[0].textContent = name;
+    r.children[0].children[1].textContent = sub || '';
+    if(!sub) r.children[0].children[1].remove();
+    (right || []).forEach(el => r.appendChild(el));
+    sheet.appendChild(r);
+    return r;
+  };
+  const techText = id=>{ const s = document.createElement('span'); s.style.cssText = 'font-size:11.5px;color:var(--muted);width:84px;text-align:right;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'; s.textContent = acalTechName(id); return s; };
+  on.fc.forEach(g=>{
+    badge('fc', g.name + (g.solo ? '' : g.tech ? ' · ' + acalTechName(g.tech) : ''));
+    g.rows.forEach(r => row((acalCust(r.cid) || {}).name || 'Customer', '', r.st, [techText(r.tech)]));
+  });
+  if(on.pd.length){
+    badge('pd');
+    on.pd.forEach(r => row((acalCust(r.cid) || {}).name || 'Customer', r.bodies.join(', '), r.st, [techText(r.tech)]));
+  }
+  // Work orders and tasks: the technician can be changed and one taken off
+  // here, as on the website
+  const kinds = {wo: ['scheduledWorkOrders', 'work_order', 'work order'], tk: ['tasks', 'task', 'task']};
+  ['wo', 'tk'].forEach(k=>{
+    if(!on[k].length) return;
+    badge(k);
+    on[k].forEach(it=>{
+      const rec = it.rec;
+      const c = acalCust(it.cid);
+      const name = k === 'wo' ? ((c && c.name) || 'Customer') : (c ? c.name : (rec.title || 'Task'));
+      const sub = k === 'wo' ? ((rec.workOrderNumber ? '#' + String(rec.workOrderNumber).padStart(4, '0') + ' · ' : '') + (rec.title || '')) : (rec.title || '');
+      const right = [];
+      const done = it.st === 'done';
+      const sel = document.createElement('select');
+      sel.style.cssText = 'width:90px;padding:4px 6px;font-size:11.5px;flex-shrink:0;';
+      techniciansInOrder().forEach(t => { if(t && t.id){ const o = document.createElement('option'); o.value = String(t.id); o.textContent = t.name || 'Technician'; sel.appendChild(o); } });
+      if(!Array.from(sel.options).some(o => o.value === String(rec.technicianId || ''))){ const o = document.createElement('option'); o.value = String(rec.technicianId || ''); o.textContent = acalTechName(rec.technicianId); sel.insertBefore(o, sel.firstChild); }
+      sel.value = String(rec.technicianId || '');
+      sel.disabled = done;
+      sel.addEventListener('change', ()=>{
+        const list = lsGet(kinds[k][0]) || [];
+        const x = list.find(y => y && String(y.id) === String(rec.id)); if(!x) return;
+        x.technicianId = sel.value;
+        if(Array.isArray(x.technicianIds)) x.technicianIds = [sel.value];
+        if(!lsSet(kinds[k][0], list)){ showToast('Could not save — the phone is full'); return; }
+        if(k === 'tk'){ try{ if(typeof tasks !== 'undefined') tasks = list; }catch(e){} }
+        queueOfficeWork(kinds[k][1], x.id, false);
+        try{ fieldNoteLocalChange(); }catch(e){}
+        acalDraw();
+        showToast('Now on ' + acalTechName(sel.value) + '’s route');
+      });
+      right.push(sel);
+      if(!done){
+        const bin = document.createElement('button');
+        bin.type = 'button';
+        bin.title = 'Take this ' + kinds[k][2] + ' off';
+        bin.setAttribute('aria-label', bin.title);
+        bin.style.cssText = 'width:28px;height:28px;flex-shrink:0;border-radius:7px;border:1px solid #EFC0B4;background:#fff;color:var(--rust);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;';
+        bin.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>';
+        bin.addEventListener('click', async ()=>{
+          const ok = await confirmDialog('Take this ' + kinds[k][2] + ' off ' + h.textContent + '? It comes off the route too.', 'Take off');
+          if(!ok) return;
+          const list = (lsGet(kinds[k][0]) || []).filter(y => !(y && String(y.id) === String(rec.id)));
+          if(!lsSet(kinds[k][0], list)) return;
+          if(k === 'tk'){ try{ if(typeof tasks !== 'undefined') tasks = list; }catch(e){} }
+          queueOfficeWork(kinds[k][1], rec.id, true);
+          try{ fieldNoteLocalChange(); }catch(e){}
+          acalDraw();
+          showToast('Taken off');
+        });
+        right.push(bin);
+      }
+      row(name, sub, it.st, right);
+    });
+  });
+  return sheet;
+}
+// + Job: the WorkCenter's own Work Order or Task form, with the day filled in
+function acalNewJob(kind, iso){
+  switchView('customers');
+  showCustomerPane('work');
+  awcKind = kind; awcView = 'main'; awcApply();
+  setTimeout(()=>{
+    const d = document.getElementById(kind === 'Task' ? 'awcTaskDate' : 'awcWoDate');
+    if(d){ d.value = iso; d.dispatchEvent(new Event('change', {bubbles: true})); }
+    window.scrollTo(0, 0);
+  }, 50);
+}
+(function wireHomeTabs(){
+  const a = document.getElementById('btnHomeTabToday'), b = document.getElementById('btnHomeTabCal');
+  if(a) a.addEventListener('click', ()=> showHomeTab('today'));
+  if(b) b.addEventListener('click', ()=> showHomeTab('calendar'));
+})();
 
 // Customers / WorkCenter
 function showCustomerPane(which){
@@ -23026,7 +23703,7 @@ function reloadAppChemConfig(){ chemConfig = loadChemConfig(); }
   function sortKeyName(name){ return displayName(name).toLowerCase(); }
 
   // ---- Sending to the office ----
-  const TECH_FIELDS = ['photoOptional', 'photoRules', 'requireGatePhoto', 'requireSkipProof', 'allowVideo'];
+  const TECH_FIELDS = ['photoOptional', 'photoRules', 'requireGatePhoto', 'requireSaltCellPhoto', 'requireSkipProof', 'allowVideo'];
   const SETUP_KEYS = ['photoEveryone', 'photoDefaults', 'chemConfig'];
   let seen = null;                       // what was last agreed with the office
   const snapshot = ()=>{
@@ -23269,7 +23946,7 @@ function photoTechnicianList(step, bodies){
     return box;
   }
   // The gate and the skip rule are one each per person; the rest are per body
-  const single = step === 'gate' || step === 'skip' || step === 'video';
+  const single = step === 'gate' || step === 'skip' || step === 'video' || step === 'saltcell';
   const columns = single
     ? [[step, '']]
     : PHOTO_BODIES.filter(([key]) => bodies[key]);
@@ -23277,7 +23954,7 @@ function photoTechnicianList(step, bodies){
   // is only ever optional, so its tick is all there is
   // After photo is always shown now, so it has no Optional button (Oct 3)
   // Skip has Optional too (Oct 3): the photo-and-note window, nothing in it needed
-  const offersOptional = step !== 'video' && step !== 'after';
+  const offersOptional = step !== 'video' && step !== 'after' && step !== 'saltcell';   // it's the button or nothing
 
   // Always the technician as they are in the list right now. A sync replaces
   // the whole list with fresh objects, so the one captured when this was drawn
@@ -23288,6 +23965,7 @@ function photoTechnicianList(step, bodies){
   const ownTick = (t, key)=>{
     const cur = live(t);
     return step === 'gate' ? cur.requireGatePhoto === true
+      : step === 'saltcell' ? cur.requireSaltCellPhoto === true
       : step === 'skip' ? cur.requireSkipProof === true
       : step === 'video' ? cur.allowVideo === true
       : photoRuleFor(cur, step, key) === true;
@@ -23295,6 +23973,7 @@ function photoTechnicianList(step, bodies){
   const setOwnTick = (t, key, on)=>{
     const cur = live(t);
     if(step === 'gate') cur.requireGatePhoto = on;
+    else if(step === 'saltcell') cur.requireSaltCellPhoto = on;
     else if(step === 'skip') cur.requireSkipProof = on;
     else if(step === 'video') cur.allowVideo = on;
     else setPhotoRule(cur, step, key, on);
@@ -23459,6 +24138,7 @@ function photoRowCountText(step, bodies){
   }
   const must = technicians.filter(t=>
     step === 'gate' ? (t.requireGatePhoto === true || photoEveryoneOn('gate', 'gate'))
+    : step === 'saltcell' ? (t.requireSaltCellPhoto === true || photoEveryoneOn('saltcell', 'saltcell'))
     : step === 'skip' ? (t.requireSkipProof === true || photoEveryoneOn('skip', 'skip'))
     : PHOTO_BODIES.some(([k]) => bodies[k] && (photoRuleFor(t, step, k) || photoEveryoneOn(step, k)))
   );
@@ -23502,6 +24182,10 @@ function renderPhotoRequirements(){
      bodies: {pool: true, spa: true, fountain: true}},
     // One photo for the whole visit, so its list is a single tick per person
     {step: 'gate', label: 'Closed gate photo', off: false, why: '',
+     bodies: {}, oneTick: true},
+    // Pressing Salt cell cleaned opens the camera (Oct 22); one per visit
+    {step: 'saltcell', label: 'Salt cell clean photo', off: false, why: '',
+     note: 'When Salt cell cleaned is pressed, the technician has to take a photo of the cell before the button turns on. Only for customers with a salt cell.',
      bodies: {}, oneTick: true},
     // Not a photo step of its own: what a technician must do before skipping
     {step: 'skip', label: 'Skip body of water photo and note', off: false,
