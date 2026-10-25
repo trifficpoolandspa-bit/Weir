@@ -11102,32 +11102,41 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
       if(job.details) line('Details', job.details);
       // Photo and video requirements are shown on the job screen itself (Oct 3)
 
+      // Laid out like a customer's (Oct 25): Reschedule, Directions and Share
+      // on top, Skip job bottom left and Start job bottom right
       const btnRow = document.createElement('div');
       btnRow.className = 'btn-row';
       btnRow.style.marginTop = '16px';
+      btnRow.style.flexWrap = 'wrap';
+      // Reschedule (Oct 21, admin app only): the job itself moves to the
+      // date and technician chosen
+      const resched = document.createElement('button');
+      resched.className = 'btn btn-ghost';
+      resched.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;color:#000;';
+      resched.textContent = 'Reschedule';
+      resched.addEventListener('click', e => { e.stopPropagation(); rescheduleDoneJob(job, true); });
+      btnRow.appendChild(resched);
       const directions = document.createElement('button');
       directions.className = 'btn btn-ghost';
-      directions.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+      directions.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;color:#000;';
       directions.textContent = 'Directions';
       directions.addEventListener('click', e => { e.stopPropagation(); openDirections(customer); });
       if(customer) btnRow.appendChild(directions);
+      btnRow.appendChild(jobShareButton(customer, job));
+      panel.appendChild(btnRow);
+      const btnRow2 = document.createElement('div');
+      btnRow2.className = 'btn-row';
+      btnRow2.style.marginTop = '10px';
+      btnRow2.appendChild(jobSkipButton(customer, job, dayISO));
       const start = document.createElement('button');
       start.className = 'btn btn-primary';
       start.style.cssText = 'flex:1;padding:10px 14px;font-size:14px;';
       // The admin app can do a job on any day, not only today's; it's filed
       // under the job's own date
-      start.textContent = 'Start job';
+      start.textContent = 'Start job \u2192';
       start.addEventListener('click', e => { e.stopPropagation(); openJobPage(customer, Object.assign({}, job, {dayISO: dayISO})); });
-      // Reschedule (Oct 21, admin app only): the job itself moves to the
-      // date and technician chosen
-      const resched = document.createElement('button');
-      resched.className = 'btn btn-ghost';
-      resched.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
-      resched.textContent = 'Reschedule';
-      resched.addEventListener('click', e => { e.stopPropagation(); rescheduleDoneJob(job, true); });
-      btnRow.appendChild(resched);
-      btnRow.appendChild(start);
-      panel.appendChild(btnRow);
+      btnRow2.appendChild(start);
+      panel.appendChild(btnRow2);
       panel.addEventListener('click', e => e.stopPropagation());
 
       row.after(panel);
@@ -11236,25 +11245,34 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
       if(job.details) line('Details', job.details);
       // Photo and video requirements are shown on the job screen itself (Oct 3)
 
+      // Laid out like a customer's (Oct 25): Directions and Share on top,
+      // Skip job bottom left and Start job bottom right
       const btnRow = document.createElement('div');
       btnRow.className = 'btn-row';
       btnRow.style.marginTop = '16px';
+      btnRow.style.flexWrap = 'wrap';
       const directions = document.createElement('button');
       directions.className = 'btn btn-ghost';
-      directions.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+      directions.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;color:#000;';
       directions.textContent = 'Directions';
       directions.addEventListener('click', e => { e.stopPropagation(); openDirections(customer); });
       if(customer) btnRow.appendChild(directions);
+      btnRow.appendChild(jobShareButton(customer, job));
+      panel.appendChild(btnRow);
+      const btnRow2 = document.createElement('div');
+      btnRow2.className = 'btn-row';
+      btnRow2.style.marginTop = '10px';
+      btnRow2.appendChild(jobSkipButton(customer, job, dayISO));
       const start = document.createElement('button');
       start.className = 'btn btn-primary';
       start.style.cssText = 'flex:1;padding:10px 14px;font-size:14px;';
       // Like a service, a job is done on its own day
       const isToday = dayISO === todayDateStr();
-      start.textContent = isToday ? 'Start job' : 'Not today\u2019s job';
+      start.textContent = isToday ? 'Start job \u2192' : 'Not today\u2019s job';
       if(!isToday){ start.disabled = true; start.style.opacity = '0.45'; start.style.cursor = 'not-allowed'; }
       start.addEventListener('click', e => { e.stopPropagation(); if(isToday) openJobPage(customer, Object.assign({}, job, {dayISO: dayISO})); });
-      btnRow.appendChild(start);
-      panel.appendChild(btnRow);
+      btnRow2.appendChild(start);
+      panel.appendChild(btnRow2);
       panel.addEventListener('click', e => e.stopPropagation());
 
       row.after(panel);
@@ -11262,6 +11280,132 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
     });
     container.appendChild(row);
   });
+}
+
+// Share on a job (Oct 25): what the job is and where, like Share on a customer
+function jobShareText(customer, job){
+  const lines = [jobKindLabel(job.kind) + ': ' + (job.title || '')];
+  if(job.details) lines.push(job.details);
+  if(customer){
+    lines.push('');
+    lines.push(String(customer.name || ''));
+    const addr = shareCustomerAddress(customer);
+    if(addr){
+      lines.push(addr);
+      lines.push('https://maps.google.com/?q=' + encodeURIComponent(addr));
+    }
+  }
+  return lines.join('\n');
+}
+async function shareRouteJob(customer, job){
+  const text = jobShareText(customer, job);
+  if(navigator.share){
+    try{ await navigator.share({title: jobKindLabel(job.kind) + ' – ' + (job.title || ''), text: text}); }catch(e){}
+    return;
+  }
+  // No share list (a computer): copy instead
+  try{ await navigator.clipboard.writeText(text); showToast('Sharing isn’t available here — copied instead'); }
+  catch(e){ showToast('Sharing isn’t available here'); }
+}
+function jobShareButton(customer, job){
+  const b = document.createElement('button');
+  b.className = 'btn btn-ghost';
+  b.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;color:#000;';
+  b.textContent = 'Share';
+  b.addEventListener('click', e => { e.stopPropagation(); shareRouteJob(customer, job); });
+  return b;
+}
+function jobSkipButton(customer, job, dayISO){
+  const b = document.createElement('button');
+  b.className = 'btn btn-ghost';
+  b.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;background:var(--rust);color:#fff;border:1px solid var(--rust);';
+  b.textContent = 'Skip job';
+  b.addEventListener('click', e => { e.stopPropagation(); skipRouteJob(customer, job, dayISO); });
+  return b;
+}
+// Why a job is skipped (Oct 25): a reason is needed, like Skip Service
+function askJobSkipReason(customer, job){
+  return new Promise(resolve=>{
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    const box = document.createElement('div');
+    box.className = 'confirm-box';
+    box.style.maxWidth = '440px';
+    box.innerHTML = '<h3 style="font-size:15px;margin:0 0 4px;"></h3>'
+      + '<p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">This goes to the office with the job so they know what happened.</p>'
+      + '<div class="field"><label>Reason</label><textarea rows="4" placeholder="Gate was locked, part not in yet, customer asked to move it..." style="min-height:96px;"></textarea></div>'
+      + '<div class="btn-row"><button class="btn btn-primary" data-k="ok" style="flex:1;">Skip job</button><button class="btn btn-ghost" data-k="no" style="width:auto;">Cancel</button></div>';
+    box.querySelector('h3').textContent = 'Why is ' + (customer ? customer.name + ' – ' : '') + (job.title || jobKindLabel(job.kind)) + ' being skipped?';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    const text = box.querySelector('textarea');
+    setTimeout(()=> text.focus(), 60);
+    const done = r => { overlay.remove(); resolve(r); };
+    box.querySelector('[data-k="no"]').addEventListener('click', ()=> done(null));
+    overlay.addEventListener('click', ev => { if(ev.target === overlay) done(null); });
+    box.querySelector('[data-k="ok"]').addEventListener('click', ()=>{
+      const reason = text.value.trim();
+      if(!reason){ showToast('Add a reason first'); text.focus(); return; }
+      done(reason);
+    });
+  });
+}
+// Skip job (Oct 25): it leaves Today and goes to the office as finished,
+// marked skipped with the reason in its notes. No customer email goes out.
+// The office can put it back on a day with Reschedule on Serviced today.
+async function skipRouteJob(customer, job, dayISO){
+  const reason = await askJobSkipReason(customer, job);
+  if(!reason) return;
+  const stamp = new Date().toISOString();
+  const noteText = 'Skipped — ' + reason;
+  const me = currentUser ? currentUser.id : '';
+  try{ const st = lsGet('jobStartedAt') || {}; delete st[job.key]; lsSet('jobStartedAt', st); }catch(e){}
+  const list = jobSubmissions();
+  list.push({
+    durationMs: 0, skipped: true,
+    key: job.key, kind: job.kind, sourceId: job.id,
+    customerId: customer ? customer.id : null, customerName: customer ? customer.name : '', title: job.title,
+    notes: noteText, photo: null, photoMore: [], video: null, videoMore: [], date: dayISO || job.dayISO || todayDateStr(),
+    technicianId: me, submittedAt: stamp
+  });
+  lsSet('jobSubmissions', list);
+  if(job.kind === 'task'){
+    const all = lsGet('tasks') || [];
+    const t = all.find(x => x.id === job.id);
+    if(t){
+      const who = (t.customerIds || []).length ? t.customerIds.map(id => 'task:' + t.id + ':' + id) : ['task:' + t.id + ':none'];
+      const subs = jobSubmissions();
+      if(who.every(k => subs.some(x => x.key === k))){
+        t.done = true; t.doneAt = stamp; t.doneBy = me;
+        t.doneNotes = who.map(k=>{
+          const x = subs.find(y => y.key === k);
+          if(!x || !x.notes) return '';
+          return (x.customerName && who.length > 1 ? x.customerName + ': ' : '') + x.notes;
+        }).filter(Boolean).join('\n');
+        if(who.every(k => { const x = subs.find(y => y.key === k); return x && x.skipped; })) t.doneSkipped = true;
+        const total = who.reduce((n, k)=>{ const x = subs.find(y => y.key === k); return n + ((x && x.durationMs) || 0); }, 0);
+        if(total) t.doneDurationMs = total;
+        lsSet('tasks', all);
+      }
+    }
+  } else {
+    const listKey = job.kind === 'filter clean' ? 'scheduledFilterCleans' : job.kind === 'pool drain' ? 'scheduledPoolDrains' : 'scheduledWorkOrders';
+    const jobs = lsGet(listKey) || [];
+    const j = jobs.find(x => x.id === job.id);
+    if(j){
+      j.status = 'done'; j.doneAt = stamp; j.doneBy = me; j.doneNotes = noteText; j.doneSkipped = true;
+      lsSet(listKey, jobs);
+    }
+  }
+  try{ fieldNoteLocalChange(); }catch(e){}
+  renderHomeList();
+  try{ renderServicedList(); }catch(e){}
+  showToast((customer ? customer.name + ' – ' : '') + (job.title || jobKindLabel(job.kind)) + ' skipped');
+}
+// A job finished with Skip job: flagged on the phone that skipped it, and
+// told by its notes everywhere else
+function jobWasSkipped(j){
+  return !!(j && (j.doneSkipped || /^Skipped — /.test(String(j.doneNotes || ''))));
 }
 
 // ---------- The job page: a photo, notes, and Submit ----------
@@ -12160,7 +12304,7 @@ function adminVersion_renderHomeList(){
       if(true){
         const reschedBtn = document.createElement('button');
         reschedBtn.className = 'btn btn-ghost';
-        reschedBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+        reschedBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;color:#000;';
         reschedBtn.textContent = 'Reschedule';
         reschedBtn.addEventListener('click', (e)=>{
           e.stopPropagation();
@@ -12171,7 +12315,7 @@ function adminVersion_renderHomeList(){
 
       const directionsBtn = document.createElement('button');
       directionsBtn.className = 'btn btn-ghost';
-      directionsBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+      directionsBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;color:#000;';
       directionsBtn.textContent = 'Directions';
       directionsBtn.addEventListener('click', (e)=>{
         e.stopPropagation();
@@ -12182,7 +12326,7 @@ function adminVersion_renderHomeList(){
       if(isAdminUser()){
         const shareBtn = document.createElement('button');
         shareBtn.className = 'btn btn-ghost';
-        shareBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+        shareBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;color:#000;';
         shareBtn.textContent = 'Share';
         shareBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openShareCustomer(c); });
         btnRow.appendChild(shareBtn);
@@ -12201,7 +12345,7 @@ function adminVersion_renderHomeList(){
       if(c.accessNotes){
         const notesBtn = document.createElement('button');
         notesBtn.className = 'btn btn-ghost';
-        notesBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+        notesBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;color:#000;';
         notesBtn.textContent = 'Access notes';
         notesBtn.addEventListener('click', (e)=>{
           e.stopPropagation();
@@ -12511,7 +12655,7 @@ function techVersion_renderHomeList(){
       if(currentUser && currentUser.isAdmin){
         const reschedBtn = document.createElement('button');
         reschedBtn.className = 'btn btn-ghost';
-        reschedBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+        reschedBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;color:#000;';
         reschedBtn.textContent = 'Reschedule';
         reschedBtn.addEventListener('click', (e)=>{
           e.stopPropagation();
@@ -12522,7 +12666,7 @@ function techVersion_renderHomeList(){
 
       const directionsBtn = document.createElement('button');
       directionsBtn.className = 'btn btn-ghost';
-      directionsBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+      directionsBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;color:#000;';
       directionsBtn.textContent = 'Directions';
       directionsBtn.addEventListener('click', (e)=>{
         e.stopPropagation();
@@ -12543,7 +12687,7 @@ function techVersion_renderHomeList(){
       if(c.accessNotes){
         const notesBtn = document.createElement('button');
         notesBtn.className = 'btn btn-ghost';
-        notesBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;';
+        notesBtn.style.cssText = 'width:auto;padding:8px 12px;font-size:13px;color:#000;';
         notesBtn.textContent = 'Access notes';
         notesBtn.addEventListener('click', (e)=>{
           e.stopPropagation();
@@ -12795,14 +12939,14 @@ function servicedJobsOn(iso, techId){
     .forEach(([key, kind, pre])=>{
       (lsGet(key) || []).forEach(j=>{
         if(!j || j.status !== 'done' || !j.doneAt || localDay(j.doneAt) !== iso || !whose(j)) return;
-        out.push({kind, id: j.id, report: pre + j.id, customerId: j.customerId, doneAt: j.doneAt, durationMs: j.doneDurationMs,
+        out.push({kind, id: j.id, report: pre + j.id, customerId: j.customerId, doneAt: j.doneAt, durationMs: j.doneDurationMs, skipped: jobWasSkipped(j),
           title: kind === 'work order' ? (j.title || 'Work order') : kind === 'pool drain' ? drainTitle(j) : jobKindLabel(kind)});
       });
     });
   (lsGet('tasks') || []).forEach(t=>{
     if(!t || !t.done || !t.doneAt || localDay(t.doneAt) !== iso || !whose(t)) return;
     const ids = (t.customerIds || []).length ? t.customerIds : (t.customerId ? [t.customerId] : ['']);
-    ids.forEach(cid => out.push({kind: 'task', id: t.id, report: cid ? 'tk:' + t.id : '', customerId: cid, doneAt: t.doneAt, durationMs: t.doneDurationMs, title: t.title || 'Task'}));
+    ids.forEach(cid => out.push({kind: 'task', id: t.id, report: cid ? 'tk:' + t.id : '', customerId: cid, doneAt: t.doneAt, durationMs: t.doneDurationMs, skipped: jobWasSkipped(t), title: t.title || 'Task'}));
   });
   return out;
 }
@@ -12825,7 +12969,15 @@ function servicedJobRow(job){
   meta.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
   let when = '';
   try{ when = new Date(job.doneAt).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'}); }catch(e){}
-  meta.textContent = 'Done ' + when + (job.durationMs ? ' \u00b7 ' + formatDuration(job.durationMs) : '') + (customer && customer.address ? ' \u00b7 ' + customer.address : '');
+  meta.textContent = (job.skipped ? 'Skipped ' : 'Done ') + when + (job.durationMs ? ' \u00b7 ' + formatDuration(job.durationMs) : '') + (customer && customer.address ? ' \u00b7 ' + customer.address : '');
+  // Skipped (Oct 25): said in rust so the office sees it wasn't done
+  if(job.skipped){
+    const tag = document.createElement('span');
+    tag.textContent = 'Skipped';
+    tag.style.cssText = 'background:var(--rust);color:#fff;font-weight:700;font-size:11px;padding:2px 8px;border-radius:20px;margin-right:6px;';
+    meta.textContent = meta.textContent.replace(/^Skipped /, '');
+    meta.insertBefore(tag, meta.firstChild);
+  }
   left.appendChild(name); left.appendChild(meta);
   row.appendChild(left);
   if(customer && job.report){
@@ -18900,6 +19052,39 @@ function awcRenderHistory(){
   awcMoreButton(box, list.length, awcRenderHistory);
 }
 
+
+// ---------- No typed-history suggestions in search boxes (Oct 25) ----------
+// A customer search only ever suggests customers: the browser's memory of
+// what was typed before, and the phone keyboard's word suggestions, are kept
+// out of every search box. Each box gets a fresh name each time the page
+// opens, so nothing typed into it before can be offered again.
+(function noTypedHistory(){
+  const isSearch = el => el && el.tagName === 'INPUT' && /^(text|search)?$/i.test(el.getAttribute('type') || '')
+    && (/search/i.test(el.id || '') || el.hasAttribute('data-search') || el.classList.contains('pdp-search')
+        || /search|start typing|type a name|customer/i.test(el.getAttribute('placeholder') || ''));
+  const fix = el=>{
+    if(!isSearch(el) || el.dataset.noHistory) return;
+    el.dataset.noHistory = '1';
+    el.setAttribute('autocomplete', 'off');
+    el.setAttribute('autocorrect', 'off');
+    el.setAttribute('autocapitalize', 'off');
+    el.setAttribute('spellcheck', 'false');
+    el.setAttribute('name', 'q' + Math.random().toString(36).slice(2, 10));
+    el.setAttribute('data-lpignore', 'true');
+    el.setAttribute('data-form-type', 'other');
+  };
+  const sweep = root => { if(root && root.querySelectorAll) root.querySelectorAll('input').forEach(fix); };
+  sweep(document);
+  document.addEventListener('DOMContentLoaded', ()=> sweep(document));
+  try{
+    new MutationObserver(list => list.forEach(m => m.addedNodes.forEach(n=>{
+      if(n.nodeType !== 1) return;
+      if(n.tagName === 'INPUT') fix(n); else sweep(n);
+    }))).observe(document.documentElement, {childList: true, subtree: true});
+  }catch(e){}
+  // Caught as it's used too, for any box made some other way
+  document.addEventListener('focusin', e => fix(e.target), true);
+})();
 
 // ---------- Calendar on the admin app's Today tab (Oct 25) ----------
 // Today | Calendar at the top, like the Customers | WorkCenter row. The month

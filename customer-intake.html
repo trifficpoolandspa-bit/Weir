@@ -240,6 +240,8 @@ input[type="checkbox"]{
   cursor:pointer;
 }
 input[type="checkbox"]:focus{outline:none;}
+/* Filter clean and drain lists (Oct 25): the same size, a little bigger */
+#wcFiltersSection input[type="checkbox"],#wcDrainsSection input[type="checkbox"]{width:22px !important;height:22px !important;}
 input::placeholder{color:#A9BCB9;}
 
 .equip-type-select{
@@ -513,6 +515,11 @@ input::placeholder{color:#A9BCB9;}
 }
 .report-head h3{color:var(--ink);font-size:17px;margin:0;font-family:'Space Grotesk',sans-serif;}
 .report-head .rdate{font-size:12.5px;color:var(--muted);margin-top:3px;}
+/* The answers dark and bold, the labels grey (Oct 25) */
+.report-head .rdate b{color:var(--ink);font-weight:600;}
+.report-head .rdate-row{display:flex;align-items:center;gap:28px;flex-wrap:wrap;}
+.job-time-pill{display:inline-flex;align-items:center;gap:6px;background:var(--teal-pale);color:var(--teal-deep);font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap;}
+.job-time-pill b{font-family:'JetBrains Mono',monospace;color:var(--teal-deep) !important;font-weight:700 !important;}
 .report-badge{
   background:var(--teal-deep);color:#fff;font-size:11px;font-weight:600;
   padding:5px 10px;border-radius:7px;white-space:nowrap;flex-shrink:0;
@@ -6503,6 +6510,39 @@ function fcPickCustomersForDay(iso, after){
   });
 }
 
+// ---------- No typed-history suggestions in search boxes (Oct 25) ----------
+// A customer search only ever suggests customers: the browser's memory of
+// what was typed before, and the phone keyboard's word suggestions, are kept
+// out of every search box. Each box gets a fresh name each time the page
+// opens, so nothing typed into it before can be offered again.
+(function noTypedHistory(){
+  const isSearch = el => el && el.tagName === 'INPUT' && /^(text|search)?$/i.test(el.getAttribute('type') || '')
+    && (/search/i.test(el.id || '') || el.hasAttribute('data-search') || el.classList.contains('pdp-search')
+        || /search|start typing|type a name|customer/i.test(el.getAttribute('placeholder') || ''));
+  const fix = el=>{
+    if(!isSearch(el) || el.dataset.noHistory) return;
+    el.dataset.noHistory = '1';
+    el.setAttribute('autocomplete', 'off');
+    el.setAttribute('autocorrect', 'off');
+    el.setAttribute('autocapitalize', 'off');
+    el.setAttribute('spellcheck', 'false');
+    el.setAttribute('name', 'q' + Math.random().toString(36).slice(2, 10));
+    el.setAttribute('data-lpignore', 'true');
+    el.setAttribute('data-form-type', 'other');
+  };
+  const sweep = root => { if(root && root.querySelectorAll) root.querySelectorAll('input').forEach(fix); };
+  sweep(document);
+  document.addEventListener('DOMContentLoaded', ()=> sweep(document));
+  try{
+    new MutationObserver(list => list.forEach(m => m.addedNodes.forEach(n=>{
+      if(n.nodeType !== 1) return;
+      if(n.tagName === 'INPUT') fix(n); else sweep(n);
+    }))).observe(document.documentElement, {childList: true, subtree: true});
+  }catch(e){}
+  // Caught as it's used too, for any box made some other way
+  document.addEventListener('focusin', e => fix(e.target), true);
+})();
+
 // ---------- + Single filter clean (Oct 25) ----------
 // Customers on their own, not in a group, straight from the Filter cleans tab:
 // who, the day, the technician (each customer's own to start), Photo required
@@ -9089,6 +9129,67 @@ function saveDrainGroups(){
 }
 let openDrainBuckets = new Set();   // all closed on arrival (Oct 11)
 const drainBucketPage = {};          // each list's page, ten to a page (Oct 11)
+// How each list is sorted (Oct 25), each its own; A-Z to start
+const drainBucketSort = {};
+const DRAIN_SORTS = [['sched', 'Scheduled first'], ['unsched', 'Not scheduled first'], ['name', 'Name A\u2013Z'],
+  ['due', 'Most overdue first'], ['last', 'Last drained, longest ago first'], ['tech', 'Technician'],
+  ['area', 'City or area'], ['size', 'Pool size, largest first']];
+// On the drain calendar, not drained yet, from today on
+function pdIsScheduled(c){
+  try{
+    const today = pdToday();
+    return pdCal().some(e => e && e.customerId === c.id && e.date >= today && !((pdCalRecord(e) || {}).status === 'done'))
+      || (typeof pdOpenGroupFor === 'function' && !!pdOpenGroupFor(c.id));
+  }catch(e){ return false; }
+}
+function pdSortList(list, how){
+  const byName = (a, b) => sortKeyName(a.name).localeCompare(sortKeyName(b.name));
+  const gallons = c=>{ try{ const sz = waterBodySize(c, 'pool'); const n = parseFloat(String((sz && sz.amount) || '').replace(/[^0-9.]/g, '')); return isNaN(n) ? -1 : n; }catch(e){ return -1; } };
+  const cmp = {
+    sched: (a, b) => (pdIsScheduled(b) - pdIsScheduled(a)) || byName(a, b),
+    unsched: (a, b) => (pdIsScheduled(a) - pdIsScheduled(b)) || byName(a, b),
+    // No date goes last for due, first for last drained (never drained is longest ago)
+    due: (a, b) => { const x = pdDue(a) || '9999', y = pdDue(b) || '9999'; return x.localeCompare(y) || byName(a, b); },
+    last: (a, b) => { const x = pdLast(a) || '', y = pdLast(b) || ''; return x.localeCompare(y) || byName(a, b); },
+    tech: (a, b) => { const x = technicianNameById(a.technicianId) || '\uffff', y = technicianNameById(b.technicianId) || '\uffff'; return x.localeCompare(y, undefined, {sensitivity: 'base'}) || byName(a, b); },
+    area: (a, b) => { const x = String(a.city || a.zip || '\uffff'), y = String(b.city || b.zip || '\uffff'); return x.localeCompare(y, undefined, {sensitivity: 'base'}) || byName(a, b); },
+    size: (a, b) => (gallons(b) - gallons(a)) || byName(a, b)
+  }[how] || byName;
+  return list.slice().sort(cmp);
+}
+// The Sort button beside Select all, with its short menu
+function pdSortButton(key){
+  const wrap = document.createElement('span');
+  wrap.style.cssText = 'position:relative;display:inline-flex;';
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'btn btn-ghost';
+  b.style.cssText = 'width:auto;padding:4px 10px;font-size:12px;';
+  const now = drainBucketSort[key] || 'name';
+  b.textContent = '\u21c5 Sort: ' + (DRAIN_SORTS.find(x => x[0] === now) || DRAIN_SORTS[2])[1] + ' \u25be';
+  wrap.appendChild(b);
+  b.addEventListener('click', e=>{
+    e.preventDefault(); e.stopPropagation();
+    const open = wrap.querySelector('[data-sort-menu]');
+    if(open){ open.remove(); return; }
+    const menu = document.createElement('div');
+    menu.dataset.sortMenu = '1';
+    menu.style.cssText = 'position:absolute;top:calc(100% + 4px);left:0;z-index:30;width:260px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 24px rgba(14,74,77,.18);padding:6px;';
+    DRAIN_SORTS.forEach(([k, label])=>{
+      const it = document.createElement('div');
+      it.className = 'press-row';
+      it.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;text-transform:none;letter-spacing:0;' + (k === now ? 'background:var(--teal-pale);' : '');
+      it.innerHTML = '<span style="width:14px;color:var(--teal-deep);font-weight:800;">' + (k === now ? '\u2713' : '') + '</span>';
+      it.appendChild(document.createTextNode(label));
+      it.addEventListener('click', ev=>{ ev.preventDefault(); ev.stopPropagation(); drainBucketSort[key] = k; delete drainBucketPage[key]; renderPoolDrains(); });
+      menu.appendChild(it);
+    });
+    wrap.appendChild(menu);
+    // A click anywhere else closes it
+    setTimeout(()=> document.addEventListener('click', function off(){ menu.remove(); document.removeEventListener('click', off, true); }, true), 0);
+  });
+  return wrap;
+}
 let openDrainGroupIds = new Set();
 // Leaving the Drains tab (Oct 13): nobody ticked, every list closed and on
 // its first page. What's on the drain calendar stays exactly as it is.
@@ -9293,6 +9394,8 @@ function renderPoolDrains(){
   // Most overdue first; due soonest first; never and up-to-date by name / due
   // Every list A–Z, the same as the Customers tab (Oct 13; they were by due date)
   Object.keys(byBucket).forEach(k => byBucket[k].sort((a, b) => sortKeyName(a.name).localeCompare(sortKeyName(b.name))));
+  // Or as each list was sorted with its Sort button (Oct 25)
+  Object.keys(byBucket).forEach(k => { if(drainBucketSort[k] && drainBucketSort[k] !== 'name') byBucket[k] = pdSortList(byBucket[k], drainBucketSort[k]); });
   // Ticks only on customers still on screen
   const shownIds = new Set(shown.map(c => c.id));
   Array.from(drainPicked).forEach(id => { if(!shownIds.has(id)) drainPicked.delete(id); });
@@ -9357,7 +9460,7 @@ function renderPoolDrains(){
       const allBox = document.createElement('input');
       allBox.type = 'checkbox';
       allBox.dataset.selTick = '1';     // not part of a Shift-click range
-      allBox.style.cssText = 'width:auto;margin:0;';
+      allBox.style.cssText = 'margin:0;';   // the filter cleans' size (Oct 25)
       allBox.checked = list.every(c => drainPicked.has(c.id));
       allBox.addEventListener('change', ()=>{
         list.forEach(c => { if(allBox.checked) drainPicked.add(c.id); else drainPicked.delete(c.id); });
@@ -9365,12 +9468,42 @@ function renderPoolDrains(){
       });
       all.appendChild(allBox);
       all.appendChild(document.createTextNode(allBox.checked ? 'Unselect all' : 'Select all'));   // Oct 20
+      all.appendChild(pdSortButton(b.key));
       // The two tick columns' headings, over them (Oct 19)
       const heads = document.createElement('span');
       heads.style.cssText = 'margin-left:auto;display:flex;gap:12px;align-items:center;';
-      heads.innerHTML = '<span style="flex:0 0 64px;width:64px;text-align:center;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">Photo</span>'
-        + '<span style="flex:0 0 64px;width:64px;text-align:center;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">Email</span>'
+      heads.innerHTML = '<span data-col="photo" style="flex:0 0 64px;width:64px;text-align:center;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">Photo</span>'
+        + '<span data-col="email" style="flex:0 0 64px;width:64px;text-align:center;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">Email</span>'
         + '<span style="flex:0 0 150px;"></span><span style="flex:0 0 150px;"></span>';
+      // All · None under Photo and Email (Oct 25): everyone in this list at once
+      heads.querySelectorAll('[data-col]').forEach(h=>{
+        const col = h.dataset.col;
+        h.style.display = 'flex'; h.style.flexDirection = 'column'; h.style.alignItems = 'center'; h.style.gap = '3px';
+        const pick = document.createElement('span');
+        pick.style.cssText = 'text-transform:none;letter-spacing:0;font-weight:600;white-space:nowrap;color:var(--muted);';
+        const link = (word, on)=>{
+          const a = document.createElement('span');
+          a.textContent = word;
+          a.style.cssText = 'color:var(--teal-deep);text-decoration:underline;cursor:pointer;';
+          a.title = (on ? 'Tick ' : 'Untick ') + (col === 'photo' ? 'Photo required' : 'Email customer') + ' for everyone in this list';
+          a.addEventListener('click', e=>{
+            e.preventDefault(); e.stopPropagation();   // not the Select all box this sits in
+            list.forEach(c=>{
+              if(col === 'photo') c.drainPhotoRequired = on; else c.drainEmailCustomer = on;
+              pdApplyCustSettings(c);
+            });
+            saveCustomers();
+            pdKeepHeight = true;
+            try{ renderPoolDrains(); } finally { pdKeepHeight = false; }
+            showToast((col === 'photo' ? 'Photo required' : 'Email customer') + (on ? ' on' : ' off') + ' for ' + list.length + (list.length === 1 ? ' customer' : ' customers'));
+          });
+          return a;
+        };
+        pick.appendChild(link('All', true));
+        pick.appendChild(document.createTextNode(' \u00b7 '));
+        pick.appendChild(link('None', false));
+        h.appendChild(pick);
+      });
       all.appendChild(heads);
       card.appendChild(all);
 
@@ -9449,7 +9582,7 @@ function pdTickCol(c, col){
   lab.title = col === 'photo' ? 'Photo required to finish the drain in the app' : 'Email the customer when the drain is done';
   const box = document.createElement('input');
   box.type = 'checkbox';
-  box.style.cssText = 'width:auto;margin:0;';
+  box.style.cssText = 'margin:0;';   // the filter cleans' size (Oct 25)
   box.checked = col === 'photo' ? pdCustPhoto(c) : pdCustEmail(c);
   lab.addEventListener('pointerdown', e=>{ pdTickShift = e.shiftKey; });
   lab.addEventListener('click', e => e.stopPropagation());
@@ -9475,7 +9608,7 @@ function pdRow(c, b){
   row.dataset.pdCustomer = c.id;
   const box = document.createElement('input');
   box.type = 'checkbox';
-  box.style.cssText = 'width:auto;margin:0;flex-shrink:0;';
+  box.style.cssText = 'margin:0;flex-shrink:0;';   // the filter cleans' size (Oct 25)
   box.checked = drainPicked.has(c.id);
   box.addEventListener('click', e => e.stopPropagation());
   box.addEventListener('change', ()=>{
@@ -12347,8 +12480,9 @@ function pdImportDate(raw){
   if(!t) return '';
   let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if(m) return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
-  const yr = y => y.length <= 2 ? 2000 + Number(y) : Number(y);
-  const ok = (y, mo, d) => mo >= 1 && mo <= 12 && d >= 1 && d <= 31 && y >= 1990 && y <= 2100;
+  // Two-digit years later than next year are last century: 6/98 is 1998 (Oct 25)
+  const yr = y => { if(y.length > 2) return Number(y); const n = 2000 + Number(y); return n > new Date().getFullYear() + 1 ? n - 100 : n; };
+  const ok = (y, mo, d) => mo >= 1 && mo <= 12 && d >= 1 && d <= 31 && y >= 1950 && y <= 2100;
   // Month / day / year
   m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2}|\d{4})\b/);
   if(m){
@@ -12368,9 +12502,17 @@ function pdImportDate(raw){
   const d = new Date(t);
   if(!isNaN(d) && /[a-z]/i.test(t) && /\d{4}/.test(t)){
     const y = d.getFullYear();
-    if(y >= 1990 && y <= 2100) return y + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    if(y >= 1950 && y <= 2100) return y + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
   return '';
+}
+// Every drain date in one cell (Oct 25): "12/23, 6/20, 4/16". A year after a
+// comma belongs to the date before it ("Jun 5, 2024").
+function pdImportDates(raw){
+  const parts = String(raw || '').split(/\s*[,;]\s*/).filter(Boolean);
+  const out = [];
+  parts.forEach(p=>{ if(/^\d{4}$/.test(p) && out.length) out[out.length - 1] += ', ' + p; else out.push(p); });
+  return out;
 }
 function pdImportNameKey(n){ return String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
 function pdImportFindCustomer(name, address){
@@ -12435,11 +12577,14 @@ function pdImportRead(text){
       drainCols.forEach(col=>{
         const cell = String(r[col.i] || '').trim();
         if(!cell) return;
-        const date = pdImportDate(cell);
-        if(!date){ noDate++; return; }
+        // Several drains over the years in the one cell (Oct 25)
         const c = pdImportFindCustomer(name, address);
-        if(!c){ missing.set(name || '(no name)', (missing.get(name || '(no name)') || 0) + 1); return; }
-        found.push({c, date, body: pdImportBody(c, col.kind), kind: col.kind});
+        pdImportDates(cell).forEach(one=>{
+          const date = pdImportDate(one);
+          if(!date){ noDate++; return; }
+          if(!c){ missing.set(name || '(no name)', (missing.get(name || '(no name)') || 0) + 1); return; }
+          found.push({c, date, body: pdImportBody(c, col.kind), kind: col.kind});
+        });
       });
       return;
     }
@@ -12466,19 +12611,25 @@ document.getElementById('btnImportDrains').addEventListener('click', ()=>{
   overlay.className = 'confirm-overlay';
   const cell = 'padding:5px 8px;border:1px solid var(--line);font-size:12px;white-space:nowrap;';
   const head = cell + 'background:var(--teal-pale);font-weight:700;color:var(--ink);';
-  overlay.innerHTML = '<div class="confirm-box" style="max-width:520px;width:100%;">'
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:600px;width:100%;max-height:88vh;overflow-y:auto;">'
     + '<h3 style="font-size:16px;margin:0 0 4px;">Import drains</h3>'
     + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Your spreadsheet needs a heading row, then one row per customer, like this:</p>'
     + '<div style="overflow-x:auto;margin:0 0 12px;"><table style="border-collapse:collapse;">'
     + '<tr><td style="' + head + '">Name</td><td style="' + head + '">Address</td><td style="' + head + '">Pool Drain</td><td style="' + head + '">Spa Drain</td></tr>'
-    + '<tr><td style="' + cell + '">Ana Rivera</td><td style="' + cell + '">123 W Main St, Goodyear, AZ</td><td style="' + cell + '">12/23</td><td style="' + cell + '"></td></tr>'
+    // Some with one drain, some with several over the years (Oct 25)
+    + '<tr><td style="' + cell + '">Ana Rivera</td><td style="' + cell + '">123 W Main St, Goodyear, AZ</td><td style="' + cell + '">12/23, 6/20, 4/16</td><td style="' + cell + '"></td></tr>'
     + '<tr><td style="' + cell + '">James Okafor</td><td style="' + cell + '">45 S Elm Dr, Buckeye, AZ</td><td style="' + cell + '">3/24</td><td style="' + cell + '">3/24</td></tr>'
+    + '<tr><td style="' + cell + '">Maria Chen</td><td style="' + cell + '">9 N Palm Ln, Avondale, AZ</td><td style="' + cell + '">8/22, 5/17, 7/2009</td><td style="' + cell + '">8/22, 2/19</td></tr>'
+    + '<tr><td style="' + cell + '">Rivera, Luis</td><td style="' + cell + '">310 E Oak Rd, Litchfield Park, AZ</td><td style="' + cell + '">1/21</td><td style="' + cell + '"></td></tr>'
+    + '<tr><td style="' + cell + '">Dana Brooks</td><td style="' + cell + '">77 W Sage Ct, Buckeye, AZ</td><td style="' + cell + '">10/24, 3/19, 11/13, 6/98</td><td style="' + cell + '"></td></tr>'
     + '</table></div>'
     + '<ul style="font-size:12.5px;color:var(--ink);margin:0 0 14px;padding-left:18px;line-height:1.55;">'
     + '<li><b>Name</b> matches each row to a customer here, written either way (Ana Rivera or Rivera, Ana).</li>'
     + '<li><b>Address</b> is optional; it picks the right customer when two share a name.</li>'
     + '<li>Drain columns headed <b>Pool Drain</b>, <b>Spa Drain</b>, <b>Fountain Drain</b> or <b>Extra Body Drain</b> &mdash; any you have.</li>'
     + '<li>Dates as month/year (<b>12/23</b> is December 2023) or a full date (<b>12/5/23</b>). Leave a cell empty if there’s no drain.</li>'
+    + '<li>If a customer has had several drains over the years, put every date in the same cell, separated by commas (<b>12/23, 6/20, 4/16</b>). Older years can have four digits (<b>7/2009</b>); <b>6/98</b> is 1998.</li>'
+    + '<li>A drain already on record isn’t added twice, and the most recent one sets when the next is due.</li>'
     + '<li>Any other columns are ignored. Save it as a <b>CSV</b> file (in Google Sheets: File → Download → Comma-separated values).</li>'
     + '</ul>'
     + '<div class="btn-row"><button type="button" class="btn btn-ghost" data-cancel>Cancel</button>'
@@ -20148,6 +20299,14 @@ function qoEntriesFor(customerId){
 }
 
 // The opened part of a row: the same report layout as Service Reports
+// "Completed <date> by <who>" with the time on the job beside it (Oct 25)
+function qoDoneRow(word, date, who, ms){
+  const d = document.createElement('div');
+  d.className = 'rdate rdate-row';
+  d.innerHTML = '<span>' + escapeSyncText(word) + ' <b>' + escapeSyncText(date) + '</b>' + (who ? ' by <b>' + escapeSyncText(who) + '</b>' : '') + '</span>'
+    + (ms ? jobTimePill(ms) : '');
+  return d;
+}
 function qoDoc(heading, lines, current, onComplete){
   const doc = document.createElement('div');
   doc.className = 'report-doc';
@@ -20158,7 +20317,15 @@ function qoDoc(heading, lines, current, onComplete){
   const h = document.createElement('h3');
   h.textContent = heading;
   left.appendChild(h);
-  lines.filter(Boolean).forEach(t=>{ const d = document.createElement('div'); d.className = 'rdate'; d.textContent = t; left.appendChild(d); });
+  // The label grey, the answer dark and bold (Oct 25)
+  lines.filter(Boolean).forEach(t=>{
+    const d = document.createElement('div'); d.className = 'rdate';
+    if(t && t.nodeType === 1){ left.appendChild(t); return; }
+    const m = String(t).match(/^(Scheduled for|Written|Technician:|Group:|Status:|Completed|Submitted by)\s+(.+)$/);
+    if(m){ d.appendChild(document.createTextNode(m[1] + ' ')); const b = document.createElement('b'); b.textContent = m[2]; d.appendChild(b); }
+    else d.textContent = t;
+    left.appendChild(d);
+  });
   const badge = document.createElement('div');
   badge.className = 'report-badge';
   badge.textContent = current ? 'Current' : 'Completed';
@@ -20476,6 +20643,60 @@ function qoAddJobButtons(doc, item, customerId){
   return doc;
 }
 
+// Reply in Weir (Oct 25): a box for the office's answer to a customer's quote
+// message, emailed from "<company> via Weir" (their reply comes to the
+// business email) and kept on the quote under their message
+function qoReplyInWeir(w, cust, customerId){
+  const to = customerEmailTo(cust);
+  if(!to){ showToast('This customer has no email on file'); return; }
+  const last = (w.customerMessages || []).slice().sort((a, b) => String(a.at || '').localeCompare(String(b.at || ''))).pop();
+  const num = w.number ? ' #' + quoteNumberText(w.number) : '';
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:440px;width:100%;text-align:left;';
+  box.innerHTML = '<h3 style="font-size:17px;margin:0 0 4px;"></h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;"></p>'
+    + (last ? '<div data-q style="background:var(--surface-alt, #F6F8F7);border-left:3px solid #BFDCD8;border-radius:6px;padding:8px 10px;font-size:12.5px;color:var(--muted);margin-bottom:10px;white-space:pre-wrap;max-height:120px;overflow-y:auto;"></div>' : '')
+    + '<textarea id="qoReplyText" rows="5" placeholder="Type your reply" style="width:100%;min-height:110px;"></textarea>'
+    + '<div class="btn-row" style="flex-wrap:nowrap;margin-top:12px;"><button type="button" class="btn btn-primary" data-send style="flex:1 1 0;">Send</button>'
+    + '<button type="button" class="btn btn-ghost" data-cancel style="flex:1 1 0;">Cancel</button></div>';
+  box.querySelector('h3').textContent = 'Reply to ' + displayName(cust.name || 'the customer');
+  box.querySelector('p').textContent = 'Goes to ' + to + ' from "' + companyName() + ' via Weir". Their reply comes to your business email.';
+  if(last) box.querySelector('[data-q]').textContent = last.text;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const ta = box.querySelector('#qoReplyText');
+  setTimeout(()=> ta.focus(), 0);
+  const close = ()=> overlay.remove();
+  overlay.addEventListener('click', e=>{ if(e.target === overlay) close(); });
+  box.querySelector('[data-cancel]').addEventListener('click', close);
+  const send = box.querySelector('[data-send]');
+  send.addEventListener('click', async ()=>{
+    const text = ta.value.trim();
+    if(!jobHasAll(box, [[!text, ta, 'Write your reply first.']])) return;
+    send.disabled = true; send.textContent = 'Sending…';
+    const info = {title: 'Re: Quote' + num, lines: [], items: [], itemsLabel: '', prices: false,
+      sections: [['Reply', text]].concat(last ? [['Your message', last.text]] : []), photos: []};
+    const res = await sbFetch('/functions/v1/send-report', {method: 'POST',
+      body: JSON.stringify({to: to, subject: 'Re: Quote' + num + ' — ' + companyName(), html: qoJobEmailHtml(cust, info), customerId: cust.id, kind: 'quote'})});
+    if(!(res && res.ok)){
+      send.disabled = false; send.textContent = 'Send';
+      recordEmailFailure(cust, 'Quote reply', to, emailFailReason(res));
+      showToast('Could not send it — the office could not be reached. Try again in a moment.');
+      return;
+    }
+    const it = workOrders.find(x => x && x.id === w.id);
+    if(it){
+      it.officeReplies = (it.officeReplies || []).concat([{at: new Date().toISOString(), text: text}]);
+      saveWorkOrders();
+    }
+    close();
+    try{ renderCustomerWorkOrders(customerId); }catch(e){}
+    showToast('Reply sent to ' + to);
+  });
+}
 function qoBody(item, customerId){ return qoAddJobButtons(qoBodyInner(item, customerId), item, customerId); }
 function qoBodyInner(item, customerId){
   const when = d => d ? fmtDate(String(d).length === 10 ? d + 'T12:00:00' : d) : '';
@@ -20522,34 +20743,51 @@ function qoBodyInner(item, customerId){
       card.appendChild(n);
     }
 
-    // Messages the customer sent from the email (Oct 22)
+    // Messages the customer sent from the email (Oct 22), and the office's
+    // replies sent through Weir (Oct 25), in time order
     if((w.customerMessages || []).length){
       const cust = (customers || []).find(x => x && String(x.id) === String(w.customerId));
       const head = document.createElement('div');
       head.style.cssText = 'font-size:12px;font-weight:700;color:var(--ink);text-transform:uppercase;letter-spacing:.06em;margin-top:14px;';
-      head.textContent = w.customerMessages.length === 1 ? 'Message from the customer' : 'Messages from the customer';
+      head.textContent = 'Messages';
       card.appendChild(head);
-      w.customerMessages.forEach(m=>{
+      const thread = w.customerMessages.map(m => ({at: m.at, text: m.text, office: false}))
+        .concat((w.officeReplies || []).map(m => ({at: m.at, text: m.text, office: true})))
+        .sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+      thread.forEach(m=>{
         const b = document.createElement('div');
-        b.style.cssText = 'margin-top:8px;background:var(--surface-alt, #F6F8F7);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.45;white-space:pre-wrap;';
+        b.style.cssText = 'margin-top:8px;border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.45;white-space:pre-wrap;max-width:85%;'
+          + (m.office ? 'background:var(--teal-pale);border:1px solid #BFDCD8;margin-left:auto;' : 'background:var(--surface-alt, #F6F8F7);border:1px solid var(--line);');
         const who = document.createElement('div');
         who.style.cssText = 'font-size:11.5px;color:var(--muted);margin-bottom:3px;white-space:normal;';
         const t = m.at ? new Date(m.at) : null;
-        who.textContent = (cust ? displayName(cust.name) : 'Customer')
-          + (t && !isNaN(t) ? ' \u00b7 ' + t.toLocaleString(undefined, {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'}) : '');
+        who.textContent = (m.office ? 'You, through Weir' : (cust ? displayName(cust.name) : 'Customer'))
+          + (t && !isNaN(t) ? ' · ' + t.toLocaleString(undefined, {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'}) : '');
         b.appendChild(who);
         b.appendChild(document.createTextNode(m.text));
         card.appendChild(b);
       });
       const to = cust ? customerEmailTo(cust) : '';
       if(to){
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;';
+        // Reply in Weir: sent from "<company> via Weir", kept on the quote
+        const inWeir = document.createElement('button');
+        inWeir.type = 'button';
+        inWeir.className = 'btn btn-primary';
+        inWeir.style.cssText = 'width:auto;padding:7px 12px;font-size:12.5px;';
+        inWeir.textContent = 'Reply in Weir';
+        inWeir.addEventListener('click', e=>{ e.stopPropagation(); qoReplyInWeir(w, cust, customerId); });
+        row.appendChild(inWeir);
+        // Reply by email: the office's own email app, handy on a phone
         const reply = document.createElement('a');
         reply.className = 'btn btn-ghost';
-        reply.style.cssText = 'display:inline-flex;width:auto;margin-top:10px;padding:7px 12px;font-size:12.5px;text-decoration:none;';
+        reply.style.cssText = 'display:inline-flex;width:auto;padding:7px 12px;font-size:12.5px;text-decoration:none;';
         reply.href = 'mailto:' + to + '?subject=' + encodeURIComponent('Re: Quote' + (w.number ? ' #' + quoteNumberText(w.number) : ''));
         reply.textContent = 'Reply by email';
         reply.addEventListener('click', e => e.stopPropagation());
-        card.appendChild(reply);
+        row.appendChild(reply);
+        card.appendChild(row);
       }
     }
 
@@ -20621,8 +20859,7 @@ function qoBodyInner(item, customerId){
   // A task
   const t = item.t;
   const doc = qoDoc('Task', [t.title || '', t.date ? 'Scheduled for ' + when(t.date) : '',
-    t.done && t.doneAt ? 'Completed ' + when(t.doneAt) + (t.doneBy ? ' by ' + (tech(t.doneBy) || 'a technician') : '') : '',
-    t.done && t.doneDurationMs ? 'Time on the job ' + jobDurationText(t.doneDurationMs) : '',
+    t.done && t.doneAt ? qoDoneRow('Completed', when(t.doneAt), t.doneBy ? (tech(t.doneBy) || 'a technician') : '', t.doneDurationMs) : '',
     !t.done && tech(t.technicianId) ? 'Technician: ' + tech(t.technicianId) : ''], !t.done, complete);
   if(t.details) qoSection(doc, 'Details', qoNotes(t.details));
   if(t.doneNotes) qoSection(doc, 'Technician\u2019s notes', qoNotes(t.doneNotes));
@@ -28138,6 +28375,11 @@ function jobDurationText(ms){
   const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s2 = sec % 60;
   return h ? h + 'h ' + m + 'm' : m ? m + 'm ' + s2 + 's' : s2 + 's';
 }
+// Time on the job in a pale teal pill with a clock (Oct 25)
+function jobTimePill(ms){
+  return '<span class="job-time-pill"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Time on the job <b>'
+    + escapeSyncText(jobDurationText(ms)) + '</b></span>';
+}
 function buildWorkOrderDoc(customerId, j){
   const esc = escapeSyncText;
   const doc = document.createElement('div');
@@ -28161,11 +28403,12 @@ function buildWorkOrderDoc(customerId, j){
   }
   doc.innerHTML = '<div class="report-head"><div>'
     + '<h3>' + (j._clean ? 'Filter clean' : j._drain ? esc(j._drainLabel || 'Pool drain') : 'Work order' + esc(num)) + '</h3>'
-    + '<div class="rdate">Scheduled for ' + esc(fmtDate((j.date || '') + 'T12:00:00'))
-    + (j.doneAt ? ' \u00b7 Submitted ' + esc(fmtDate(j.doneAt)) + ' at '
-       + esc(new Date(j.doneAt).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'})) : '') + '</div>'
-    + '<div class="rdate">Submitted by ' + esc(by) + '</div>'
-    + (j.doneDurationMs ? '<div class="rdate">Time on the job ' + esc(jobDurationText(j.doneDurationMs)) + '</div>' : '')
+    + '<div class="rdate">Scheduled for <b>' + esc(fmtDate((j.date || '') + 'T12:00:00')) + '</b>'
+    + (j.doneAt ? ' &nbsp;\u00b7&nbsp; Submitted <b>' + esc(fmtDate(j.doneAt)) + ' at '
+       + esc(new Date(j.doneAt).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'})) + '</b>' : '') + '</div>'
+    // Submitted by, with the time on the job in its pill to the right (Oct 25)
+    + '<div class="rdate rdate-row"><span>Submitted by <b>' + esc(by) + '</b></span>'
+    + (j.doneDurationMs ? jobTimePill(j.doneDurationMs) : '') + '</div>'
     + '</div><div class="report-badge">Completed</div></div>'
     + (items.length ? '<div class="report-sec">' + (j._drain ? 'Extra work' : 'Line items') + '</div><table class="report-table">' + rows + '</table>' : '')
     + (j.notes ? '<div class="report-sec">Work order notes</div><div class="report-notes">' + esc(j.notes) + '</div>' : '')
