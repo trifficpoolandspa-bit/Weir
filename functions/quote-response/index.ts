@@ -12,6 +12,11 @@
 // Talks to the database the same way send-report does (its own keys, straight
 // requests), and says why if the database refuses rather than "not found".
 //
+// Send a message (Oct 22): a = "message" with m = the customer's words adds
+// {at, text} to the row's messages (snippet 37); the office picks them up with
+// the answers. Allowed whether or not the quote was answered or has expired.
+// A plain look (a = "message", no m) returns the company and quote number.
+//
 // Deploy in Supabase (Edge Functions) as "quote-response" with
 // "Verify JWT" OFF: the customer isn't signed in.
 
@@ -52,12 +57,14 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   let token = url.searchParams.get("t") || "";
   let action = url.searchParams.get("a") || "";
-  const fromOldEmail = req.method === "GET" && !!action;   // a button in an older email
+  let message = "";
+  const fromOldEmail = req.method === "GET" && !!action && action !== "message";   // a button in an older email
   if (req.method === "POST") {
     try {
       const body = await req.json();
       token = String(body.t || token);
       action = String(body.a || action);
+      message = String(body.m || "").trim().slice(0, 2000);
     } catch (_e) { /* keep what the address had */ }
   }
   const outcome = action === "approve" ? "approved" : action === "deny" ? "denied" : null;
@@ -70,11 +77,27 @@ Deno.serve(async (req) => {
     // The database refused: say why, rather than "not found"
     return fromOldEmail ? text(sorry) : json({ state: "error", why: found.status + " " + found.body.slice(0, 200) }, 500);
   }
-  const row = Array.isArray(found.data) && found.data.length ? found.data[0] as { company_id: string; outcome: string | null; created_at: string; expires_days?: number | null } : null;
+  const row = Array.isArray(found.data) && found.data.length ? found.data[0] as { company_id: string; outcome: string | null; created_at: string; expires_days?: number | null; messages?: unknown; details?: { number?: string } | null } : null;
   if (!row) return fromOldEmail ? text(sorry) : json({ state: "missing" });
 
   const co = await db("companies?select=name&id=eq." + encodeURIComponent(row.company_id));
   const company = co.ok && Array.isArray(co.data) && co.data.length ? String((co.data[0] as { name?: string }).name || "") : "";
+
+  // A message from the customer (Oct 22)
+  if (action === "message") {
+    const number = row.details && typeof row.details === "object" ? String(row.details.number || "") : "";
+    if (!message) return json({ state: "message", company, number });
+    const had = Array.isArray(row.messages) ? row.messages as unknown[] : [];
+    if (had.length >= 30) return json({ state: "full", company, number });
+    const at = new Date().toISOString();
+    const put = await db("quote_responses?token=eq." + encodeURIComponent(token), {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ messages: had.concat([{ at, text: message }]) }),
+    });
+    if (!put.ok) return json({ state: "error", why: put.status + " " + put.body.slice(0, 200), company }, 500);
+    return json({ state: "sent", company, number });
+  }
 
   // Past the quote's days from sending (30 unless set): expired, nothing recorded
   const days = Number(row.expires_days) || ANSWER_DAYS;
