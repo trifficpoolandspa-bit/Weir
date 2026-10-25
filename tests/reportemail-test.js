@@ -142,7 +142,7 @@ const base = {
         .find(b => b.dataset.acct === 'email').click();
       check('  it opens its own panel',
             d.getElementById('acctEmailPanel').style.display === 'block');
-      check('  with a colour picker', !!d.getElementById('acctEmailColour'));
+      check('  with no colour picker (removed Oct 23)', !d.getElementById('acctEmailColour'));
       check('  an opening line', !!d.getElementById('acctEmailGreeting'));
       check('  and a closing line', !!d.getElementById('acctEmailSignoff'));
 

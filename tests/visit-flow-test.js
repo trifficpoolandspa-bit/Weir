@@ -885,12 +885,13 @@ async function walkVisit(w, d, maxPresses){
   // Since Sept 29 the office's weekly order for that technician comes first,
   // and dragging here saves to it (it used to save to this phone only, where
   // nothing else read it). Driven for real in part 1.
-  check('the office\u2019s weekly order for that technician comes first',
-        /const dayOrder = officeDay\[techRouteDay\];/.test(src)
-        && src.indexOf('const dayOrder = officeDay[techRouteDay];') < src.indexOf("orders['date:' + routeIso + '|' + selectedTechId]"));
-  check('older orders kept on the phone are still understood',
-        /orders\['date:' \+ routeIso \+ '\|' \+ selectedTechId\]/.test(src)
-        && /orders\['tech:' \+ forThisTech\(selectedTechId\)\]/.test(src));
+  // Since Oct 22 it's exactly Today's order: one function for both lists
+  // (this phone's Just today, then the office's, then the weekly order)
+  check('the technician\u2019s list uses the same order as Today',
+        /order = adminRouteOrderIds\(techRouteDay, routeIso, ids, selectedTechId\)/.test(src)
+        && /const order = adminRouteOrderIds\(day, isoForDay\(day\), ids, adminViewTechId\)/.test(src));
+  check('…which reads this phone\u2019s Just today first, then the office\u2019s, then the weekly order',
+        /function adminRouteOrderIds[\s\S]{0,600}fieldRouteOrder\[key\][\s\S]{0,400}routeOrdersOnce[\s\S]{0,300}websiteOrderForDay\(day\)/.test(src));
   // Since Sept 29 a drag asks first (Just today / Every week); Every week saves it
   check('dragging here saves the office\u2019s order and sends it',
         /saveCompanyRouteOrder\(p\.day, p\.ids\);/.test(src));
@@ -1416,8 +1417,10 @@ async function walkVisit(w, d, maxPresses){
       check(file + ': a job opens with the customer\u2019s details',
             !!brief && !/1 A St/.test(brief.textContent) && /555-0101/.test(brief.textContent) && /4321/.test(brief.textContent)
             && /Rex/.test(brief.textContent) && /Drips overnight/.test(brief.textContent), brief ? brief.textContent.slice(0, 80) : '');
+      // The admin app has Reschedule between them (Oct 22)
       check(file + ': with Directions and Start job',
-            Array.from(brief.querySelectorAll('button')).map(b => b.textContent).join('|') === 'Directions|Start job');
+            Array.from(brief.querySelectorAll('button')).map(b => b.textContent).join('|') === (/admin/.test(file) ? 'Directions|Reschedule|Start job' : 'Directions|Start job'),
+            Array.from(brief.querySelectorAll('button')).map(b => b.textContent).join('|'));
       w.eval("captureFromCamera = async ()=> 'data:image/jpeg;base64,job';");
       Array.from(brief.querySelectorAll('button')).find(b => b.textContent === 'Start job').click();
       await wait(50);

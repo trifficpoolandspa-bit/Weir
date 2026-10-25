@@ -984,7 +984,7 @@ console.log('\n=== Photo requirements do not depend on Settings ===');
 
   try{
     const off = onPhotoTab({showBeforePhotos: false, showAfterPhotos: false, showGatePhoto: false});
-    check('  all five requirements are there (Video added, 1em)', off.rows.length === 5, String(off.rows.length));
+    check('  all six requirements are there (Video added, 1em; Salt cell clean photo, Oct 22)', off.rows.length === 6, String(off.rows.length));
     check('  none are greyed out by an old setting', off.rows.every(r => !off.dim(r)));
     check('  and nothing says a step is switched off',
           off.text.indexOf('switched off in Settings') === -1, off.text.slice(0, 120));
@@ -2158,7 +2158,7 @@ async function serverTechniciansTab(){
             && d.getElementById('techListPane').style.display === 'none');
 
       const rowHeads = () => Array.from(d.querySelectorAll('#photoRequireRows > div > div:first-child'));
-      check('there is a row for each requirement (Video first, 1em.6)', rowHeads().length === 5,
+      check('there is a row for each requirement (Video first, 1em.6; salt cell Oct 22)', rowHeads().length === 6,
             rowHeads().map(r => r.textContent.slice(0, 22)).join(' | '));
       check('and no Technicians buttons any more',
             Array.from(d.querySelectorAll('#photoRequireRows button'))
@@ -2334,18 +2334,18 @@ async function serverTechniciansTab(){
       check('pressing Enter saves it', d.getElementById('photoTaskOverlay').style.display === 'none');
 
       const allRows = Array.from(d.querySelectorAll('#photoRequireRows > div'));
-      check('it is listed under the five built-in rows (Video first, 1em.6)', allRows.length === 6
-            && /Filter gauge/.test(allRows[5].textContent), allRows.map(r => r.textContent.slice(0, 24)).join(' | '));
+      check('it is listed under the six built-in rows (Video first, 1em.6; salt cell Oct 22)', allRows.length === 7
+            && /Filter gauge/.test(allRows[6].textContent), allRows.map(r => r.textContent.slice(0, 24)).join(' | '));
       const crosses = Array.from(d.querySelectorAll('#photoRequireRows button')).filter(b => b.textContent === '\u00d7' || b.dataset.xDrawn === '1');
       check('only your own photo has an X beside it', crosses.length === 1);
       check('and the X sits after its name and its Edit button',
             crosses[0].previousElementSibling && crosses[0].previousElementSibling.textContent === 'Edit'
             && /Filter gauge/.test(crosses[0].previousElementSibling.previousElementSibling.textContent));
-      check('it says when it is taken and where', /before readings and after readings/.test(allRows[5].textContent)
-            && /Pool, Spa/.test(allRows[5].textContent), allRows[5].textContent.slice(0, 120));
+      check('it says when it is taken and where', /before readings and after readings/.test(allRows[6].textContent)
+            && /Pool, Spa/.test(allRows[6].textContent), allRows[6].textContent.slice(0, 120));
 
       // Its own technician list, with only the bodies it was given
-      rowHeads()[5].click(); await sleep(250);
+      rowHeads()[6].click(); await sleep(250);
       const ownTicks = Array.from(d.querySelectorAll('#photoRequireRows input[type=checkbox]'));
       const techCount = w.eval('technicians.length');
       check('its list has a column per body it was given, and no gate',
@@ -2377,7 +2377,7 @@ async function serverTechniciansTab(){
       w.__answer = 'ok';
       Array.from(d.querySelectorAll('#photoRequireRows button')).filter(b => b.textContent === '\u00d7' || b.dataset.xDrawn === '1')[0].click();
       await sleep(400);
-      check('the X removes it', Array.from(d.querySelectorAll('#photoRequireRows > div')).length === 5,
+      check('the X removes it', Array.from(d.querySelectorAll('#photoRequireRows > div')).length === 6,
             String(d.querySelectorAll('#photoRequireRows > div').length));
       check('and takes its requirements with it',
             !w.eval("technicians.some(t => t.photoRules && t.photoRules['" + taskId + "'])"));
@@ -4169,7 +4169,8 @@ async function photoRequirementsPage(){
       const names = Array.from(d.querySelectorAll('#photoRequireRows > div')).map(r => r.firstChild.firstChild.firstChild.textContent);
       check('the rows read Video, Before photo, After photo, Closed gate photo (Video first, 1em.6)',
             names[0] === 'Video' && names[1] === 'Before photo' && names[2] === 'After photo' && names[3] === 'Closed gate photo', names.join(' | '));
-      check('the skip row keeps its full wording', names[4] === 'Skip body of water photo and note', names[4]);   // renamed Oct 3
+      check('the salt cell clean photo comes after the gate (Oct 22)', names[4] === 'Salt cell clean photo', names[4]);
+      check('the skip row keeps its full wording', names[5] === 'Skip body of water photo and note', names[5]);   // renamed Oct 3
       const site = fs.readFileSync('customer-intake.html', 'utf8');
       check('the line under the heading says what a tick does',
             site.indexOf('Checking a box requires that technician to take the photo before moving on to the next step of the service report.') !== -1

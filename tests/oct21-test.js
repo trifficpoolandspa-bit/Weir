@@ -107,7 +107,8 @@ const SEED = `
     const b = re => Array.from(brief.querySelectorAll('button')).find(x => re.test(x.textContent.trim()));
     const bg = el => el ? getComputedStyle(el).backgroundColor : '';
     out.push(['Skip Service is red with white words', /184, 73, 46/.test(bg(b(/^Skip Service$/))) && /255, 255, 255/.test(getComputedStyle(b(/^Skip Service$/)).color), bg(b(/^Skip Service$/))]);
-    out.push(['Directions is dark teal with white words', /17, 75, 79|14, 74, 77/.test(bg(b(/^Directions$/))), bg(b(/^Directions$/))]);
+    // Back to the plain look on Oct 22 (Tyrus asked)
+    out.push(['Directions is in its plain look', !!b(/^Directions$/) && !b(/^Directions$/).style.background, b(/^Directions$/) && b(/^Directions$/).getAttribute('style')]);
     return out;
   `));
 
