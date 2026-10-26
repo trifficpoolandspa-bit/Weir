@@ -9,7 +9,7 @@
   <link rel="manifest" href="./manifest-office.json">
 <meta name="theme-color" content="#0E4A4D">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&family=DM+Serif+Display&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <style>
@@ -285,17 +285,17 @@ input::placeholder{color:#A9BCB9;}
 .rp-box{border:1px solid var(--line);border-radius:10px;max-height:340px;overflow-y:auto;background:#fff;}
 .rp-stop{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line);font-size:13.5px;}
 .rp-stop:last-child{border-bottom:0;}
-.rp-num{width:22px;height:22px;border-radius:50%;background:var(--teal-pale);color:var(--teal-deep);font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.rp-num{width:22px;height:22px;border-radius:50%;background:var(--teal-pale);color:var(--ink);font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .rp-addr{font-size:11.5px;color:var(--muted);}
-.rp-own{font-size:10.5px;font-weight:700;color:var(--teal-deep);background:var(--teal-pale);padding:2px 7px;border-radius:6px;margin-left:auto;white-space:nowrap;}
+.rp-own{font-size:10.5px;font-weight:700;color:var(--ink);background:var(--teal-pale);padding:2px 7px;border-radius:6px;margin-left:auto;white-space:nowrap;}
 .rp-gap{height:16px;position:relative;cursor:pointer;}
-.rp-gap::after{content:"+ Put it here";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:11px;font-weight:700;color:var(--teal-deep);background:#fff;border:1.5px dashed #9CC5BF;border-radius:999px;padding:0 10px;opacity:.35;transition:opacity .12s;white-space:nowrap;}
+.rp-gap::after{content:"+ Put it here";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:11px;font-weight:700;color:var(--ink);background:#fff;border:1.5px dashed #9CC5BF;border-radius:999px;padding:0 10px;opacity:.35;transition:opacity .12s;white-space:nowrap;}
 .rp-gap:hover::after{opacity:1;}
 .rp-job{display:flex;align-items:center;gap:8px;padding:9px 12px;margin:4px 6px;font-size:13.5px;font-weight:600;border-radius:10px;border:2px solid #3E5560;background:#E9EEF0;color:#3E5560;}
 .rp-job.pending{border-style:dashed;}
 .rp-job span:last-child{margin-left:auto;font-size:11.5px;font-weight:600;color:var(--muted);}
 .rp-note{font-size:12px;color:var(--muted);margin-top:8px;}
-.rp-done{font-size:12.5px;font-weight:600;color:var(--teal-deep);margin-top:8px;}
+.rp-done{font-size:12.5px;font-weight:600;color:var(--ink);margin-top:8px;}
 .need-msg{font-size:12.5px;color:var(--rust);font-weight:600;margin:6px 0 0;}
 .hd-tag{font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;}
 .profile-field-col .pf-label{font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--teal-pale);text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:6px;align-self:flex-start;margin-bottom:3px;}
@@ -518,8 +518,8 @@ input::placeholder{color:#A9BCB9;}
 /* The answers dark and bold, the labels grey (Oct 25) */
 .report-head .rdate b{color:var(--ink);font-weight:600;}
 .report-head .rdate-row{display:flex;align-items:center;gap:28px;flex-wrap:wrap;}
-.job-time-pill{display:inline-flex;align-items:center;gap:6px;background:var(--teal-pale);color:var(--teal-deep);font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap;}
-.job-time-pill b{font-family:'JetBrains Mono',monospace;color:var(--teal-deep) !important;font-weight:700 !important;}
+.job-time-pill{display:inline-flex;align-items:center;gap:6px;background:var(--teal-pale);color:var(--ink);font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap;}
+.job-time-pill b{font-family:'JetBrains Mono',monospace;color:var(--ink) !important;font-weight:700 !important;}
 .report-badge{
   background:var(--teal-deep);color:#fff;font-size:11px;font-weight:600;
   padding:5px 10px;border-radius:7px;white-space:nowrap;flex-shrink:0;
@@ -6522,7 +6522,8 @@ function fcPickCustomersForDay(iso, after){
   const fix = el=>{
     if(!isSearch(el) || el.dataset.noHistory) return;
     el.dataset.noHistory = '1';
-    el.setAttribute('autocomplete', 'off');
+    // "off" alone isn't enough for Chrome; a value it doesn't know turns its list off
+    el.setAttribute('autocomplete', 'weir-search');
     el.setAttribute('autocorrect', 'off');
     el.setAttribute('autocapitalize', 'off');
     el.setAttribute('spellcheck', 'false');
@@ -6571,7 +6572,6 @@ function openSingleFilterClean(){
   overlay.appendChild(box);
   document.body.appendChild(overlay);
   const close = ()=> overlay.remove();
-  overlay.addEventListener('click', e=>{ if(e.target === overlay) close(); });
   box.querySelector('[data-cancel]').addEventListener('click', close);
   const picked = [];
   const chips = box.querySelector('[data-chips]');
@@ -9179,7 +9179,7 @@ function pdSortButton(key){
       const it = document.createElement('div');
       it.className = 'press-row';
       it.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;text-transform:none;letter-spacing:0;' + (k === now ? 'background:var(--teal-pale);' : '');
-      it.innerHTML = '<span style="width:14px;color:var(--teal-deep);font-weight:800;">' + (k === now ? '\u2713' : '') + '</span>';
+      it.innerHTML = '<span style="width:14px;color:var(--ink);font-weight:800;">' + (k === now ? '\u2713' : '') + '</span>';
       it.appendChild(document.createTextNode(label));
       it.addEventListener('click', ev=>{ ev.preventDefault(); ev.stopPropagation(); drainBucketSort[key] = k; delete drainBucketPage[key]; renderPoolDrains(); });
       menu.appendChild(it);
@@ -9484,7 +9484,7 @@ function renderPoolDrains(){
         const link = (word, on)=>{
           const a = document.createElement('span');
           a.textContent = word;
-          a.style.cssText = 'color:var(--teal-deep);text-decoration:underline;cursor:pointer;';
+          a.style.cssText = 'color:var(--ink);text-decoration:underline;cursor:pointer;';
           a.title = (on ? 'Tick ' : 'Untick ') + (col === 'photo' ? 'Photo required' : 'Email customer') + ' for everyone in this list';
           a.addEventListener('click', e=>{
             e.preventDefault(); e.stopPropagation();   // not the Select all box this sits in
@@ -11001,7 +11001,8 @@ function calNameChip(text, state, title, ty){
 function calHeadToPageStyle(head){
   head.style.marginBottom = '14px';
   const h2 = head.querySelector('h2'); if(h2) h2.style.cssText = 'margin:0;';
-  head.querySelectorAll('b').forEach(x => { x.style.fontSize = '15px'; });
+  // The month keeps its own bigger size (Oct 25)
+  head.querySelectorAll('b').forEach(x => { if(!x.dataset.calMonth) x.style.fontSize = '15px'; });
   head.querySelectorAll('button').forEach(b=>{
     const t = (b.textContent || '').trim();
     const icon = t === '\u2039' || t === '\u203a' || !t;
@@ -11167,8 +11168,10 @@ function openWorkCalendar(startDay){
     const prev = smallBtn('‹', 'btn-ghost', 'width:32px;padding:4px 0;');
     const next = smallBtn('›', 'btn-ghost', 'width:32px;padding:4px 0;');
     const [yy, mm] = month.split('-').map(Number);
+    // The month in DM Serif Display, bigger (Oct 25)
     const label = document.createElement('b');
-    label.style.cssText = 'font-size:14px;min-width:120px;text-align:center;';
+    label.style.cssText = "font-family:'DM Serif Display',Georgia,serif;font-size:25px;font-weight:400;line-height:1.1;min-width:180px;text-align:center;";
+    label.dataset.calMonth = '1';
     label.textContent = new Date(yy, mm - 1, 1).toLocaleDateString(undefined, {month: 'long', year: 'numeric'});
     prev.addEventListener('click', ()=>{ const d = new Date(yy, mm - 2, 1); month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); draw(); });
     next.addEventListener('click', ()=>{ const d = new Date(yy, mm, 1); month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); draw(); });
@@ -20670,7 +20673,6 @@ function qoReplyInWeir(w, cust, customerId){
   const ta = box.querySelector('#qoReplyText');
   setTimeout(()=> ta.focus(), 0);
   const close = ()=> overlay.remove();
-  overlay.addEventListener('click', e=>{ if(e.target === overlay) close(); });
   box.querySelector('[data-cancel]').addEventListener('click', close);
   const send = box.querySelector('[data-send]');
   send.addEventListener('click', async ()=>{

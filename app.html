@@ -354,6 +354,9 @@ textarea{min-height:52px;resize:vertical;}
 }
 .empty i{font-size:13px;}
 
+/* The calendar's month sliding in after a swipe (Oct 25) */
+@keyframes acalSlideNext{from{opacity:.3;transform:translateX(40px);}to{opacity:1;transform:none;}}
+@keyframes acalSlidePrev{from{opacity:.3;transform:translateX(-40px);}to{opacity:1;transform:none;}}
 @keyframes briefIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
 
 .reorder-placeholder{pointer-events:none;}
@@ -19065,7 +19068,8 @@ function awcRenderHistory(){
   const fix = el=>{
     if(!isSearch(el) || el.dataset.noHistory) return;
     el.dataset.noHistory = '1';
-    el.setAttribute('autocomplete', 'off');
+    // "off" alone isn't enough for Chrome; a value it doesn't know turns its list off
+    el.setAttribute('autocomplete', 'weir-search');
     el.setAttribute('autocorrect', 'off');
     el.setAttribute('autocapitalize', 'off');
     el.setAttribute('spellcheck', 'false');
@@ -19096,6 +19100,7 @@ function awcRenderHistory(){
 // groups and drain calendar are read from the server for this (the phones
 // don't otherwise keep them).
 var acalMode = 'today', acalMonth = '', acalSel = '', acalTech = '', acalPick = false, acalPickYear = 0, acalJobMenu = false;
+var acalSlide = 0, acalSwipedAt = 0;   // which way the month just moved by a swipe (1 next, -1 before), and when
 var acalOffice = {filterGroups: null, drainCalendar: null, at: 0};
 const ACAL_TAGS = {fc: ['FC', 'Filter cleans', '#FBF1DD', '#8A5E0B'], pd: ['PD', 'Pool drains', '#C3DEF3', '#174C78'],
   wo: ['WO', 'Work orders', '#E9EEF0', '#3E5560'], tk: ['TK', 'Tasks', '#E8F1E4', '#4D6B3C']};
@@ -19281,9 +19286,35 @@ function acalDraw(){
     });
     cell.appendChild(tags);
     // Another day: its window, with the + Job list closed
-    cell.addEventListener('click', ()=>{ acalSel = acalSel === iso ? '' : iso; acalJobMenu = false; acalDraw(); });
+    cell.addEventListener('click', ()=>{
+      if(Date.now() - acalSwipedAt < 500) return;   // the tap a swipe leaves behind
+      acalSel = acalSel === iso ? '' : iso; acalJobMenu = false; acalDraw();
+    });
     grid.appendChild(cell);
   }
+  // Swipe the month (Oct 25): left for the next month, right for the one
+  // before. A sideways swipe only, so scrolling up and down still works, and
+  // the day under the finger isn't opened by it.
+  grid.style.touchAction = 'pan-y';
+  if(acalSlide){
+    grid.style.animation = 'acalSlide' + (acalSlide > 0 ? 'Next' : 'Prev') + ' .2s ease';
+    acalSlide = 0;
+  }
+  let sx = 0, sy = 0, st = 0;
+  grid.addEventListener('touchstart', e=>{
+    if(e.touches.length !== 1) return;
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = Date.now();
+  }, {passive: true});
+  grid.addEventListener('touchend', e=>{
+    const t = e.changedTouches && e.changedTouches[0];
+    if(!t || !st) return;
+    const dx = t.clientX - sx, dy = t.clientY - sy;
+    st = Date.now() - st > 800 ? 0 : st;
+    if(!st || Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) { st = 0; return; }
+    st = 0; acalSwipedAt = Date.now();
+    acalSlide = dx < 0 ? 1 : -1;
+    go(new Date(yy, mm - 1 + acalSlide, 1));
+  }, {passive: true});
   card.appendChild(grid);
   const key = document.createElement('div');
   key.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px 12px;font-size:11px;color:var(--muted);margin-top:10px;align-items:center;';
