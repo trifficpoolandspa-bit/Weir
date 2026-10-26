@@ -1488,9 +1488,12 @@ input::placeholder{color:#A9BCB9;}
             <option value="">All days</option>
             <option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option><option>Sunday</option>
           </select>
+          <!-- Filters (Oct 26): groups, drains, filter cleans, equipment, jobs, customer, city -->
+          <span id="wcRecipientFilterWrap" style="position:relative;display:inline-flex;flex-shrink:0;"><button class="btn btn-ghost" id="wcRecipientFilter" type="button" style="width:auto;padding:7px 14px;font-size:12.5px;font-weight:700;display:inline-flex;align-items:center;gap:6px;">Filter</button></span>
           <button class="btn btn-primary" id="wcRecipientAll" type="button" style="width:auto;padding:7px 14px;font-size:12.5px;font-weight:700;flex-shrink:0;">Select all</button>
           <button class="btn btn-secondary" id="wcRecipientNone" type="button" style="width:auto;padding:7px 14px;font-size:12.5px;font-weight:700;flex-shrink:0;">Unselect all</button>
         </div>
+        <div id="wcRecipientChips" style="display:none;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;"></div>
         <div id="wcRecipientList" style="border:1px solid var(--line);border-radius:10px;padding:4px 10px;max-height:240px;overflow-y:auto;"></div>
       </div>
 
@@ -6895,8 +6898,10 @@ function broadcastCategories(list){
 const broadcastPicked = new Set();
 
 function broadcastCandidates(){
+  // Inactive customers only when that filter is on (Oct 26)
+  const inactive = bfOn('cust', 'inactive');
   return customers
-    .filter(c => c.active !== false && (c.email || '').trim())
+    .filter(c => c && !c.deleted && (inactive ? c.active === false : c.active !== false) && (c.email || '').trim())
     .slice()
     .sort((a,b)=> sortKeyName(a.name).localeCompare(sortKeyName(b.name)));
 }
@@ -6920,8 +6925,244 @@ function broadcastShown(){
   return broadcastCandidates()
     .filter(c => !q || (c.name || '').toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q))
     .filter(c => !tech || String(c.technicianId || '') === tech)
-    .filter(c => !day || customerServicedOn(c, day));
+    .filter(c => !day || customerServicedOn(c, day))
+    .filter(bfMatches);
 }
+
+// ---------- Email filters (Oct 26) ----------
+// Within a section a customer matches any ticked item; across sections they
+// must match every section with something ticked. Cities are typed in.
+var bfPicked = {};            // section -> Set of keys
+var bfCities = [];            // cities typed in, any of them
+function bfOn(sec, key){ return !!(bfPicked[sec] && bfPicked[sec].has(key)); }
+function bfAny(){ return bfCities.length > 0 || Object.keys(bfPicked).some(k => bfPicked[k].size); }
+function bfClear(){ Object.keys(bfPicked).forEach(k => delete bfPicked[k]); bfCities = []; }
+function bfDaysAgo(n){ const d = new Date(); d.setDate(d.getDate() - n); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+function bfLocalDay(t){ const d = new Date(t); return isNaN(d) ? '' : new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+function bfHasPoolBody(c){ try{ return pdBodies(c).length > 0; }catch(e){ return c.hasPool !== false; } }
+function bfLastFilterClean(c){
+  let last = '';
+  (lsGet('scheduledFilterCleans') || []).forEach(f=>{
+    if(!f || f.customerId !== c.id || f.status !== 'done') return;
+    const d = bfLocalDay(f.doneAt || f.date);
+    if(d > last) last = d;
+  });
+  return last;
+}
+function bfCityOf(c){
+  if(c.city) return String(c.city).trim();
+  // "123 Main St, Buckeye, AZ 85326": the part after the street
+  const parts = String(c.address || '').split(',').map(x => x.trim()).filter(Boolean);
+  return parts.length >= 2 ? parts[1].replace(/\s+\d{5}(-\d{4})?$/, '').replace(/\s+[A-Z]{2}$/, '').trim() : '';
+}
+function bfInCity(c, city){
+  const want = String(city || '').trim().toLowerCase();
+  if(!want) return false;
+  return bfCityOf(c).toLowerCase() === want
+    || [c.city, c.address].some(v => String(v || '').toLowerCase().indexOf(want) !== -1);
+}
+// Every filter: [section, key, label, test]
+function bfDefs(){
+  const groups = (filterGroups || []).filter(g => g && !g.solo && (g.customerIds || []).length);
+  const inGroup = c => groups.some(g => (g.customerIds || []).indexOf(c.id) !== -1);
+  const today = pdToday();
+  const fc6 = pdAddMonths(today, -6);
+  const salt = c => (c.equipment || []).some(e => e && /salt/i.test(String(e.chlorinationChoice || e.type || '') + ' ' + String(e.model || '')));
+  const gallons = c => { try{ const z = waterBodySize(c, 'pool'); const n = parseFloat(String((z && z.amount) || '').replace(/[^0-9.]/g, '')); return isNaN(n) ? 0 : n; }catch(e){ return 0; } };
+  const quoteWaiting = c => (workOrders || []).some(w => w && w.customerId === c.id && w.type === 'Quote' && w.status !== 'draft' && !w.approved && !w.denied && !w.expired);
+  const recentWo = c => (lsGet('scheduledWorkOrders') || []).some(j => j && j.customerId === c.id && j.date >= bfDaysAgo(30) && j.date <= today);
+  const recentSkip = c => (lsGet('skippedVisits:' + c.id) || []).some(sk => sk && String(sk.date || '') >= bfDaysAgo(30));
+  const added = c => { const m = String(c.createdAt || '').slice(0, 10) || ((/^cust_(\d{12,})/.exec(String(c.id)) || [])[1] ? bfLocalDay(Number(/^cust_(\d{12,})/.exec(String(c.id))[1])) : ''); return !!m && m >= bfDaysAgo(30); };
+  const out = [];
+  groups.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity: 'base'}))
+    .forEach(g => out.push(['group', 'g:' + g.id, g.name || 'Group', c => (g.customerIds || []).indexOf(c.id) !== -1]));
+  out.push(['group', 'none', 'In no group', c => !inGroup(c)]);
+  out.push(['drain', 'overdue', 'Overdue', c => !c.drainsSelf && bfHasPoolBody(c) && pdBucket(c) === 'overdue']);
+  out.push(['drain', 'soon', 'Due in the next 6 months', c => { if(c.drainsSelf || !bfHasPoolBody(c)) return false; const d = pdDue(c); return !!d && d >= today && d <= pdAddMonths(today, 6); }]);
+  out.push(['drain', 'never', 'Never drained on record', c => !c.drainsSelf && bfHasPoolBody(c) && !pdDue(c)]);
+  out.push(['drain', 'sched', 'Drain already scheduled', c => { try{ return pdIsScheduled(c); }catch(e){ return false; } }]);
+  out.push(['fc', 'old', 'Not cleaned in 6+ months', c => { const l = bfLastFilterClean(c); return !l || l < fc6; }]);
+  out.push(['fc', 'parts', 'Parts still needed', c => { try{ return filterReplacementsList().some(f => f && f.customerId === c.id); }catch(e){ return false; } }]);
+  out.push(['equip', 'spa', 'Has a spa', c => !!c.hasSpa]);
+  out.push(['equip', 'salt', 'Salt cell', salt]);
+  out.push(['equip', 'big', 'Pool 20,000+ gallons', c => gallons(c) >= 20000]);
+  out.push(['equip', 'dog', 'Has a dog', c => (c.dogs || []).some(d => d && (d.name || d.breed))]);
+  out.push(['jobs', 'quote', 'Quote waiting on an answer', quoteWaiting]);
+  out.push(['jobs', 'wo', 'Work order in the last 30 days', recentWo]);
+  out.push(['jobs', 'skip', 'Skipped a service in the last 30 days', recentSkip]);
+  out.push(['cust', 'new', 'Added in the last 30 days', added]);
+  out.push(['cust', 'noday', 'No service day yet', c => !c.day]);
+  out.push(['cust', 'inactive', 'Inactive customers', c => c.active === false]);
+  return out;
+}
+var BF_SECTIONS = [['group', 'Filter clean group'], ['drain', 'Pool drains'], ['fc', 'Filter cleans'],
+  ['equip', 'Pool & equipment'], ['jobs', 'Quotes & jobs'], ['cust', 'Customer']];
+function bfMatches(c){
+  if(!bfAny()) return true;
+  const defs = bfDefs();
+  for(const [sec] of BF_SECTIONS){
+    const on = bfPicked[sec];
+    if(!on || !on.size) continue;
+    // Inactive only widens who's listed; it isn't a test of its own
+    const keys = Array.from(on).filter(k => !(sec === 'cust' && k === 'inactive'));
+    if(!keys.length) continue;
+    if(!keys.some(k => { const d = defs.find(x => x[0] === sec && x[1] === k); return d && d[3](c); })) return false;
+  }
+  if(bfCities.length && !bfCities.some(city => bfInCity(c, city))) return false;
+  return true;
+}
+// What a row says on the right while a drain filter is on
+function bfRowNote(c){
+  const drain = bfPicked.drain && bfPicked.drain.size;
+  if(!drain) return '';
+  if(c.drainsSelf) return 'Drains it themselves';
+  const d = pdDue(c);
+  return d ? 'Drain due ' + pdDate(d) : 'Never drained on record';
+}
+function bfLabel(sec, key){ const d = bfDefs().find(x => x[0] === sec && x[1] === key); return d ? d[2] : key; }
+function bfShortLabel(sec, key){
+  const l = bfLabel(sec, key);
+  return sec === 'drain' && key !== 'sched' ? 'Drain ' + l.charAt(0).toLowerCase() + l.slice(1) : l;
+}
+function bfRefresh(){
+  const btn = document.getElementById('wcRecipientFilter');
+  const n = Object.keys(bfPicked).reduce((t, k) => t + bfPicked[k].size, 0) + bfCities.length;
+  if(btn) btn.innerHTML = 'Filter' + (n ? ' <span style="background:var(--teal-deep);color:#fff;border-radius:999px;font-size:11px;padding:1px 7px;">' + n + '</span>' : '');
+  const chips = document.getElementById('wcRecipientChips');
+  if(chips){
+    chips.innerHTML = '';
+    const add = (text, remove)=>{
+      const ch = document.createElement('span');
+      ch.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:var(--teal-pale);color:var(--ink);font-size:12.5px;font-weight:600;padding:5px 9px;border-radius:8px;';
+      ch.textContent = text;
+      const x = document.createElement('button');
+      x.type = 'button'; x.textContent = '\u00d7'; x.setAttribute('aria-label', 'Remove ' + text);
+      x.style.cssText = 'border:none;background:none;color:var(--rust);cursor:pointer;font-size:14px;line-height:1;padding:0;width:auto;';
+      x.addEventListener('click', ()=>{ remove(); bfChanged(); });
+      ch.appendChild(x);
+      chips.appendChild(ch);
+    };
+    BF_SECTIONS.forEach(([sec])=> (bfPicked[sec] ? Array.from(bfPicked[sec]) : []).forEach(k => add(bfShortLabel(sec, k), ()=> bfPicked[sec].delete(k))));
+    bfCities.forEach(city => add('City: ' + city, ()=>{ bfCities = bfCities.filter(x => x !== city); }));
+    if(n){
+      const clr = document.createElement('span');
+      clr.textContent = 'Clear all';
+      clr.style.cssText = 'font-size:12px;font-weight:600;color:var(--ink);text-decoration:underline;cursor:pointer;margin-left:4px;';
+      clr.addEventListener('click', ()=>{ bfClear(); bfChanged(); });
+      chips.appendChild(clr);
+    }
+    chips.style.display = n ? 'flex' : 'none';
+  }
+}
+function bfChanged(){
+  bfRefresh();
+  renderRecipientPicker();
+  updateBroadcastCount();
+  const p = document.getElementById('wcRecipientFilterPanel');
+  if(p) bfDrawPanel(p);
+}
+function bfDrawPanel(panel){
+  const defs = bfDefs();
+  // Counts out of everyone with an email (active, or inactive for that one)
+  const pool = customers.filter(c => c && !c.deleted && (c.email || '').trim());
+  const active = pool.filter(c => c.active !== false);
+  panel.innerHTML = '';
+  const cols = document.createElement('div');
+  cols.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px 22px;';
+  BF_SECTIONS.forEach(([sec, title])=>{
+    const list = defs.filter(d => d[0] === sec);
+    if(!list.length) return;
+    const box = document.createElement('div');
+    box.innerHTML = '<div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin:0 0 8px;color:var(--ink);background:var(--teal-pale);display:inline-block;padding:3px 8px;border-radius:6px;"></div>';
+    box.firstChild.textContent = title;
+    list.forEach(([s, key, label, test])=>{
+      const row = document.createElement('label');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:13.5px;padding:4px 0;cursor:pointer;font-weight:500;text-transform:none;letter-spacing:0;color:var(--ink);margin:0;';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = bfOn(s, key); cb.style.cssText = 'width:auto;margin:0;';
+      cb.addEventListener('change', ()=>{
+        bfPicked[s] = bfPicked[s] || new Set();
+        if(cb.checked) bfPicked[s].add(key); else bfPicked[s].delete(key);
+        bfChanged();
+      });
+      row.appendChild(cb);
+      const t = document.createElement('span'); t.textContent = label; t.style.flex = '1'; row.appendChild(t);
+      const n = document.createElement('span');
+      n.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);";
+      n.textContent = String((key === 'inactive' ? pool : active).filter(test).length);
+      row.appendChild(n);
+      box.appendChild(row);
+    });
+    cols.appendChild(box);
+  });
+  // City: type any city; each one added becomes a chip
+  const cityBox = document.createElement('div');
+  cityBox.innerHTML = '<div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin:0 0 8px;color:var(--ink);background:var(--teal-pale);display:inline-block;padding:3px 8px;border-radius:6px;">City</div>'
+    + '<div style="display:flex;gap:6px;"><input type="text" list="bfCityList" placeholder="Type a city" style="flex:1;min-width:0;padding:7px 10px;font-size:13.5px;"><button type="button" class="btn btn-ghost" style="width:auto;padding:6px 12px;font-size:12.5px;">Add</button></div>'
+    + '<datalist id="bfCityList"></datalist><div data-cities style="font-size:12px;color:var(--muted);margin-top:6px;"></div>';
+  const cities = {};
+  active.forEach(c => { const k = bfCityOf(c); if(k) cities[k] = (cities[k] || 0) + 1; });
+  const dl = cityBox.querySelector('datalist');
+  Object.keys(cities).sort().forEach(k => { const o = document.createElement('option'); o.value = k; dl.appendChild(o); });
+  const cin = cityBox.querySelector('input');
+  cin.setAttribute('autocomplete', 'weir-search');
+  const addCity = ()=>{
+    const v = cin.value.trim();
+    if(!v) return;
+    if(!bfCities.some(x => x.toLowerCase() === v.toLowerCase())) bfCities.push(v);
+    cin.value = '';
+    bfChanged();
+  };
+  cityBox.querySelector('button').addEventListener('click', addCity);
+  cin.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); addCity(); } });
+  cityBox.querySelector('[data-cities]').textContent = bfCities.length
+    ? bfCities.map(x => x + ' \u00b7 ' + active.filter(c => bfInCity(c, x)).length).join(', ')
+    : 'Searches each customer\u2019s city and address.';
+  cols.appendChild(cityBox);
+  panel.appendChild(cols);
+  const foot = document.createElement('div');
+  foot.style.cssText = 'display:flex;align-items:center;gap:10px;border-top:1px solid var(--line);margin-top:14px;padding-top:12px;font-size:12.5px;color:var(--muted);flex-wrap:wrap;';
+  const shown = broadcastShown();
+  foot.innerHTML = '<span></span>';
+  foot.firstChild.textContent = shown.length + (shown.length === 1 ? ' customer matches' : ' customers match');
+  if(bfAny()){
+    const clr = document.createElement('span');
+    clr.textContent = 'Clear all';
+    clr.style.cssText = 'font-size:12px;font-weight:600;color:var(--ink);text-decoration:underline;cursor:pointer;';
+    clr.addEventListener('click', ()=>{ bfClear(); bfChanged(); });
+    foot.appendChild(clr);
+  }
+  const done = document.createElement('button');
+  done.type = 'button'; done.className = 'btn btn-primary'; done.textContent = 'Done';
+  done.style.cssText = 'width:auto;padding:7px 16px;font-size:12.5px;margin-left:auto;';
+  done.addEventListener('click', bfClosePanel);
+  foot.appendChild(done);
+  panel.appendChild(foot);
+}
+function bfClosePanel(){
+  const p = document.getElementById('wcRecipientFilterPanel');
+  if(p) p.remove();
+  document.removeEventListener('mousedown', bfOutside, true);
+}
+function bfOutside(e){
+  const p = document.getElementById('wcRecipientFilterPanel');
+  const wrap = document.getElementById('wcRecipientFilterWrap');
+  if(p && !p.contains(e.target) && !(wrap && wrap.contains(e.target))) bfClosePanel();
+}
+function bfOpenPanel(){
+  if(document.getElementById('wcRecipientFilterPanel')){ bfClosePanel(); return; }
+  const wrap = document.getElementById('wcRecipientFilterWrap');
+  const panel = document.createElement('div');
+  panel.id = 'wcRecipientFilterPanel';
+  panel.style.cssText = 'position:absolute;top:calc(100% + 6px);right:0;width:min(760px,90vw);background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 32px rgba(14,74,77,.18);padding:16px;z-index:60;text-align:left;max-height:70vh;overflow-y:auto;';
+  wrap.appendChild(panel);
+  bfDrawPanel(panel);
+  // Keep it on the screen
+  const r = panel.getBoundingClientRect();
+  if(r.left < 8){ panel.style.right = 'auto'; panel.style.left = '0'; }
+  setTimeout(()=> document.addEventListener('mousedown', bfOutside, true), 0);
+}
+document.getElementById('wcRecipientFilter').addEventListener('click', e=>{ e.stopPropagation(); bfOpenPanel(); });
 // Select all reads Unselect all once everyone shown is ticked (Oct 20)
 function syncRecipientAll(shown){
   const b = document.getElementById('wcRecipientAll');
@@ -6978,6 +7219,14 @@ function renderRecipientPicker(){
       + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;';
     em.textContent = cust.email;
     row.appendChild(em);
+    // Why they're listed, while a drain filter is on (Oct 26)
+    const why = bfRowNote(cust);
+    if(why){
+      const w = document.createElement('span');
+      w.style.cssText = 'font-size:11.5px;color:var(--muted);flex-shrink:0;white-space:nowrap;';
+      w.textContent = why;
+      row.appendChild(w);
+    }
 
     box.appendChild(row);
   });
@@ -7878,6 +8127,7 @@ function applyWorkCenterMode(mode){
     broadcastPicked.clear();
     // All technicians and All days again (Oct 19)
     ['wcRecipientTech', 'wcRecipientDay', 'wcRecipientSearch'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+    try{ bfClear(); bfClosePanel(); bfRefresh(); }catch(e){}   // filters too (Oct 26)
     lastBroadcastRemaining = null;
     const more = document.getElementById('wcBroadcastMore');
     if(more) more.style.display = 'none';
@@ -19369,8 +19619,34 @@ function renderWcSuggest(term){
     .slice(0, 10);
 
   box.innerHTML = '';
+  // Someone not on file, for a work order (Oct 26): the name as typed
+  const typed = (term || '').trim();
+  const isWO = (document.getElementById('wcType') || {}).value === 'Work Order';
+  const exact = customers.some(c => c && !c.deleted && String(c.name || '').trim().toLowerCase() === t);
+  const addRow = ()=>{
+    if(!isWO || exact) return;
+    const item = document.createElement('div');
+    item.dataset.addName = '1';
+    item.style.cssText = 'padding:10px 12px;font-size:13.5px;cursor:pointer;border-bottom:1px solid var(--line);';
+    item.innerHTML = '<div style="font-weight:600;"></div><div style="font-size:11.5px;color:var(--muted);">Not a customer yet \u2014 just the name for now</div>';
+    item.firstChild.textContent = '+ Use \u201c' + typed + '\u201d';
+    item.addEventListener('mouseenter', ()=>{ item.style.background = 'var(--teal-pale)'; });
+    item.addEventListener('mouseleave', ()=>{ item.style.background = '#fff'; });
+    item.addEventListener('mousedown', (e)=>{
+      e.preventDefault();
+      const c = addNameOnlyCustomer(typed);
+      wcSelectedCustomerIds.push(c.id);
+      renderWcCustomerChips();
+      const inp = document.getElementById('wcCustomerSearch');
+      inp.value = '';
+      renderWcSuggest('');
+      inp.focus();
+    });
+    box.appendChild(item);
+  };
   if(matches.length === 0){
     box.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--muted);">No customers match that search.</div>';
+    addRow();
     box.style.display = 'block';
     return;
   }
@@ -19392,7 +19668,19 @@ function renderWcSuggest(term){
     });
     box.appendChild(item);
   });
+  addRow();
   box.style.display = 'block';
+}
+// Someone not on file, typed by name (Oct 26): kept as a customer with just
+// that name, so the job shows it on Today, the calendar and the app like
+// anyone else's. No service day and no pool, so they're never on a service
+// route or a drain list; the details can be filled in later.
+function addNameOnlyCustomer(name){
+  const c = {id: 'cust_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), name: String(name || '').trim(),
+             active: true, hasPool: false, hasSpa: false, technicianId: '', nameOnly: true, createdAt: new Date().toISOString()};
+  customers.push(c);
+  try{ saveCustomers(); }catch(e){}
+  return c;
 }
 
 document.getElementById('wcCustomerSearch').addEventListener('focus', (e)=> renderWcSuggest(e.target.value));
@@ -19454,6 +19742,8 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
       if(!dates.length){ lsSet('scheduledWorkOrders', (lsGet('scheduledWorkOrders') || []).filter(j => !gone.has(j.id)));
         wcEditSeries = null; resetWorkOrderForm(); showToast('No visits left'); return; }
     }
+    // A name-only customer goes to the job's technician, so their phone has them (Oct 26)
+    { let ch = false; picked.forEach(c=>{ if(c && c.nameOnly && !c.technicianId){ c.technicianId = String(techIds[0]); ch = true; } }); if(ch) saveCustomers(); }
     const jobs = (lsGet('scheduledWorkOrders') || []).filter(j => !gone.has(j.id));
     // Where in the route, when one was assigned (Oct 23): the same for every date
     const placeAfter = rpWo ? rpWo.value() : undefined;

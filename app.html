@@ -3017,6 +3017,8 @@ function todayOnReturn(){
 window.addEventListener('pageshow', e=>{ if(e.persisted) todayOnReturn(); });
 function switchView(view, opts){
   opts = opts || {};
+  // Leaving the Customer tab forgets a trip from the calendar (Oct 26)
+  if(view !== 'customers') window.acalReturnTo = null;
   if(view !== 'technicians' && typeof techOrderPending !== 'undefined' && techOrderPending) endTechOrder();
   const cameFrom = currentViewName;
   if(cameFrom && cameFrom !== view && TAB_KEEPS.indexOf(cameFrom) !== -1){
@@ -16705,10 +16707,10 @@ function awcBuild(pane){
   // New ones start with no date: it has to be set (Oct 21)
   document.getElementById('awcWoDate').value = '';
   document.getElementById('awcTaskDate').value = '';
-  awcWireSearch('awcWoSearch', 'awcWoSuggest', ()=> awcWoCustomers, id=>{ awcWoCustomers.push(id); awcRenderChips(); });
+  awcWireSearch('awcWoSearch', 'awcWoSuggest', ()=> awcWoCustomers, id=>{ awcWoCustomers.push(id); awcRenderChips(); }, true);
   ['awcWoDate', 'awcTaskDate'].forEach(id=>{ const d = document.getElementById(id);
     if(d){ d.addEventListener('change', awcRoutePlaceRefresh); d.addEventListener('input', awcRoutePlaceRefresh); } });
-  awcWireSearch('awcTaskSearch', 'awcTaskSuggest', ()=> awcTaskCustomers, id=>{ awcTaskCustomers.push(id); awcRenderChips(); });
+  awcWireSearch('awcTaskSearch', 'awcTaskSuggest', ()=> awcTaskCustomers, id=>{ awcTaskCustomers.push(id); awcRenderChips(); }, true);
   // + Filter clean (Oct 3), as on the website: with more than one filter clean
   // in Products and Services, a window to choose how many of each
   const fcBtn = document.getElementById('awcAddFilterClean');
@@ -16855,11 +16857,29 @@ function awcApplyRepeats(){
 }
 
 // Customer search: the list appears once something is typed
-function awcWireSearch(inputId, boxId, picked, onPick){
+// Someone not on file, typed by name (Oct 26): kept as a customer with just
+// that name, so the job shows it on Today, the calendar and the website like
+// anyone else's. No service day and no pool, so they're never on a service
+// route or a drain list; the details can be filled in later.
+function addNameOnlyCustomer(name){
+  const c = {id: 'cust_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), name: String(name || '').trim(),
+             active: true, hasPool: false, hasSpa: false, technicianId: '', nameOnly: true, createdAt: new Date().toISOString()};
+  customers.push(c);
+  try{ saveCustomers(); }catch(e){}
+  return c;
+}
+// A name-only customer goes to the job's technician, so their phone has them
+function giveNameOnlyTech(list, techId){
+  let changed = false;
+  (list || []).forEach(c=>{ if(c && c.nameOnly && !c.technicianId && techId){ c.technicianId = String(techId); changed = true; } });
+  if(changed){ try{ saveCustomers(); }catch(e){} }
+}
+function awcWireSearch(inputId, boxId, picked, onPick, allowNew){
   const input = document.getElementById(inputId);
   const box = document.getElementById(boxId);
   const draw = ()=>{
-    const t = input.value.trim().toLowerCase();
+    const typed = input.value.trim();
+    const t = typed.toLowerCase();
     if(!t){ box.style.display = 'none'; box.innerHTML = ''; return; }
     const have = picked().map(String);
     const matches = awcCustomers()
@@ -16868,8 +16888,26 @@ function awcWireSearch(inputId, boxId, picked, onPick){
       .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity: 'base'}))
       .slice(0, 10);
     box.innerHTML = '';
+    // Not on file: use the name as typed (Oct 26)
+    const exact = awcCustomers().some(c => String(c.name || '').trim().toLowerCase() === t);
+    const addRow = ()=>{
+      if(!allowNew || exact) return;
+      const row = document.createElement('div');
+      row.dataset.addName = '1';
+      row.innerHTML = '<div style="font-weight:600;"></div><div style="font-size:11.5px;color:var(--muted);">Not a customer yet \u2014 just the name for now</div>';
+      row.firstChild.textContent = '+ Use \u201c' + typed + '\u201d';
+      row.addEventListener('click', ()=>{
+        const c = addNameOnlyCustomer(typed);
+        onPick(c.id);
+        input.value = '';
+        box.style.display = 'none';
+        box.innerHTML = '';
+      });
+      box.appendChild(row);
+    };
     if(!matches.length){
       box.innerHTML = '<div style="color:var(--muted);cursor:default;">No customers match that search.</div>';
+      addRow();
       box.style.display = 'block';
       return;
     }
@@ -16885,6 +16923,7 @@ function awcWireSearch(inputId, boxId, picked, onPick){
       });
       box.appendChild(row);
     });
+    addRow();
     box.style.display = 'block';
   };
   input.addEventListener('input', draw);
@@ -17913,6 +17952,7 @@ function awcFinalize(){
       [!!(awcRpWo && awcRpWo.unassigned()), awcRpWo && awcRpWo.assignBtn(), 'Press Assign to put it there, or Put it back.']
     ])) return;
   }
+  giveNameOnlyTech(picked, techIds[0]);
   const placeAfter = awcRpWo ? awcRpWo.value() : undefined;
   const notes = document.getElementById('awcWoNotes').value.trim();
   const photoRequired = document.getElementById('awcWoPhoto').checked;
@@ -17982,6 +18022,7 @@ function awcFinalize(){
   const visits = dates.length * picked.length;
   showToast('Finalized \u2014 ' + visits + (visits === 1 ? ' visit' : ' visits') +
     ' added to ' + awcTechNames(techIds) + (techIds.length === 1 ? '\u2019s route' : '\u2019s routes'));
+  try{ acalBackAfterSave('Work Order'); }catch(e){}
 }
 
 // Days apart, or 0 for a one-off; Every… (choose) in weeks or days (Oct 2)
@@ -18011,6 +18052,7 @@ function awcAddTask(){
     [!techIds.length, document.getElementById('awcTaskTech'), 'Choose a technician.'],
     [!!(awcRpTask && awcRpTask.unassigned()), awcRpTask && awcRpTask.assignBtn(), 'Press Assign to put it there, or Put it back.']
   ])) return;
+  giveNameOnlyTech(awcTaskCustomers.map(id => (customers || []).find(c => c && String(c.id) === String(id))), techIds[0]);
   const placeAfter = awcRpTask ? awcRpTask.value() : undefined;
   const details = document.getElementById('awcTaskDetails').value.trim();
   const customerIds = awcTaskCustomers.slice();
@@ -18082,6 +18124,7 @@ function awcAddTask(){
   const who = techIds.length === 1 ? 'the route' : awcTechNames(techIds) + '\u2019s routes';
   showToast(dates.length === 1 ? 'Task added to ' + who
     : 'Added ' + dates.length + ' times to ' + who + ', every ' + awcRepeatWords(everyDays));
+  try{ acalBackAfterSave('Task'); }catch(e){}
 }
 
 async function awcSaveTemplate(){
@@ -19111,13 +19154,233 @@ function acalTechName(id){ const t = (lsGet('technicians') || []).find(x => x &&
 async function acalFetchOffice(force){
   if(!force && Date.now() - acalOffice.at < 60000) return;
   try{
-    const res = await fieldAuthed('/rest/v1/company_records?select=id,data,deleted&kind=eq.setup&id=in.(filterGroups,drainCalendar)');
+    // Since Oct 14 the website keeps each group and drain day as a record of
+    // its own (snippet 33); the old single lists are no longer kept up to date
+    const res = await fieldAuthed('/rest/v1/company_records?select=id,kind,data,deleted&kind=in.(filter_group,drain_entry)');
     if(res && res.ok && Array.isArray(res.body)){
       acalOffice.at = Date.now();
-      res.body.forEach(r=>{ if(r && !r.deleted && r.data && 'value' in r.data && (r.id === 'filterGroups' || r.id === 'drainCalendar')) acalOffice[r.id] = Array.isArray(r.data.value) ? r.data.value : []; });
+      const fg = [], dc = [];
+      res.body.forEach(r=>{
+        if(!r || r.deleted || !r.data || typeof r.data !== 'object') return;
+        const item = Object.assign({}, r.data, {id: r.data.id || r.id});
+        if(r.kind === 'filter_group') fg.push(item); else if(r.kind === 'drain_entry') dc.push(item);
+      });
+      acalOffice.filterGroups = fg;
+      acalOffice.drainCalendar = dc;
       if(acalMode === 'calendar') acalDraw();
+      return true;
     }
   }catch(e){}
+  return false;
+}
+// A filter group or drain day changed here (Oct 26): straight to the server,
+// as the website keeps them. Needs signal; false if it didn't go.
+async function acalPushOffice(kind, item){
+  try{
+    const at = new Date().toISOString();
+    const flat = syncExplode(item);
+    const changes = {};
+    Object.keys(flat).forEach(f=>{ changes[f] = {t: at, v: flat[f]}; });
+    const res = await fieldAuthed('/rest/v1/rpc/push_record_fields', {
+      method: 'POST',
+      body: JSON.stringify({p_kind: kind, p_id: String(item.id), p_changes: changes, p_base: null})
+    });
+    return !!(res && res.ok && res.body && res.body.result);
+  }catch(e){ return false; }
+}
+// A customer's bodies of water, as the website lists them for a drain
+function acalBodies(c){
+  const out = [];
+  if(!c) return [{key: 'pool', label: 'Pool'}];
+  if(c.hasPool !== false) out.push({key: 'pool', label: 'Pool'});
+  if(c.hasSpa) out.push({key: 'spa', label: 'Spa'});
+  (c.fountains || []).forEach(f => { if(f && f.name) out.push({key: f.id, label: f.name}); });
+  const saved = ((lsGet('customBodyOrder') || {})[c.id]) || [];
+  if(Array.isArray(saved) && saved.length){
+    const ordered = [];
+    saved.forEach(k => { const b = out.find(x => x.key === k); if(b) ordered.push(b); });
+    out.forEach(b => { if(ordered.indexOf(b) === -1) ordered.push(b); });
+    return ordered.length ? ordered : [{key: 'pool', label: 'Pool'}];
+  }
+  return out.length ? out : [{key: 'pool', label: 'Pool'}];
+}
+// + Job → Filter clean or Pool drain (Oct 26): who, the technician (each
+// customer's own to start) and Photo required, then Add to route. Like the
+// website's Single filter clean and its calendar's + Pool drain, they go on
+// that day's calendar and straight onto the technician's route.
+function acalAddFcPd(kind, iso){
+  const isFc = kind === 'fc';
+  const nice = new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:440px;width:100%;max-height:88vh;overflow-y:auto;text-align:left;';
+  box.innerHTML = '<h3 style="font-size:17px;margin:0 0 4px;"></h3><p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;"></p>'
+    + '<div class="field" style="position:relative;"><label>Customers</label><div data-chips style="display:flex;flex-wrap:wrap;gap:6px;"></div>'
+    + '<input type="text" data-search placeholder="Start typing a name\u2026" autocomplete="off">'
+    + '<div data-sug style="display:none;position:absolute;left:0;right:0;z-index:40;background:#fff;border:1px solid var(--line);border-radius:10px;margin-top:4px;box-shadow:0 4px 14px rgba(15,46,46,0.14);max-height:240px;overflow-y:auto;"></div></div>'
+    + '<div class="field"><label>Technician</label><select data-tech></select></div>'
+    + '<label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;margin:2px 0 8px;cursor:pointer;"><input type="checkbox" data-photo checked style="width:auto;margin:0;"> Photo required</label>'
+    + (isFc ? '<label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;margin:0 0 16px;cursor:pointer;"><input type="checkbox" data-email checked style="width:auto;margin:0;"> Email the customer</label>' : '<div style="height:8px;"></div>')
+    + '<div class="btn-row" style="flex-wrap:nowrap;"><button type="button" class="btn btn-primary" data-go style="flex:1 1 0;">Add to route</button>'
+    + '<button type="button" class="btn btn-ghost" data-cancel style="flex:1 1 0;">Cancel</button></div>';
+  box.querySelector('h3').textContent = (isFc ? 'Filter clean' : 'Pool drain') + ' \u2013 ' + nice;
+  box.querySelector('p').textContent = isFc ? 'For customers on their own, not in a group.' : 'Every body of water each customer has is drained.';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const close = ()=> overlay.remove();
+  box.querySelector('[data-cancel]').addEventListener('click', close);
+  overlay.addEventListener('click', e=>{ if(e.target === overlay) close(); });
+  const picked = [];
+  const chips = box.querySelector('[data-chips]'), search = box.querySelector('[data-search]'), sug = box.querySelector('[data-sug]');
+  const techSel = box.querySelector('[data-tech]');
+  const addOpt = (v, t)=>{ const o = document.createElement('option'); o.value = v; o.textContent = t; techSel.appendChild(o); };
+  addOpt('', 'Each customer\u2019s own');
+  techniciansInOrder().forEach(t => { if(t && t.id) addOpt(String(t.id), t.name || 'Technician'); });
+  if(acalTech) techSel.value = acalTech;
+  const nameOf = c => (typeof displayName === 'function' ? displayName(c.name) : c.name) || 'Customer';
+  function drawChips(){
+    chips.innerHTML = '';
+    chips.style.marginBottom = picked.length ? '8px' : '0';
+    picked.forEach(id=>{
+      const c = acalCust(id);
+      if(!c) return;
+      const chip = document.createElement('span');
+      chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:var(--teal-pale);color:var(--ink);font-size:13px;font-weight:600;padding:6px 10px;border-radius:8px;';
+      chip.textContent = nameOf(c);
+      const x = document.createElement('button');
+      x.type = 'button'; x.textContent = '\u00d7'; x.setAttribute('aria-label', 'Remove');
+      x.style.cssText = 'border:0;background:none;padding:0 2px;font-size:16px;line-height:1;cursor:pointer;color:var(--muted);width:auto;';
+      x.addEventListener('click', ()=>{ picked.splice(picked.indexOf(id), 1); drawChips(); });
+      chip.appendChild(x);
+      chips.appendChild(chip);
+    });
+  }
+  function drawSug(){
+    const term = search.value.trim().toLowerCase();
+    sug.innerHTML = '';
+    if(!term){ sug.style.display = 'none'; return; }
+    const list = (customers || []).filter(c => c && !c.deleted && c.active !== false && picked.indexOf(c.id) === -1
+      && [c.name, c.address, c.phone].some(v => String(v || '').toLowerCase().indexOf(term) !== -1)).slice(0, 12);
+    if(!list.length){ sug.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:10px 12px;">Nobody matches.</div>'; sug.style.display = 'block'; return; }
+    list.forEach(c=>{
+      const row = document.createElement('div');
+      row.className = 'press-row';
+      row.style.cssText = 'padding:10px 12px;cursor:pointer;border-top:1px solid var(--line);font-size:14px;';
+      row.innerHTML = '<div style="font-weight:600;"></div><div style="font-size:12px;color:var(--muted);"></div>';
+      row.children[0].textContent = nameOf(c);
+      row.children[1].textContent = (c.address || 'No address on file') + ' \u00b7 ' + acalTechName(c.technicianId);
+      const pick = e=>{ e.preventDefault(); picked.push(c.id); search.value = ''; drawSug(); drawChips(); };
+      row.addEventListener('mousedown', pick);
+      row.addEventListener('touchstart', pick, {passive: false});
+      sug.appendChild(row);
+    });
+    sug.style.display = 'block';
+  }
+  search.addEventListener('input', drawSug);
+  search.addEventListener('focus', drawSug);
+  search.addEventListener('blur', ()=> setTimeout(()=>{ sug.style.display = 'none'; }, 150));
+  const go = box.querySelector('[data-go]');
+  go.addEventListener('click', async ()=>{
+    const tech = techSel.value;
+    if(!picked.length){ showToast('Add a customer first'); search.focus(); return; }
+    const noTech = !tech ? picked.filter(id => !((acalCust(id) || {}).technicianId)) : [];
+    if(noTech.length){ showToast((noTech.length === 1 ? nameOf(acalCust(noTech[0])) + ' has' : 'Some have') + ' no technician of their own. Choose one.'); techSel.focus(); return; }
+    go.disabled = true; go.textContent = 'Adding\u2026';
+    // The office's latest first, so nothing it just changed is lost
+    const fresh = await acalFetchOffice(true);
+    if(!fresh){ go.disabled = false; go.textContent = 'Add to route'; showToast('This needs signal \u2014 try again when you have some'); return; }
+    const photo = box.querySelector('[data-photo]').checked;
+    const ok = isFc ? await acalAddFilterCleans(iso, picked, tech, photo, box.querySelector('[data-email]').checked)
+                    : await acalAddDrains(iso, picked, tech, photo);
+    if(!ok){ go.disabled = false; go.textContent = 'Add to route'; showToast('That didn\u2019t reach the office \u2014 try again when you have signal'); return; }
+    close();
+    acalDraw();
+    try{ renderHomeList(); }catch(e){}
+    const who = picked.length === 1 ? nameOf(acalCust(picked[0])) + '\u2019s ' : picked.length + ' ';
+    showToast(who + (isFc ? (picked.length === 1 ? 'filter clean' : 'filter cleans') : (picked.length === 1 ? 'drain' : 'drains')) + ' added to the route for ' + nice);
+  });
+  setTimeout(()=> search.focus(), 0);
+}
+async function acalAddFilterCleans(iso, ids, tech, photo, email){
+  const groups = acalOffice.filterGroups || [];
+  let g = groups.find(x => x && x.solo && x.date === iso);
+  const isNew = !g;
+  if(!g) g = {id: 'fgs_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), name: 'Customers on their own', solo: true,
+              date: iso, technicianId: '', customerIds: [], photoRequired: true, emailCustomer: true};
+  g = JSON.parse(JSON.stringify(g));
+  const wasSent = !!g.finalized;
+  g.customerIds = g.customerIds || [];
+  g.custTech = g.custTech || {}; g.custPhoto = g.custPhoto || {}; g.custEmail = g.custEmail || {};
+  ids.forEach(id=>{
+    if(g.customerIds.indexOf(id) === -1) g.customerIds.push(id);
+    const own = String((acalCust(id) || {}).technicianId || '');
+    if(tech && tech !== own) g.custTech[id] = tech; else delete g.custTech[id];
+    g.custPhoto[id] = photo;
+    g.custEmail[id] = email;
+    if(g.custHold) delete g.custHold[id];
+    if(Array.isArray(g.pausedIds)) g.pausedIds = g.pausedIds.filter(x => x !== id);
+  });
+  if(!wasSent){
+    // Anyone already on that day's list but not sent yet stays as they were
+    g.custHold = g.custHold || {};
+    g.customerIds.forEach(id => { if(ids.indexOf(id) === -1) g.custHold[id] = true; });
+    g.finalized = true;
+    g.scheduledAt = new Date().toISOString();
+  }
+  if(!(await acalPushOffice('filter_group', g))) return false;
+  if(isNew) groups.push(g); else groups.splice(groups.findIndex(x => x && x.id === g.id), 1, g);
+  acalOffice.filterGroups = groups;
+  // Each one's filter clean on its technician's route, as the website makes it
+  const sched = lsGet('scheduledFilterCleans') || [];
+  ids.forEach(id=>{
+    const tId = g.custTech[id] || String((acalCust(id) || {}).technicianId || '');
+    let r = sched.find(x => x && !x.reopened && x.groupId === g.id && x.customerId === id && x.status !== 'done');
+    if(!r){ r = {id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), groupId: g.id, customerId: id, status: 'scheduled', lineItems: []}; sched.push(r); }
+    Object.assign(r, {groupName: g.name, technicianId: tId, date: iso, order: g.customerIds.indexOf(id), photoRequired: photo, emailCustomer: email});
+    queueOfficeWork('filter_clean', r.id);
+  });
+  lsSet('scheduledFilterCleans', sched);
+  try{ fieldNoteLocalChange(); }catch(e){}
+  return true;
+}
+async function acalAddDrains(iso, ids, tech, photo){
+  const cal = acalOffice.drainCalendar || [];
+  const recs = lsGet('scheduledPoolDrains') || [];
+  const entries = [];
+  const sameDay = cal.filter(e => e && e.date === iso);
+  ids.forEach(cid=>{
+    const c = acalCust(cid);
+    let e = sameDay.find(x => x.customerId === cid);
+    e = e ? JSON.parse(JSON.stringify(e)) : {id: 'dc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), date: iso, customerId: cid};
+    const bodies = acalBodies(c);
+    e.bodyKinds = bodies.map(b => b.key);
+    e.bodyKind = e.bodyKinds[0];
+    const own = String((c && c.technicianId) || '');
+    if(tech && tech !== own) e.technicianId = tech; else delete e.technicianId;
+    if(!photo) e.photoRequired = false; else delete e.photoRequired;
+    e.pushed = e.pushed || {};
+    const order = Math.max(0, sameDay.findIndex(x => x.customerId === cid)) || sameDay.length;
+    bodies.forEach(b=>{
+      let r = e.pushed[b.key] ? recs.find(x => x && x.id === e.pushed[b.key]) : null;
+      if(!r || r.status === 'done'){ r = {id: 'pd_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), calendarId: e.id, customerId: cid, status: 'scheduled'}; recs.push(r); e.pushed[b.key] = r.id; }
+      Object.assign(r, {date: iso, technicianId: tech || own, bodyKey: b.key, bodyName: b.label,
+        bodyKind: b.key === 'pool' || b.key === 'spa' ? b.key : (/fountain/i.test(b.label) ? 'fountain' : 'extra'), order: order,
+        photoRequired: !(c && c.drainPhotoRequired === false) && photo, emailCustomer: !(c && c.drainEmailCustomer === false)});
+    });
+    entries.push(e);
+  });
+  for(const e of entries){ if(!(await acalPushOffice('drain_entry', e))) return false; }
+  entries.forEach(e=>{
+    const i = cal.findIndex(x => x && x.id === e.id);
+    if(i === -1) cal.push(e); else cal[i] = e;
+    Object.keys(e.pushed).forEach(k => queueOfficeWork('pool_drain', e.pushed[k]));
+  });
+  acalOffice.drainCalendar = cal;
+  lsSet('scheduledPoolDrains', recs);
+  try{ fieldNoteLocalChange(); }catch(e){}
+  return true;
 }
 function showHomeTab(which){
   acalMode = which === 'calendar' && isAdminUser() ? 'calendar' : 'today';
@@ -19347,12 +19610,13 @@ function acalDayWindow(on){
     const menu = document.createElement('div');
     menu.id = 'acalJobMenu';
     menu.style.cssText = 'position:absolute;top:50px;right:12px;z-index:5;width:200px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 6px 18px rgba(19,78,74,.18);padding:4px;';
-    [['wo', 'Work order', 'Work Order'], ['tk', 'Task', 'Task']].forEach(([k, label, kind])=>{
+    // Filter clean and Pool drain under Work order and Task (Oct 26)
+    [['wo', 'Work order', 'Work Order'], ['tk', 'Task', 'Task'], ['fc', 'Filter clean', 'fc'], ['pd', 'Pool drain', 'pd']].forEach(([k, label, kind])=>{
       const it = document.createElement('div');
       it.className = 'press-row';
       it.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;';
       it.innerHTML = "<span style=\"font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;width:30px;text-align:center;padding:3px 0;border-radius:6px;background:" + ACAL_TAGS[k][2] + ';color:' + ACAL_TAGS[k][3] + ';">' + ACAL_TAGS[k][0] + '</span>' + label;
-      it.addEventListener('click', ()=>{ acalJobMenu = false; acalNewJob(kind, iso); });
+      it.addEventListener('click', ()=>{ acalJobMenu = false; if(kind === 'fc' || kind === 'pd'){ acalDraw(); acalAddFcPd(kind, iso); } else acalNewJob(kind, iso); });
       menu.appendChild(it);
     });
     sheet.appendChild(menu);
@@ -19455,11 +19719,27 @@ function acalNewJob(kind, iso){
   switchView('customers');
   showCustomerPane('work');
   awcKind = kind; awcView = 'main'; awcApply();
+  // Finalize brings them back to the calendar, on that day (Oct 26)
+  window.acalReturnTo = {kind: kind, iso: iso};
   setTimeout(()=>{
     const d = document.getElementById(kind === 'Task' ? 'awcTaskDate' : 'awcWoDate');
     if(d){ d.value = iso; d.dispatchEvent(new Event('change', {bubbles: true})); }
     window.scrollTo(0, 0);
   }, 50);
+}
+// A work order or task started from the calendar's + Job, once finalized:
+// back to the calendar, on its day. Started in the WorkCenter itself, it
+// stays there. True if it went back.
+function acalBackAfterSave(kind){
+  const r = window.acalReturnTo;
+  if(!r || r.kind !== kind) return false;
+  window.acalReturnTo = null;
+  switchView('home');
+  showHomeTab('calendar');
+  acalMonth = r.iso.slice(0, 7); acalSel = r.iso; acalJobMenu = false;
+  acalDraw();
+  window.scrollTo(0, 0);
+  return true;
 }
 (function wireHomeTabs(){
   const a = document.getElementById('btnHomeTabToday'), b = document.getElementById('btnHomeTabCal');
