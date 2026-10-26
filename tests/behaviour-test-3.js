@@ -498,9 +498,10 @@ console.log('\n=== Emailing a filter clean group ===');
     check('  an Email button is in the heading', labels.indexOf('Email') !== -1, labels.join(','));
     // Oct 13: Schedule became the calendar on its own tab; the Groups tab's
     // heading has + New group, then Email
-    check('  New group sits first, then Email',
-          labels.indexOf('+ New group') === 0
-          && labels.indexOf('Email') === 1, labels.join(','));
+    // Oct 25: + Single filter clean sits beside + New group
+    check('  New group sits first, then Single filter clean, then Email',
+          labels.indexOf('+ New group') === 0 && labels.indexOf('+ Single filter clean') === 1
+          && labels.indexOf('Email') === 2, labels.join(','));
 
     // The message is built from the editable template
     const body = w.eval("fillFilterEmail(loadFilterEmail().body, ['Tuesday, September 22, 2026'])");

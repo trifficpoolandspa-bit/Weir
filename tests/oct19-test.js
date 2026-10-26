@@ -477,7 +477,7 @@ const SEED = `
     // Lined up, whether scheduled or not
     const photoLefts = rows().map(r => Math.round(r.querySelectorAll('label')[0].getBoundingClientRect().left));
     out.push(['the tick columns line up, scheduled or not', photoLefts.every(x => Math.abs(x - photoLefts[0]) <= 1), photoLefts.join(',')]);
-    const hPhoto = Array.from(head.querySelectorAll('span')).find(x => x.textContent === 'Photo').getBoundingClientRect();
+    const hPhoto = Array.from(head.querySelectorAll('span')).find(x => x.dataset.col === 'photo').getBoundingClientRect()   // All · None sit under it now (Oct 25);
     const firstPhoto = rows()[0].querySelectorAll('label')[0].getBoundingClientRect();
     out.push(['…under their headings', Math.abs((hPhoto.left + hPhoto.right) / 2 - (firstPhoto.left + firstPhoto.right) / 2) <= 2]);
     // Untick Photo for Alpha: saved and the drain in the app follows

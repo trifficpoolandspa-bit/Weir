@@ -303,7 +303,7 @@ const SEED = `
     document.querySelector('#profileTabControl .history-type-btn[data-tab="workorders"]').click(); await wait(100);
     qoOpenId = 'q:w1'; renderCustomerWorkOrders('a'); await wait(50);
     const list = document.getElementById('custWorkOrderList');
-    out.push(['the quote in the Jobs tab shows the message', /Can you come Tuesday instead\?/.test(list.textContent) && /Message from the customer/.test(list.textContent)]);
+    out.push(['the quote in the Jobs tab shows the message', /Can you come Tuesday instead\?/.test(list.textContent) && /Messages/.test(list.textContent)]);
     const reply = Array.from(list.querySelectorAll('a')).find(x => /Reply by email/.test(x.textContent));
     out.push(['with Reply by email to the customer', !!reply && /^mailto:a@x\.com\?subject=Re%3A%20Quote%20%230012/.test(reply.getAttribute('href')), reply && reply.getAttribute('href')]);
     // Again with nothing new: nothing changes

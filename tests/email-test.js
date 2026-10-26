@@ -228,10 +228,12 @@ function boot(){
       // became the calendar on its own tab, with Replacements beside it
       check('  New group comes first',
             labels.indexOf('+ New group') === 0, labels.join(','));
+      // Oct 25: + Single filter clean sits beside + New group
+      check('  then Single filter clean', labels.indexOf('+ Single filter clean') === 1, labels.join(','));
       check('  then Email',
-            labels.indexOf('Email') === 1 && labels.indexOf('Schedule') === -1, labels.join(','));
+            labels.indexOf('Email') === 2 && labels.indexOf('Schedule') === -1, labels.join(','));
       // Oct 18: Replacements moved off the calendar, to the right of Email
-      check('  then Replacements, right of Email', /^Replacements/.test(labels[2] || ''), labels.join(','));
+      check('  then Replacements, right of Email', /^Replacements/.test(labels[3] || ''), labels.join(','));
       check('  no Schedule tab any more: Groups is the page',
             !d.getElementById('fcTabControl') && d.getElementById('wcFiltersSection').style.display !== 'none');
 

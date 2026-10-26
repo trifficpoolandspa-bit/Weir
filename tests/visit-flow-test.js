@@ -1092,7 +1092,7 @@ async function walkVisit(w, d, maxPresses){
       check(file + ': the drop-down shows phone, gate and the office\u2019s details, not the address',
             !!brief && !/1 A St/.test(brief.textContent) && /555-0101/.test(brief.textContent) && /4321/.test(brief.textContent) && /Drips overnight/.test(brief.textContent));
       const start = Array.from(brief.querySelectorAll('button')).find(b => b.classList.contains('btn-primary'));
-      check(file + ': with Directions and Start job', /Directions/.test(brief.textContent) && start.textContent === 'Start job');
+      check(file + ': with Directions and Start job', /Directions/.test(brief.textContent) && start.textContent === 'Start job \u2192');
       start.click();
       const page = d.getElementById('jobPage');
       check(file + ': Start job opens the job page', !!page && /Check seal/.test(page.textContent) && /Submit task/.test(page.textContent));
@@ -1144,7 +1144,7 @@ async function walkVisit(w, d, maxPresses){
       row.click();
       const btn = d2.querySelector('.route-job-brief .btn-primary');
       if(file === 'admin-readings-app.html'){
-        check(file + ': a job on another day can be started in the admin app', btn.textContent === 'Start job' && !btn.disabled);
+        check(file + ': a job on another day can be started in the admin app', btn.textContent === 'Start job \u2192' && !btn.disabled);
       } else {
         check(file + ': but not in the technician app', btn.textContent === 'Not today\u2019s job' && btn.disabled);
       }
@@ -1250,7 +1250,7 @@ async function walkVisit(w, d, maxPresses){
       check(file + ': pressing a job shows the customer\u2019s details and the job',
             !!brief && !/1 A St/.test(brief.textContent) && /555-0101/.test(brief.textContent) && /4321/.test(brief.textContent)
             && /Drips overnight/.test(brief.textContent), brief && brief.textContent.slice(0, 80));
-      const start = Array.from(brief.querySelectorAll('button')).find(b => b.textContent === 'Start job');
+      const start = Array.from(brief.querySelectorAll('button')).find(b => b.textContent === 'Start job \u2192');
       check(file + ': with Directions and Start job', !!start && Array.from(brief.querySelectorAll('button')).some(b => b.textContent === 'Directions'));
       start.click();
       const page = d.getElementById('jobPage');
@@ -1284,7 +1284,7 @@ async function walkVisit(w, d, maxPresses){
       if(file === 'technician-app.html'){
         check(file + ': tomorrow\u2019s job can\u2019t be started today', tStart.disabled && /Not today/.test(tStart.textContent));
       } else {
-        check(file + ': the admin app can start a job on any day', !tStart.disabled && tStart.textContent === 'Start job');
+        check(file + ': the admin app can start a job on any day', !tStart.disabled && tStart.textContent === 'Start job \u2192');
       }
     }catch(e){ check(file + ': jobs on the route', false, e.message); }
     w.close();
@@ -1419,10 +1419,10 @@ async function walkVisit(w, d, maxPresses){
             && /Rex/.test(brief.textContent) && /Drips overnight/.test(brief.textContent), brief ? brief.textContent.slice(0, 80) : '');
       // The admin app has Reschedule between them (Oct 22)
       check(file + ': with Directions and Start job',
-            Array.from(brief.querySelectorAll('button')).map(b => b.textContent).join('|') === (/admin/.test(file) ? 'Directions|Reschedule|Start job' : 'Directions|Start job'),
+            Array.from(brief.querySelectorAll('button')).map(b => b.textContent).join('|') === (/admin/.test(file) ? 'Reschedule|Directions|Share|Skip job|Start job \u2192' : 'Directions|Share|Skip job|Start job \u2192'),   // Oct 25: laid out like a customer's
             Array.from(brief.querySelectorAll('button')).map(b => b.textContent).join('|'));
       w.eval("captureFromCamera = async ()=> 'data:image/jpeg;base64,job';");
-      Array.from(brief.querySelectorAll('button')).find(b => b.textContent === 'Start job').click();
+      Array.from(brief.querySelectorAll('button')).find(b => b.textContent === 'Start job \u2192').click();
       await wait(50);
       const page = d.getElementById('jobPage');
       check(file + ': Start job opens the job page', !!page && /Submit task/.test(page.textContent));
@@ -1453,7 +1453,7 @@ async function walkVisit(w, d, maxPresses){
       row.click();
       const start = d.querySelector('.route-job-brief .btn-primary');
       if(file === 'admin-readings-app.html'){
-        check(file + ': another day\u2019s job can be started here', start.textContent === 'Start job' && !start.disabled);
+        check(file + ': another day\u2019s job can be started here', start.textContent === 'Start job \u2192' && !start.disabled);
       } else {
         check(file + ': another day\u2019s job can\u2019t be started here', start.textContent === 'Not today\u2019s job' && start.disabled);
       }
@@ -1608,7 +1608,7 @@ async function walkVisit(w, d, maxPresses){
       if(file === 'technician-app.html'){
         check(file + ': a job on another day can\u2019t be started', tStart.disabled && /Not today/.test(tStart.textContent));
       } else {
-        check(file + ': the admin app can start a job on any day', !tStart.disabled && tStart.textContent === 'Start job');
+        check(file + ': the admin app can start a job on any day', !tStart.disabled && tStart.textContent === 'Start job \u2192');
       }
 
       // Reschedule starts on today
