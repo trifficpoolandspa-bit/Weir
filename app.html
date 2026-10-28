@@ -3369,8 +3369,45 @@ function isAdminUser(){
 }
 
 let roleShown = null;
+// The admin app's bottom tabs say both things each holds (Oct 28): Today /
+// Calendar, Techs / Photo, Serviced / Reports, Customers / WorkCenter, split by
+// a thin line. The top word opens the first, the bottom word the second; the
+// rest of the tab opens it as it was left. A technician's tabs stay one word.
+const BOTTOM_TAB_WORDS = {home: ['Today', 'Calendar'], technicians: ['Techs', 'Photo'],
+  report: ['Serviced', 'Reports'], customers: ['Customers', 'WorkCenter']};
+function bottomTabPane(view, second){
+  try{
+    if(currentViewName !== view) return;
+    if(view === 'home') showHomeTab(second ? 'calendar' : 'today');
+    else if(view === 'report') setReportMode(second ? 'reports' : 'serviced');
+    else if(view === 'customers') showCustomerPane(second ? 'work' : 'list');
+    else if(view === 'technicians'){
+      const b = document.querySelector('#techMainTabs [data-techmain="' + (second ? 'photos' : 'list') + '"]');
+      if(b){ viewChangedAt = 0; b.click(); }
+    }
+  }catch(e){}
+}
+function bottomTabWords(admin){
+  document.querySelectorAll('.bottombar .tab').forEach(t=>{
+    const words = BOTTOM_TAB_WORDS[t.dataset.view];
+    if(!words) return;
+    if(!t.dataset.oneWord) t.dataset.oneWord = (t.lastChild && t.lastChild.textContent || '').trim();
+    const two = admin && t.dataset.view !== 'serviced';
+    if(two === (t.dataset.twoWords === '1')) return;
+    t.dataset.twoWords = two ? '1' : '';
+    const dot = '<i>&#9679;</i>';
+    if(!two){ t.innerHTML = dot + t.dataset.oneWord; return; }
+    t.innerHTML = dot + '<span data-tabword="0" style="display:block;line-height:1.2;">' + words[0] + '</span>'
+      + '<span style="display:block;width:60%;margin:2px auto;border-top:1px solid #CFDCD9;"></span>'
+      + '<span data-tabword="1" style="display:block;line-height:1.2;">' + words[1] + '</span>';
+    t.querySelectorAll('[data-tabword]').forEach(w=>{
+      w.addEventListener('click', ()=>{ const second = w.dataset.tabword === '1'; setTimeout(()=> bottomTabPane(t.dataset.view, second), 0); });
+    });
+  });
+}
 function applyRoleUI(){
   const admin = isAdminUser();
+  try{ bottomTabWords(admin); }catch(e){}
   const show = (id, on, how)=>{ const el = document.getElementById(id); if(el) el.style.display = on ? (how || '') : 'none'; };
   document.querySelectorAll('.tab[data-view="customers"], .tab[data-view="report"]')
     .forEach(b => { b.style.display = admin ? '' : 'none'; });
@@ -7747,11 +7784,17 @@ function canRecordClips(){
 
 // The flip button on the camera picture (Oct 22): back camera and selfie.
 // Shown only when the phone has more than one camera.
-const CAM_FLIP_HTML = '<button type="button" data-camflip aria-label="Switch camera" style=position:absolute;top:14px;right:14px;width:46px;height:46px;border-radius:50%;border:none;background:rgba(0,0,0,0.45);display:none;align-items:center;justify-content:center;cursor:pointer;padding:0;"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;"><path d="M4 9a8 8 0 0 1 14.5-3.5L20 7"/><path d="M20 3v4h-4"/><path d="M20 15a8 8 0 0 1-14.5 3.5L4 17"/><path d="M4 21v-4h4"/><circle cx="12" cy="12" r="2.6"/></svg></button>';
+const CAM_FLIP_HTML = '<button type="button" data-camflip aria-label="Switch camera" style="position:absolute;top:14px;right:14px;width:46px;height:46px;border-radius:50%;border:none;background:rgba(0,0,0,0.45);display:none;align-items:center;justify-content:center;cursor:pointer;padding:0;"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;"><path d="M4 9a8 8 0 0 1 14.5-3.5L20 7"/><path d="M20 3v4h-4"/><path d="M20 15a8 8 0 0 1-14.5 3.5L4 17"/><path d="M4 21v-4h4"/><circle cx="12" cy="12" r="2.6"/></svg></button>';
 async function showCamFlipIfTwo(btn){
+  // Shown at once when this phone had two cameras last time (Oct 28), then
+  // checked again
+  try{ if(deviceGet('camCount') > 1) btn.style.display = 'flex'; }catch(e){}
   try{
     const devices = await navigator.mediaDevices.enumerateDevices();
-    if(devices.filter(d => d.kind === 'videoinput').length > 1) btn.style.display = 'flex';
+    const n = devices.filter(d => d.kind === 'videoinput').length;
+    if(n > 1) btn.style.display = 'flex';
+    // Labels and counts can be hidden before permission: only a real answer is kept
+    if(n > 0) try{ deviceSet('camCount', n); }catch(e){}
   }catch(e){}
 }
 
@@ -7998,10 +8041,13 @@ function captureFromCamera(maxDim, quality){
                  background:#fff;cursor:pointer;"></button>
         <button type="button" id="camFlash"
           style="flex:0 0 auto;padding:12px 18px;font-size:15px;border:none;border-radius:10px;
-                 background:rgba(255,255,255,0.15);color:#fff;cursor:pointer;visibility:hidden;">Flash off</button>
+                 background:rgba(255,255,255,0.15);color:#fff;cursor:pointer;">Flash off</button>
       </div>`;
 
     const flashBtn = overlay.querySelector('#camFlash');
+    // There at once (Oct 28), not after the camera starts: hidden straight
+    // away only on a phone whose camera had no flash last time
+    try{ if(deviceGet('camTorch') === false) flashBtn.style.visibility = 'hidden'; }catch(e){}
     document.body.appendChild(overlay);
 
     const video = overlay.querySelector('#camPreview');
@@ -8034,6 +8080,8 @@ function captureFromCamera(maxDim, quality){
 
     flashBtn.addEventListener('click', async ()=>{
       flashOn = !flashOn;
+      // Pressed before the camera is up: kept, and turned on when it is
+      if(!stream){ showFlashButton(true); return; }
       const worked = await applyFlash();
       if(!worked){
         flashOn = false;
@@ -8123,6 +8171,8 @@ function captureFromCamera(maxDim, quality){
           torchAvailable = !!(caps && caps.torch);
         }catch(e){ torchAvailable = false; }
         if(!torchAvailable) flashOn = false;
+        // Remembered for next time, for the back camera only (a selfie has none)
+        if(facing === 'environment') try{ deviceSet('camTorch', torchAvailable); }catch(e){}
         showFlashButton(torchAvailable);
         if(flashOn) await applyFlash();
 
@@ -15679,7 +15729,8 @@ function syncStepChrome(){
   }
 
   const label = stepNextLabel();
-  if(currentVisibleSection && label){
+  // Not on Equipment (Oct 28): the Pool tab at the top goes back to the readings
+  if(currentVisibleSection && currentVisibleSection !== 'equipment' && label){
     nextBtn.textContent = label;
     bar.style.display = 'block';
     document.body.classList.add('has-step-bar');
@@ -16378,7 +16429,11 @@ function appWorkOrderDates(startISO, repeat, customEvery, customUnit){
   // Plain text, as in the previews (Oct 19): inside a field these took the
   // field heading's small capitals, which ran them off the phone
   + 'font-family:\'Inter\',sans-serif;text-transform:none;letter-spacing:0;}'
-  + '#awc .awc-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 6px 5px 11px;border-radius:999px;background:var(--teal-pale);color:var(--teal-deep);font-size:13.5px;font-weight:600;}'
+  // Section headings in a light teal tag with black text, and no teal words,
+  // as the website has had since Oct 20 (Oct 26: the WorkCenter only)
+  + '#awc .field label:not(.inline-check){display:table;background:var(--teal-pale);color:var(--ink);padding:3px 9px;border-radius:6px;font-size:13px;margin-bottom:7px;}'
+  + '#awc .btn-ghost,#awc .btn-secondary{color:var(--ink);}'
+  + '#awc .awc-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 6px 5px 11px;border-radius:999px;background:var(--teal-pale);color:var(--ink);font-size:13.5px;font-weight:600;}'
   + '#awc .awc-chip button{border:none;background:none;color:var(--rust);font-size:16px;line-height:1;width:24px;height:24px;padding:0;cursor:pointer;}'
   + '#awc .awc-suggest{display:none;position:absolute;left:0;right:0;z-index:40;background:#fff;border:1px solid var(--line);border-radius:10px;margin-top:4px;box-shadow:0 4px 14px rgba(15,46,46,0.14);max-height:240px;overflow-y:auto;}'
   + '#awc .awc-suggest div{padding:10px 12px;font-size:13.5px;cursor:pointer;border-bottom:1px solid var(--line);}'
@@ -16389,7 +16444,7 @@ function appWorkOrderDates(startISO, repeat, customEvery, customUnit){
   + '#awc .awc-row:last-child{border-bottom:none;}'
   + '#awc .awc-small{width:auto;padding:5px 10px;font-size:12px;}'
   // The number as on the website: large, with a light # (Oct 2, style E)
-  + '#awc .awc-num{display:inline-block;font-family:\'Space Grotesk\',\'Inter\',sans-serif;font-size:22px;font-weight:700;color:var(--teal-deep);letter-spacing:-0.01em;white-space:nowrap;line-height:1;margin-left:auto;}'
+  + '#awc .awc-num{display:inline-block;font-family:\'Space Grotesk\',\'Inter\',sans-serif;font-size:22px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;white-space:nowrap;line-height:1;margin-left:auto;}'
   + '#awc .awc-num .num-hash{color:#A9BCB9;font-weight:500;}'
   + '.awc-pick-row{display:flex;align-items:center;gap:10px;padding:11px 8px;border-bottom:1px solid var(--line);font-size:14.5px;cursor:pointer;}'
   + '.awc-pick-row:last-child{border-bottom:none;}';
@@ -16464,7 +16519,7 @@ function awcBigNumber(){
 function renderAppWorkCenter(){
   const pane = document.getElementById('custPaneWork');
   if(!pane) return;
-  if(!pane.dataset.built){ awcBuild(pane); pane.dataset.built = '1'; awcBigNumber(); }
+  if(!pane.dataset.built){ awcBuild(pane); pane.dataset.built = '1'; awcBigNumber(); try{ wireDatePlaceholders(); }catch(e){} }
   awcApply();
 }
 
@@ -16496,13 +16551,13 @@ function awcBuild(pane){
              (Oct 19): beside the date box it ran off the phone. On a very narrow
              phone the number drops to a second line rather than off the edge. -->
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;flex-wrap:wrap;">
-          <label style="margin:0;">Date</label>
-          <label class="inline-check" style="font-size:12.5px;gap:4px;margin-left:auto;">Expires in
+          <label class="inline-check" style="font-size:12.5px;gap:4px;">Expires in
             <input type="number" id="awcQuoteExpires" min="1" max="365" step="1" value="30" inputmode="numeric" style="width:42px;text-align:center;padding:5px 2px;font-size:14px;">
             days</label>
           <span class="awc-num" id="awcQuoteNumber" style="margin-left:4px;"></span>
         </div>
-        <input type="date" id="awcQuoteDate" style="width:auto;">
+        <!-- No date on a quote (Oct 27): it's dated the day it's sent -->
+        <input type="date" id="awcQuoteDate" style="display:none;">
       </div>
       <div class="field">
         <label>Quote name</label>
@@ -16527,7 +16582,7 @@ function awcBuild(pane){
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0 14px;">
         <span style="font-size:13px;font-weight:600;color:var(--muted);">Total</span>
-        <span id="awcQuoteTotal" style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--teal-deep);">$0.00</span>
+        <span id="awcQuoteTotal" style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--ink);">$0.00</span>
       </div>
       <button type="button" class="btn btn-primary" id="awcQuoteSend" style="margin-bottom:8px;">Send to customer</button>
       <div class="btn-row" style="flex-wrap:nowrap;">
@@ -16608,7 +16663,7 @@ function awcBuild(pane){
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0 14px;">
         <span style="font-size:13px;font-weight:600;color:var(--muted);">Total</span>
-        <span id="awcTotal" style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--teal-deep);">$0.00</span>
+        <span id="awcTotal" style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--ink);">$0.00</span>
       </div>
       <button type="button" class="btn btn-primary" id="awcFinalize" style="margin-bottom:8px;">Finalize</button>
       <div class="btn-row"><button type="button" class="btn btn-ghost" id="awcWoClear" style="flex:1;">Clear</button></div>
@@ -17026,7 +17081,7 @@ function awcRenderLines(boxId){
         requestAnimationFrame(()=>{ try{ marqueeIfCut(nm); }catch(e){} });
         if(p.price !== undefined && p.price !== null && p.price !== ''){
           const pr = document.createElement('span');
-          pr.style.cssText = "flex-shrink:0;font-size:13.5px;font-weight:700;color:var(--teal-deep);font-family:'JetBrains Mono',monospace;";
+          pr.style.cssText = "flex-shrink:0;font-size:13.5px;font-weight:700;color:var(--ink);font-family:'JetBrains Mono',monospace;";
           pr.textContent = '$' + (Number(p.price) || 0).toFixed(2);
           opt.appendChild(pr);
         }
@@ -17234,7 +17289,6 @@ async function awcSendQuote(){
     const firstLine = document.querySelector('#awcQuoteLines input');
     const addLine = document.getElementById('awcQuoteAddLine');
     if(!awcHasAll('awcQuoteForm', [
-      [!dateEl.value, dateEl, 'Set a date first.'],
       [!picked.length, document.getElementById('awcQuoteSearch'), 'Add a customer.'],
       [!items.length, firstLine || addLine, 'Add a line item.', firstLine ? document.getElementById('awcQuoteLines') : addLine.parentNode]
     ])) return;
@@ -17249,7 +17303,7 @@ async function awcSendQuote(){
   const notes = document.getElementById('awcQuoteNotes').value.trim();
   const name = document.getElementById('awcQuoteName').value.trim();
   const total = items.reduce((sum, it) => sum + (parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0), 0);
-  const dateISO = document.getElementById('awcQuoteDate').value || '';
+  const dateISO = todayDateStr();   // the day it's sent (Oct 27)
   const dateText = (dateISO ? new Date(dateISO + 'T12:00:00') : new Date())
     .toLocaleDateString(undefined, {month: 'long', day: 'numeric', year: 'numeric'});
   const expiresDays = awcQuoteExpiresDays();
@@ -19104,6 +19158,44 @@ function awcRenderHistory(){
 // what was typed before, and the phone keyboard's word suggestions, are kept
 // out of every search box. Each box gets a fresh name each time the page
 // opens, so nothing typed into it before can be offered again.
+// An empty date box says mm/dd/yyyy, as on a computer (Oct 27): an iPhone
+// leaves it blank. A grey overlay, gone once there's a date, however the date
+// was set.
+(function datePlaceholders(){
+  const ids = ['awcWoDate', 'awcTaskDate'];
+  const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  const wire = ()=> ids.forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el || el.dataset.ph) return;
+    el.dataset.ph = '1';
+    const wrap = document.createElement('span');
+    wrap.style.cssText = 'position:relative;display:inline-flex;vertical-align:top;max-width:100%;';
+    el.parentNode.insertBefore(wrap, el);
+    wrap.appendChild(el);
+    const ph = document.createElement('span');
+    ph.className = 'date-ph';
+    ph.textContent = 'mm/dd/yyyy';
+    ph.setAttribute('aria-hidden', 'true');
+    // Covers the box up to its calendar icon, so nothing a phone draws shows through
+    ph.style.cssText = 'position:absolute;left:2px;top:2px;bottom:2px;right:44px;display:flex;align-items:center;padding-left:11px;color:var(--muted);font-size:15px;pointer-events:none;background:#fff;border-radius:8px;';
+    wrap.appendChild(ph);
+    const show = ()=>{
+      ph.style.display = desc.get.call(el) ? 'none' : 'flex';
+      // Over the box itself, not any space below it
+      if(el.offsetHeight){ ph.style.top = (el.offsetTop + 2) + 'px'; ph.style.bottom = 'auto'; ph.style.height = (el.offsetHeight - 4) + 'px'; }
+    };
+    Object.defineProperty(el, 'value', {configurable: true, get(){ return desc.get.call(el); }, set(v){ desc.set.call(el, v); show(); }});
+    ['input', 'change', 'blur'].forEach(ev => el.addEventListener(ev, show));
+    // Only where the phone draws nothing itself: a computer shows its own
+    const own = !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) && !(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if(own){ ph.remove(); return; }
+    show();
+    // Sized once it's on screen
+    if(window.ResizeObserver){ try{ new ResizeObserver(show).observe(el); }catch(e){} }
+  });
+  // The WorkCenter is built the first time it's opened
+  window.wireDatePlaceholders = wire;
+})();
 (function noTypedHistory(){
   const isSearch = el => el && el.tagName === 'INPUT' && /^(text|search)?$/i.test(el.getAttribute('type') || '')
     && (/search/i.test(el.id || '') || el.hasAttribute('data-search') || el.classList.contains('pdp-search')
@@ -19536,14 +19628,20 @@ function acalDraw(){
       + (isSel ? 'background:var(--teal-pale);border-color:var(--teal-deep);box-shadow:inset 0 0 0 1px var(--teal-deep);' : '');
     cell.innerHTML = '<div style="font-size:11px;font-weight:700;' + (iso === today ? 'color:#fff;background:var(--teal-deep);border-radius:50%;width:19px;height:19px;display:flex;align-items:center;justify-content:center;' : 'color:var(--ink);') + '">' + d + '</div>';
     const tags = document.createElement('div');
-    tags.style.cssText = 'display:flex;flex-wrap:wrap;gap:2px;margin-top:2px;';
+    tags.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px 4px;margin-top:5px;';
     ['fc', 'pd', 'wo', 'tk'].forEach(k=>{
       const n = acalCount(on, k);
       if(!n) return;
       const st = acalTagState(acalAllRows(on, k));
       const t = document.createElement('span');
-      t.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:700;padding:1px 3px;border-radius:4px;line-height:1.25;color:#fff;background:" + ACAL_STATES[st][1] + ';';
+      // In its job's colour, with a dot for where it's up to (Oct 28)
+      t.style.cssText = "position:relative;font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:700;padding:1px 3px;border-radius:4px;line-height:1.25;"
+        + 'color:' + ACAL_TAGS[k][3] + ';background:' + ACAL_TAGS[k][2] + ';box-shadow:inset 0 0 0 1px ' + ACAL_TAGS[k][3] + '55;';
       t.textContent = ACAL_TAGS[k][0] + (n > 1 ? ' ' + n : '');
+      const dot = document.createElement('i');
+      // On the corner, so two tags still fit side by side on a phone
+      dot.style.cssText = 'position:absolute;right:-4px;top:-4px;width:6px;height:6px;border-radius:50%;box-shadow:0 0 0 1.5px #fff;background:' + ACAL_STATES[st][1] + ';';
+      t.appendChild(dot);
       t.title = ACAL_TAGS[k][1] + ' — ' + ACAL_STATES[st][0];
       tags.appendChild(t);
     });
@@ -19581,8 +19679,9 @@ function acalDraw(){
   card.appendChild(grid);
   const key = document.createElement('div');
   key.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px 12px;font-size:11px;color:var(--muted);margin-top:10px;align-items:center;';
-  key.innerHTML = Object.keys(ACAL_TAGS).map(k => "<span><b style=\"font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ink);\">" + ACAL_TAGS[k][0] + '</b> ' + ACAL_TAGS[k][1].replace(/s$/, '') + '</span>').join('')
-    + Object.keys(ACAL_STATES).map(s => '<span style="font-size:10px;font-weight:700;color:#fff;background:' + ACAL_STATES[s][1] + ';padding:2px 6px;border-radius:5px;">' + ACAL_STATES[s][0] + '</span>').join('');
+  key.innerHTML = Object.keys(ACAL_TAGS).map(k => "<span style=\"display:inline-flex;align-items:center;gap:4px;\"><b style=\"font-family:'JetBrains Mono',monospace;font-size:9px;padding:1px 3px;border-radius:4px;color:" + ACAL_TAGS[k][3] + ';background:' + ACAL_TAGS[k][2] + ';box-shadow:inset 0 0 0 1px ' + ACAL_TAGS[k][3] + '55;">' + ACAL_TAGS[k][0] + '</b>' + ACAL_TAGS[k][1].replace(/s$/, '') + '</span>').join('')
+    + '<span style="flex-basis:100%;height:0;"></span>'
+    + Object.keys(ACAL_STATES).map(s => '<span style="display:inline-flex;align-items:center;gap:5px;"><i style="width:8px;height:8px;border-radius:50%;background:' + ACAL_STATES[s][1] + ';"></i>' + ACAL_STATES[s][0] + '</span>').join('');
   card.appendChild(key);
   if(acalSel) card.appendChild(acalDayWindow(byDay[acalSel] || {fc: [], pd: [], wo: [], tk: []}));
 }
@@ -19783,6 +19882,11 @@ function showCustomerPane(which){
   const st = document.createElement('style');
   st.textContent =
     'body.left-handed #btnReverseRoute{order:0;margin-left:0 !important;}'
+  // The camera (Oct 28): Cancel on the right, Flash on the left, the switch
+  // camera button at the top left; the same for recording a video
+  + 'body.left-handed #camCancel{order:3;}body.left-handed #camShutter{order:2;}body.left-handed #camFlash{order:1;}'
+  + 'body.left-handed #clipCancel{order:3;}body.left-handed #clipTimer{order:2;}body.left-handed #clipGo{order:1;}'
+  + 'body.left-handed [data-camflip]{right:auto !important;left:14px !important;}'
   + 'body.left-handed #homeDayHeading{order:1;margin-left:auto;}'
   + 'body.left-handed #voiceModeIndicator{order:2;}'
   + 'body.left-handed #homeDateRow #prevWeekBtn,body.left-handed #techDateRow #techPrevDay{order:0;}'

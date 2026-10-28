@@ -11225,14 +11225,27 @@ function calClockSvg(size){
 // A calendar name (Oct 18): the Jobs badge colours, white text. Not sent the
 // Expired grey, in the app the Pending gold, done the Approved green with a
 // tick. ty is what it is: FC, PD, WO or TK.
+// Each job's own colour (Oct 28), as on Today and in the app's calendar: filter
+// clean gold, drain blue, work order grey, task green
+const CAL_JOB_COLOURS = {FC: ['#FBF1DD', '#8A5E0B'], PD: ['#C3DEF3', '#174C78'], WO: ['#E9EEF0', '#3E5560'], TK: ['#E8F1E4', '#4D6B3C']};
+const CAL_STATE_COLOURS = {done: '#2E8B57', app: '#C68A17', '': '#8A9795'};
+function calStateDot(state){
+  const dot = document.createElement('i');
+  dot.style.cssText = 'flex-shrink:0;width:7px;height:7px;border-radius:50%;margin-left:auto;background:' + (CAL_STATE_COLOURS[state || ''] || CAL_STATE_COLOURS['']) + ';';
+  return dot;
+}
 function calNameChip(text, state, title, ty){
   const chip = document.createElement('div');
-  chip.style.cssText = 'margin-top:3px;font-size:10.5px;font-weight:600;padding:2px 5px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;color:#fff;'
-    + (state === 'done' ? 'background:#2E8B57;' : state === 'app' ? 'background:#C68A17;' : 'background:#8A9795;');
-  if(state === 'done') chip.insertAdjacentHTML('beforeend', '<span style="font-weight:800;flex-shrink:0;">✓</span>');
+  const job = ty && CAL_JOB_COLOURS[ty];
+  chip.style.cssText = 'margin-top:3px;font-size:10.5px;font-weight:600;padding:2px 5px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;'
+    + (job
+      // In its job's colour, with a dot at the right for where it's up to
+      ? 'color:' + job[1] + ';background:' + job[0] + ';box-shadow:inset 0 0 0 1px ' + job[1] + '55;'
+      : 'color:#fff;' + (state === 'done' ? 'background:#2E8B57;' : state === 'app' ? 'background:#C68A17;' : 'background:#8A9795;'));
+  if(state === 'done' && !job) chip.insertAdjacentHTML('beforeend', '<span style="font-weight:800;flex-shrink:0;">✓</span>');
   if(ty){
     const tg = document.createElement('span');
-    tg.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.04em;flex-shrink:0;opacity:.85;";
+    tg.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.04em;flex-shrink:0;" + (job ? '' : 'opacity:.85;');
     tg.textContent = ty;
     chip.appendChild(tg);
   }
@@ -11242,6 +11255,7 @@ function calNameChip(text, state, title, ty){
   t.style.cssText = 'overflow:hidden;white-space:nowrap;min-width:0;flex:1 1 auto;';
   t.textContent = text;
   chip.appendChild(t);
+  if(job) chip.appendChild(calStateDot(state));
   if(title) chip.title = title;
   return chip;
 }
@@ -11583,16 +11597,22 @@ function openWorkCalendar(startDay){
     // What the tags and colours mean
     const key = document.createElement('div');
     key.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12px;color:var(--muted);margin-top:12px;align-items:center;';
+    // Each job in its colour, then the dots (Oct 28)
     [['FC', 'Filter clean'], ['PD', 'Pool drain'], ['WO', 'Work order'], ['TK', 'Task']].forEach(([t, w])=>{
       const s = document.createElement('span');
-      s.innerHTML = '<b style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--ink);"></b> ';
+      s.style.cssText = 'display:inline-flex;align-items:center;gap:5px;';
+      s.innerHTML = '<b style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:.04em;padding:2px 4px;border-radius:4px;color:' + CAL_JOB_COLOURS[t][1] + ';background:' + CAL_JOB_COLOURS[t][0] + ';box-shadow:inset 0 0 0 1px ' + CAL_JOB_COLOURS[t][1] + '55;"></b>';
       s.firstChild.textContent = t;
       s.appendChild(document.createTextNode(w));
       key.appendChild(s);
     });
+    key.appendChild(Object.assign(document.createElement('span'), {style: 'flex-basis:100%;height:0;'}));
     [['', 'Not in app'], ['app', 'In the app'], ['done', 'Done']].forEach(([st, w])=>{
-      const k = calNameChip(w, st, '');
-      k.style.display = 'inline-flex'; k.style.margin = '0';
+      const k = document.createElement('span');
+      k.style.cssText = 'display:inline-flex;align-items:center;gap:6px;';
+      const d = calStateDot(st); d.style.marginLeft = '0';
+      k.appendChild(d);
+      k.appendChild(document.createTextNode(w));
       key.appendChild(k);
     });
     box.appendChild(key);
@@ -11656,6 +11676,17 @@ function openWorkCalendar(startDay){
     });
     ph.appendChild(btns);
     panel.appendChild(ph);
+    // Nothing on the day yet (Oct 26): a narrower window, the buttons under
+    // the date. Once anything is on it, the full width again for the list.
+    if(!counts.length){
+      panel.style.maxWidth = '580px';
+      panel.dataset.calEmpty = '1';
+      ph.style.flexDirection = 'column';
+      ph.style.gap = '12px';
+      btns.style.marginLeft = '0';
+      btns.style.width = '100%';
+      btns.style.gridTemplateColumns = 'repeat(3,minmax(0,1fr))';
+    }
     // Every section on the same columns, so they line up down the window
     const COLS = 'display:grid;grid-template-columns:22px 170px minmax(150px,1fr) 110px 140px 28px;gap:10px;align-items:center;min-width:700px;';
     const listWrap = document.createElement('div');
@@ -19350,6 +19381,9 @@ function applyWorkOrderType(){
   });
   const dateLabel = document.querySelector('#wcDateField label');
   if(dateLabel) dateLabel.textContent = isWO ? 'Scheduled date' : 'Date';
+  // A quote has no date of its own (Oct 27): it's dated the day it's sent
+  if(dateLabel) dateLabel.style.display = isWO ? '' : 'none';
+  { const d = document.getElementById('wcDate'); if(d) d.style.display = isWO ? '' : 'none'; }
 
   const notesEl = document.getElementById('wcNotes');
   if(notesEl) notesEl.placeholder = isWO
@@ -19700,7 +19734,7 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
     const firstLine = document.querySelector('#wcLineItems .fountain-row input');
     const addLine = document.getElementById('btnAddLineItem');
     const ok = jobHasAll(document.getElementById('wcQuotesSection'), [
-      [!dateEl.value, dateEl, 'Set a date first.', dateEl.parentNode],
+      [isWOnow && !dateEl.value, dateEl, 'Set a date first.', dateEl.parentNode],
       [picked.length === 0, document.getElementById('wcCustomerSearch'), 'Add a customer.'],
       [validItems.length === 0, firstLine || addLine, 'Add a line item.', firstLine ? firstLine.closest('#wcLineItems') : addLine.parentNode],
       [isWOnow && !pickedTechIds(document.getElementById('wcTechnician')).length, document.getElementById('wcTechnician'), 'Choose a technician.'],
@@ -19816,7 +19850,8 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
   }
 
   // Quotes are emailed to each selected customer
-  const quoteDate = document.getElementById('wcDate').value;
+  // Dated the day it's sent (Oct 27: no date box on a quote)
+  const quoteDate = (()=>{ const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); })();
   const quoteDateText = quoteDate
     ? new Date(quoteDate + 'T12:00:00').toLocaleDateString(undefined,{month:'long', day:'numeric', year:'numeric'})
     : new Date().toLocaleDateString(undefined,{month:'long', day:'numeric', year:'numeric'});
@@ -29836,7 +29871,13 @@ async function deletePhotoData(id){
 async function photoDataUrl(photo){
   if(!photo) return null;
   if(photo.dataUrl) return photo.dataUrl;          // not migrated yet
-  if(photo.stored) return await loadPhotoData(photo.id);
+  if(photo.stored){
+    const here = await loadPhotoData(photo.id);
+    if(here) return here;
+    // Taken on a phone (Oct 27): the image is in the office's storage, so it's
+    // fetched from there once and kept here
+    if(typeof syncFetchPhoto === 'function') return await syncFetchPhoto(photo.id);
+  }
   return null;
 }
 
@@ -29895,6 +29936,9 @@ async function migrateEquipmentPhotos(opts){
 function renderEquipmentTypeList(){
   const container = document.getElementById('icEquipmentList');
   container.innerHTML = '';
+  // A row with a Backwashed / Cleaned button keeps it in a slot every row
+  // has, so the Type boxes, Notes and cameras line up down the list (Oct 27)
+  const anyService = currentEquipmentTypeOptions.some(t=>{ try{ return !!equipmentServiceFor(t, currentEquipmentItems.find(i => i.type === t)); }catch(e){ return false; } });
   currentEquipmentTypeOptions.forEach(type=>{
     const row = document.createElement('div');
     row.className = 'cust-row';
@@ -30043,7 +30087,16 @@ function renderEquipmentTypeList(){
     // on a chosen day: left of the Type box. The phones' "last done" counts
     // from whichever is later, this date or a technician's tick on a visit.
     const service = equipmentServiceFor(type, existingItem);
-    if(service) row.appendChild(equipmentServiceButton(type, service));
+    if(anyService){
+      const slot = document.createElement('div');
+      slot.style.cssText = 'flex:0 0 140px;width:140px;display:flex;';
+      if(service){
+        const sb = equipmentServiceButton(type, service);
+        sb.style.width = '100%'; sb.style.overflow = 'hidden'; sb.style.textOverflow = 'ellipsis';
+        slot.appendChild(sb);
+      }
+      row.appendChild(slot);
+    }
 
     const quickTextInput = document.createElement('input');
     quickTextInput.type = 'text';
@@ -30074,7 +30127,7 @@ function renderEquipmentTypeList(){
     const notesBtn = document.createElement('button');
     notesBtn.type = 'button';
     notesBtn.className = 'btn btn-ghost';
-    notesBtn.style.width = 'auto';
+    notesBtn.style.width = '72px';   // the same with or without its dot (Oct 27)
     notesBtn.style.padding = '6px 10px';
     notesBtn.style.fontSize = '12px';
     notesBtn.style.flexShrink = '0';
@@ -30095,6 +30148,10 @@ function renderEquipmentTypeList(){
     photoBtn.style.display = 'flex';
     photoBtn.style.alignItems = 'center';
     photoBtn.style.gap = '4px';
+    // Room for the count always, so nothing moves when there is one (Oct 27)
+    photoBtn.style.width = '52px';
+    photoBtn.style.padding = '0';
+    photoBtn.style.justifyContent = 'flex-start';
     const photoCount = existingItem ? existingItem.photos.length : 0;
     photoBtn.title = 'View or add photos';
     photoBtn.innerHTML = '📷' + (photoCount ? `<span style="font-size:11px;color:var(--muted);font-weight:600;">${photoCount}</span>` : '');
