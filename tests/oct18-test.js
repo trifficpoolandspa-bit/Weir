@@ -119,11 +119,13 @@ const SEED = `
     out.push(['the day shows filter cleans, the drain, the work order and the task, each tagged', tags.join(',') === 'FC,FC,PD,WO', tags.join(',')]);
     out.push(['up to four, then how many more', /\+ 1 more/.test(cell.textContent), cell.textContent]);
     const bg = ch => getComputedStyle(ch).backgroundColor;
-    out.push(['not sent yet is the Expired grey', bg(chips[0]) === 'rgb(138, 151, 149)', bg(chips[0])]);
-    out.push(['in the app is the Pending gold', bg(chips[3]) === 'rgb(198, 138, 23)', bg(chips[3])]);
-    out.push(['with white text', getComputedStyle(chips[0]).color === 'rgb(255, 255, 255)']);
+    // Oct 28: each chip is in its job's colour; a dot says where it's up to
+    const dot = ch => ch && ch.querySelector('i') ? getComputedStyle(ch.querySelector('i')).backgroundColor : '';
+    out.push(['not sent yet has the grey dot', dot(chips[0]) === 'rgb(138, 151, 149)', dot(chips[0])]);
+    out.push(['in the app has the gold dot', dot(chips[3]) === 'rgb(198, 138, 23)', dot(chips[3])]);
+    out.push(['a filter clean is in its gold job colour, dark words', bg(chips[0]) === 'rgb(251, 241, 221)' && getComputedStyle(chips[0]).color === 'rgb(138, 94, 11)', bg(chips[0])]);
     const key = cal.textContent;
-    out.push(['the key under the grid names the four tags and three colours', /FC Filter clean/.test(key) && /PD Pool drain/.test(key) && /WO Work order/.test(key) && /TK Task/.test(key)
+    out.push(['the key under the grid names the four tags and three colours', /FCFilter clean/.test(key) && /PDPool drain/.test(key) && /WOWork order/.test(key) && /TKTask/.test(key)
       && /Not in app/.test(key) && /In the app/.test(key) && /Done/.test(key)]);
     out.push(['six weeks of 124px days', getComputedStyle(cal.querySelector('[data-cal-day]')).height === '124px']);
     // The day window
@@ -176,7 +178,7 @@ const SEED = `
     await wait(30);
     out.push(['a work order set to Done is done', (lsGet('scheduledWorkOrders') || [])[0].status === 'done']);
     const doneChip = Array.from(cal.querySelector('[data-cal-day="' + D + '"]').querySelectorAll('div')).find(x => /WO/.test(x.textContent) && x.style.background);
-    out.push(['…and its chip turns the Approved green with a tick', doneChip && getComputedStyle(doneChip).backgroundColor === 'rgb(46, 139, 87)' && /✓/.test(doneChip.textContent)]);
+    out.push(['…and its chip gets the green Done dot', doneChip && doneChip.querySelector('i') && getComputedStyle(doneChip.querySelector('i')).backgroundColor === 'rgb(46, 139, 87)']);
     choose(Array.from(topWin().querySelectorAll('select.cal-status-pick'))[3], 'app');
     await wait(30);
     // Oct 19: the finished visit is kept (reopened); a fresh one goes out
@@ -188,7 +190,7 @@ const SEED = `
     const held = liveWo();
     out.push(['Not in app on a work order keeps it on the day', !!held && held.date === D && held.held === true && held.status === 'scheduled', JSON.stringify(held)]);
     const woChip = Array.from(cal.querySelector('[data-cal-day="' + D + '"]').querySelectorAll('div')).find(x => /WO/.test(x.textContent) && x.style.background);
-    out.push(['…its chip goes the grey of Not in app', woChip && getComputedStyle(woChip).backgroundColor === 'rgb(138, 151, 149)']);
+    out.push(['…its chip gets the grey Not in app dot', woChip && woChip.querySelector('i') && getComputedStyle(woChip.querySelector('i')).backgroundColor === 'rgb(138, 151, 149)']);
     const pk = Array.from(topWin().querySelectorAll('select.cal-status-pick'));
     out.push(['…and its badge says NOT IN APP', pk[3].options[pk[3].selectedIndex].textContent === 'NOT IN APP', pk[3].options[pk[3].selectedIndex].textContent]);
     choose(pk[4], '');

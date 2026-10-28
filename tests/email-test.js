@@ -261,8 +261,9 @@ function boot(){
       const sep = cellFor('2026-09-22');
       check('  a group’s day shows its customers’ names', /Alpha/.test(sep.textContent) && /Bravo/.test(sep.textContent), sep.textContent);
       const oct = cellFor('2026-10-06');
-      // Oct 18: the Pending gold, white text, tagged FC
-      check('  a group on the route shows gold, tagged FC', /198, 138, 23|C68A17/i.test(oct.querySelector('div[style*="background"]').getAttribute('style')) && /FC/.test(oct.textContent));
+      // Oct 28: in the filter clean colour, with the gold In the app dot, tagged FC
+      const fcChip = oct.querySelector('div[style*="background"]');
+      check('  a group on the route has the gold dot, tagged FC', /198, 138, 23|C68A17/i.test((fcChip.querySelector('i') || {getAttribute: ()=>''}).getAttribute('style')) && /FBF1DD|251, 241, 221/i.test(fcChip.getAttribute('style')) && /FC/.test(oct.textContent));
       oct.click();
       check('  pressing a day opens a window with its customers', !!win() && /Already on route/.test(win().textContent)
             && Array.from(win().querySelectorAll('select.cal-status-pick')).some(sel => sel.value === 'app'));

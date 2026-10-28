@@ -300,7 +300,10 @@ const base = {
         (section.match(/width="240"/g) || []).length >= 2 && /width:240px/.test(section), section.slice(0, 300));
   check('and each one links to a full-size copy',
         /<a href="https:\/\/example.test\/full-1"/.test(section) && /full-2/.test(section), section.slice(0, 300));
-  const photoRowsIn = html => (html.slice(html.indexOf('<table')).match(/<tr>/g) || []).length;
+  // A row of photos starts with a photo cell; each photo is its own small
+  // Polaroid table inside (Oct 28), whose rows aren't counted
+  const photoRowsIn = html => (html.match(/<tr><td valign="top"/g) || []).length;
+  const photoRowsOf = html => html.split('<tr><td valign="top"').slice(1);
   check('before and after sit side by side',
         photoRowsIn(section) === 1
         && (section.match(/valign="top"/g) || []).length === 2, section.slice(0, 260));
@@ -312,11 +315,11 @@ const base = {
     {id: 'c', name: 'spa-after.jpg', caption: 'Spa after', link: ''},
     {id: 'd', name: 'pool-after.jpg', caption: 'Pool after', link: ''}
   ]).photoSection();
-  const firstRow = mixed.slice(mixed.indexOf('<tr>'), mixed.indexOf('</tr>'));
+  const firstRow = photoRowsOf(mixed)[0] || '';
   check('the spa before and after pair up, even with other photos between them',
         /Spa before/.test(firstRow) && /Spa after/.test(firstRow), firstRow.slice(0, 200));
   check('and the leftovers pair up two to a row', photoRowsIn(mixed) === 2, String(photoRowsIn(mixed)));
-  const secondRow = mixed.slice(mixed.lastIndexOf('<tr>'));
+  const secondRow = photoRowsOf(mixed).pop() || '';
   check('so the gate and the lone pool photo share a row',
         /Gate/.test(secondRow) && /Pool after/.test(secondRow), secondRow.slice(0, 200));
 

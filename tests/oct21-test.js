@@ -137,10 +137,9 @@ const SEED = `
     document.getElementById('btnSendWorkOrder').click(); await wait(30);
     const red = () => Array.from(document.querySelectorAll('#wcQuotesSection .need-it')).map(e => e.id || e.tagName);
     const msgs = () => Array.from(document.querySelectorAll('#wcQuotesSection .need-msg')).map(m => m.textContent);
-    out.push(['sending an empty quote marks the date, customer and line item', red().includes('wcDate') && red().includes('wcCustomerSearch') && msgs().length === 3, red().join() + ' | ' + msgs().join(' / ')]);
+    // Oct 27: a quote has no date of its own, so only the customer and line item
+    out.push(['sending an empty quote marks the customer and line item (no date on a quote)', !red().includes('wcDate') && red().includes('wcCustomerSearch') && msgs().length === 2, red().join() + ' | ' + msgs().join(' / ')]);
     out.push(['…and nothing is sent', (lsGet('workOrders') || []).length === 0]);
-    document.getElementById('wcDate').value = todayIso(); document.getElementById('wcDate').dispatchEvent(new Event('change'));
-    out.push(['setting the date takes its red away', !red().includes('wcDate') && msgs().length === 2, red().join()]);
     document.querySelector('#wcTypeToggle [data-wctype="Work Order"]').click(); await wait(20);
     out.push(['a work order shows + Filter clean', getComputedStyle(document.getElementById('btnAddFilterClean')).display !== 'none']);
     document.getElementById('btnSendWorkOrder').click(); await wait(30);

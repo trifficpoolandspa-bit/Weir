@@ -343,7 +343,8 @@ const SEED = `
     const kids = Array.from(dateLab.children);
     const exp = document.getElementById('awcQuoteExpires').closest('label');
     out.push(['quote: Expires in … days is on the Date line', kids.indexOf(exp) !== -1]);
-    out.push(['…between Date and the quote number', kids.indexOf(exp) > 0 && kids.indexOf(exp) < kids.indexOf(document.getElementById('awcQuoteNumber'))]);
+    // Oct 27: a quote has no date, so Expires comes first, then the number
+    out.push(['…before the quote number', kids.indexOf(exp) !== -1 && kids.indexOf(exp) < kids.indexOf(document.getElementById('awcQuoteNumber'))]);
     out.push(['…and the date box on its own line below', document.getElementById('awcQuoteDate').parentElement === dateLab.parentElement]);
     // Work order: four ticks in two even columns
     document.querySelector('#awcKindRow [data-kind="Work Order"]').click();

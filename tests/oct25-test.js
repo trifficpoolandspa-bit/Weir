@@ -235,7 +235,8 @@ const SEED = `
     out.push(['+ Job sits left of Close', JSON.stringify(words) === '["+ Job","Close"]', JSON.stringify(words)]);
     btnText(sheet, /^\\+ Job$/).click(); await wait(50);
     let menu = document.getElementById('acalJobMenu');
-    out.push(['+ Job offers Work order and Task only', !!menu && /Work order/.test(menu.textContent) && /Task/.test(menu.textContent) && !/Filter|Drain/.test(menu.textContent)]);
+    // Oct 26: Filter clean and Pool drain too, under Work order and Task
+    out.push(['+ Job offers Work order, Task, Filter clean and Pool drain', !!menu && ['Work order', 'Task', 'Filter clean', 'Pool drain'].every((w, i, all) => menu.textContent.indexOf(w) !== -1 && (i === 0 || menu.textContent.indexOf(w) > menu.textContent.indexOf(all[i - 1]))), menu && menu.textContent]);
     const other = Array.from(document.querySelectorAll('#appCalCard [data-acal-day]')).find(c => c.dataset.acalDay !== todayDateStr());
     other.click(); await wait(50);
     out.push(['another day closes the job menu', !document.getElementById('acalJobMenu')]);
