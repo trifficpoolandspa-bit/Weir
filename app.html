@@ -19164,9 +19164,11 @@ function awcRenderHistory(){
 (function datePlaceholders(){
   const ids = ['awcWoDate', 'awcTaskDate'];
   const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  // Only where the phone draws nothing itself: a computer shows its own
+  const own = !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) && !(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const wire = ()=> ids.forEach(id=>{
     const el = document.getElementById(id);
-    if(!el || el.dataset.ph) return;
+    if(own || !el || el.dataset.ph) return;
     el.dataset.ph = '1';
     const wrap = document.createElement('span');
     wrap.style.cssText = 'position:relative;display:inline-flex;vertical-align:top;max-width:100%;';
@@ -19186,9 +19188,6 @@ function awcRenderHistory(){
     };
     Object.defineProperty(el, 'value', {configurable: true, get(){ return desc.get.call(el); }, set(v){ desc.set.call(el, v); show(); }});
     ['input', 'change', 'blur'].forEach(ev => el.addEventListener(ev, show));
-    // Only where the phone draws nothing itself: a computer shows its own
-    const own = !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) && !(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    if(own){ ph.remove(); return; }
     show();
     // Sized once it's on screen
     if(window.ResizeObserver){ try{ new ResizeObserver(show).observe(el); }catch(e){} }
@@ -20246,6 +20245,7 @@ function showVisitSection(sectionId){
     loadEquipmentForCustomer(customer);
     document.getElementById('visitEquipmentSection').style.display = 'block';
     renderVisitSectionButtons();
+    try{ syncStepChrome(); }catch(e){}   // its bottom bar goes (Oct 28)
     window.scrollTo({top: 0, behavior: 'smooth'});
     return;
   }
