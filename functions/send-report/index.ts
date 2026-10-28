@@ -208,18 +208,26 @@ Deno.serve(async (req: Request)=>{
   const PHOTO_WIDTH = 240;
 
   function photoCard(p: {id: string, name: string, link: string, caption?: string}, label: string){
+    // A Polaroid (Oct 28): a white frame with a fine grey edge, the label
+    // inside it under the photo. Built as a table, since Outlook ignores the
+    // padding and border on a div. The frame is the old photo width, so two
+    // still sit side by side.
+    const IMG = PHOTO_WIDTH - 16;
     const img = '<img src="cid:' + p.id + '" alt="' + (label || 'Photo from this visit') + '" '
-      + 'width="' + PHOTO_WIDTH + '" '
-      + 'style="display:block;width:' + PHOTO_WIDTH + 'px;max-width:100%;height:auto;'
-      + 'border-radius:8px;border:1px solid #E6E9E8;">';
+      + 'width="' + IMG + '" '
+      + 'style="display:block;width:' + IMG + 'px;max-width:100%;height:auto;border:0;border-radius:3px;">';
     // A link to the full-size copy, since an inline image cannot be tapped in
     // most mail apps
     const clickable = p.link
       ? '<a href="' + p.link + '" target="_blank" style="text-decoration:none;">' + img + '</a>'
       : img;
-    // The label sits above its photo, in the app's teal (Oct 1)
-    return (label ? '<div style="font-size:12px;font-weight:600;color:#1F8A8C;margin:0 0 5px;text-align:center;width:' + PHOTO_WIDTH + 'px;max-width:100%;">' + label + '</div>' : '')
-      + clickable;
+    return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="' + PHOTO_WIDTH + '" '
+      + 'style="width:' + PHOTO_WIDTH + 'px;max-width:100%;border-collapse:separate;background:#ffffff;border:1px solid #D5DEDC;border-radius:6px;">'
+      + '<tr><td style="padding:7px 7px ' + (label ? '0' : '7px') + ' 7px;">' + clickable + '</td></tr>'
+      + (label
+        ? '<tr><td style="padding:6px 7px 7px;font-size:12px;font-weight:600;color:#1F8A8C;text-align:center;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Arial,sans-serif;">' + label + '</td></tr>'
+        : '')
+      + '</table>';
   }
 
   // How the photos are laid out: a body of water's before and after belong
