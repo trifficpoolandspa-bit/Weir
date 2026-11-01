@@ -64,6 +64,15 @@ input, textarea, select, [contenteditable], [contenteditable] *{
   --muted:#5B7370;
 }
 *{box-sizing:border-box;}
+/* A window open: only the window scrolls, never the page behind it (Nov 1).
+   The scrollbar's room is kept so nothing shifts when it's locked. */
+html{scrollbar-gutter:stable;}
+/* The calendar's Move button (Nov 1): the bin's size, in teal */
+.cal-move-btn{width:24px;height:24px;flex:0 0 24px;padding:0;border-radius:7px;border:1px solid #BFDCD8;background:#fff;color:var(--teal-deep, #0E4A4D);
+  display:inline-flex;align-items:center;justify-content:center;cursor:pointer;}
+.cal-move-btn:hover{background:var(--teal-pale);}
+html.weir-win-open, html.weir-win-open body{overflow:hidden !important;}
+.confirm-overlay, .confirm-overlay .confirm-box{overscroll-behavior:contain;}
 body{
   margin:0;
   background:var(--surface);
@@ -2364,21 +2373,24 @@ input::placeholder{color:#A9BCB9;}
         <button class="history-type-btn" data-pscat="products" type="button">Products</button>
         <button class="history-type-btn" data-pscat="services" type="button">Services</button>
       </div>
-      <!-- Search, with Add product or service at the far right of the same line (Oct 2) -->
+      <!-- Search, with Add line item at the far right of the same line (Oct 2) -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
       <div style="position:relative;flex:1;min-width:0;">
         <input id="psSearch" placeholder="Search products and services" autocomplete="off" style="padding-right:38px;">
         <button type="button" id="psSearchClear" style="display:none;position:absolute;right:8px;bottom:4px;height:30px;width:30px;padding:0;border:1px solid #EFC9BC;border-radius:8px;background:#fff;color:var(--rust);font-size:18px;line-height:1;cursor:pointer;align-items:center;justify-content:center;">×</button>
       </div>
-      <button class="btn btn-primary" id="btnAddProductService" style="width:auto;flex:0 0 auto;white-space:nowrap;">+ Add product or service</button>
+      <button class="btn btn-primary" id="btnAddProductService" style="width:auto;flex:0 0 auto;white-space:nowrap;">+ Add line item</button>
       </div>
       <!-- What each column is (Oct 2) -->
       <div id="psColumnLabels" style="display:flex;align-items:center;gap:8px;padding:0 0 6px;border-bottom:1px solid var(--line);margin-bottom:6px;">
-        <span class="ps-col" style="flex:1 1 auto;min-width:0;"><span class="hd-tag">Name</span></span>
+        <!-- Name a third narrower (Nov 1): two parts of the room, the spare third at the right -->
+        <span class="ps-col" style="flex:2 1 0;min-width:0;"><span class="hd-tag">Name</span></span>
         <span class="ps-col" style="flex:0 0 110px;"><span class="hd-tag">Price</span></span>
-        <span class="ps-col" style="flex:0 0 78px;"><span class="hd-tag">Unit</span></span>
-        <span class="ps-col" style="flex:0 0 168px;"><span class="hd-tag">Extra charge</span></span>
+        <!-- No Unit or Extra charge tags over their columns (Nov 1); the room is kept so the rest line up -->
+        <span class="ps-col" style="flex:0 0 78px;"></span>
+        <span class="ps-col" style="flex:0 0 168px;"></span>
         <span class="ps-col" style="flex:0 0 132px;"><span class="hd-tag">Category</span></span>
+        <span class="ps-spare" style="flex:1 1 0;min-width:0;"></span>
         <span style="flex:0 0 33px;"></span>
       </div>
       <div id="productsServicesList"></div>
@@ -4828,7 +4840,8 @@ function renderProductsServicesList(){
     const nameInput = document.createElement('input');
     nameInput.value = item.name;
     nameInput.placeholder = 'Name (e.g. Filter replacement)';
-    nameInput.style.cssText = 'flex:1 1 auto;min-width:0;';
+    // A third narrower than it was (Nov 1): the spare third sits at the right
+    nameInput.style.cssText = 'flex:2 1 0;min-width:0;';
     nameInput.addEventListener('input', ()=>{
       psSet(item, {name: nameInput.value});
     });
@@ -4991,9 +5004,26 @@ function renderProductsServicesList(){
 
     row.appendChild(nameInput);
     row.appendChild(priceWrap);
-    row.appendChild(unitInput);
-    row.appendChild(extraWrap);
+    // Repairs, products and services (Nov 1): one Description line where Unit
+    // and Extra charge were, grey "Description" while it's empty. Chemicals and
+    // uncategorised items keep Unit and Extra charge.
+    if(['repairs', 'products', 'services'].indexOf(item.category || '') !== -1){
+      const descInput = document.createElement('input');
+      descInput.value = item.description || '';
+      descInput.placeholder = 'Description';
+      descInput.title = 'A description of this item';
+      descInput.style.cssText = 'flex:0 0 254px;min-width:0;';
+      descInput.addEventListener('input', ()=>{ psSet(item, {description: descInput.value}); });
+      row.appendChild(descInput);
+    } else {
+      row.appendChild(unitInput);
+      row.appendChild(extraWrap);
+    }
     row.appendChild(catSel);
+    const spare = document.createElement('span');
+    spare.className = 'ps-spare';
+    spare.style.cssText = 'flex:1 1 0;min-width:0;';
+    row.appendChild(spare);
     row.appendChild(removeBtn);
     container.appendChild(row);
   });
@@ -5072,8 +5102,9 @@ function openProductServiceModal(){
   overlay.className = 'confirm-overlay';
   overlay.innerHTML = `
     <div class="confirm-box ps-window" style="max-width:420px;">
-      <h3 style="font-size:15px;margin:0 0 4px;">Add product or service</h3>
-      <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Name it and set the price. You can schedule it for a customer now or later.</p>
+      <!-- Add line item (Nov 1) -->
+      <h3 style="font-size:15px;margin:0 0 4px;">Add line item</h3>
+      <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Pick a category, give it a name and a price, and it’s ready to drop onto any quote or work order.</p>
       <div class="field"><label>Product or service</label><input id="psName" placeholder="e.g. Filter replacement"></div>
       <div class="field"><label>Price ($)</label><input id="psPrice" type="number" step="0.01" placeholder="0.00"></div>
       <div class="field"><label>Unit (optional)</label><input id="psUnit" placeholder="gal, lb, oz, tab…"></div>
@@ -8985,6 +9016,7 @@ function renderFilterGroups(){
     photoReq.appendChild(photoBox);
     photoReq.appendChild(document.createTextNode('Photo required'));
     // Shift noted as the press starts: the label passes the click on to its box
+    photoBox.dataset.ownShift = '1';   // its own Shift-click ranges
     photoReq.addEventListener('pointerdown', e=>{ fgTickShift = e.shiftKey; });
     photoReq.addEventListener('click', e => e.stopPropagation());     // not a press on the row
     photoBox.addEventListener('change', ()=>{
@@ -9005,6 +9037,7 @@ function renderFilterGroups(){
     emailReq.appendChild(emailBox);
     emailReq.appendChild(document.createTextNode('Email customer'));
     // Shift noted as the press starts: the label passes the click on to its box
+    emailBox.dataset.ownShift = '1';   // its own Shift-click ranges
     emailReq.addEventListener('pointerdown', e=>{ fgTickShift = e.shiftKey; });
     emailReq.addEventListener('click', e => e.stopPropagation());
     emailBox.addEventListener('change', ()=>{
@@ -9722,6 +9755,16 @@ function renderPoolDrains(){
     title.style.cssText = "font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;";
     title.textContent = b.label;
     head.appendChild(title);
+    // The ticked count and its buttons sit on the open list's heading (Nov 1),
+    // which is always tall enough for them, so ticking moves nothing
+    if(isOpen){
+      const slot = document.createElement('span');
+      slot.className = 'pd-sel-slot';
+      slot.style.cssText = 'display:none;';
+      slot.addEventListener('click', e => e.stopPropagation());   // not the heading's open / close
+      head.appendChild(slot);
+      head.style.minHeight = '51px';    // the buttons (39) and the heading's own padding
+    }
     const n = document.createElement('span');
     n.style.cssText = "margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:" + (list.length ? b.tone : 'var(--muted)') + ';';
     n.textContent = list.length + (list.length === 1 ? ' customer' : ' customers');
@@ -9730,7 +9773,13 @@ function renderPoolDrains(){
       head.addEventListener('click', e=>{
         if(e.target.closest('button, input, select, label')) return;
         // Closing a list puts it back on its first page for next time (Oct 11)
-        if(openDrainBuckets.has(b.key)){ openDrainBuckets.delete(b.key); delete drainBucketPage[b.key]; } else openDrainBuckets.add(b.key);
+        // One list open at a time (Nov 1): opening one closes the others
+        if(openDrainBuckets.has(b.key)){ openDrainBuckets.delete(b.key); delete drainBucketPage[b.key]; }
+        else {
+          openDrainBuckets.forEach(k => { delete drainBucketPage[k]; });
+          openDrainBuckets.clear();
+          openDrainBuckets.add(b.key);
+        }
         renderPoolDrains();
       });
     }
@@ -9738,8 +9787,12 @@ function renderPoolDrains(){
 
     if(isOpen){
       // Tick the whole list at once
-      const all = document.createElement('label');
-      all.style.cssText = 'display:flex;align-items:center;gap:10px;padding:2px 6px 8px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;';
+      // Only the box and its words tick it (Nov 1); the rest of the line,
+      // with Sort and the column headings, is a plain row
+      const all = document.createElement('div');
+      all.style.cssText = 'display:flex;align-items:center;gap:10px;padding:2px 6px 8px;font-size:12px;font-weight:600;color:var(--muted);';
+      const allTick = document.createElement('label');
+      allTick.style.cssText = 'display:inline-flex;align-items:center;gap:10px;flex:0 0 auto;cursor:pointer;margin:0;';
       const allBox = document.createElement('input');
       allBox.type = 'checkbox';
       allBox.dataset.selTick = '1';     // not part of a Shift-click range
@@ -9749,8 +9802,9 @@ function renderPoolDrains(){
         list.forEach(c => { if(allBox.checked) drainPicked.add(c.id); else drainPicked.delete(c.id); });
         renderPoolDrains();
       });
-      all.appendChild(allBox);
-      all.appendChild(document.createTextNode(allBox.checked ? 'Unselect all' : 'Select all'));   // Oct 20
+      allTick.appendChild(allBox);
+      allTick.appendChild(document.createTextNode(allBox.checked ? 'Unselect all' : 'Select all'));   // Oct 20
+      all.appendChild(allTick);
       all.appendChild(pdSortButton(b.key));
       // The two tick columns' headings, over them (Oct 19)
       const heads = document.createElement('span');
@@ -9861,12 +9915,14 @@ function pdTickRange(col, cid, on, listEl){
 // One tick column on a row: the whole column presses the box, not the row
 function pdTickCol(c, col){
   const lab = document.createElement('label');
-  lab.style.cssText = 'flex:0 0 64px;width:64px;align-self:stretch;margin:-9px 0;padding:9px 0;display:flex;align-items:center;justify-content:center;cursor:pointer;';
+  // Its whole column, full height and 6px into the gap each side (Nov 1)
+  lab.style.cssText = 'flex:0 0 76px;width:76px;box-sizing:border-box;align-self:stretch;margin:-9px -6px;padding:9px 6px;display:flex;align-items:center;justify-content:center;cursor:pointer;';
   lab.title = col === 'photo' ? 'Photo required to finish the drain in the app' : 'Email the customer when the drain is done';
   const box = document.createElement('input');
   box.type = 'checkbox';
   box.style.cssText = 'margin:0;';   // the filter cleans' size (Oct 25)
   box.checked = col === 'photo' ? pdCustPhoto(c) : pdCustEmail(c);
+  box.dataset.ownShift = '1';      // its own Shift-click ranges (pdTickRange)
   lab.addEventListener('pointerdown', e=>{ pdTickShift = e.shiftKey; });
   lab.addEventListener('click', e => e.stopPropagation());
   box.addEventListener('change', ()=>{
@@ -9894,6 +9950,12 @@ function pdRow(c, b){
   box.style.cssText = 'margin:0;flex-shrink:0;';   // the filter cleans' size (Oct 25)
   box.checked = drainPicked.has(c.id);
   box.addEventListener('click', e => e.stopPropagation());
+  // The tick's press area (Nov 1): from the row's left edge to where the name
+  // starts, top to bottom, so a near miss ticks instead of opening the window
+  const boxCell = document.createElement('label');
+  boxCell.style.cssText = 'flex:0 0 auto;align-self:stretch;display:flex;align-items:center;margin:-9px -12px -9px -6px;padding:9px 12px 9px 6px;cursor:pointer;';
+  boxCell.title = 'Tick ' + displayName(c.name);
+  boxCell.addEventListener('click', e => e.stopPropagation());
   box.addEventListener('change', ()=>{
     if(box.checked) drainPicked.add(c.id); else drainPicked.delete(c.id);
     pdRenderSelBar();
@@ -9902,7 +9964,8 @@ function pdRow(c, b){
     const allBox = card && card.querySelector('input[data-sel-tick]');
     if(allBox) allBox.checked = Array.from(card.querySelectorAll('.press-row input[type=checkbox]')).every(x => x.checked);
   });
-  row.appendChild(box);
+  boxCell.appendChild(box);
+  row.appendChild(boxCell);
 
   const who = document.createElement('div');
   who.style.cssText = 'flex:1 1 auto;min-width:0;font-size:13.5px;font-weight:600;';
@@ -9940,7 +10003,18 @@ function pdRow(c, b){
       tag.appendChild(document.createTextNode('Scheduled ' + days.map(d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})).join(', ')));
       tag.title = 'On the calendar';
       tag.style.cursor = 'pointer';
-      tag.addEventListener('click', ev=>{ ev.stopPropagation(); openWorkCalendar(days[0]); });
+      // Just the day's window, over this page (Nov 1); the list catches up
+      // with anything added there once it's closed
+      tag.addEventListener('click', ev=>{
+        ev.stopPropagation();
+        openWorkCalendar(days[0], true);
+        const host = document.getElementById('wcCalendarCard');
+        const watch = setInterval(()=>{
+          if(host && host._dayWin && host._dayWin.isConnected) return;
+          clearInterval(watch);
+          if(workCenterMode === 'drains'){ pdKeepHeight = true; try{ renderPoolDrains(); } finally { pdKeepHeight = false; } }
+        }, 300);
+      });
       row.appendChild(tag);
     }
   }catch(e){}
@@ -9953,7 +10027,13 @@ function pdRow(c, b){
   sched.textContent = 'Schedule';
   sched.title = 'Put ' + displayName(c.name) + ' on a day on the drain calendar';
   sched.addEventListener('click', e=>{ e.stopPropagation(); pdScheduleOne(c); });
-  row.appendChild(sched);
+  // Its press area (Nov 1): the button with room round it, full height
+  const schedCell = document.createElement('div');
+  schedCell.style.cssText = 'flex:0 0 auto;align-self:stretch;display:flex;align-items:center;margin:-9px -6px -9px -10px;padding:9px 6px 9px 10px;cursor:pointer;';
+  schedCell.title = sched.title;
+  schedCell.addEventListener('click', e=>{ e.stopPropagation(); if(e.target !== sched) pdScheduleOne(c); });
+  schedCell.appendChild(sched);
+  row.appendChild(schedCell);
   // Photo required and Email customer, after Schedule (Oct 19)
   row.appendChild(pdTickCol(c, 'photo'));
   row.appendChild(pdTickCol(c, 'email'));
@@ -9989,14 +10069,28 @@ function pdRow(c, b){
 
 // The bar of things to do with the ticked customers
 function pdRenderSelBar(){
-  const bar = document.getElementById('drainSelBar');
-  if(!bar) return;
+  const outer = document.getElementById('drainSelBar');
+  const slot = document.querySelector('#drainStatusList .pd-sel-slot');
+  if(!outer) return;
   const n = drainPicked.size;
-  if(!n){ bar.style.display = 'none'; bar.innerHTML = ''; return; }
-  bar.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding:9px 12px;border-radius:10px;background:var(--teal-pale);';
+  outer.style.display = 'none'; outer.innerHTML = '';
+  if(slot){ slot.style.display = 'none'; slot.innerHTML = ''; }
+  if(!n) return;
+  // On the open list's heading (Nov 1); above the lists only while none is open
+  const inHead = !!slot;
+  const bar = inHead ? slot : outer;
+  bar.style.cssText = inHead
+    ? 'display:flex;align-items:center;gap:8px;margin-left:18px;padding:3px 5px 3px 12px;border-radius:10px;background:var(--teal-pale);cursor:default;'
+    : 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding:9px 12px;border-radius:10px;background:var(--teal-pale);';
   bar.innerHTML = '';
+  const small = el=>{
+    if(!inHead) return el;
+    el.style.padding = '4px 10px'; el.style.fontSize = '12px'; el.style.lineHeight = '1.3';
+    return el;
+  };
   const t = document.createElement('span');
-  t.style.cssText = 'font-size:13px;font-weight:700;color:var(--ink);margin-right:auto;';
+  t.style.cssText = inHead ? 'font-size:12.5px;font-weight:700;color:var(--ink);margin-right:4px;white-space:nowrap;'
+    : 'font-size:13px;font-weight:700;color:var(--ink);margin-right:auto;';
   t.textContent = n + (n === 1 ? ' customer' : ' customers') + ' ticked';
   bar.appendChild(t);
   const rec = document.createElement('button');
@@ -10004,13 +10098,13 @@ function pdRenderSelBar(){
   rec.style.cssText = 'width:auto;padding:7px 12px;font-size:12.5px;';
   rec.textContent = 'Record drain';
   rec.addEventListener('click', ()=> pdAskDate(Array.from(drainPicked)));
-  bar.appendChild(rec);
+  bar.appendChild(small(rec));
   const grp = document.createElement('button');
   grp.type = 'button'; grp.className = 'btn btn-ghost';
   grp.style.cssText = 'width:auto;padding:7px 12px;font-size:12.5px;background:#fff;';
   grp.textContent = 'Add to a day';
   grp.addEventListener('click', ()=> pdAddToDay(Array.from(drainPicked)));
-  bar.appendChild(grp);
+  bar.appendChild(small(grp));
   // Delete the ticked customers' drains (Oct 10): the bin, then what to delete
   const bin = document.createElement('button');
   bin.type = 'button';
@@ -10020,13 +10114,14 @@ function pdRenderSelBar(){
   bin.style.cssText = 'flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid #EFC9BC;'
     + 'border-radius:8px;background:#fff;color:var(--rust);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;';
   bin.addEventListener('click', ()=> pdAskDelete(Array.from(drainPicked)));
+  if(inHead){ bin.style.width = '26px'; bin.style.height = '26px'; bin.style.flex = '0 0 26px'; }
   bar.appendChild(bin);
   const clr = document.createElement('button');
   clr.type = 'button'; clr.className = 'btn btn-ghost';
   clr.style.cssText = 'width:auto;padding:7px 12px;font-size:12.5px;background:#fff;';
   clr.textContent = 'Clear';
   clr.addEventListener('click', ()=>{ drainPicked.clear(); renderPoolDrains(); });
-  bar.appendChild(clr);
+  bar.appendChild(small(clr));
 }
 
 // Deleting drains for several customers at once (Oct 10)
@@ -11330,7 +11425,7 @@ function calHeadToPageStyle(head){
 // orders badges: done green, in the app gold, not sent yet blue, as on the
 // calendar. With onPick it's a menu: pick another status for just that one.
 function calStatusBadge(state, onPick){
-  const LOOK = {'': ['NOT IN APP', '#8A9795'], app: ['IN THE APP', '#C68A17'], done: ['DONE', '#2E8B57']};   // the Jobs badges: Expired, Pending, Approved (Oct 18)
+  const LOOK = {'': ['NOT IN APP', '#8A9795'], app: ['IN THE APP', '#C68A17'], done: ['COMPLETE', '#2E8B57']};   // COMPLETE, was DONE (Nov 1); the Jobs badges: Expired, Pending, Approved (Oct 18)
   const look = LOOK[state || ''] || LOOK[''];
   const css = 'display:inline-flex;align-items:center;justify-content:center;width:92px;padding:4px 0;border-radius:7px;border:0;margin:0;'
     + 'font-size:10.5px;font-weight:700;letter-spacing:.04em;color:#fff;white-space:nowrap;background:' + look[1] + ';';
@@ -11344,7 +11439,7 @@ function calStatusBadge(state, onPick){
   sel.className = 'cal-status-pick';
   sel.style.cssText = css + 'text-align:center;text-align-last:center;cursor:pointer;-webkit-appearance:none;-moz-appearance:none;appearance:none;font-family:inherit;';
   sel.title = 'Change the status';
-  [['', 'NOT IN APP'], ['app', 'IN THE APP'], ['done', 'DONE']].forEach(([v, t])=>{
+  [['', 'NOT IN APP'], ['app', 'IN THE APP'], ['done', 'COMPLETE']].forEach(([v, t])=>{
     const o = document.createElement('option'); o.value = v; o.textContent = t;
     o.style.cssText = 'color:var(--ink);background:#fff;';
     sel.appendChild(o);
@@ -11375,9 +11470,11 @@ const WCAL_TAGS = {
   wo: ['WO', 'Work orders', '#E9EEF0', '#3E5560'],
   tk: ['TK', 'Tasks', '#E8F1E4', '#4D6B3C']
 };
-function openWorkCalendar(startDay){
-  // Opened at a day from elsewhere in WorkCenter: over to the Calendar first
-  if(startDay && workCenterMode !== 'calendar') applyWorkCenterMode('calendar');
+function openWorkCalendar(startDay, stayHere){
+  // Opened at a day from elsewhere in WorkCenter: over to the Calendar first,
+  // unless asked to stay (Nov 1: the drain list's Scheduled tag opens just the
+  // day's window over the page it's on)
+  if(startDay && !stayHere && workCenterMode !== 'calendar') applyWorkCenterMode('calendar');
   const host = document.getElementById('wcCalendarCard');
   if(!host) return;
   const keepMonth = host._month;
@@ -11477,7 +11574,8 @@ function openWorkCalendar(startDay){
     const pickBtn = smallBtn('', 'btn-ghost', 'width:32px;padding:4px 0;display:inline-flex;align-items:center;justify-content:center;' + (monthPick ? 'background:var(--teal-pale);' : ''));
     pickBtn.title = 'Pick a month and year';
     pickBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
-    pickBtn.addEventListener('click', ()=>{ monthPick = !monthPick; pickYear = yy; draw(); });
+    // A window now, not a box above the calendar (Nov 1)
+    pickBtn.addEventListener('click', ()=> monthPickWindow(month, m=>{ month = m; sel = ''; draw(); }, 13));
     nav.appendChild(pickBtn);
     head.appendChild(nav);
     { const tm = calTechMenu(viewTech, v => { viewTech = v; draw(); }); tm.style.marginLeft = '6px'; nav.appendChild(tm); }
@@ -11721,7 +11819,8 @@ function openWorkCalendar(startDay){
       btns.style.gridTemplateColumns = 'repeat(3,minmax(0,1fr))';
     }
     // Every section on the same columns, so they line up down the window
-    const COLS = 'display:grid;grid-template-columns:22px 170px minmax(150px,1fr) 110px 140px 28px;gap:10px;align-items:center;min-width:700px;';
+    // The last column holds Move and the bin (Nov 1)
+    const COLS = 'display:grid;grid-template-columns:22px 170px minmax(150px,1fr) 110px 140px 58px;gap:10px;align-items:center;min-width:730px;';
     const listWrap = document.createElement('div');
     listWrap.style.cssText = 'overflow-x:auto;';
     panel.appendChild(listWrap);
@@ -11762,9 +11861,27 @@ function openWorkCalendar(startDay){
       x.dataset.binSize = 's';
       x.title = title;
       x.setAttribute('aria-label', title);
-      x.style.cssText = 'cursor:pointer;flex-shrink:0;';
+      x.style.cssText = 'cursor:pointer;flex-shrink:0;justify-self:end;';
       x.addEventListener('click', fn);
       return x;
+    };
+    // Move to another day (Nov 1): a calendar-with-arrow button left of the
+    // bin, opening calMoveDialog
+    const moveBtn = (opts)=>{
+      const m = document.createElement('button');
+      m.type = 'button';
+      m.className = 'cal-move-btn';
+      m.title = 'Move to another day';
+      m.setAttribute('aria-label', m.title);
+      m.innerHTML = CAL_MOVE_SVG;
+      m.addEventListener('click', ev=>{ ev.stopPropagation(); calMoveDialog(Object.assign({fromIso: sel, after: ()=>{ try{ renderPoolDrains(); }catch(e){} draw(); }}, opts)); });
+      return m;
+    };
+    const actCell = (...els)=>{
+      const w = document.createElement('span');
+      w.style.cssText = 'display:inline-flex;gap:6px;align-items:center;justify-content:flex-end;justify-self:end;';
+      els.forEach(el => { el.style.justifySelf = ''; w.appendChild(el); });
+      return w;
     };
     const extraBtn = (has, fn)=>{
       const addX = document.createElement('button');
@@ -11874,14 +11991,37 @@ function openWorkCalendar(startDay){
           // app. A done one too (Oct 19): it leaves the calendar, and the clean
           // stays in their history.
           {
-            row.appendChild(binBtn('Take off this day', async ()=>{
+            const bin = binBtn('Take off this day', async ()=>{
               const ok = await confirmDialog('Take ' + displayName(c.name) + ' off ' + (g.name || 'this group') + (isDone ? '? The finished filter clean stays in their history.' : g.finalized ? '? Their filter clean comes off the app.' : '?'), 'Take off');
               if(!ok) return;
               const it = filterGroups.find(x => x && x.id === g.id); if(!it) return;
               it.customerIds = (it.customerIds || []).filter(id => id !== cid);
               saveFilterGroups(); renderFilterGroups(); draw();
               showToast(displayName(c.name) + ' taken off');
-            }));
+            });
+            // Move (Nov 1): out of this group onto their own filter clean that
+            // day, with their technician and extra work; still in the app if it was
+            if(isDone) row.appendChild(bin);
+            else row.appendChild(actCell(moveBtn({
+              name: displayName(c.name), what: 'Filter clean', techId: fgCustTech(g, cid) || '',
+              note: g.solo ? '' : 'They come out of ' + (g.name || 'this group') + ' onto their own filter clean that day.',
+              onMove: (iso, tech)=>{
+                const it = filterGroups.find(x => x && x.id === g.id); if(!it) return;
+                const extra = fgCustExtra(it, cid);
+                const wasInApp = st === 'app';
+                it.customerIds = (it.customerIds || []).filter(id => id !== cid);
+                if(it.custExtra) delete it.custExtra[cid];
+                if(it.custTech) delete it.custTech[cid];
+                const to = fgSoloFor(iso);
+                if((to.customerIds || []).indexOf(cid) === -1) to.customerIds.push(cid);
+                to.custTech = to.custTech || {};
+                if(tech) to.custTech[cid] = tech;
+                if(extra.length){ to.custExtra = to.custExtra || {}; to.custExtra[cid] = extra; }
+                saveFilterGroups(); renderFilterGroups();
+                if(wasInApp) setCleanStatus(to.id, cid, 'app');
+                return true;
+              }
+            }), bin));
           }
           // Extra work under the customer: ticked off on this filter clean in the app
           const [extra, tagsWrap] = extraLine();
@@ -11938,12 +12078,32 @@ function openWorkCalendar(startDay){
           draw();
         });
         row.appendChild(techSel);
-        row.appendChild(binBtn('Take off this day', ()=>{
-          pdCalUnpush(e);
-          pdCalSave(pdCal().filter(y => y.id !== e.id));
-          renderPoolDrains();
-          draw();
-        }));
+        {
+          const bin = binBtn('Take off this day', ()=>{
+            pdCalUnpush(e);
+            pdCalSave(pdCal().filter(y => y.id !== e.id));
+            renderPoolDrains();
+            draw();
+          });
+          // Move (Nov 1): the day's entry and anything of it in the app, not done
+          if(st === 'done') row.appendChild(bin);
+          else row.appendChild(actCell(moveBtn({
+            name: displayName(c.name), what: 'Pool drain', techId: e.technicianId || c.technicianId || '',
+            onMove: (iso, tech)=>{
+              const all = pdCal(); const it = all.find(y => y.id === e.id); if(!it) return;
+              it.date = iso;
+              if(tech && String(tech) !== String(c.technicianId || '')) it.technicianId = tech; else delete it.technicianId;
+              const ids = new Set(pdEntryRecords(it).filter(x => x.rec && x.rec.status !== 'done').map(x => x.rec.id));
+              if(ids.size){
+                const recs = pdScheduled();
+                recs.forEach(rr => { if(ids.has(rr.id)){ rr.date = iso; rr.technicianId = tech || c.technicianId || rr.technicianId; } });
+                lsSet('scheduledPoolDrains', recs);
+              }
+              pdCalSave(all);
+              return true;
+            }
+          }), bin));
+        }
         // Extra work under the customer: it goes to the app on the same drain job
         const [extra, tagsWrap] = extraLine();
         const exItems = pdExtraOf(e);
@@ -11981,7 +12141,7 @@ function openWorkCalendar(startDay){
         row.appendChild(calStatusBadge(j.status === 'done' ? 'done' : j.held ? '' : 'app', want => setJobStatus(j.id, want)));
         row.appendChild(textCell(techName(j.technicianId)));
         // A bin (Oct 19): this visit off the app and off the day
-        row.appendChild(binBtn('Take off this day', async ()=>{
+        const woBin = binBtn('Take off this day', async ()=>{
           const ok = await confirmDialog(j.status === 'done'
             ? 'Delete this finished work order visit for ' + displayName(c.name) + '? It comes off the calendar and out of their jobs.'
             : 'Take this work order visit for ' + displayName(c.name) + ' off this day? It comes off the app too.', j.status === 'done' ? 'Delete' : 'Take off');
@@ -11990,7 +12150,21 @@ function openWorkCalendar(startDay){
           try{ renderWorkOrderHistory(); }catch(e){}
           draw();
           showToast(displayName(c.name) + ' taken off');
-        }));
+        });
+        // Move (Nov 1): this visit to another day; the app follows
+        if(j.status === 'done') row.appendChild(woBin);
+        else row.appendChild(actCell(moveBtn({
+          name: displayName(c.name), what: 'Work order' + (j.workOrderNumber ? ' #' + quoteNumberText(j.workOrderNumber) : ''), techId: j.technicianId || '',
+          onMove: (iso, tech)=>{
+            const list = woJobs(); const it = list.find(x => x && x.id === j.id); if(!it) return;
+            it.date = iso;
+            if(tech) it.technicianId = tech;
+            delete it.placeAfter;
+            lsSet('scheduledWorkOrders', list);
+            try{ renderWorkOrderHistory(); }catch(e){}
+            return true;
+          }
+        }), woBin));
         listWrap.appendChild(row);
       });
     }
@@ -12010,7 +12184,7 @@ function openWorkCalendar(startDay){
         row.appendChild(calStatusBadge(t.done ? 'done' : t.held ? '' : 'app', want => setTaskStatus(t.id, want)));
         row.appendChild(textCell(techName(t.technicianId)));
         // A bin (Oct 19): this task off the app and off the day
-        row.appendChild(binBtn('Take off this day', async ()=>{
+        const tkBin = binBtn('Take off this day', async ()=>{
           const ok = await confirmDialog(t.done
             ? 'Delete the finished task "' + (t.title || 'Task') + '"? It comes off the calendar and out of their jobs.'
             : 'Take the task "' + (t.title || 'Task') + '" off this day? It comes off the app too.', t.done ? 'Delete' : 'Take off');
@@ -12020,7 +12194,21 @@ function openWorkCalendar(startDay){
           try{ renderTaskList(); }catch(e){}
           draw();
           showToast((t.title || 'Task') + ' taken off');
-        }));
+        });
+        // Move (Nov 1): this task to another day; the app follows
+        if(t.done) row.appendChild(tkBin);
+        else row.appendChild(actCell(moveBtn({
+          name: cs.length ? cs.map(c => displayName(c.name)).join(', ') : (t.title || 'Task'), what: 'Task' + (cs.length && t.title ? ': ' + t.title : ''), techId: t.technicianId || '',
+          onMove: (iso, tech)=>{
+            const it = tasks.find(x => x && x.id === t.id); if(!it) return;
+            it.date = iso;
+            if(tech) it.technicianId = tech;
+            delete it.placeAfter;
+            saveTasks();
+            try{ renderTaskList(); }catch(e){}
+            return true;
+          }
+        }), tkBin));
         listWrap.appendChild(row);
       });
     }
@@ -17068,6 +17256,177 @@ async function openFilterGroupScheduler(){
 // Put a group on a day, from the filter clean calendar (Oct 13). A group
 // already on another day moves to this one; if it was sent to the app, its
 // cleans still to do move with it.
+// ---------- The month picker, as a window (Nov 1) ----------
+// The calendar icon by the month's name: a window with the year and its
+// twelve months. The month on screen is dark; this month is light teal when
+// you're looking at another one. Back to this month jumps straight there.
+function monthPickWindow(viewMonth, onPick, BTN){
+  const now = new Date();
+  const thisYear = now.getFullYear(), thisMon = now.getMonth() + 1;
+  const [vy, vm] = String(viewMonth).split('-').map(Number);
+  let year = vy || thisYear;
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:360px;width:100%;text-align:left;';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const close = ()=> overlay.remove();
+  const mk = (text, cls, css)=>{ const b = document.createElement('button'); b.type = 'button'; b.className = 'btn ' + cls; b.style.cssText = css; b.textContent = text; return b; };
+  function drawWin(){
+    box.innerHTML = '';
+    const top = document.createElement('div');
+    top.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;';
+    const h = document.createElement('h3'); h.style.cssText = 'font-size:16px;margin:0;'; h.textContent = 'Go to a month';
+    const x = mk('Close', 'btn-ghost', 'width:auto;flex:0 0 auto;padding:5px 12px;font-size:12.5px;');
+    x.addEventListener('click', close);
+    top.appendChild(h); top.appendChild(x); box.appendChild(top);
+    const yr = document.createElement('div');
+    yr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;';
+    const yP = mk('\u2039', 'btn-ghost', 'width:40px;flex:0 0 40px;padding:5px 0;');
+    const yN = mk('\u203a', 'btn-ghost', 'width:40px;flex:0 0 40px;padding:5px 0;');
+    const yL = document.createElement('b'); yL.style.cssText = 'font-size:16px;'; yL.textContent = String(year);
+    yP.addEventListener('click', ()=>{ year--; drawWin(); });
+    yN.addEventListener('click', ()=>{ year++; drawWin(); });
+    yr.appendChild(yP); yr.appendChild(yL); yr.appendChild(yN); box.appendChild(yr);
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:7px;';
+    for(let i = 0; i < 12; i++){
+      const viewing = year === vy && i + 1 === vm;
+      const current = year === thisYear && i + 1 === thisMon && !viewing;
+      const b = mk(new Date(2000, i, 1).toLocaleDateString(undefined, {month: 'short'}), viewing ? 'btn-primary' : 'btn-ghost',
+        'width:100%;padding:9px 0;font-size:' + BTN + 'px;' + (current ? 'background:var(--teal-pale);border-color:#9CC5BF;color:var(--ink);' : ''));
+      if(current) b.title = 'This month';
+      b.addEventListener('click', ()=>{ close(); onPick(year + '-' + String(i + 1).padStart(2, '0')); });
+      grid.appendChild(b);
+    }
+    box.appendChild(grid);
+    // Looking at another month: straight back to this one
+    if(!(vy === thisYear && vm === thisMon)){
+      const back = mk('Back to this month', 'btn-ghost', 'display:block;width:100%;margin-top:12px;');
+      back.addEventListener('click', ()=>{ close(); onPick(thisYear + '-' + String(thisMon).padStart(2, '0')); });
+      box.appendChild(back);
+    }
+  }
+  drawWin();
+}
+// ---------- Move a job to another day (Nov 1) ----------
+// From a day's window on the calendar: quick picks or any date, and the same
+// technician or another. opts: name, what, fromIso, techId, note, onMove(iso,
+// techId) (returns true when moved), after().
+var CAL_MOVE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M10 15h6M13.5 12.5L16 15l-2.5 2.5"/></svg>';
+function calMoveDialog(opts){
+  const from = opts.fromIso || pdToday();
+  const nice = iso => new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
+  const short = iso => new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
+  const techs = (technicians || []).slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity: 'base'}));
+  const curTech = String(opts.techId || '');
+  const curName = curTech ? (technicianNameById(curTech) || 'their technician') : '';
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:400px;width:100%;text-align:left;';
+  box.innerHTML = '<h3 style="font-size:16px;margin:0 0 4px;">Move to another day</h3>'
+    + '<p data-sub style="font-size:12.5px;color:var(--muted);margin:0 0 12px;"></p>'
+    + '<div data-chips style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;"></div>'
+    + '<div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px;">Or pick a date</div>'
+    + '<input type="date" data-date style="margin:0 0 12px;">'
+    + '<label data-keepwrap style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin:0 0 8px;cursor:pointer;text-transform:none;letter-spacing:0;color:var(--ink);"><input type="checkbox" data-keep checked style="width:18px;height:18px;margin:0;"> <span data-keepword></span></label>'
+    + '<select data-tech style="display:none;margin:0 0 8px;"></select>'
+    + '<div class="btn-row" style="margin-top:12px;gap:8px;"><button type="button" class="btn btn-ghost" data-cancel style="flex:1;">Cancel</button><button type="button" class="btn btn-primary" data-go style="flex:1;">Move</button></div>';
+  box.querySelector('[data-sub]').textContent = (opts.name || '') + ' \u00b7 ' + (opts.what || 'Job') + ' on ' + nice(from) + (opts.note ? '. ' + opts.note : '');
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const dateEl = box.querySelector('[data-date]');
+  const go = box.querySelector('[data-go]');
+  const keep = box.querySelector('[data-keep]');
+  const techSel = box.querySelector('[data-tech]');
+  dateEl.value = pdAddDays(from, 1);
+  const chipsEl = box.querySelector('[data-chips]');
+  const chips = [];
+  [['Tomorrow', 1], ['Next week', 7], ['In 2 weeks', 14]].forEach(([w, n])=>{
+    const ch = document.createElement('button');
+    ch.type = 'button';
+    ch.className = 'btn btn-ghost';
+    ch.style.cssText = 'width:auto;padding:5px 12px;font-size:12.5px;border-radius:999px;';
+    ch.textContent = w;
+    ch.dataset.iso = pdAddDays(from, n);
+    ch.addEventListener('click', ()=>{ dateEl.value = ch.dataset.iso; upd(); });
+    chipsEl.appendChild(ch);
+    chips.push(ch);
+  });
+  // The same technician, or pick another
+  if(curTech){
+    box.querySelector('[data-keepword]').textContent = 'Keep the same technician (' + curName + ')';
+  } else {
+    box.querySelector('[data-keepwrap]').style.display = 'none';
+    keep.checked = false;
+  }
+  const none = document.createElement('option'); none.value = ''; none.textContent = curTech ? 'Pick a technician' : 'No technician';
+  techSel.appendChild(none);
+  techs.forEach(t => { const o = document.createElement('option'); o.value = String(t.id); o.textContent = t.name; techSel.appendChild(o); });
+  techSel.value = curTech;
+  const upd = ()=>{
+    const v = dateEl.value;
+    go.textContent = v ? (v === from ? 'Same day' : 'Move to ' + short(v)) : 'Move';
+    go.disabled = !v || v === from;
+    go.style.opacity = go.disabled ? '0.5' : '';
+    chips.forEach(ch=>{ const on = ch.dataset.iso === v; ch.style.background = on ? 'var(--teal-pale)' : ''; ch.style.borderColor = on ? '#9CC5BF' : ''; });
+    techSel.style.display = keep.checked ? 'none' : 'block';
+  };
+  dateEl.addEventListener('input', upd); dateEl.addEventListener('change', upd);
+  keep.addEventListener('change', ()=>{ if(!keep.checked && !techSel.value) techSel.value = curTech; upd(); });
+  upd();
+  box.querySelector('[data-cancel]').addEventListener('click', ()=> overlay.remove());
+  go.addEventListener('click', ()=>{
+    const iso = dateEl.value;
+    if(!iso || iso === from) return;
+    const tech = keep.checked ? curTech : techSel.value;
+    let moved = false;
+    try{ moved = opts.onMove(iso, tech) !== false; }catch(e){ console.warn('move failed', e); }
+    overlay.remove();
+    if(!moved){ showToast('Couldn\u2019t move that \u2014 try again'); return; }
+    try{ if(opts.after) opts.after(); }catch(e){}
+    showToast((opts.name || 'Moved') + ' moved to ' + nice(iso));
+  });
+}
+// The names in a group, in a small card by the mouse (Nov 1). null hides it.
+function groupNamesTip(anchor, g){
+  let tip = document.getElementById('groupNamesTip');
+  if(!anchor){ if(tip) tip.remove(); return; }
+  if(!tip){ tip = document.createElement('div'); tip.id = 'groupNamesTip'; document.body.appendChild(tip); }
+  const names = fgLiveIds(g).map(id => customers.find(c => c && c.id === id)).filter(Boolean)
+    .map(c => displayName(c.name)).sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base', numeric: true}));
+  const MAX = 15;
+  tip.style.cssText = 'position:fixed;z-index:100000;width:230px;background:#fff;border:1px solid var(--line);border-radius:12px;'
+    + 'box-shadow:0 12px 30px rgba(14,74,77,.2);padding:10px 12px;font-size:13px;pointer-events:none;';
+  tip.innerHTML = '';
+  const head = document.createElement('div');
+  head.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;';
+  head.textContent = (g.name || 'Group') + ' \u00b7 ' + names.length + (names.length === 1 ? ' customer' : ' customers');
+  tip.appendChild(head);
+  names.slice(0, MAX).forEach(nm=>{
+    const d = document.createElement('div');
+    d.style.cssText = 'padding:3px 0;border-top:1px solid #EEF3F2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    d.textContent = nm;
+    tip.appendChild(d);
+  });
+  if(names.length > MAX){
+    const more = document.createElement('div');
+    more.style.cssText = 'padding:4px 0 0;border-top:1px solid #EEF3F2;color:var(--muted);font-weight:600;';
+    more.textContent = '+ ' + (names.length - MAX) + ' more';
+    tip.appendChild(more);
+  }
+  // Under the count, kept on screen
+  const r = anchor.getBoundingClientRect();
+  const w = 230, h = tip.offsetHeight;
+  let left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
+  let top = r.bottom + 8;
+  if(top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 8);
+  tip.style.left = left + 'px'; tip.style.top = top + 'px';
+}
 function fcPickGroupForDay(iso, after){
   // Several at once, with a technician menu, in even columns (Oct 13)
   const nice = new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
@@ -17116,7 +17475,16 @@ function fcPickGroupForDay(iso, after){
       row.appendChild(cb);
       row.appendChild(cell(g.name || 'Untitled group', 'font-weight:700;'));
       row.appendChild(cell(technicianNameById(g.technicianId) || 'No technician', 'font-size:12px;color:var(--muted);'));
-      row.appendChild(cell(n + (n === 1 ? ' customer' : ' customers'), 'font-size:12px;color:var(--muted);'));
+      const countCell = cell(n + (n === 1 ? ' customer' : ' customers'), 'font-size:12px;color:var(--muted);');
+      // Hover for who's in it (Nov 1): a small card with their names
+      if(n){
+        countCell.classList.remove('pd-scroll-name');
+        countCell.title = '';
+        countCell.style.cssText += 'justify-self:start;max-width:100%;text-decoration:underline dotted;text-underline-offset:3px;cursor:help;';
+        countCell.addEventListener('mouseenter', ()=> groupNamesTip(countCell, g));
+        countCell.addEventListener('mouseleave', ()=> groupNamesTip(null));
+      }
+      row.appendChild(countCell);
       listEl.appendChild(row);
     });
     setTimeout(()=> listEl.querySelectorAll('.pd-scroll-name').forEach(webMarqueeIfCut), 0);
@@ -17311,23 +17679,6 @@ function recalcWorkOrderTotal(){
   return total;
 }
 
-// The tick box under a quote line (Nov 1). item.answerable is false only when
-// it's been unticked, so lines from before this count as on.
-function lineAnswerTick(item, cls, shown){
-  const wrap = document.createElement('label');
-  wrap.className = cls;
-  wrap.style.cssText = 'display:' + (shown ? 'flex' : 'none') + ';align-items:center;gap:8px;width:max-content;max-width:100%;'
-    + 'margin:-2px 0 10px 4px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;'
-    + 'background:none;text-transform:none;letter-spacing:0;font-family:inherit;padding:0;';
-  const box = document.createElement('input');
-  box.type = 'checkbox';
-  box.checked = item.answerable !== false;
-  box.style.cssText = 'width:18px;height:18px;margin:0;flex:0 0 auto;accent-color:var(--teal-deep, #114B4F);';
-  box.addEventListener('change', ()=>{ if(box.checked) delete item.answerable; else item.answerable = false; });
-  wrap.appendChild(box);
-  wrap.appendChild(document.createTextNode('Customer can approve or decline this line'));
-  return wrap;
-}
 function renderLineItems(){
   const container = document.getElementById('wcLineItems');
   container.innerHTML = '';
@@ -17337,7 +17688,7 @@ function renderLineItems(){
 
     const descInput = document.createElement('input');
     descInput.value = item.description;
-    descInput.placeholder = 'Description';
+    descInput.placeholder = 'Item';   // was "Description" (Nov 1)
     descInput.style.cssText = 'width:100%;min-width:0;';
     descInput.setAttribute('autocomplete', 'weir-line-item');   // not the browser's saved entries
     // Our own list of matches under the box (Oct 15): the browser's own list
@@ -17456,11 +17807,6 @@ function renderLineItems(){
     row.appendChild(priceWrap);
     row.appendChild(removeBtn);
     container.appendChild(row);
-    // Quotes (Nov 1): whether the customer gets Approve and Decline on this
-    // line in the email. On to start with; a line left off goes with Approve
-    // all / Decline all.
-    container.appendChild(lineAnswerTick(item, 'wc-answer-tick',
-      (document.getElementById('wcType') || {}).value === 'Quote'));
   });
 
   if(!document.getElementById('wcProductSuggestions')){
@@ -17558,8 +17904,10 @@ document.getElementById('btnAddFilterClean').addEventListener('click', ()=>{
 document.getElementById('btnAddLineItem').addEventListener('click', ()=>{
   currentLineItems.push({description:'', qty:1, price:''});
   renderLineItems();
-  const inputs = document.querySelectorAll('#wcLineItems input');
-  if(inputs.length) inputs[inputs.length - 3].focus();
+  // The cursor straight into the new line's Item box (Nov 1), found by its row
+  const rows = document.querySelectorAll('#wcLineItems .fountain-row');
+  const box = rows.length ? rows[rows.length - 1].querySelector('input') : null;
+  if(box){ box.focus(); try{ box.scrollIntoView({block: 'nearest'}); }catch(e){} }
 });
 
 // Emptying the form leaves the kind of record alone by default. Finishing a
@@ -17925,6 +18273,70 @@ document.addEventListener('mousedown', e=>{
   if(e.shiftKey && Object.keys(listSelections || {}).some(k => listSelections[k] && listSelections[k].on)) e.preventDefault();
 }, true);
 document.addEventListener('click', e=>{ selShiftHeld = !!e.shiftKey; }, true);
+// Shift-click on any list of tick boxes (Nov 1): Pool drains, filter clean
+// groups, Email recipients, the customer pickers and the rest. Tick one, hold
+// Shift and tick another further down (or up): every box in between is set
+// the same way, each as if pressed, so the page's own handling runs for it.
+// Only boxes in the same column of the same list count: their nearest shared
+// container holds them, and their own row and the row around it look alike.
+// Lists with ranges of their own (Select multiple, the Photo and Email
+// columns) are left to those.
+// Every window on the website (Nov 1): while one is open, the page behind it
+// doesn't scroll; only the window does. Watches for windows coming and going,
+// so new ones are covered too.
+(function lockPageUnderWindows(){
+  const check = ()=>{
+    const open = Array.from(document.querySelectorAll('.confirm-overlay')).some(o => o.getClientRects().length && getComputedStyle(o).display !== 'none');
+    document.documentElement.classList.toggle('weir-win-open', open);
+    // A group's names card goes with the window it was over
+    if(!open){ const tip = document.getElementById('groupNamesTip'); if(tip) tip.remove(); }
+  };
+  let queued = false;
+  const queue = ()=>{ if(!queued){ queued = true; requestAnimationFrame(()=>{ queued = false; check(); }); } };
+  const start = ()=>{
+    try{ new MutationObserver(queue).observe(document.body, {childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class']}); }catch(e){}
+    check();
+  };
+  if(document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+})();
+(function shiftTickRanges(){
+  let last = null, shiftAtDown = false, busy = false;
+  const own = b => b.dataset.selTick || b.dataset.ownShift;
+  const shape = b => [b.parentElement, b.parentElement && b.parentElement.parentElement]
+    .map(x => x ? x.tagName + '.' + (x.className || '') : '').join('/');
+  const usable = b => !b.disabled && b.getClientRects().length;
+  document.addEventListener('pointerdown', e=>{
+    shiftAtDown = !!e.shiftKey;
+    // No text highlighted by a Shift-click on a tick box or its words
+    const t = e.target;
+    if(e.shiftKey && t && t.closest && (t.matches('input[type=checkbox]') || (t.closest('label') && t.closest('label').querySelector('input[type=checkbox]')))) e.preventDefault();
+  }, true);
+  document.addEventListener('click', e=>{
+    const box = e.target;
+    if(busy || !box || box.tagName !== 'INPUT' || box.type !== 'checkbox' || own(box)) return;
+    const shift = e.shiftKey || shiftAtDown;
+    shiftAtDown = false;
+    const prev = last;
+    last = box;
+    if(!shift || !prev || prev === box || !prev.isConnected || shape(prev) !== shape(box)) return;
+    // Their nearest shared container
+    let common = box.parentElement;
+    while(common && !common.contains(prev)) common = common.parentElement;
+    if(!common || common === document.body || common === document.documentElement) return;
+    const all = Array.from(common.querySelectorAll('input[type=checkbox]')).filter(b => !own(b) && shape(b) === shape(box) && usable(b));
+    const a = all.indexOf(prev), z = all.indexOf(box);
+    if(a === -1 || z === -1) return;
+    const want = box.checked;
+    const between = all.slice(Math.min(a, z), Math.max(a, z) + 1).filter(b => b !== box && b.checked !== want);
+    if(!between.length) return;
+    // After this press has been handled, the rest pressed one by one
+    setTimeout(()=>{
+      busy = true;
+      try{ between.forEach(b=>{ if(b.isConnected && b.checked !== want) b.click(); }); }
+      finally{ busy = false; last = box.isConnected ? box : null; }
+    }, 0);
+  }, true);
+})();
 function pickRange(st, id){
   if(!selShiftHeld || st.anchor == null || !Array.isArray(st.order)) return false;
   const a = st.order.indexOf(st.anchor), b = st.order.indexOf(id);
@@ -19351,8 +19763,6 @@ function applyWorkOrderType(){
   const chosen = document.getElementById('wcType').value;
   const isTask = chosen === 'Task';
   const isWO = chosen === 'Work Order';
-  // The per-line Approve / Decline tick boxes are for quotes only (Nov 1)
-  document.querySelectorAll('#wcLineItems .wc-answer-tick').forEach(t => { t.style.display = chosen === 'Quote' ? 'flex' : 'none'; });
 
   // Photo required is for work orders only, never a quote
   const photoWrap = document.getElementById('wcPhotoRequiredWrap');
@@ -20007,31 +20417,17 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
   const head = 'padding:8px 10px;border-bottom:2px solid #E6E9E8;font-size:11.5px;font-weight:700;'
     + 'color:#0F766E;text-transform:uppercase;letter-spacing:0.05em;';
 
-  // Approve and Decline under each line (Nov 1), when the quote has more than
-  // one line and its breakdown is on the server for the customer's page to
-  // show; the big buttons at the bottom then answer them all
-  // Lines unticked on the form (Nov 1) have no buttons of their own; with
-  // none ticked, or just one line, it's Approve and Decline at the bottom
-  const asks = item => item && item.answerable !== false;
-  const perLine = !!respondUrl && items.length > 1 && items.some(asks) && quoteLinkCanDownload(respondUrl);
-  const lineBtn = (i, a, word, ink, bg) => '<a href="' + respondUrl + '&a=' + a + '&line=' + i + '" style="display:inline-block;padding:6px 12px;border-radius:8px;'
-    + 'border:1.5px solid ' + ink + ';background:' + bg + ';color:' + ink + ';font-size:12.5px;font-weight:700;text-decoration:none;margin-left:6px;">'
-    // The words' own colour: the email's link rule would turn them black
-    + '<span style="color:' + ink + ';font-weight:700;">' + word + '</span></a>';
-  const rows = items.map((item, i)=>{
+  // One answer for the whole quote (Nov 1): no buttons on the lines; Approve
+  // all and Decline all at the bottom
+  const rows = items.map(item=>{
     const qty = parseFloat(item.qty) || 0;
     const price = parseFloat(item.price) || 0;
-    const c = perLine ? cell.replace('border-bottom:1px solid #E6E9E8;', 'border-bottom:none;') : cell;
     return '<tr>'
-      + '<td style="' + c + 'color:#16302E;">' + esc(item.description) + '</td>'
-      + '<td style="' + c + 'color:#4A5A58;text-align:center;white-space:nowrap;">' + esc(String(qty)) + '</td>'
-      + '<td style="' + c + 'color:#4A5A58;text-align:right;white-space:nowrap;">' + money(price) + '</td>'
-      + '<td style="' + c + 'color:#16302E;font-weight:600;text-align:right;white-space:nowrap;">' + money(qty * price) + '</td>'
-      + '</tr>'
-      + (perLine ? '<tr><td colspan="4" style="padding:0 10px 10px;border-bottom:1px solid #E6E9E8;text-align:right;">'
-          + (asks(item) ? lineBtn(i, 'approve', '&#10003; Approve', esc(colour), '#F1F8F7')
-            + lineBtn(i, 'deny', '&#10005; Decline', '#B8492E', '#FDF1EE') : '')
-          + '</td></tr>' : '');
+      + '<td style="' + cell + 'color:#16302E;">' + esc(item.description) + '</td>'
+      + '<td style="' + cell + 'color:#4A5A58;text-align:center;white-space:nowrap;">' + esc(String(qty)) + '</td>'
+      + '<td style="' + cell + 'color:#4A5A58;text-align:right;white-space:nowrap;">' + money(price) + '</td>'
+      + '<td style="' + cell + 'color:#16302E;font-weight:600;text-align:right;white-space:nowrap;">' + money(qty * price) + '</td>'
+      + '</tr>';
   }).join('');
 
   const bits = [];
@@ -20097,8 +20493,8 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
         + '.</div>' : '')
     // Approve / Deny, when the quote can take an answer
     + (respondUrl ? '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 6px;width:100%;"><tr>'
-        + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">' + (perLine ? 'Approve all' : 'Approve') + '</a></td>'
-        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#B8492E;color:#ffffff;border:1.5px solid #B8492E;font-weight:700;font-size:15px;text-decoration:none;">' + (perLine ? 'Decline all' : 'Decline') + '</a></td>'
+        + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">Approve all</a></td>'
+        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#B8492E;color:#ffffff;border:1.5px solid #B8492E;font-weight:700;font-size:15px;text-decoration:none;">Decline all</a></td>'
         + '</tr></table>'
         // Download quote (Oct 15): the breakdown as a PDF to keep
         + (!quoteLinkCanDownload(respondUrl) ? '' : '<a href="' + respondUrl + '&a=download" style="display:block;text-align:center;margin:12px 0 6px;padding:12px 10px;border-radius:10px;'
@@ -20425,9 +20821,7 @@ function quoteDownloadDetails(customer, type, dateText, items, total, notes, quo
     date: dateText || '',
     expiresOn: expiresOn,
     customer: {name: customer.name || '', address: customer.address || ''},
-    // choice: false on a line the customer can't answer by itself (Nov 1)
-    items: (items || []).map(li => Object.assign({description: String(li.description || ''), qty: parseFloat(li.qty) || 0, price: parseFloat(li.price) || 0},
-      li.answerable === false ? {choice: false} : {})),
+    items: (items || []).map(li => ({description: String(li.description || ''), qty: parseFloat(li.qty) || 0, price: parseFloat(li.price) || 0})),
     total: Number(total) || 0,
     notes: notes || '',
     colour: style.colour || '#134E4A',
@@ -30810,6 +31204,8 @@ const ALERT_VIDEO_DAYS = 7;
 const ALERT_NOTE_DAYS = 30;
 let alertsView = 'new';      // new | seen
 let alertsKind = 'all';      // all | video | note
+let alertsPages = {};        // each tab's own page, 10 alerts a page (Nov 1)
+const ALERTS_PER_PAGE = 10;
 
 // Alerts taken off the list on this computer (Oct 3); the reports stay
 function alertsGone(){
@@ -31085,6 +31481,7 @@ function openReminder(a){
     applyWorkCenterMode('drains');
     const tech = document.getElementById('drainTech');
     if(tech && tech.value && (tech.value === 'none' ? c.technicianId : String(c.technicianId || '') !== tech.value)) tech.value = '';
+    openDrainBuckets.clear();            // one list open at a time (Nov 1)
     openDrainBuckets.add(pdBucket(c));
     renderPoolDrains();
     setTimeout(()=> land(document.querySelector('#drainStatusList [data-pd-customer="' + CSS.escape(String(c.id)) + '"]')), 60);
@@ -31167,7 +31564,14 @@ function renderAlerts(){
   if(allSeen) allSeen.style.display = n ? '' : 'none';
 
   // One list, new and seen together; new ones carry a NEW badge (Oct 3)
-  const rows = all.filter(a => alertsKind === 'all' || (alertsKind === 'fav' ? isFav(a) : a.kind === alertsKind));
+  const rowsAll = all.filter(a => alertsKind === 'all' || (alertsKind === 'fav' ? isFav(a) : a.kind === alertsKind));
+  // On All, the starred ones first (they sit in the Favorites box at the top)
+  if(alertsKind === 'all') rowsAll.sort((x, y) => (isFav(y) ? 1 : 0) - (isFav(x) ? 1 : 0));
+  // Ten a page, on every tab, each tab keeping its own page (Nov 1)
+  const pageCount = Math.max(1, Math.ceil(rowsAll.length / ALERTS_PER_PAGE));
+  const page = Math.min(Math.max(1, alertsPages[alertsKind] || 1), pageCount);
+  alertsPages[alertsKind] = page;
+  const rows = rowsAll.slice((page - 1) * ALERTS_PER_PAGE, page * ALERTS_PER_PAGE);
   // Only redrawn when what it shows has changed. A sync saves visits and
   // customers often, and rebuilding the same list each time flashed the row
   // under the pointer white (Oct 2).
@@ -31192,7 +31596,7 @@ function renderAlerts(){
     }
   }
   if(allSeen && selSt.on) allSeen.style.display = 'none';
-  const shape = new Date().toDateString() + '|' + alertsKind + '|' + rows.filter(isFav).map(a => a.id).join(',') + '|' + (selSt.on ? 'sel:' + Array.from(selSt.ids).join(',') : '') + '|' + rows.map(a => a.id + ':' + (seen[a.id] ? 's' : 'n') + ':' + (a.tech || '') + ':'
+  const shape = new Date().toDateString() + '|' + alertsKind + '|p' + page + '/' + rowsAll.length + '|' + rows.filter(isFav).map(a => a.id).join(',') + '|' + (selSt.on ? 'sel:' + Array.from(selSt.ids).join(',') : '') + '|' + rows.map(a => a.id + ':' + (seen[a.id] ? 's' : 'n') + ':' + (a.tech || '') + ':'
     + (a.kind === 'video' ? a.refs.length : a.notes) + ':' + a.name + ':' + a.body).join('|');
   if(box.dataset.shape === shape && box.childNodes.length) return;
   box.dataset.shape = shape;
@@ -31340,6 +31744,15 @@ function renderAlerts(){
     row.appendChild(tag); row.appendChild(body); row.appendChild(acts);
     (favBox && fav ? favBox : box).appendChild(row);
   });
+  if(pageCount > 1){
+    const pager = buildListPager(page, pageCount, rowsAll.length, p=>{
+      alertsPages[alertsKind] = p;
+      renderAlerts();
+      const top = document.getElementById('view-alerts');
+      if(top) top.scrollIntoView({block: 'start'});
+    }, 'margin-top:16px;padding-top:14px;border-top:1px solid var(--line);');
+    box.appendChild(pager);
+  }
 }
 
 // The customer's Service reports, with that visit's report opened
@@ -31602,7 +32015,7 @@ function freshTabOnArrival(view){
     setVal('psSearch', ''); hide('psSearchClear');
     document.querySelectorAll('#psCategoryControl .history-type-btn').forEach(b => b.classList.toggle('active', b.dataset.pscat === 'all'));
   }
-  if(view === 'alerts'){ alertsView = 'new'; alertsKind = 'all'; }
+  if(view === 'alerts'){ alertsView = 'new'; alertsKind = 'all'; alertsPages = {}; }
   if(view === 'workcenter'){
     openFilterGroupIds.clear();
     try{ wcCalResetOnLeave('calendar'); }catch(e){}   // the Calendar back on this month (Oct 18)

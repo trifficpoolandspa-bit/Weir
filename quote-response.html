@@ -42,22 +42,39 @@
             font:inherit;font-size:15px;font-weight:700;cursor:pointer !important;}
   .msg-send:disabled{opacity:.6;}
   .msg-need{display:none;margin-top:8px;font-size:13px;font-weight:700;color:var(--rust);text-align:left;}
-  /* Each line with its own Approve / Decline (Nov 1) */
-  .lines{margin:20px 0 0;text-align:left;border-top:1px solid #E3ECEA;}
-  .line{padding:12px 2px;border-bottom:1px solid #E3ECEA;}
-  .line-top{display:flex;gap:10px;align-items:baseline;}
-  .line-name{flex:1;min-width:0;font-size:15px;font-weight:700;color:var(--ink);}
-  .line-amt{font-size:14.5px;font-weight:700;color:var(--ink);white-space:nowrap;}
-  .line-qty{font-size:13px;color:var(--muted);margin-top:2px;}
-  .line-btns{display:flex;gap:8px;margin-top:9px;}
-  .line-btn{flex:1;padding:9px 8px;border-radius:10px;font:inherit;font-size:14px;font-weight:700;cursor:pointer !important;
-            border:1.5px solid var(--teal);background:#F1F8F7;color:var(--teal);}
-  .line-btn.no{border-color:var(--rust);background:#FDF1EE;color:var(--rust);}
-  .line-btn.on{background:var(--teal);color:#fff;}
-  .line-btn.no.on{background:var(--rust);color:#fff;}
-  .line-btn:disabled{opacity:.6;}
-  .lines-sum{margin-top:14px;font-size:14px;color:var(--muted);text-align:left;}
-  .lines-sum b{color:var(--ink);}
+  /* The quote, in the email's own look, after Approve all / Decline all (Nov 1) */
+  .card.qv{max-width:520px;padding:0;text-align:left;overflow:hidden;}
+  .qv-band{padding:20px 24px;color:#fff;font-size:18px;font-weight:700;}
+  .qv-saved{display:flex;align-items:center;gap:8px;padding:11px 24px;font-size:14px;font-weight:700;background:#E3F2E8;color:#2E6B47;}
+  .qv-saved.no{background:#FBEAE4;color:var(--rust);}
+  .qv-saved.err{background:#FBF4E4;color:#8A6410;}
+  .qv-top{padding:20px 24px 0;}
+  .qv-kind{font-size:12px;font-weight:700;color:#0F766E;text-transform:uppercase;letter-spacing:.06em;}
+  .qv-kind b{font-size:21px;color:#0E4A4D;text-transform:none;letter-spacing:-.01em;margin-left:8px;vertical-align:middle;}
+  .qv-kind b i{font-style:normal;color:#A9BCB9;font-weight:500;}
+  .qv-who{font-size:17px;font-weight:700;color:#16302E;margin-top:6px;}
+  .qv-sub{font-size:13.5px;color:#6B7B79;margin-top:2px;}
+  .qv-items{padding:16px 24px 0;}
+  .qv-hd{display:flex;justify-content:space-between;font-size:11px;font-weight:700;color:#0F766E;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #E6E9E8;padding:6px 0;}
+  .qv-line{display:flex;gap:12px;border-bottom:1px solid #E6E9E8;padding:11px 0;font-size:15px;color:#16302E;}
+  .qv-line .n{flex:1;min-width:0;}
+  .qv-line .q{color:#6B7B79;font-size:13px;}
+  .qv-line .a{font-weight:700;white-space:nowrap;}
+  .qv-tot{display:flex;justify-content:space-between;padding:12px 0 0;font-size:15px;font-weight:700;color:#16302E;}
+  .qv-tot .v{font-size:18px;}
+  .qv-notes{padding:16px 24px 0;font-size:14px;color:#4A5A58;white-space:pre-wrap;line-height:1.5;}
+  .qv-notes b{display:block;font-size:12px;color:#0F766E;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}
+  .qv-foot{padding:18px 24px 24px;}
+  .qv-stamp{text-align:center;margin:0 0 14px;}
+  .qv-stamp span{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:999px;font-size:14px;font-weight:700;animation:pop .4s cubic-bezier(.2,1.4,.4,1) both;}
+  .qv-btns{display:flex;gap:10px;}
+  .qv-btn{flex:1;padding:14px 8px;border:0;border-radius:11px;color:#fff;font:inherit;font-size:15px;font-weight:700;cursor:pointer !important;transition:opacity .2s,box-shadow .2s,transform .12s;}
+  .qv-btn:active{transform:scale(.97);}
+  .qv-btn.dim{opacity:.4;}
+  .qv-btn.on{box-shadow:0 0 0 3px rgba(0,0,0,.12);}
+  .qv-btn:disabled{cursor:default !important;}
+  .qv-note{margin-top:12px;font-size:13px;color:#6B7B79;text-align:center;}
+  .qv-company{margin-top:18px;text-align:center;font-size:13px;color:#8A9A98;}
   .wait .badge path{display:none;}
   .wait .badge{animation:pulse 1.2s ease-in-out infinite;}
   @keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
@@ -76,6 +93,12 @@
   <div class="foot" id="foot"></div>
 </div>
 <script>
+// The public keys, the same ones the website uses (safe to show; the server's
+// rules decide what they can read)
+const QR_KEYS = {
+  'myxxahrlmzvrbcmopwyo.supabase.co': 'sb_publishable_32m_kcK3pQpClCGAvAAogg_Ut9RBFS1',
+  'mjjgvpejbibybhsmrdno.supabase.co': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qamd2cGVqYmlieWJoc21yZG5vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwOTIyNzgsImV4cCI6MjEwNTY2ODI3OH0.fC627DhuydW81Bie_abdlWTZ-FykNHZUMVd9RrFJSJg'
+  };
 (function(){
   const q = new URLSearchParams(location.search);
   const token = q.get('t') || '';
@@ -84,8 +107,6 @@
   // Send a message (Oct 22): a box to write in, nothing answered
   if(q.get('a') === 'message'){ messageQuote(q.get('s') || '', token); return; }
   const action = q.get('a') === 'deny' ? 'deny' : 'approve';
-  // One line's answer (Nov 1), from its buttons in the email
-  const line = /^\d+$/.test(q.get('line') || '') ? Number(q.get('line')) : null;
   const server = q.get('s') || '';
   const card = document.getElementById('card');
   const $ = id => document.getElementById(id);
@@ -122,20 +143,16 @@
   }catch(e){}
   if(!token || !fn){ done('Thank you for your response!', 'We will be in touch shortly.'); return; }
 
-  const send = tries => fetch(fn, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(line === null ? {t: token, a: action} : {t: token, a: action, line: line})})
+  const send = tries => fetch(fn, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({t: token, a: action})})
     .then(r => r.json())
     .then(res=>{
-      if(res.state === 'recorded' && Array.isArray(res.items) && res.items.length > 1){
-        // Every line with its answer so far, each one changeable (Nov 1)
-        done('Thank you for your response!',
-             (res.company ? res.company + ' has' : 'We have') + ' your answer. You can choose or change any line below.',
-             null, res.company);
-        showLines(fn, token, res);
-      } else if(res.state === 'recorded'){
-        const who = res.company || 'We';
-        done('Thank you for your response!',
-             (res.company ? who + ' has' : 'We have') + ' your answer and will be in touch soon.',
+      if(res.state === 'recorded'){
+        // The quote itself, in the email's look, with the answer filled in
+        // (Nov 1); the plain thank-you if its breakdown can't be had
+        const thanks = ()=> done('Thank you for your response!',
+             (res.company ? res.company + ' has' : 'We have') + ' your answer and will be in touch soon.',
              res.outcome, res.company);
+        showQuote(server, token, fn, res.outcome, res.company).then(ok => { if(!ok) thanks(); }).catch(thanks);
       } else if(res.state === 'expired'){
         done('This quote has expired',
              'It was sent more than ' + (res.days || 30) + ' days ago. Please contact ' + (res.company || 'us') + ' for an updated quote.',
@@ -155,96 +172,111 @@
   send(2);
 })();
 
-// ---------- Each line's answer (Nov 1) ----------
-// Under the thank-you: every line of the quote with Approve and Decline, the
-// customer's answer so far filled in. A press saves that line straight away.
-function showLines(fn, token, res){
-  const card = document.getElementById('card');
-  const foot = document.getElementById('foot');
-  const money = n => '$' + (Number(n) || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-  let answers = (res.answers || []).slice();
-  const box = document.createElement('div');
-  box.className = 'lines';
-  const sum = document.createElement('div');
-  sum.className = 'lines-sum';
-  const tally = ()=>{
-    let yes = 0, total = 0, left = 0;
-    res.items.forEach((it, i)=>{
-      if(answers[i] === 'approved'){ yes++; total += (Number(it.qty) || 0) * (Number(it.price) || 0); }
-      else if(!answers[i]) left++;
-    });
-    sum.innerHTML = '';
-    const b = document.createElement('b');
-    b.textContent = yes + ' of ' + res.items.length + ' approved \u00b7 ' + money(total);
-    sum.appendChild(b);
-    if(left) sum.appendChild(document.createTextNode(' \u00b7 ' + left + (left === 1 ? ' line' : ' lines') + ' still to choose'));
-  };
-  const rows = res.items.map((it, i)=>{
-    const row = document.createElement('div');
-    row.className = 'line';
-    const top = document.createElement('div');
-    top.className = 'line-top';
-    const name = document.createElement('div');
-    name.className = 'line-name';
-    name.textContent = it.description || 'Item';
-    const amt = document.createElement('div');
-    amt.className = 'line-amt';
-    amt.textContent = money((Number(it.qty) || 0) * (Number(it.price) || 0));
-    top.appendChild(name); top.appendChild(amt);
-    row.appendChild(top);
-    if((Number(it.qty) || 0) !== 1){
-      const qty = document.createElement('div');
-      qty.className = 'line-qty';
-      qty.textContent = (Number(it.qty) || 0) + ' \u00d7 ' + money(it.price);
-      row.appendChild(qty);
-    }
-    // A line the company left off (Nov 1): no buttons, it goes with the rest
-    if(it.choice === false){
-      const note = document.createElement('div');
-      note.className = 'line-qty';
-      const paintFixed = ()=>{ note.textContent = answers[i] === 'approved' ? 'Included with your approval' : answers[i] === 'denied' ? 'Not included' : 'Goes with the rest of the quote'; };
-      paintFixed();
-      row.appendChild(note);
-      box.appendChild(row);
-      return paintFixed;
-    }
-    const btns = document.createElement('div');
-    btns.className = 'line-btns';
-    const yes = document.createElement('button');
-    yes.type = 'button'; yes.className = 'line-btn'; yes.textContent = '\u2713 Approve';
-    const no = document.createElement('button');
-    no.type = 'button'; no.className = 'line-btn no'; no.textContent = '\u2715 Decline';
-    btns.appendChild(yes); btns.appendChild(no);
-    row.appendChild(btns);
-    const paint = ()=>{
-      yes.classList.toggle('on', answers[i] === 'approved');
-      no.classList.toggle('on', answers[i] === 'denied');
-      yes.setAttribute('aria-pressed', answers[i] === 'approved' ? 'true' : 'false');
-      no.setAttribute('aria-pressed', answers[i] === 'denied' ? 'true' : 'false');
-    };
-    const pick = a=>{
-      const want = a === 'deny' ? 'denied' : 'approved';
-      if(answers[i] === want) return;
-      yes.disabled = no.disabled = true;
-      fetch(fn, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({t: token, a: a, line: i})})
-        .then(r => r.json())
-        .then(r2=>{
-          if(r2.state === 'recorded' && Array.isArray(r2.answers)){ answers = r2.answers.slice(); rows.forEach(f => f()); tally(); }
-          else if(r2.state === 'expired'){ sum.textContent = 'This quote has expired, so answers can no longer be changed.'; }
-          else sum.textContent = 'We couldn\u2019t save that just now. Please try again.';
-        })
-        .catch(()=>{ sum.textContent = 'We couldn\u2019t reach our system. Check your connection and try again.'; })
-        .then(()=>{ yes.disabled = no.disabled = false; });
-    };
-    yes.addEventListener('click', ()=> pick('approve'));
-    no.addEventListener('click', ()=> pick('deny'));
-    paint();
-    box.appendChild(row);
-    return paint;
+
+
+// ---------- The quote, answered (Nov 1) ----------
+// After Approve all or Decline all in the email: the quote laid out as the
+// email has it (the company's colour, the number, the items and total), the
+// answer saved and shown in green or red, and both buttons here to change it
+// until the quote expires. The breakdown comes from the quote's code (snippet
+// 34), the same way Download quote gets it.
+function showQuote(server, token, fn, outcome, company){
+  let host = '', key = '';
+  try{
+    const u = new URL(server);
+    if(u.protocol === 'https:' && /\.supabase\.co$/.test(u.hostname)){ host = u.origin; key = QR_KEYS[u.hostname] || ''; }
+  }catch(e){}
+  if(!host || !key) return Promise.resolve(false);
+  return fetch(host + '/rest/v1/rpc/quote_download', {
+    method: 'POST',
+    headers: {'content-type': 'application/json', apikey: key, Authorization: 'Bearer ' + key},
+    body: JSON.stringify({p_token: token})
+  }).then(r => r.ok ? r.json() : null).then(d=>{
+    if(!d || typeof d !== 'object' || !Array.isArray(d.items) || !d.items.length) return false;
+    drawQuote(d, token, fn, outcome, company || (d.company && d.company.name) || d.companyName || '');
+    return true;
   });
-  tally();
-  card.insertBefore(box, foot);
-  card.insertBefore(sum, foot);
+}
+function drawQuote(d, token, fn, outcome, company){
+  const card = document.getElementById('card');
+  const el = (tag, cls, text)=>{ const x = document.createElement(tag); if(cls) x.className = cls; if(text !== undefined) x.textContent = text; return x; };
+  const money = n => '$' + (Number(n) || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const colour = /^#[0-9a-f]{6}$/i.test(String(d.colour || '')) ? d.colour : '#134E4A';
+  document.title = (d.type || 'Quote') + (d.number ? ' #' + d.number : '');
+  card.className = 'card qv';
+  card.innerHTML = '';
+  card.appendChild(el('div', 'qv-band', company || 'Your quote')).style.background = colour;
+  const saved = el('div', 'qv-saved');
+  card.appendChild(saved);
+  const top = el('div', 'qv-top');
+  const kind = el('div', 'qv-kind', d.type || 'Quote');
+  if(d.number){ const b = el('b'); b.appendChild(el('i', '', '#')); b.appendChild(document.createTextNode(d.number)); kind.appendChild(b); }
+  top.appendChild(kind);
+  if(d.customer && d.customer.name) top.appendChild(el('div', 'qv-who', d.customer.name));
+  if(d.customer && d.customer.address) top.appendChild(el('div', 'qv-sub', d.customer.address));
+  if(d.date) top.appendChild(el('div', 'qv-sub', d.date));
+  card.appendChild(top);
+  const items = el('div', 'qv-items');
+  const hd = el('div', 'qv-hd'); hd.appendChild(el('span', '', 'Item')); hd.appendChild(el('span', '', 'Amount'));
+  items.appendChild(hd);
+  d.items.forEach(it=>{
+    const qty = Number(it.qty) || 0, price = Number(it.price) || 0;
+    const row = el('div', 'qv-line');
+    const n = el('span', 'n', it.description || 'Item');
+    if(qty !== 1) n.appendChild(el('span', 'q', '  \u00d7 ' + qty));
+    row.appendChild(n);
+    row.appendChild(el('span', 'a', money(qty * price)));
+    items.appendChild(row);
+  });
+  const tot = el('div', 'qv-tot'); tot.appendChild(el('span', '', 'Total')); tot.appendChild(el('span', 'v', money(d.total)));
+  items.appendChild(tot);
+  card.appendChild(items);
+  if(String(d.notes || '').trim()){
+    const nt = el('div', 'qv-notes'); nt.appendChild(el('b', '', 'Notes')); nt.appendChild(document.createTextNode(String(d.notes).trim()));
+    card.appendChild(nt);
+  }
+  const foot = el('div', 'qv-foot');
+  const stamp = el('div', 'qv-stamp');
+  const btns = el('div', 'qv-btns');
+  const yes = el('button', 'qv-btn', 'Approve all'); yes.type = 'button'; yes.style.background = colour;
+  const no = el('button', 'qv-btn', 'Decline all'); no.type = 'button'; no.style.background = '#B8492E';
+  btns.appendChild(yes); btns.appendChild(no);
+  const note = el('div', 'qv-note', d.expiresOn ? 'You can change your answer until ' + d.expiresOn + '.' : 'You can change your answer any time before the quote expires.');
+  foot.appendChild(stamp); foot.appendChild(btns); foot.appendChild(note);
+  foot.appendChild(el('div', 'qv-company', company));
+  card.appendChild(foot);
+  const tick = '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const paint = o=>{
+    const ok = o !== 'denied';
+    saved.className = 'qv-saved' + (ok ? '' : ' no');
+    saved.innerHTML = tick;
+    saved.appendChild(document.createTextNode('Saved \u2014 quote ' + (ok ? 'approved' : 'declined') + '. Thank you!'));
+    stamp.innerHTML = '';
+    const pill = el('span', '', ok ? '\u2713 Approved' : '\u2715 Declined');
+    pill.style.cssText = ok ? 'background:#E3F2E8;color:#2E6B47;' : 'background:#FBEAE4;color:#B8492E;';
+    stamp.appendChild(pill);
+    yes.className = 'qv-btn' + (ok ? ' on' : ' dim');
+    no.className = 'qv-btn' + (ok ? ' dim' : ' on');
+  };
+  const say = (text)=>{ saved.className = 'qv-saved err'; saved.textContent = text; };
+  let current = outcome === 'denied' ? 'denied' : 'approved';
+  paint(current);
+  const pick = a=>{
+    const want = a === 'deny' ? 'denied' : 'approved';
+    if(want === current) return;
+    yes.disabled = no.disabled = true;
+    fetch(fn, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({t: token, a: a})})
+      .then(r => r.json())
+      .then(r2=>{
+        if(r2.state === 'recorded'){ current = r2.outcome === 'denied' ? 'denied' : 'approved'; paint(current); }
+        else if(r2.state === 'expired') say('This quote has expired, so the answer can no longer be changed.');
+        else say('We couldn\u2019t save that just now. Please try again.');
+      })
+      .catch(()=> say('We couldn\u2019t reach our system. Check your connection and try again.'))
+      .then(()=>{ yes.disabled = no.disabled = false; });
+  };
+  yes.addEventListener('click', ()=> pick('approve'));
+  no.addEventListener('click', ()=> pick('deny'));
 }
 
 // ---------- Send a message (Oct 22) ----------
@@ -340,10 +372,7 @@ function downloadQuote(server, token){
   const $ = id => document.getElementById(id);
   // The public keys, the same ones the website uses (safe to show; the server's
   // rules decide what they can read)
-  const KEYS = {
-    'myxxahrlmzvrbcmopwyo.supabase.co': 'sb_publishable_32m_kcK3pQpClCGAvAAogg_Ut9RBFS1',
-    'mjjgvpejbibybhsmrdno.supabase.co': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qamd2cGVqYmlieWJoc21yZG5vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwOTIyNzgsImV4cCI6MjEwNTY2ODI3OH0.fC627DhuydW81Bie_abdlWTZ-FykNHZUMVd9RrFJSJg'
-  };
+  const KEYS = QR_KEYS;
   document.title = 'Your quote';
   $('title').textContent = 'One moment…';
   $('text').textContent = 'Getting your quote ready.';

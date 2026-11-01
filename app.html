@@ -17223,22 +17223,6 @@ function awcRenderLines(boxId){
     x.addEventListener('click', ()=>{ items.splice(i, 1); awcRenderLines(boxId); });
     row.appendChild(descWrap); row.appendChild(qty); row.appendChild(priceWrap); row.appendChild(x); row.appendChild(sug);
     box.appendChild(row);
-    // Quotes (Nov 1): whether the customer gets Approve and Decline on this
-    // line in the email. On to start with; a line left off goes with Approve
-    // all / Decline all. (item.answerable is false only once unticked.)
-    if(isQuote){
-      const tick = document.createElement('label');
-      tick.className = 'inline-check awc-answer-tick';
-      tick.style.cssText = 'display:flex;width:max-content;max-width:100%;white-space:normal;margin:-2px 0 10px 4px;font-size:13px;font-weight:600;gap:8px;';
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = item.answerable !== false;
-      cb.style.cssText = 'width:18px;height:18px;margin:0;flex:0 0 auto;';
-      cb.addEventListener('change', ()=>{ if(cb.checked) delete item.answerable; else item.answerable = false; });
-      tick.appendChild(cb);
-      tick.appendChild(document.createTextNode('Customer can approve or decline this line'));
-      box.appendChild(tick);
-    }
   });
   total();
 }
@@ -17736,31 +17720,17 @@ function awcQuoteEmailHtml(customer, type, dateText, items, total, notes, styleO
   const head = 'padding:8px 10px;border-bottom:2px solid #E6E9E8;font-size:11.5px;font-weight:700;'
     + 'color:#0F766E;text-transform:uppercase;letter-spacing:0.05em;';
 
-  // Approve and Decline under each line (Nov 1), when the quote has more than
-  // one line and its breakdown is on the server for the customer's page to
-  // show; the big buttons at the bottom then answer them all
-  // Lines unticked on the form (Nov 1) have no buttons of their own; with
-  // none ticked, or just one line, it's Approve and Decline at the bottom
-  const asks = item => item && item.answerable !== false;
-  const perLine = !!respondUrl && items.length > 1 && items.some(asks) && awcQuoteLinkCanDownload(respondUrl);
-  const lineBtn = (i, a, word, ink, bg) => '<a href="' + respondUrl + '&a=' + a + '&line=' + i + '" style="display:inline-block;padding:6px 12px;border-radius:8px;'
-    + 'border:1.5px solid ' + ink + ';background:' + bg + ';color:' + ink + ';font-size:12.5px;font-weight:700;text-decoration:none;margin-left:6px;">'
-    // The words' own colour: the email's link rule would turn them black
-    + '<span style="color:' + ink + ';font-weight:700;">' + word + '</span></a>';
-  const rows = items.map((item, i)=>{
+  // One answer for the whole quote (Nov 1): no buttons on the lines; Approve
+  // all and Decline all at the bottom
+  const rows = items.map(item=>{
     const qty = parseFloat(item.qty) || 0;
     const price = parseFloat(item.price) || 0;
-    const c = perLine ? cell.replace('border-bottom:1px solid #E6E9E8;', 'border-bottom:none;') : cell;
     return '<tr>'
-      + '<td style="' + c + 'color:#16302E;">' + awcEsc(item.description) + '</td>'
-      + '<td style="' + c + 'color:#4A5A58;text-align:center;white-space:nowrap;">' + awcEsc(String(qty)) + '</td>'
-      + '<td style="' + c + 'color:#4A5A58;text-align:right;white-space:nowrap;">' + money(price) + '</td>'
-      + '<td style="' + c + 'color:#16302E;font-weight:600;text-align:right;white-space:nowrap;">' + money(qty * price) + '</td>'
-      + '</tr>'
-      + (perLine ? '<tr><td colspan="4" style="padding:0 10px 10px;border-bottom:1px solid #E6E9E8;text-align:right;">'
-          + (asks(item) ? lineBtn(i, 'approve', '&#10003; Approve', awcEsc(colour), '#F1F8F7')
-            + lineBtn(i, 'deny', '&#10005; Decline', '#B8492E', '#FDF1EE') : '')
-          + '</td></tr>' : '');
+      + '<td style="' + cell + 'color:#16302E;">' + awcEsc(item.description) + '</td>'
+      + '<td style="' + cell + 'color:#4A5A58;text-align:center;white-space:nowrap;">' + awcEsc(String(qty)) + '</td>'
+      + '<td style="' + cell + 'color:#4A5A58;text-align:right;white-space:nowrap;">' + money(price) + '</td>'
+      + '<td style="' + cell + 'color:#16302E;font-weight:600;text-align:right;white-space:nowrap;">' + money(qty * price) + '</td>'
+      + '</tr>';
   }).join('');
 
   const bits = [];
@@ -17826,8 +17796,8 @@ function awcQuoteEmailHtml(customer, type, dateText, items, total, notes, styleO
         + '.</div>' : '')
     // Approve / Deny, when the quote can take an answer
     + (respondUrl ? '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 6px;width:100%;"><tr>'
-        + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">' + (perLine ? 'Approve all' : 'Approve') + '</a></td>'
-        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#B8492E;color:#ffffff;border:1.5px solid #B8492E;font-weight:700;font-size:15px;text-decoration:none;">' + (perLine ? 'Decline all' : 'Decline') + '</a></td>'
+        + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">Approve all</a></td>'
+        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#B8492E;color:#ffffff;border:1.5px solid #B8492E;font-weight:700;font-size:15px;text-decoration:none;">Decline all</a></td>'
         + '</tr></table>'
         // Download quote (Oct 15): the breakdown as a PDF to keep
         + (!awcQuoteLinkCanDownload(respondUrl) ? '' : '<a href="' + respondUrl + '&a=download" style="display:block;text-align:center;margin:12px 0 6px;padding:12px 10px;border-radius:10px;'
@@ -17863,9 +17833,7 @@ function awcQuoteDownloadDetails(customer, type, dateText, items, total, notes, 
     date: dateText || '',
     expiresOn: expiresOn,
     customer: {name: customer.name || '', address: customer.address || ''},
-    // choice: false on a line the customer can't answer by itself (Nov 1)
-    items: (items || []).map(li => Object.assign({description: String(li.description || ''), qty: parseFloat(li.qty) || 0, price: parseFloat(li.price) || 0},
-      li.answerable === false ? {choice: false} : {})),
+    items: (items || []).map(li => ({description: String(li.description || ''), qty: parseFloat(li.qty) || 0, price: parseFloat(li.price) || 0})),
     total: Number(total) || 0,
     notes: notes || '',
     colour: style.colour || '#134E4A',
@@ -19685,7 +19653,7 @@ function acalOnDays(){
       const st = !recs.length ? '' : (recs.every(r => r.status === 'done') ? 'done' : 'app');
       const kinds = (Array.isArray(e.bodyKinds) && e.bodyKinds.length ? e.bodyKinds : [e.bodyKind || 'pool']);
       const bodies = recs.length ? recs.map(r => r.bodyName || r.bodyKind) : kinds.map(k => ({pool: 'Pool', spa: 'Spa', fountain: 'Fountain', extra: 'Extra'})[k] || 'Body of water');
-      day(e.date).pd.push({cid: e.customerId, st: st, tech: tech, bodies: bodies});
+      day(e.date).pd.push({cid: e.customerId, st: st, tech: tech, bodies: bodies, entry: e});
     });
   } else {
     const seen = {};
@@ -19736,7 +19704,8 @@ function acalDraw(){
   const pickBtn = btn('<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
     'btn-ghost', 'width:36px;padding:7px 0;display:inline-flex;align-items:center;justify-content:center;' + (acalPick ? 'background:var(--teal-pale);' : ''));
   pickBtn.title = 'Pick a month and year';
-  pickBtn.addEventListener('click', ()=>{ acalPick = !acalPick; acalPickYear = yy; acalDraw(); });
+  // A window now, not a box under the month (Nov 1)
+  pickBtn.addEventListener('click', ()=> monthPickWindow(acalMonth || (yy + '-' + String(mm).padStart(2, '0')), m=>{ acalPick = false; go(new Date(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1, 1)); }, 14));
   head.appendChild(prev); head.appendChild(label); head.appendChild(next); head.appendChild(pickBtn);
   card.appendChild(head);
   // Whose: everyone, or one technician
@@ -19906,13 +19875,46 @@ function acalDayWindow(on){
     return r;
   };
   const techText = id=>{ const s = document.createElement('span'); s.style.cssText = 'font-size:11.5px;color:var(--muted);width:84px;text-align:right;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'; s.textContent = acalTechName(id); return s; };
+  // Move to another day (Nov 1): the calendar-with-arrow button
+  const moveBtn = opts=>{
+    const m = document.createElement('button');
+    m.type = 'button';
+    m.title = 'Move to another day';
+    m.setAttribute('aria-label', m.title);
+    m.style.cssText = 'width:28px;height:28px;flex-shrink:0;border-radius:7px;border:1px solid #BFDCD8;background:#fff;color:var(--teal-deep);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;';
+    m.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M10 15h6M13.5 12.5L16 15l-2.5 2.5"/></svg>';
+    m.addEventListener('click', e=>{ e.stopPropagation(); acalMoveDialog(Object.assign({fromIso: iso}, opts)); });
+    return m;
+  };
   on.fc.forEach(g=>{
     badge('fc', g.name + (g.solo ? '' : g.tech ? ' · ' + acalTechName(g.tech) : ''));
     g.rows.forEach(r => row((acalCust(r.cid) || {}).name || 'Customer', '', r.st, [techText(r.tech)]));
   });
   if(on.pd.length){
     badge('pd');
-    on.pd.forEach(r => row((acalCust(r.cid) || {}).name || 'Customer', r.bodies.join(', '), r.st, [techText(r.tech)]));
+    on.pd.forEach(r=>{
+      const right = [techText(r.tech)];
+      // Move (Nov 1): the day's drain and anything of it on the route, not done
+      if(r.entry && r.st !== 'done') right.push(moveBtn({
+        name: (acalCust(r.cid) || {}).name || 'Customer', what: 'Pool drain', techId: r.tech || '',
+        onMove: async (to, tech)=>{
+          const e = JSON.parse(JSON.stringify(r.entry));
+          const c = acalCust(r.cid) || {};
+          e.date = to;
+          if(tech && String(tech) !== String(c.technicianId || '')) e.technicianId = tech; else delete e.technicianId;
+          if(!(await acalPushOffice('drain_entry', e))) return false;
+          Object.assign(r.entry, e);
+          const ids = Object.keys(e.pushed || {}).map(k => e.pushed[k]).concat(e.pushedId ? [e.pushedId] : []);
+          if(ids.length){
+            const recs = lsGet('scheduledPoolDrains') || [];
+            recs.forEach(x=>{ if(x && ids.indexOf(x.id) !== -1 && x.status !== 'done'){ x.date = to; x.technicianId = tech || c.technicianId || x.technicianId; queueOfficeWork('pool_drain', x.id, false); } });
+            lsSet('scheduledPoolDrains', recs);
+          }
+          return true;
+        }
+      }));
+      row((acalCust(r.cid) || {}).name || 'Customer', r.bodies.join(', '), r.st, right);
+    });
   }
   // Work orders and tasks: the technician can be changed and one taken off
   // here, as on the website
@@ -19946,6 +19948,23 @@ function acalDayWindow(on){
         showToast('Now on ' + acalTechName(sel.value) + '’s route');
       });
       right.push(sel);
+      // Move (Nov 1): to another day; the route follows
+      if(!done) right.push(moveBtn({
+        name: name, what: k === 'wo' ? 'Work order' + (rec.workOrderNumber ? ' #' + String(rec.workOrderNumber).padStart(4, '0') : '') : 'Task' + (c && rec.title ? ': ' + rec.title : ''),
+        techId: rec.technicianId || '',
+        onMove: (to, tech)=>{
+          const list = lsGet(kinds[k][0]) || [];
+          const x = list.find(y => y && String(y.id) === String(rec.id)); if(!x) return false;
+          x.date = to;
+          if(tech){ x.technicianId = tech; if(Array.isArray(x.technicianIds)) x.technicianIds = [tech]; }
+          delete x.placeAfter;
+          if(!lsSet(kinds[k][0], list)){ showToast('Could not save — the phone is full'); return false; }
+          if(k === 'tk'){ try{ if(typeof tasks !== 'undefined') tasks = list; }catch(e){} }
+          queueOfficeWork(kinds[k][1], x.id, false);
+          try{ fieldNoteLocalChange(); }catch(e){}
+          return true;
+        }
+      }));
       if(!done){
         const bin = document.createElement('button');
         bin.type = 'button';
@@ -19970,6 +19989,128 @@ function acalDayWindow(on){
     });
   });
   return sheet;
+}
+// ---------- The month picker, as a window (Nov 1) ----------
+// The calendar icon by the month's name: a window with the year and its
+// twelve months. The month on screen is dark; this month is light teal when
+// you're looking at another one. Back to this month jumps straight there.
+function monthPickWindow(viewMonth, onPick, BTN){
+  const now = new Date();
+  const thisYear = now.getFullYear(), thisMon = now.getMonth() + 1;
+  const [vy, vm] = String(viewMonth).split('-').map(Number);
+  let year = vy || thisYear;
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:360px;width:100%;text-align:left;';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const close = ()=> overlay.remove();
+  const mk = (text, cls, css)=>{ const b = document.createElement('button'); b.type = 'button'; b.className = 'btn ' + cls; b.style.cssText = css; b.textContent = text; return b; };
+  function drawWin(){
+    box.innerHTML = '';
+    const top = document.createElement('div');
+    top.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;';
+    const h = document.createElement('h3'); h.style.cssText = 'font-size:16px;margin:0;'; h.textContent = 'Go to a month';
+    const x = mk('Close', 'btn-ghost', 'width:auto;flex:0 0 auto;padding:5px 12px;font-size:12.5px;');
+    x.addEventListener('click', close);
+    top.appendChild(h); top.appendChild(x); box.appendChild(top);
+    const yr = document.createElement('div');
+    yr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;';
+    const yP = mk('\u2039', 'btn-ghost', 'width:40px;flex:0 0 40px;padding:5px 0;');
+    const yN = mk('\u203a', 'btn-ghost', 'width:40px;flex:0 0 40px;padding:5px 0;');
+    const yL = document.createElement('b'); yL.style.cssText = 'font-size:16px;'; yL.textContent = String(year);
+    yP.addEventListener('click', ()=>{ year--; drawWin(); });
+    yN.addEventListener('click', ()=>{ year++; drawWin(); });
+    yr.appendChild(yP); yr.appendChild(yL); yr.appendChild(yN); box.appendChild(yr);
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:7px;';
+    for(let i = 0; i < 12; i++){
+      const viewing = year === vy && i + 1 === vm;
+      const current = year === thisYear && i + 1 === thisMon && !viewing;
+      const b = mk(new Date(2000, i, 1).toLocaleDateString(undefined, {month: 'short'}), viewing ? 'btn-primary' : 'btn-ghost',
+        'width:100%;padding:9px 0;font-size:' + BTN + 'px;' + (current ? 'background:var(--teal-pale);border-color:#9CC5BF;color:var(--ink);' : ''));
+      if(current) b.title = 'This month';
+      b.addEventListener('click', ()=>{ close(); onPick(year + '-' + String(i + 1).padStart(2, '0')); });
+      grid.appendChild(b);
+    }
+    box.appendChild(grid);
+    // Looking at another month: straight back to this one
+    if(!(vy === thisYear && vm === thisMon)){
+      const back = mk('Back to this month', 'btn-ghost', 'display:block;width:100%;margin-top:12px;');
+      back.addEventListener('click', ()=>{ close(); onPick(thisYear + '-' + String(thisMon).padStart(2, '0')); });
+      box.appendChild(back);
+    }
+  }
+  drawWin();
+}
+// ---------- Move a job to another day (Nov 1) ----------
+// As on the website: quick picks or any date, and the same technician or
+// another. opts: name, what, fromIso, techId, onMove(iso, techId) (true, or a
+// promise of true, when moved).
+function acalAddDays(iso, n){ const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function acalMoveDialog(opts){
+  const from = opts.fromIso;
+  const nice = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
+  const short = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
+  const curTech = String(opts.techId || '');
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:400px;width:100%;text-align:left;';
+  box.innerHTML = '<h3 style="font-size:17px;margin:0 0 4px;">Move to another day</h3>'
+    + '<p data-sub style="font-size:13px;color:var(--muted);margin:0 0 12px;"></p>'
+    + '<div data-chips style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;"></div>'
+    + '<div style="font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:4px;">Or pick a date</div>'
+    + '<input type="date" data-date style="margin:0 0 12px;">'
+    + '<label data-keepwrap class="inline-check" style="display:flex;white-space:normal;font-size:14px;font-weight:600;margin:0 0 8px;gap:8px;"><input type="checkbox" data-keep checked style="width:20px;height:20px;margin:0;flex:0 0 auto;"> <span data-keepword></span></label>'
+    + '<select data-tech style="display:none;margin:0 0 8px;"></select>'
+    + '<div style="display:flex;gap:8px;margin-top:12px;"><button type="button" class="btn btn-ghost" data-cancel style="flex:1 1 0;">Cancel</button><button type="button" class="btn btn-primary" data-go style="flex:1 1 0;">Move</button></div>';
+  box.querySelector('[data-sub]').textContent = (opts.name || '') + ' \u00b7 ' + (opts.what || 'Job') + ' on ' + nice(from);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const dateEl = box.querySelector('[data-date]'), go = box.querySelector('[data-go]'), keep = box.querySelector('[data-keep]'), techSel = box.querySelector('[data-tech]');
+  dateEl.value = acalAddDays(from, 1);
+  const chips = [];
+  [['Tomorrow', 1], ['Next week', 7], ['In 2 weeks', 14]].forEach(([w, n])=>{
+    const ch = document.createElement('button');
+    ch.type = 'button'; ch.className = 'btn btn-ghost';
+    ch.style.cssText = 'width:auto;flex:0 0 auto;padding:7px 13px;font-size:13.5px;border-radius:999px;';
+    ch.textContent = w; ch.dataset.iso = acalAddDays(from, n);
+    ch.addEventListener('click', ()=>{ dateEl.value = ch.dataset.iso; upd(); });
+    box.querySelector('[data-chips]').appendChild(ch); chips.push(ch);
+  });
+  if(curTech) box.querySelector('[data-keepword]').textContent = 'Keep the same technician (' + acalTechName(curTech) + ')';
+  else { box.querySelector('[data-keepwrap]').style.display = 'none'; keep.checked = false; }
+  const none = document.createElement('option'); none.value = ''; none.textContent = curTech ? 'Pick a technician' : 'No technician';
+  techSel.appendChild(none);
+  techniciansInOrder().forEach(t => { if(t && t.id){ const o = document.createElement('option'); o.value = String(t.id); o.textContent = t.name || 'Technician'; techSel.appendChild(o); } });
+  techSel.value = curTech;
+  const upd = ()=>{
+    const v = dateEl.value;
+    go.textContent = v ? (v === from ? 'Same day' : 'Move to ' + short(v)) : 'Move';
+    go.disabled = !v || v === from; go.style.opacity = go.disabled ? '0.5' : '';
+    chips.forEach(ch=>{ const on = ch.dataset.iso === v; ch.style.background = on ? 'var(--teal-pale)' : ''; ch.style.borderColor = on ? '#9CC5BF' : ''; });
+    techSel.style.display = keep.checked ? 'none' : 'block';
+  };
+  dateEl.addEventListener('input', upd); dateEl.addEventListener('change', upd);
+  keep.addEventListener('change', ()=>{ if(!keep.checked && !techSel.value) techSel.value = curTech; upd(); });
+  upd();
+  box.querySelector('[data-cancel]').addEventListener('click', ()=> overlay.remove());
+  go.addEventListener('click', async ()=>{
+    const to = dateEl.value;
+    if(!to || to === from) return;
+    const tech = keep.checked ? curTech : techSel.value;
+    go.disabled = true; go.textContent = 'Moving\u2026';
+    let moved = false;
+    try{ moved = (await opts.onMove(to, tech)) !== false; }catch(e){ console.warn('move failed', e); }
+    overlay.remove();
+    if(!moved){ showToast('Couldn\u2019t move that \u2014 check the signal and try again'); return; }
+    acalDraw();
+    showToast((opts.name || 'Moved') + ' moved to ' + nice(to));
+  });
 }
 // + Job: the WorkCenter's own Work Order or Task form, with the day filled in
 function acalNewJob(kind, iso){
