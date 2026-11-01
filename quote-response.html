@@ -42,7 +42,7 @@
             font:inherit;font-size:15px;font-weight:700;cursor:pointer !important;}
   .msg-send:disabled{opacity:.6;}
   .msg-need{display:none;margin-top:8px;font-size:13px;font-weight:700;color:var(--rust);text-align:left;}
-  /* The quote, in the email's own look, after Approve all / Decline all (Nov 1) */
+  /* The quote, in the email's own look, after Approve / Decline (Nov 1) */
   .card.qv{max-width:520px;padding:0;text-align:left;overflow:hidden;}
   .qv-band{padding:20px 24px;color:#fff;font-size:18px;font-weight:700;}
   .qv-saved{display:flex;align-items:center;gap:8px;padding:11px 24px;font-size:14px;font-weight:700;background:#E3F2E8;color:#2E6B47;}
@@ -175,7 +175,7 @@ const QR_KEYS = {
 
 
 // ---------- The quote, answered (Nov 1) ----------
-// After Approve all or Decline all in the email: the quote laid out as the
+// After Approve or Decline in the email: the quote laid out as the
 // email has it (the company's colour, the number, the items and total), the
 // answer saved and shown in green or red, and both buttons here to change it
 // until the quote expires. The breakdown comes from the quote's code (snippet
@@ -224,6 +224,8 @@ function drawQuote(d, token, fn, outcome, company){
     const row = el('div', 'qv-line');
     const n = el('span', 'n', it.description || 'Item');
     if(qty !== 1) n.appendChild(el('span', 'q', '  \u00d7 ' + qty));
+    // The item's description (Nov 1)
+    if(it.detail){ const dd = el('div', '', String(it.detail)); dd.style.cssText = 'font-size:13px;color:#6B7B79;margin-top:3px;line-height:1.4;white-space:pre-wrap;'; n.appendChild(dd); }
     row.appendChild(n);
     row.appendChild(el('span', 'a', money(qty * price)));
     items.appendChild(row);
@@ -238,8 +240,8 @@ function drawQuote(d, token, fn, outcome, company){
   const foot = el('div', 'qv-foot');
   const stamp = el('div', 'qv-stamp');
   const btns = el('div', 'qv-btns');
-  const yes = el('button', 'qv-btn', 'Approve all'); yes.type = 'button'; yes.style.background = colour;
-  const no = el('button', 'qv-btn', 'Decline all'); no.type = 'button'; no.style.background = '#B8492E';
+  const yes = el('button', 'qv-btn', 'Approve'); yes.type = 'button'; yes.style.background = colour;
+  const no = el('button', 'qv-btn', 'Decline'); no.type = 'button'; no.style.background = '#B8492E';
   btns.appendChild(yes); btns.appendChild(no);
   const note = el('div', 'qv-note', d.expiresOn ? 'You can change your answer until ' + d.expiresOn + '.' : 'You can change your answer any time before the quote expires.');
   foot.appendChild(stamp); foot.appendChild(btns); foot.appendChild(note);
@@ -506,10 +508,14 @@ function drawQuotePdf(d){
   d.items.forEach((it, i)=>{
     set(10.5, 'bold', ink);
     const desc = doc.splitTextToSize(String(it.description || ''), 300);
-    const h = 14 + desc.length * 13;
+    // The item's description under its name (Nov 1)
+    set(9.5, 'normal', muted);
+    const det = it.detail ? doc.splitTextToSize(String(it.detail), 300) : [];
+    const h = 14 + desc.length * 13 + (det.length ? 4 + det.length * 11.5 : 0);
     if(y + h > BOTTOM) y = nextPage();
     if(i % 2 === 1){ doc.setFillColor(247, 250, 249); doc.rect(L, y, R - L, h, 'F'); }
     set(10.5, 'bold', ink); doc.text(desc, L + 10, y + 17);
+    if(det.length){ set(9.5, 'normal', muted); doc.text(det, L + 10, y + 17 + desc.length * 13 + 2); }
     set(10.5, 'normal', soft);
     const qty = Number(it.qty) || 0, price = Number(it.price) || 0;
     doc.text(String(qty), cols.qty, y + 17, {align: 'center'});

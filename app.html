@@ -9465,7 +9465,7 @@ function techRouteJobsFor(techId, iso){
   // A done one put back in the app from the website keeps its record (reopened)
   // and a fresh copy goes out in its place: only the copy is listed here.
   (lsGet('scheduledWorkOrders') || []).filter(j => j && j.date === iso && mine(j) && !j.held && !j.reopened).forEach(j=>{
-    out.push({kind: 'work order', id: j.id, key: 'work order:' + j.id, report: 'wo:' + j.id, title: j.title || 'Work order', customerId: j.customerId,
+    out.push({kind: 'work order', id: j.id, key: 'work order:' + j.id, report: 'wo:' + j.id, title: j.title || 'Work order', customerId: j.customerId, lineItems: j.lineItems || [],
       done: j.status === 'done', doneAt: j.doneAt, date: j.date, technicianId: j.technicianId, placeAfter: j.placeAfter});
   });
   (lsGet('scheduledFilterCleans') || []).filter(f => f && f.date === iso && mine(f) && !f.reopened).forEach(f=>{
@@ -9490,7 +9490,7 @@ function techRouteJobRow(job, iso, onReorder){
   const row = document.createElement('div');
   row.className = 'cust-row';
   row.style.gap = '8px';
-  row.style.background = jobKindColours(job.kind)[0];
+  row.style.background = jobKindColours(shownJobKind(job))[0];
   if(job.done) row.style.opacity = '0.85';
   // Its own place in the route, dragged like a stop (Oct 3)
   row.dataset.reorderKey = 'job:' + job.key;
@@ -9506,9 +9506,9 @@ function techRouteJobRow(job, iso, onReorder){
   left.style.cssText = 'min-width:0;flex:1 1 auto;';
   const name = document.createElement('div');
   name.className = 'cust-name';
-  name.style.cssText = "font-family:'Space Grotesk',sans-serif;font-weight:700;color:" + jobKindColours(job.kind)[1] + ';'
+  name.style.cssText = "font-family:'Space Grotesk',sans-serif;font-weight:700;color:" + jobKindColours(shownJobKind(job))[1] + ';'
     + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-  setJobNameLine(name, job.kind, (customer ? customer.name + ' \u2013 ' : '') + job.title);
+  setJobNameLine(name, shownJobKind(job), (customer ? customer.name + ' \u2013 ' : '') + job.title);
   if(job.done){
     const tag = document.createElement('span');
     tag.style.cssText = 'background:var(--green);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:5px;vertical-align:middle;margin-left:6px;';
@@ -10956,18 +10956,30 @@ function openReplacementsPicker(current, onDone){
 
 // Each kind's colour, as the website's Quotes & Orders tags (Oct 3):
 // work order slate, filter clean gold, task sage. [pale background, text]
+// A work order with a filter clean on it shows as a filter clean job (Nov 1):
+// gold, the filter clean icon, FC on the calendar
+function woIsFilterClean(lineItems){
+  return (lineItems || []).some(li => li && (li.filterClean === true || /filter\s*clean/i.test(String(li.description || ''))));
+}
+// A Clean & refill task (an overnight drain's second day) shows bright sky blue (Nov 1)
+function isRefillJob(t){ return !!(t && (t.refillOf || /^clean\s*&\s*refill$/i.test(String(t.title || '').trim()))); }
+function shownJobKind(job){
+  if(job && job.kind === 'task' && isRefillJob(job)) return 'clean refill';
+  return job && job.kind === 'work order' && woIsFilterClean(job.lineItems) ? 'filter clean' : (job && job.kind);
+}
 function jobKindColours(kind){
-  return kind === 'task' ? ['#E8F1E4', '#4D6B3C']
+  return kind === 'task' ? ['#D7F0A8', '#3D5E0A']
+    : kind === 'clean refill' ? ['#8EC5F5', '#0D3A66']
     : kind === 'filter clean' ? ['#FBF1DD', '#8A5E0B']
     : kind === 'pool drain' ? ['#C3DEF3', '#174C78']      // sky blue (Oct 15), apart from the work order grey
     : ['#E9EEF0', '#3E5560'];
 }
 // Each kind's icon (Oct 3): work order 🛠, filter clean 🚿, task 📋
 function jobKindIcon(kind){
-  return kind === 'task' ? '\ud83d\udccb' : kind === 'filter clean' ? '\ud83d\udebf' : kind === 'pool drain' ? '' : '\ud83d\udee0';
+  return (kind === 'task' || kind === 'clean refill') ? '\ud83d\udccb' : kind === 'filter clean' ? '\ud83d\udebf' : kind === 'pool drain' ? '' : '\ud83d\udee0';
 }
 function jobKindLabel(kind){
-  return kind === 'task' ? 'Task' : kind === 'filter clean' ? 'Filter clean' : kind === 'pool drain' ? 'Pool drain' : 'Work order';
+  return kind === 'clean refill' ? 'Clean & refill' : kind === 'task' ? 'Task' : kind === 'filter clean' ? 'Filter clean' : kind === 'pool drain' ? 'Pool drain' : 'Work order';
 }
 // Which body of water a drain is for (Oct 10): its name on the route and report
 function drainTitle(rec){
@@ -11115,7 +11127,7 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
     // The same padding as a stop's row, so they're the same height (Oct 3)
     row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:0;'
       + 'padding:15px 4px 15px 12px;border-bottom:1px solid var(--line);cursor:pointer;'
-      + 'background:' + jobKindColours(job.kind)[0] + ';';
+      + 'background:' + jobKindColours(shownJobKind(job))[0] + ';';
     // The same grip as a customer, so names line up down the list
     if(canReorder){
       const handle = document.createElement('div');
@@ -11134,8 +11146,8 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
     text.style.cssText = 'min-width:0;flex:1 1 auto;';
     const nameLine = document.createElement('div');
     nameLine.className = 'cust-name';
-    nameLine.style.cssText = 'color:' + jobKindColours(job.kind)[1] + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-    setJobNameLine(nameLine, job.kind, customer ? customer.name + ' \u2013 ' + job.title : job.title);
+    nameLine.style.cssText = 'color:' + jobKindColours(shownJobKind(job))[1] + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    setJobNameLine(nameLine, shownJobKind(job), customer ? customer.name + ' \u2013 ' + job.title : job.title);
     const metaLine = document.createElement('div');
     metaLine.className = 'cust-meta';
     metaLine.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
@@ -11161,7 +11173,7 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
     chev.className = 'chev';
     // The same arrow as a service row, only gold, so On my way and the arrow
     // stand in the same column down the list
-    chev.style.color = jobKindColours(job.kind)[1];
+    chev.style.color = jobKindColours(shownJobKind(job))[1];
     chev.textContent = '\u203A';
     right.appendChild(chev);
     row.appendChild(right);
@@ -11279,7 +11291,7 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
     // The same padding as a stop's row, so they're the same height (Oct 3)
     row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:0;'
       + 'padding:15px 4px 15px 12px;border-bottom:1px solid var(--line);cursor:pointer;'
-      + 'background:' + jobKindColours(job.kind)[0] + ';';
+      + 'background:' + jobKindColours(shownJobKind(job))[0] + ';';
     // The same grip as a customer, so names line up down the list
     if(canReorder){
       const handle = document.createElement('div');
@@ -11298,8 +11310,8 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
     text.style.cssText = 'min-width:0;flex:1 1 auto;';
     const nameLine = document.createElement('div');
     nameLine.className = 'cust-name';
-    nameLine.style.cssText = 'color:' + jobKindColours(job.kind)[1] + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-    setJobNameLine(nameLine, job.kind, customer ? customer.name + ' \u2013 ' + job.title : job.title);
+    nameLine.style.cssText = 'color:' + jobKindColours(shownJobKind(job))[1] + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    setJobNameLine(nameLine, shownJobKind(job), customer ? customer.name + ' \u2013 ' + job.title : job.title);
     const metaLine = document.createElement('div');
     metaLine.className = 'cust-meta';
     metaLine.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
@@ -11325,7 +11337,7 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
     chev.className = 'chev';
     // The same arrow as a service row, only gold, so On my way and the arrow
     // stand in the same column down the list
-    chev.style.color = jobKindColours(job.kind)[1];
+    chev.style.color = jobKindColours(shownJobKind(job))[1];
     chev.textContent = '\u203A';
     right.appendChild(chev);
     row.appendChild(right);
@@ -13099,13 +13111,13 @@ function servicedJobRow(job){
   const row = document.createElement('div');
   row.className = 'cust-row';
   row.dataset.doneAt = job.doneAt || '';
-  row.style.background = jobKindColours(job.kind)[0];
+  row.style.background = jobKindColours(shownJobKind(job))[0];
   const left = document.createElement('div');
   left.style.cssText = 'min-width:0;';
   const name = document.createElement('div');
   name.className = 'cust-name';
-  name.style.cssText = 'color:' + jobKindColours(job.kind)[1] + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-  setJobNameLine(name, job.kind, (customer ? customer.name + ' \u2013 ' : '') + job.title);
+  name.style.cssText = 'color:' + jobKindColours(shownJobKind(job))[1] + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  setJobNameLine(name, shownJobKind(job), (customer ? customer.name + ' \u2013 ' : '') + job.title);
   const meta = document.createElement('div');
   meta.className = 'cust-meta';
   meta.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
@@ -14301,7 +14313,7 @@ async function renderWorkOrderReport(customerId, jobId, isClean){
   items.forEach(li=>{
     const qty = Number(li.qty) || 1, price = Number(li.price) || 0;
     total += qty * price;
-    rows += '<tr><td>' + esc(li.description) + '</td>'
+    rows += '<tr><td>' + esc(li.description) + (li.detail ? '<div style="font-size:12px;color:var(--muted);font-weight:400;margin-top:2px;">' + esc(li.detail) + '</div>' : '') + '</td>'
       + '<td style="text-align:right;color:var(--muted);font-family:\'Inter\',sans-serif;font-weight:500;white-space:nowrap;">' + qty + ' \u00d7 ' + workOrderMoney(price) + '</td>'
       + '<td style="width:90px;">' + workOrderMoney(qty * price) + '</td></tr>';
   });
@@ -17129,6 +17141,10 @@ function awcRenderLines(boxId){
   items.forEach((item, i)=>{
     const row = document.createElement('div');
     row.className = 'awc-line';
+    // The product's description, under the line (Nov 1)
+    const detailLine = document.createElement('div');
+    detailLine.style.cssText = 'display:' + (item.detail ? 'block' : 'none') + ';font-size:12.5px;color:var(--muted);margin:-2px 44px 10px 4px;white-space:pre-wrap;';
+    detailLine.textContent = item.detail || '';
     // The description with its own list of matching products underneath (Oct
     // 15): the phone's built-in list showed nothing while typing
     const descWrap = document.createElement('div');
@@ -17208,6 +17224,11 @@ function awcRenderLines(boxId){
         item.price = match.price == null ? '' : match.price;
         price.value = item.price;
       }
+      // Its description from Products & Services goes with the line (Nov 1)
+      const det = match && String(match.description || '').trim();
+      if(det) item.detail = det; else delete item.detail;
+      detailLine.textContent = item.detail || '';
+      detailLine.style.display = item.detail ? 'block' : 'none';
       total();
     });
     desc.addEventListener('input', showSug);
@@ -17223,6 +17244,7 @@ function awcRenderLines(boxId){
     x.addEventListener('click', ()=>{ items.splice(i, 1); awcRenderLines(boxId); });
     row.appendChild(descWrap); row.appendChild(qty); row.appendChild(priceWrap); row.appendChild(x); row.appendChild(sug);
     box.appendChild(row);
+    box.appendChild(detailLine);
   });
   total();
 }
@@ -17721,12 +17743,13 @@ function awcQuoteEmailHtml(customer, type, dateText, items, total, notes, styleO
     + 'color:#0F766E;text-transform:uppercase;letter-spacing:0.05em;';
 
   // One answer for the whole quote (Nov 1): no buttons on the lines; Approve
-  // all and Decline all at the bottom
+  // and Decline at the bottom
   const rows = items.map(item=>{
     const qty = parseFloat(item.qty) || 0;
     const price = parseFloat(item.price) || 0;
     return '<tr>'
-      + '<td style="' + cell + 'color:#16302E;">' + awcEsc(item.description) + '</td>'
+      + '<td style="' + cell + 'color:#16302E;">' + awcEsc(item.description)
+        + (item.detail ? '<div style="font-size:12.5px;color:#6B7B79;margin-top:3px;line-height:1.4;white-space:pre-wrap;">' + awcEsc(item.detail) + '</div>' : '') + '</td>'
       + '<td style="' + cell + 'color:#4A5A58;text-align:center;white-space:nowrap;">' + awcEsc(String(qty)) + '</td>'
       + '<td style="' + cell + 'color:#4A5A58;text-align:right;white-space:nowrap;">' + money(price) + '</td>'
       + '<td style="' + cell + 'color:#16302E;font-weight:600;text-align:right;white-space:nowrap;">' + money(qty * price) + '</td>'
@@ -17796,8 +17819,8 @@ function awcQuoteEmailHtml(customer, type, dateText, items, total, notes, styleO
         + '.</div>' : '')
     // Approve / Deny, when the quote can take an answer
     + (respondUrl ? '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 6px;width:100%;"><tr>'
-        + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">Approve all</a></td>'
-        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#B8492E;color:#ffffff;border:1.5px solid #B8492E;font-weight:700;font-size:15px;text-decoration:none;">Decline all</a></td>'
+        + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">Approve</a></td>'
+        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#B8492E;color:#ffffff;border:1.5px solid #B8492E;font-weight:700;font-size:15px;text-decoration:none;">Decline</a></td>'
         + '</tr></table>'
         // Download quote (Oct 15): the breakdown as a PDF to keep
         + (!awcQuoteLinkCanDownload(respondUrl) ? '' : '<a href="' + respondUrl + '&a=download" style="display:block;text-align:center;margin:12px 0 6px;padding:12px 10px;border-radius:10px;'
@@ -17833,7 +17856,8 @@ function awcQuoteDownloadDetails(customer, type, dateText, items, total, notes, 
     date: dateText || '',
     expiresOn: expiresOn,
     customer: {name: customer.name || '', address: customer.address || ''},
-    items: (items || []).map(li => ({description: String(li.description || ''), qty: parseFloat(li.qty) || 0, price: parseFloat(li.price) || 0})),
+    items: (items || []).map(li => Object.assign({description: String(li.description || ''), qty: parseFloat(li.qty) || 0, price: parseFloat(li.price) || 0},
+      li.detail ? {detail: String(li.detail)} : {})),
     total: Number(total) || 0,
     notes: notes || '',
     colour: style.colour || '#134E4A',
@@ -18872,7 +18896,7 @@ function awcOpenForEditing(isTask, r){
   document.getElementById('awcWoNotes').value = first.notes || '';
   awcWoCustomers = first.customerId ? [first.customerId] : [];
   awcWoTechs = first.technicianId ? [String(first.technicianId)] : [];
-  awcLineItems = (first.lineItems || []).map(li => ({description: li.description || '', qty: li.qty, price: li.price}));
+  awcLineItems = (first.lineItems || []).map(li => Object.assign({description: li.description || '', qty: li.qty, price: li.price}, li.detail ? {detail: li.detail} : {}));
   if(!awcLineItems.length) awcLineItems = [{description: '', qty: '', price: ''}];
   let rep = {repeat: 'none'};
   if(left.length > 1){
@@ -18936,7 +18960,7 @@ function awcVisitEditor(isTask, id, onDone){
     details = document.createElement('textarea'); details.rows = 3; details.value = item.details || '';
     panel.appendChild(field('Details', details));
   } else {
-    lines = (item.lineItems || []).map(li => ({description: li.description || '', qty: li.qty === undefined ? '' : li.qty, price: li.price === undefined ? '' : li.price, filterClean: li.filterClean}));
+    lines = (item.lineItems || []).map(li => Object.assign({description: li.description || '', qty: li.qty === undefined ? '' : li.qty, price: li.price === undefined ? '' : li.price, filterClean: li.filterClean}, li.detail ? {detail: li.detail} : {}));   // keeps its description (Nov 1)
     if(!lines.length) lines.push({description: '', qty: 1, price: ''});
     const liBox = document.createElement('div');
     const drawLines = ()=>{
@@ -19364,7 +19388,8 @@ var acalMode = 'today', acalMonth = '', acalSel = '', acalTech = '', acalPick = 
 var acalSlide = 0, acalSwipedAt = 0;   // which way the month just moved by a swipe (1 next, -1 before), and when
 var acalOffice = {filterGroups: null, drainCalendar: null, at: 0};
 const ACAL_TAGS = {fc: ['FC', 'Filter cleans', '#FBF1DD', '#8A5E0B'], pd: ['PD', 'Pool drains', '#C3DEF3', '#174C78'],
-  wo: ['WO', 'Work orders', '#E9EEF0', '#3E5560'], tk: ['TK', 'Tasks', '#E8F1E4', '#4D6B3C']};
+  cr: ['CR', 'Clean & refill', '#8EC5F5', '#0D3A66'],   // overnight drain's second day (Nov 1)
+  wo: ['WO', 'Work orders', '#E9EEF0', '#3E5560'], tk: ['TK', 'Tasks', '#D7F0A8', '#3D5E0A']};
 const ACAL_STATES = {'': ['Not in app', '#8A9795'], app: ['In the app', '#C68A17'], done: ['Done', '#2E8B57']};
 function acalEsc(t){ return String(t == null ? '' : t).replace(/[&<>"]/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[ch])); }
 function acalCust(id){ return (customers || []).find(c => c && String(c.id) === String(id)) || null; }
@@ -19667,11 +19692,11 @@ function acalOnDays(){
   }
   (lsGet('scheduledWorkOrders') || []).forEach(j=>{
     if(!j || j.reopened || !j.date || !acalCust(j.customerId) || !mineTech(j.technicianId)) return;
-    day(j.date).wo.push({rec: j, cid: j.customerId, st: j.status === 'done' ? 'done' : j.held ? '' : 'app', tech: j.technicianId});
+    day(j.date).wo.push({rec: j, cid: j.customerId, st: j.status === 'done' ? 'done' : j.held ? '' : 'app', tech: j.technicianId, fcLike: woIsFilterClean(j.lineItems)});
   });
   (lsGet('tasks') || []).forEach(t=>{
     if(!t || t.reopened || !t.date || !mineTech(t.technicianId)) return;
-    day(t.date).tk.push({rec: t, cid: (t.customerIds || [])[0] || t.customerId || '', st: t.done ? 'done' : t.held ? '' : 'app', tech: t.technicianId});
+    day(t.date).tk.push({rec: t, cid: (t.customerIds || [])[0] || t.customerId || '', st: t.done ? 'done' : t.held ? '' : 'app', tech: t.technicianId, crLike: isRefillJob(t)});
   });
   return by;
 }
@@ -19756,10 +19781,16 @@ function acalDraw(){
     cell.innerHTML = '<div style="font-size:11px;font-weight:700;' + (iso === today ? 'color:#fff;background:var(--teal-deep);border-radius:50%;width:19px;height:19px;display:flex;align-items:center;justify-content:center;' : 'color:var(--ink);') + '">' + d + '</div>';
     const tags = document.createElement('div');
     tags.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px 4px;margin-top:5px;';
-    ['fc', 'pd', 'wo', 'tk'].forEach(k=>{
-      const n = acalCount(on, k);
+    ['fc', 'pd', 'cr', 'wo', 'tk'].forEach(k=>{
+      // Work orders with a filter clean on them count as filter cleans (Nov 1)
+      // Clean & refill tasks get their own CR tag (Nov 1)
+      let rows = k === 'cr' ? on.tk.filter(r => r.crLike) : acalAllRows(on, k);
+      if(k === 'tk') rows = rows.filter(r => !r.crLike);
+      if(k === 'fc') rows = rows.concat(on.wo.filter(r => r.fcLike));
+      if(k === 'wo') rows = rows.filter(r => !r.fcLike);
+      const n = rows.length;
       if(!n) return;
-      const st = acalTagState(acalAllRows(on, k));
+      const st = acalTagState(rows);
       const t = document.createElement('span');
       // In its job's colour, with a dot for where it's up to (Oct 28)
       t.style.cssText = "position:relative;font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:700;padding:1px 3px;border-radius:4px;line-height:1.25;"
@@ -23274,7 +23305,8 @@ function buildJobEmailHtml(customer, job, techName){
     (job.lineItems || []).filter(li => li && String(li.description || '').trim()).forEach(li=>{
       const qty = Number(li.qty) || 1, price = Number(li.price) || 0;
       total += qty * price;
-      rows += '<tr><td style="' + cell + '">' + esc(li.description) + (qty !== 1 ? ' \u00d7 ' + qty : '') + '</td>'
+      rows += '<tr><td style="' + cell + '">' + esc(li.description) + (qty !== 1 ? ' \u00d7 ' + qty : '')
+        + (li.detail ? '<div style="font-size:12.5px;color:#6B7B79;margin-top:2px;">' + esc(li.detail) + '</div>' : '') + '</td>'
         + '<td style="' + cell + 'text-align:right;">' + (withPrices ? '$' + (qty * price).toFixed(2) : '') + '</td></tr>';
     });
     if(rows && withPrices) rows += '<tr><td style="padding:7px 0;font-weight:700;color:#16302E;">Total</td>'

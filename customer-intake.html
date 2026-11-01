@@ -71,7 +71,10 @@ html{scrollbar-gutter:stable;}
 .cal-move-btn{width:24px;height:24px;flex:0 0 24px;padding:0;border-radius:7px;border:1px solid #BFDCD8;background:#fff;color:var(--teal-deep, #0E4A4D);
   display:inline-flex;align-items:center;justify-content:center;cursor:pointer;}
 .cal-move-btn:hover{background:var(--teal-pale);}
-html.weir-win-open, html.weir-win-open body{overflow:hidden !important;}
+/* Only the page itself is locked, never the body: a locked body becomes the
+   frame the sticky sidebar stays in, and it slid up by however far the page
+   had been scrolled (fixed Nov 1) */
+html.weir-win-open{overflow:hidden !important;}
 .confirm-overlay, .confirm-overlay .confirm-box{overscroll-behavior:contain;}
 body{
   margin:0;
@@ -1874,11 +1877,13 @@ input::placeholder{color:#A9BCB9;}
         <!-- Drains from a spreadsheet (Oct 10), just right of the heading -->
         <button type="button" class="btn btn-ghost" id="btnImportDrains" style="width:auto;margin-left:12px;">Import drains</button>
         <input type="file" accept=".csv,text/csv" id="importDrainsInput" style="display:none;">
+        <!-- Drain every just right of Import drains (Nov 1) -->
+        <label for="drainEvery" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--ink);margin:0 0 0 12px;white-space:nowrap;cursor:pointer;">Drain every
+          <select id="drainEvery" title="How often pools are drained in your area" style="width:auto;"></select>
+        </label>
         <div style="display:flex;gap:8px;margin-left:auto;align-items:center;flex-wrap:wrap;">
+          <!-- The technician menu just left of Email (Nov 1) -->
           <select id="drainTech" aria-label="Technician" title="Show one technician's customers" style="width:auto;min-width:160px;"></select>
-          <label for="drainEvery" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--ink);margin:0;white-space:nowrap;cursor:pointer;">Drain every
-            <select id="drainEvery" title="How often pools are drained in your area" style="width:auto;"></select>
-          </label>
           <!-- Drain emails (Oct 11): coming up, and scheduled -->
           <button type="button" class="btn btn-primary" id="btnDrainEmail" style="width:auto;">Email</button>
         </div>
@@ -2174,7 +2179,8 @@ input::placeholder{color:#A9BCB9;}
         <button type="button" class="history-type-btn" data-kind="fav">Favorites</button>
         <button type="button" class="history-type-btn" data-kind="video">Videos</button>
         <button type="button" class="history-type-btn" data-kind="note">Notes</button>
-        <button type="button" class="history-type-btn" data-kind="repair">Repairs</button>
+        <!-- Quotes, was Repairs (Nov 1) -->
+        <button type="button" class="history-type-btn" data-kind="repair">Quotes</button>
         <!-- Emails that didn't go out (Oct 8) -->
         <button type="button" class="history-type-btn" data-kind="email">Emails</button>
         <!-- Drains and filter cleans coming due (Oct 10) -->
@@ -2369,9 +2375,10 @@ input::placeholder{color:#A9BCB9;}
       <div class="seg-control" id="psCategoryControl" style="margin-bottom:14px;">
         <button class="history-type-btn active" data-pscat="all" type="button">All</button>
         <button class="history-type-btn" data-pscat="repairs" type="button">Repairs</button>
-        <button class="history-type-btn" data-pscat="chemicals" type="button">Chemicals</button>
         <button class="history-type-btn" data-pscat="products" type="button">Products</button>
         <button class="history-type-btn" data-pscat="services" type="button">Services</button>
+        <!-- Chemicals at the far right (Nov 1) -->
+        <button class="history-type-btn" data-pscat="chemicals" type="button">Chemicals</button>
       </div>
       <!-- Search, with Add line item at the far right of the same line (Oct 2) -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
@@ -4784,8 +4791,8 @@ function renderProductsServicesList(){
     .filter(i => !term || (i.name || '').toLowerCase().includes(term))
     .slice()
     .sort((a,b)=>{
-      // Repairs, Chemicals, Products, Services, then Uncategorised (Oct 13)
-      const rank = i => { const n = ['repairs', 'chemicals', 'products', 'services'].indexOf(i.category || ''); return n === -1 ? 4 : n; };
+      // Repairs, Products, Services, Uncategorised, and chemicals last (Nov 1)
+      const rank = i => { const n = ['repairs', 'products', 'services', '', 'chemicals'].indexOf(i.category || ''); return n === -1 ? 3 : n; };
       const ra = rank(a), rb = rank(b);
       if(ra !== rb) return ra - rb;
       // A–Z on every tab; no dragging (Oct 13)
@@ -9994,8 +10001,11 @@ function pdRow(c, b){
   // On the drain calendar and not drained yet: the day(s) they're down for (Oct 13)
   try{
     const today = pdToday();
+    // Also any drain on the route for them that isn't done (Nov 1), so one
+    // scheduled from the app shows even before its calendar entry arrives
+    const onRoute = pdScheduled().filter(r => r && String(r.customerId) === String(c.id) && !r.reopened && r.status !== 'done' && r.date && r.date >= today).map(r => r.date);
     const days = pdCal().filter(e => e && e.customerId === c.id && e.date >= today && !((pdCalRecord(e) || {}).status === 'done'))
-      .map(e => e.date).filter((d, i, a) => a.indexOf(d) === i).sort();
+      .map(e => e.date).concat(onRoute).filter((d, i, a) => a.indexOf(d) === i).sort();
     if(days.length){
       const tag = document.createElement('span');
       tag.style.cssText = 'flex-shrink:0;background:#FBF1DD;color:#8A5E0B;font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;';
@@ -10005,7 +10015,7 @@ function pdRow(c, b){
       tag.style.cursor = 'pointer';
       // Just the day's window, over this page (Nov 1); the list catches up
       // with anything added there once it's closed
-      tag.addEventListener('click', ev=>{
+      const openDay = ev=>{
         ev.stopPropagation();
         openWorkCalendar(days[0], true);
         const host = document.getElementById('wcCalendarCard');
@@ -10014,8 +10024,14 @@ function pdRow(c, b){
           clearInterval(watch);
           if(workCenterMode === 'drains'){ pdKeepHeight = true; try{ renderPoolDrains(); } finally { pdKeepHeight = false; } }
         }, 300);
-      });
-      row.appendChild(tag);
+      };
+      // Its press area (Nov 1): the badge with room round it, the row's full height
+      const tagCell = document.createElement('div');
+      tagCell.style.cssText = 'flex:0 0 auto;align-self:stretch;display:flex;align-items:center;margin:-9px -6px;padding:9px 6px;cursor:pointer;';
+      tagCell.title = tag.title;
+      tagCell.addEventListener('click', openDay);
+      tagCell.appendChild(tag);
+      row.appendChild(tagCell);
     }
   }catch(e){}
 
@@ -10068,6 +10084,214 @@ function pdRow(c, b){
 }
 
 // The bar of things to do with the ticked customers
+// ---------- Several customers' drains at once (Nov 1) ----------
+// Edit with more than one ticked: their settings in one window. A tick that's
+// mixed among them starts as a dash and is only changed if pressed; Drain
+// every and Drain price start as "Keep as is".
+function pdEditMany(cids){
+  const list = cids.map(id => customers.find(c => c && c.id === id)).filter(Boolean);
+  if(!list.length) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:420px;width:100%;text-align:left;';
+  box.innerHTML = '<h3 style="font-size:15px;margin:0 0 2px;"></h3><div data-names style="margin:2px 0 10px;"></div>'
+    + '<p style="font-size:11.5px;color:var(--muted);margin:0 0 12px;">Anything you change here goes to all of them. Leave a box as \u201cKeep as is\u201d to leave each customer\u2019s own setting alone.</p>'
+    + '<div style="padding:0 0 8px;"><label class="pick-row" style="display:inline-flex;padding:0;border:none;font-weight:600;font-size:13px;"><input type="checkbox" data-self style="width:auto;margin:0;"> Customer performs drain</label></div>'
+    + '<div style="padding:0 0 12px;"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;"><label class="pick-row" style="display:inline-flex;padding:0;border:none;font-weight:600;font-size:13px;"><input type="checkbox" data-ov style="width:auto;margin:0;"> Overnight drain</label><label data-cleanwrap style="display:inline-flex;align-items:center;gap:8px;margin:0 0 0 auto;font-size:13px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--ink);">Cleaning <select data-clean style="width:auto;padding:6px 30px 6px 10px;font-size:13px;margin:0;"></select></label></div>'
+    + '<div data-ovnote style="font-size:11.5px;color:var(--muted);margin:4px 0 0 24px;">Drained one day; cleaned and refilled the next. Scheduling puts both on the calendar.</div></div>'
+    + '<label style="font-size:12.5px;font-weight:600;">Drain every</label><select data-every style="margin:4px 0 14px;"></select>'
+    + '<label style="font-size:12.5px;font-weight:600;">Drain price</label>'
+    + '<div style="position:relative;margin:4px 0 14px;"><span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:15px;pointer-events:none;">$</span><input data-price inputmode="decimal" placeholder="Keep as is" autocomplete="off" style="padding-left:24px;"></div>'
+    + '<label style="font-size:12.5px;font-weight:600;">Add a drain done on</label>'
+    + '<div style="display:flex;gap:8px;align-items:center;margin:4px 0 14px;"><input type="date" data-date style="flex:1;"><button type="button" class="btn btn-primary" data-add style="width:auto;"></button></div>'
+    + '<div class="btn-row"><button type="button" class="btn btn-ghost" data-cancel style="flex:1;">Cancel</button><button type="button" class="btn btn-primary" data-save style="flex:1;"></button></div>';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const n = list.length;
+  box.querySelector('h3').textContent = 'Drains \u2014 ' + n + ' customers';
+  const names = box.querySelector('[data-names]');
+  list.map(c => displayName(c.name)).sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base'})).slice(0, 12).forEach(nm=>{
+    const t = document.createElement('span');
+    t.style.cssText = 'display:inline-block;background:#F2F6F5;border:1px solid var(--line);border-radius:7px;padding:2px 8px;font-size:12px;font-weight:600;margin:4px 6px 0 0;';
+    t.textContent = nm; names.appendChild(t);
+  });
+  if(n > 12){ const t = document.createElement('span'); t.style.cssText = 'font-size:12px;font-weight:600;'; t.textContent = '+ ' + (n - 12) + ' more'; names.appendChild(t); }
+  const tri = (sel, has)=>{
+    const el = box.querySelector(sel);
+    const on = list.filter(has).length;
+    el.checked = on === n; el.indeterminate = on > 0 && on < n;
+    el.dataset.touched = '';
+    el.addEventListener('change', ()=>{ el.dataset.touched = '1'; });
+    return el;
+  };
+  const selfBox = tri('[data-self]', c => !!c.drainsSelf);
+  const ovBox = tri('[data-ov]', c => pdIsOvernight(c));
+  // Cleaning day for the overnight drain (Nov 1): starts on Keep as is
+  const clean = box.querySelector('[data-clean]');
+  const cleanWrap = box.querySelector('[data-cleanwrap]');
+  const ovNote = box.querySelector('[data-ovnote]');
+  pdFillCleanMenu(clean, 0, true);
+  const showClean = ()=>{ cleanWrap.style.display = (ovBox.checked || ovBox.indeterminate) ? '' : 'none'; ovNote.style.display = cleanWrap.style.display; };
+  ovBox.addEventListener('change', showClean); showClean();
+  clean.addEventListener('change', async ()=>{
+    if(clean.value === 'custom'){
+      const k = await pdAskCleanDays(Number(clean.dataset.days) || 5);
+      if(k){ clean.dataset.days = String(k); pdFillCleanMenu(clean, k, true); }
+      else pdFillCleanMenu(clean, Number(clean.dataset.days) || 0, true);
+      if(!k && !clean.dataset.days) clean.value = 'keep';
+    } else if(clean.value !== 'keep') clean.dataset.days = clean.value;
+    ovNote.textContent = clean.value === 'keep' ? 'Drained one day; cleaned and refilled on each customer\u2019s own cleaning day. Scheduling puts both on the calendar.' : pdOvernightNote(Number(clean.value));
+  });
+  const every = box.querySelector('[data-every]');
+  pdFillEveryMenu(every, '', ['', 'Company setting (' + pdEveryText(pdCompanyEvery()) + ')']);
+  const cust = every.querySelector('option[value="custom"]'); if(cust) cust.remove();   // set a custom one on the customer
+  const keep = document.createElement('option'); keep.value = 'keep'; keep.textContent = 'Keep as is';
+  every.insertBefore(keep, every.firstChild); every.value = 'keep';
+  const price = box.querySelector('[data-price]');
+  const dateIn = box.querySelector('[data-date]');
+  const add = box.querySelector('[data-add]');
+  add.textContent = 'Add to all ' + n;
+  box.querySelector('[data-save]').textContent = 'Save for ' + n + ' customers';
+  const close = ()=> overlay.remove();
+  box.querySelector('[data-cancel]').addEventListener('click', close);
+  add.addEventListener('click', ()=>{
+    if(!dateIn.value){ showToast('Choose the date it was drained'); dateIn.focus(); return; }
+    const k = pdRecord(list.map(c => c.id), dateIn.value);
+    dateIn.value = '';
+    renderPoolDrains();
+    showToast('Drain recorded for ' + k + (k === 1 ? ' customer' : ' customers'));
+  });
+  box.querySelector('[data-save]').addEventListener('click', ()=>{
+    const raw = String(price.value || '').replace(/[$,\s]/g, '');
+    if(raw && !(Number(raw) >= 0)){ showToast('The price needs to be a number'); price.focus(); return; }
+    list.forEach(c=>{
+      if(selfBox.dataset.touched){ if(selfBox.checked) c.drainsSelf = true; else delete c.drainsSelf; }
+      if(ovBox.dataset.touched) c.drainOvernight = !!ovBox.checked;
+      if(clean.value !== 'keep' && Number(clean.value)) c.drainCleanDays = Number(clean.value);
+      // Every body of water gets the new settings
+      if(every.value !== 'keep'){
+        const m = Number(every.value) || 0;
+        if(m) c.drainEveryMonths = m; else delete c.drainEveryMonths;
+        delete c.drainEveryByBody;
+      }
+      if(raw){
+        const own = {};
+        pdBodies(c).forEach(b => { own[b.key] = Number(raw); });
+        c.drainPriceByBody = own;
+      }
+    });
+    saveCustomers();
+    close();
+    drainPicked.clear();
+    renderPoolDrains();
+    showToast('Saved for ' + n + ' customers');
+  });
+}
+
+// ---------- Overnight drains (Nov 1) ----------
+// A customer marked Overnight drain (on unless unticked) is drained one day and
+// cleaned and refilled on a later one: their Cleaning setting, next day to start
+// (drainCleanDays). Scheduling puts a "Clean & refill" job (a task) on that day
+// for the same customer and technician, with no question asked. The job knows
+// its drain (refillOf), so taking the drain off the schedule takes the job off
+// too, and moving the drain moves it.
+function pdIsOvernight(c){ return !!c && c.drainOvernight !== false; }
+function pdCleanDays(c){ const n = Math.round(Number(c && c.drainCleanDays) || 1); return Math.max(1, Math.min(30, n)); }
+function pdDayWord(n){
+  if(n === 1) return 'Next day';
+  const t = n % 100, o = n % 10;
+  return n + ((t >= 11 && t <= 13) ? 'th' : o === 1 ? 'st' : o === 2 ? 'nd' : o === 3 ? 'rd' : 'th') + ' day';
+}
+function pdOvernightNote(n){
+  return 'Drained one day; cleaned and refilled ' + (n === 1 ? 'the next' : n + ' days later') + '. Scheduling puts both on the calendar.';
+}
+// Fill the Cleaning menu: Next day, 2nd-4th day, a custom number if set, Custom…
+function pdFillCleanMenu(sel, n, keep){
+  sel.innerHTML = '';
+  const add = (v, w)=>{ const o = document.createElement('option'); o.value = v; o.textContent = w; sel.appendChild(o); };
+  if(keep) add('keep', 'Keep as is');
+  [1, 2, 3, 4].forEach(k => add(String(k), pdDayWord(k)));
+  if(n > 4) add(String(n), pdDayWord(n));
+  add('custom', 'Custom\u2026');
+  sel.value = n ? String(n) : (keep ? 'keep' : '1');
+}
+async function pdAskCleanDays(cur){
+  const v = await promptDialog('How many days after the drain should the cleaning be?', 'Days, 1\u201330', String(cur || ''), 'Set');
+  if(v == null) return 0;
+  const k = Math.round(Number(String(v).replace(/[^0-9.]/g, '')));
+  if(!(k >= 1 && k <= 30)){ showToast('Pick a number from 1 to 30'); return 0; }
+  return k;
+}
+function pdNeedsOvernight(cids){ return cids.filter(id => pdIsOvernight(customers.find(x => x && x.id === id))); }
+function pdRefillTasks(entryIds){
+  const set = new Set(entryIds);
+  return (typeof tasks !== 'undefined' ? tasks : []).filter(t => t && t.refillOf && set.has(t.refillOf) && !t.done);
+}
+function pdDropRefill(entryIds){
+  const gone = new Set(pdRefillTasks(entryIds).map(t => t.id));
+  if(!gone.size) return 0;
+  tasks = tasks.filter(t => !gone.has(t.id));
+  saveTasks();
+  try{ renderTaskList(); }catch(e){}
+  return gone.size;
+}
+function pdShiftRefill(entryId, fromIso, toIso){
+  const list = pdRefillTasks([entryId]);
+  if(!list.length) return;
+  const days = Math.round((new Date(toIso + 'T12:00:00') - new Date(fromIso + 'T12:00:00')) / 86400000);
+  list.forEach(t => { t.date = pdAddDays(t.date, days); });
+  saveTasks();
+  try{ renderTaskList(); }catch(e){}
+}
+// After drains are put on a day: for the overnight customers among them, put a
+// Clean & refill job on each customer's cleaning day. entries: the new calendar entries.
+function pdAfterScheduled(entries){
+  const nice = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
+  const made = [];
+  (entries || []).forEach(e=>{
+    const c = customers.find(x => x && x.id === e.customerId);
+    if(!e || !e.date || !pdIsOvernight(c)) return;
+    if(pdRefillTasks([e.id]).length) return;   // already has one
+    const day2 = pdAddDays(e.date, pdCleanDays(c));
+    tasks.push({
+      id: 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9),
+      title: 'Clean & refill', details: 'Second day of the overnight drain on ' + nice(e.date) + '.',
+      technicianId: e.technicianId || (c && c.technicianId) || '',
+      date: day2, customerIds: [e.customerId], everyWeeks: 0, everyDays: 0, seriesId: '', taskGroupId: '',
+      photoRequired: false, videoRequired: false, done: false, createdAt: new Date().toISOString(),
+      refillOf: e.id
+    });
+    made.push(day2);
+  });
+  if(!made.length) return;
+  saveTasks();
+  try{ renderTaskList(); }catch(err){}
+  try{ wcalRefresh(); }catch(err){}
+  const days = Array.from(new Set(made)).sort();
+  showToast('Clean & refill on ' + (days.length === 1 ? nice(days[0]) : days.length + ' days'));
+}
+
+// Take customers off every upcoming day on the drain calendar (Nov 1)
+async function pdUnschedule(cids){
+  const today = pdToday();
+  const set = new Set(cids);
+  const ents = pdCal().filter(e => e && set.has(e.customerId) && e.date >= today && !((pdCalRecord(e) || {}).status === 'done'));
+  if(!ents.length){ showToast(cids.length === 1 ? 'They aren\u2019t scheduled for an upcoming day' : 'None of them are scheduled for an upcoming day'); return; }
+  const people = new Set(ents.map(e => e.customerId)).size;
+  const days = Array.from(new Set(ents.map(e => e.date))).sort().map(d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'}));
+  const ok = await confirmDialog('Take ' + people + (people === 1 ? ' customer' : ' customers') + ' off ' + (days.length === 1 ? days[0] : days.length + ' days (' + days.join(', ') + ')')
+    + '? Any drains already sent to the app come off the route too, except ones done.', 'Remove from schedule');
+  if(!ok) return;
+  const gone = new Set(ents.map(e => e.id));
+  ents.forEach(e => { try{ pdCalUnpush(e); }catch(err){} });
+  pdDropRefill(ents.map(e => e.id));   // their clean & refill days too
+  pdCalSave(pdCal().filter(e => !gone.has(e.id)));
+  drainPicked.clear();
+  renderPoolDrains();
+  showToast(people + (people === 1 ? ' customer' : ' customers') + ' taken off the schedule');
+}
 function pdRenderSelBar(){
   const outer = document.getElementById('drainSelBar');
   const slot = document.querySelector('#drainStatusList .pd-sel-slot');
@@ -10096,15 +10320,27 @@ function pdRenderSelBar(){
   const rec = document.createElement('button');
   rec.type = 'button'; rec.className = 'btn btn-primary';
   rec.style.cssText = 'width:auto;padding:7px 12px;font-size:12.5px;';
-  rec.textContent = 'Record drain';
-  rec.addEventListener('click', ()=> pdAskDate(Array.from(drainPicked)));
+  rec.textContent = 'Edit';   // was Record drain (Nov 1)
+  rec.addEventListener('click', ()=>{
+    const ids = Array.from(drainPicked);
+    if(ids.length === 1){ const c = customers.find(x => x.id === ids[0]); if(c) openDrainHistory(c); }
+    else pdEditMany(ids);
+  });
   bar.appendChild(small(rec));
   const grp = document.createElement('button');
   grp.type = 'button'; grp.className = 'btn btn-ghost';
   grp.style.cssText = 'width:auto;padding:7px 12px;font-size:12.5px;background:#fff;';
-  grp.textContent = 'Add to a day';
+  grp.textContent = 'Add to schedule';   // was Add to a day (Nov 1)
   grp.addEventListener('click', ()=> pdAddToDay(Array.from(drainPicked)));
   bar.appendChild(small(grp));
+  // Remove from schedule (Nov 1): the ticked customers off every upcoming day
+  // they're on, and off the route where sent, except drains already done
+  const unsched = document.createElement('button');
+  unsched.type = 'button'; unsched.className = 'btn btn-ghost';
+  unsched.style.cssText = 'width:auto;padding:7px 12px;font-size:12.5px;background:#fff;color:var(--rust);border-color:#EFC9BC;';
+  unsched.textContent = 'Remove from schedule';
+  unsched.addEventListener('click', ()=> pdUnschedule(Array.from(drainPicked)));
+  bar.appendChild(small(unsched));
   // Delete the ticked customers' drains (Oct 10): the bin, then what to delete
   const bin = document.createElement('button');
   bin.type = 'button';
@@ -10275,6 +10511,9 @@ function openDrainHistory(c){
         <select id="pdhBody" style="margin:4px 0 14px;"></select>
       </div>
       <div style="padding:4px 0 12px;"><label class="pick-row" style="display:inline-flex;padding:0;border:none;font-weight:600;font-size:13px;"><input type="checkbox" id="pdhSelf" style="width:auto;margin:0;"> Customer performs drain</label></div>
+      <!-- Overnight drain (Nov 1) -->
+      <div style="padding:0 0 12px;"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;"><label class="pick-row" style="display:inline-flex;padding:0;border:none;font-weight:600;font-size:13px;"><input type="checkbox" id="pdhOvernight" style="width:auto;margin:0;"> Overnight drain</label><label id="pdhCleanWrap" style="display:inline-flex;align-items:center;gap:8px;margin:0 0 0 auto;font-size:13px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--ink);">Cleaning <select id="pdhClean" style="width:auto;padding:6px 30px 6px 10px;font-size:13px;margin:0;"></select></label></div>
+        <div id="pdhOvNote" style="font-size:11.5px;color:var(--muted);margin:4px 0 0 24px;">Drained one day; cleaned and refilled the next. Scheduling puts both on the calendar.</div></div>
       <label for="pdhEvery" style="font-size:12.5px;font-weight:600;">Drain every</label>
       <select id="pdhEvery" style="margin:4px 0 14px;"></select>
       <!-- A price for this customer's drain, for each body of water (Oct 20) -->
@@ -10314,6 +10553,32 @@ function openDrainHistory(c){
     if(selfBox.checked) c.drainsSelf = true; else delete c.drainsSelf;
     saveCustomers();
     showToast(selfBox.checked ? displayName(c.name) + ' performs their own drains' : displayName(c.name) + ' is back on your drain lists');
+  });
+  // Overnight drain (Nov 1): drained one day, cleaned and refilled the next
+  const ovBox = overlay.querySelector('#pdhOvernight');
+  const cleanSel = overlay.querySelector('#pdhClean');
+  const cleanWrap = overlay.querySelector('#pdhCleanWrap');
+  const ovNote = overlay.querySelector('#pdhOvNote');
+  const drawClean = ()=>{
+    const on = pdIsOvernight(c);
+    cleanWrap.style.display = on ? '' : 'none'; ovNote.style.display = on ? '' : 'none';
+    pdFillCleanMenu(cleanSel, pdCleanDays(c), false);
+    ovNote.textContent = pdOvernightNote(pdCleanDays(c));
+  };
+  ovBox.checked = pdIsOvernight(c);
+  drawClean();
+  ovBox.addEventListener('change', ()=>{
+    c.drainOvernight = !!ovBox.checked;
+    saveCustomers();
+    drawClean();
+    showToast(displayName(c.name) + (ovBox.checked ? ': overnight drain' : ': drained in one day'));
+  });
+  // Cleaning day (Nov 1): next day, 2nd, 3rd, 4th or a custom number of days after the drain
+  cleanSel.addEventListener('change', async ()=>{
+    let k = Number(cleanSel.value);
+    if(cleanSel.value === 'custom') k = await pdAskCleanDays(pdCleanDays(c));
+    if(k){ c.drainCleanDays = k; saveCustomers(); showToast(displayName(c.name) + ': cleaning ' + pdDayWord(k).toLowerCase()); }
+    drawClean();
   });
   const every = overlay.querySelector('#pdhEvery');
   const fillEvery = ()=> pdFillEveryMenu(every, pdOwnEvery(c, body), ['', 'Company setting (' + pdEveryText(pdCompanyEvery()) + ')']);
@@ -11117,20 +11382,118 @@ function pdOpenExtraWork(e, name, onDone){
 }
 // One customer onto a day (Oct 18): a month to click a day on, each day with
 // how many drains it already has, the customer's own days marked in gold
-function pdScheduleOne(c){
+// Schedule a drain (Oct 18), for one customer (a row's Schedule) or several
+// (Add to schedule, Nov 1): a calendar, click a day to put them on it. Each
+// day shows the jobs already on it as coloured tags, and hovering a day lists
+// them: drains, filter cleans, work orders and tasks, who and which technician.
+function pdScheduleOne(c){ pdScheduleCustomers([c.id]); }
+function pdAddToDay(cids){ pdScheduleCustomers(cids); }
+function pdDayJobs(iso){
+  const name = id => { const c = customers.find(x => x && String(x.id) === String(id)); return c ? displayName(c.name) : 'Customer'; };
+  const tech = id => technicianNameById(id) || '';
+  const out = {PD: [], FC: [], WO: [], TK: []};
+  pdCal().forEach(e=>{
+    if(!e || e.date !== iso) return;
+    const c = customers.find(x => x && x.id === e.customerId);
+    out.PD.push({who: name(e.customerId), what: '', tech: tech(e.technicianId || (c && c.technicianId))});
+  });
+  (typeof filterGroups !== 'undefined' ? filterGroups : []).forEach(g=>{
+    if(!g || g.date !== iso) return;
+    fgLiveIds(g).forEach(cid => out.FC.push({who: name(cid), what: g.solo ? '' : (g.name || ''), tech: tech((g.custTech && g.custTech[cid]) || g.technicianId)}));
+  });
+  (lsGet('scheduledWorkOrders') || []).forEach(j=>{
+    if(!j || j.reopened || j.date !== iso) return;
+    out.WO.push({who: name(j.customerId), what: j.title || '', tech: tech(j.technicianId)});
+  });
+  (typeof tasks !== 'undefined' ? tasks : []).forEach(t=>{
+    if(!t || t.reopened || t.date !== iso) return;
+    const ids = (t.customerIds || []).length ? t.customerIds : [''];
+    ids.forEach(cid => out.TK.push({who: cid ? name(cid) : (t.title || 'Task'), what: cid ? (t.title || '') : '', tech: tech(t.technicianId)}));
+  });
+  return out;
+}
+var PD_DAY_KINDS = [['PD', 'Pool drains'], ['FC', 'Filter cleans'], ['WO', 'Work orders'], ['TK', 'Tasks']];
+// The card under a hovered day; null hides it
+function pdDayTip(anchor, iso, jobs){
+  let tip = document.getElementById('dayJobsTip');
+  if(!anchor){ if(tip) tip.remove(); return; }
+  if(!tip){ tip = document.createElement('div'); tip.id = 'dayJobsTip'; document.body.appendChild(tip); }
+  const total = PD_DAY_KINDS.reduce((n, [k]) => n + jobs[k].length, 0);
+  tip.style.cssText = 'position:fixed;z-index:100001;width:280px;max-height:60vh;overflow:hidden;background:#fff;border:1px solid var(--line);border-radius:14px;'
+    + 'box-shadow:0 16px 40px rgba(14,74,77,.22);padding:12px 14px;pointer-events:none;';
+  tip.innerHTML = '';
+  const head = document.createElement('div');
+  head.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px;';
+  head.innerHTML = '<b style="font-size:14px;color:var(--ink);"></b><span style="font-size:11.5px;color:var(--muted);"></span>';
+  head.children[0].textContent = new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
+  head.children[1].textContent = total + (total === 1 ? ' job' : ' jobs');
+  tip.appendChild(head);
+  PD_DAY_KINDS.forEach(([k, label])=>{
+    const list = jobs[k];
+    if(!list.length) return;
+    const col = CAL_JOB_COLOURS[k];
+    const sec = document.createElement('div');
+    sec.style.cssText = 'display:flex;align-items:center;gap:6px;margin:8px 0 4px;';
+    sec.innerHTML = '<b style="font-family:\'JetBrains Mono\',monospace;font-size:9.5px;font-weight:700;padding:2px 5px;border-radius:4px;color:' + col[1] + ';background:' + col[0] + ';"></b>'
+      + '<span style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);"></span>';
+    sec.children[0].textContent = k; sec.children[1].textContent = label;
+    tip.appendChild(sec);
+    list.slice(0, 8).forEach(j=>{
+      const r = document.createElement('div');
+      r.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0 4px 2px;border-top:1px solid #EEF3F2;font-size:13px;';
+      r.innerHTML = '<span style="flex:1;min-width:0;"><b style="font-weight:600;color:var(--ink);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></b><span style="display:block;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span></span><span style="font-size:11.5px;color:var(--muted);flex-shrink:0;"></span>';
+      r.querySelector('b').textContent = j.who;
+      const w = r.querySelector('span span'); if(j.what) w.textContent = j.what; else w.remove();
+      r.lastElementChild.textContent = j.tech;
+      tip.appendChild(r);
+    });
+    if(list.length > 8){
+      const more = document.createElement('div');
+      more.style.cssText = 'font-size:12px;color:var(--muted);font-weight:600;padding:3px 0 0 2px;';
+      more.textContent = '+ ' + (list.length - 8) + ' more';
+      tip.appendChild(more);
+    }
+  });
+  // Under the day, or above it when there's no room; kept on screen
+  const r = anchor.getBoundingClientRect();
+  const w = 280, h = tip.offsetHeight;
+  const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
+  let top = r.bottom + 8;
+  if(top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 8);
+  tip.style.left = left + 'px'; tip.style.top = top + 'px';
+}
+function pdScheduleCustomers(cids){
+  cids = (cids || []).filter(id => customers.some(c => c && c.id === id));
+  if(!cids.length) return;
+  const many = cids.length > 1;
+  const one = many ? null : customers.find(c => c.id === cids[0]);
   let month = pdToday().slice(0, 7);
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
-  overlay.innerHTML = '<div class="confirm-box" style="max-width:420px;width:100%;">'
-    + '<h3 style="font-size:15px;margin:0 0 2px;">Schedule a drain</h3>'
-    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;" data-sub></p>'
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:460px;width:100%;">'
+    + '<h3 style="font-size:15px;margin:0 0 2px;"></h3>'
+    + '<div style="font-size:12.5px;color:var(--muted);margin:0 0 12px;" data-sub></div>'
     + '<div data-cal></div>'
     + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-ghost" data-cancel style="flex:1;">Cancel</button></div></div>';
   document.body.appendChild(overlay);
-  overlay.querySelector('[data-sub]').textContent = displayName(c.name) + ' · click a day to put them on it';
-  overlay.querySelector('[data-cancel]').addEventListener('click', ()=> overlay.remove());
+  overlay.querySelector('h3').textContent = many ? 'Schedule ' + cids.length + ' drains' : 'Schedule a drain';
+  const sub = overlay.querySelector('[data-sub]');
+  if(many){
+    // Who's going on, as small name tags
+    const names = cids.map(id => displayName((customers.find(c => c.id === id) || {}).name || '')).sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base'}));
+    names.slice(0, 12).forEach(n=>{
+      const t = document.createElement('span');
+      t.style.cssText = 'display:inline-block;background:#F2F6F5;border:1px solid var(--line);border-radius:7px;padding:2px 8px;font-size:12px;font-weight:600;margin:4px 6px 0 0;color:var(--ink);';
+      t.textContent = n; sub.appendChild(t);
+    });
+    if(names.length > 12){ const t = document.createElement('span'); t.style.cssText = 'font-size:12px;font-weight:600;margin-right:6px;'; t.textContent = '+ ' + (names.length - 12) + ' more'; sub.appendChild(t); }
+    const w = document.createElement('span'); w.textContent = 'click a day to put them on it'; sub.appendChild(w);
+  } else sub.textContent = displayName(one.name) + ' · click a day to put them on it';
+  const close = ()=>{ pdDayTip(null); overlay.remove(); };
+  overlay.querySelector('[data-cancel]').addEventListener('click', close);
   const host = overlay.querySelector('[data-cal]');
   const draw = ()=>{
+    pdDayTip(null);
     const cal = pdCal();
     const [yy, mm] = month.split('-').map(Number);
     host.innerHTML = '';
@@ -11150,7 +11513,7 @@ function pdScheduleOne(c){
     nav.appendChild(arrow('‹', -1, 'Previous month')); nav.appendChild(label); nav.appendChild(arrow('›', 1, 'Next month'));
     host.appendChild(nav);
     const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;grid-template-rows:auto repeat(6,46px);';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;grid-template-rows:auto;grid-auto-rows:minmax(58px,auto);';
     ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => grid.insertAdjacentHTML('beforeend', '<div style="font-size:11px;font-weight:700;color:var(--muted);text-align:center;padding:4px 0;">' + d + '</div>'));
     const first = new Date(yy, mm - 1, 1).getDay(), daysIn = new Date(yy, mm, 0).getDate();
     for(let i = 0; i < first; i++) grid.appendChild(document.createElement('div'));
@@ -11158,65 +11521,65 @@ function pdScheduleOne(c){
     for(let d = 1; d <= daysIn; d++){
       const iso = month + '-' + String(d).padStart(2, '0');
       const onDay = cal.filter(e => e && e.date === iso);
-      const mine = onDay.some(e => e.customerId === c.id);
+      const already = cids.filter(id => onDay.some(e => e.customerId === id));
+      const allOn = already.length === cids.length;
       const past = iso < today;
+      const jobs = pdDayJobs(iso);
+      const any = PD_DAY_KINDS.some(([k]) => jobs[k].length);
       const cell = document.createElement('div');
       cell.className = past ? '' : 'press-row';
-      cell.style.cssText = 'height:46px;border:1px solid var(--line);border-radius:8px;padding:4px 5px;background:#fff;min-width:0;display:flex;flex-direction:column;justify-content:space-between;'
+      cell.style.cssText = 'border:1px solid var(--line);border-radius:8px;padding:4px 5px;background:#fff;min-width:0;display:flex;flex-direction:column;gap:4px;'
         + (past ? 'opacity:.45;cursor:default;' : 'cursor:pointer;')
-        + (mine ? 'background:#FBF1DD;border-color:#8A5E0B;box-shadow:inset 0 0 0 1.5px #8A5E0B;' : '');
+        + (allOn ? 'background:#FBF1DD;border-color:#8A5E0B;box-shadow:inset 0 0 0 1.5px #8A5E0B;' : '');
       const num = document.createElement('div');
       num.style.cssText = 'font-size:11.5px;font-weight:700;' + (iso === today ? 'color:#fff;background:var(--teal-deep);border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;' : 'color:var(--ink);');
       num.textContent = d;
       cell.appendChild(num);
-      if(onDay.length){
-        const n = document.createElement('div');
-        n.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:" + (mine ? '#8A5E0B' : 'var(--muted)') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-        n.textContent = mine ? 'On this day' : onDay.length + (onDay.length === 1 ? ' drain' : ' drains');
-        cell.appendChild(n);
+      // What's already on the day, in the calendar's colours, with counts
+      if(any){
+        const tags = document.createElement('div');
+        tags.style.cssText = 'display:flex;flex-wrap:wrap;gap:2px;';
+        PD_DAY_KINDS.forEach(([k])=>{
+          const n = jobs[k].length; if(!n) return;
+          const col = CAL_JOB_COLOURS[k];
+          const t = document.createElement('b');
+          t.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.03em;padding:2px 4px;border-radius:4px;line-height:1.1;color:" + col[1] + ';background:' + col[0] + ';box-shadow:inset 0 0 0 1px ' + col[1] + '55;';
+          t.textContent = k + (n > 1 ? ' ' + n : '');
+          tags.appendChild(t);
+        });
+        cell.appendChild(tags);
       }
-      cell.title = past ? 'In the past' : mine ? displayName(c.name) + ' is already on this day' : 'Put ' + displayName(c.name) + ' on ' + pdDate(iso);
+      const who = many ? cids.length + ' customers' : displayName(one.name);
+      cell.title = '';
+      if(past) cell.title = 'In the past';
+      // Hover: the day's jobs in a card; the day outlined in teal
+      if(any){
+        cell.addEventListener('mouseenter', ()=>{ if(!allOn){ cell.style.boxShadow = '0 0 0 2px var(--teal-mid, #1F8A8C)'; } pdDayTip(cell, iso, jobs); });
+        cell.addEventListener('mouseleave', ()=>{ if(!allOn) cell.style.boxShadow = ''; pdDayTip(null); });
+      } else if(!past) cell.title = 'Put ' + who + ' on ' + pdDate(iso);
       if(!past) cell.addEventListener('click', e=>{
         e.stopPropagation();
-        if(mine){ showToast(displayName(c.name) + ' is already on ' + pdDate(iso)); return; }
+        if(allOn){ showToast((many ? 'They are' : displayName(one.name) + ' is') + ' already on ' + pdDate(iso)); return; }
         const list = pdCal();
-        list.push({id: 'dc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), date: iso, customerId: c.id, bodyKind: pdKindsFor(c)[0], bodyKinds: pdKindsFor(c).slice()});   // every body of water (Oct 18)
+        const added = [];
+        cids.forEach(cid=>{
+          if(list.some(x => x.date === iso && x.customerId === cid)) return;
+          const kinds = pdKindsFor(customers.find(x => x.id === cid));
+          const ent = {id: 'dc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), date: iso, customerId: cid, bodyKind: kinds[0], bodyKinds: kinds.slice()};   // every body of water (Oct 18)
+          list.push(ent); added.push(ent);
+        });
         pdCalSave(list);
-        overlay.remove();
-        showToast(displayName(c.name) + ' scheduled for ' + new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'}));
+        close();
+        pdAfterScheduled(added);   // overnight drains: the clean & refill day (Nov 1)
+        if(many){ drainPicked.clear(); try{ renderPoolDrains(); }catch(err){} }
+        const nice = new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
+        showToast((many ? (cids.length - already.length) + ' customers' : displayName(one.name)) + ' scheduled for ' + nice);
       });
       grid.appendChild(cell);
     }
     host.appendChild(grid);
   };
   draw();
-}
-// Ticked customers onto a day, from the list (Add to a day)
-function pdAddToDay(cids){
-  const overlay = document.createElement('div');
-  overlay.className = 'confirm-overlay';
-  overlay.innerHTML = '<div class="confirm-box" style="max-width:360px;">'
-    + '<h3 style="font-size:15px;margin:0 0 4px;">Add to a day</h3>'
-    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">' + cids.length + (cids.length === 1 ? ' customer' : ' customers') + ' onto the drain calendar.</p>'
-    + '<input type="date" data-day style="margin-bottom:14px;">'
-    + '<div class="btn-row"><button type="button" class="btn btn-ghost" data-cancel>Cancel</button><button type="button" class="btn btn-primary" data-go>Add</button></div></div>';
-  document.body.appendChild(overlay);
-  const day = overlay.querySelector('[data-day]');
-  day.value = pdToday();
-  overlay.querySelector('[data-cancel]').addEventListener('click', ()=> overlay.remove());
-  overlay.querySelector('[data-go]').addEventListener('click', ()=>{
-    if(!day.value){ showToast('Choose a day'); return; }
-    const list = pdCal();
-    cids.forEach(cid=>{
-      if(list.some(e => e.date === day.value && e.customerId === cid)) return;
-      { const kinds = pdKindsFor(customers.find(x => x.id === cid)); list.push({id: 'dc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), date: day.value, customerId: cid, bodyKind: kinds[0], bodyKinds: kinds.slice()}); }   // every body of water (Oct 18)
-    });
-    pdCalSave(list);
-    overlay.remove();
-    drainPicked.clear();
-    renderPoolDrains();
-    openWorkCalendar(day.value);
-  });
 }
 // Add customers to a day on the drain calendar (Oct 11): sorted into the same
 // lists as the Drains page, each with when it's due. Overdue and due soon
@@ -11355,7 +11718,9 @@ function calClockSvg(size){
 // tick. ty is what it is: FC, PD, WO or TK.
 // Each job's own colour (Oct 28), as on Today and in the app's calendar: filter
 // clean gold, drain blue, work order grey, task green
-const CAL_JOB_COLOURS = {FC: ['#FBF1DD', '#8A5E0B'], PD: ['#C3DEF3', '#174C78'], WO: ['#E9EEF0', '#3E5560'], TK: ['#E8F1E4', '#4D6B3C']};
+const CAL_JOB_COLOURS = {FC: ['#FBF1DD', '#8A5E0B'], PD: ['#C3DEF3', '#174C78'], CR: ['#8EC5F5', '#0D3A66'], WO: ['#E9EEF0', '#3E5560'], TK: ['#D7F0A8', '#3D5E0A']};
+// Clean & refill: the second day of an overnight drain, bright sky blue (Nov 1)
+function calIsRefill(t){ return !!(t && (t.refillOf || /^clean\s*&\s*refill$/i.test(String(t.title || '').trim()))); }
 const CAL_STATE_COLOURS = {done: '#2E8B57', app: '#C68A17', '': '#8A9795'};
 function calStateDot(state){
   const dot = document.createElement('i');
@@ -11364,16 +11729,17 @@ function calStateDot(state){
 }
 function calNameChip(text, state, title, ty){
   const chip = document.createElement('div');
-  const job = ty && CAL_JOB_COLOURS[ty];
+  // Always in its job's colour with a dot at the right for where it's up to
+  // (Nov 1). A work order with a filter clean or drain in it is tagged "WO FC"
+  // or "WO PD": it's coloured as a work order. (That combined tag used to miss
+  // the colours and fall back to a solid green chip with a tick; that's gone.)
+  const key = String(ty || 'WO').split(/\s+/)[0];
+  const job = CAL_JOB_COLOURS[key] || CAL_JOB_COLOURS.WO;
   chip.style.cssText = 'margin-top:3px;font-size:10.5px;font-weight:600;padding:2px 5px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;'
-    + (job
-      // In its job's colour, with a dot at the right for where it's up to
-      ? 'color:' + job[1] + ';background:' + job[0] + ';box-shadow:inset 0 0 0 1px ' + job[1] + '55;'
-      : 'color:#fff;' + (state === 'done' ? 'background:#2E8B57;' : state === 'app' ? 'background:#C68A17;' : 'background:#8A9795;'));
-  if(state === 'done' && !job) chip.insertAdjacentHTML('beforeend', '<span style="font-weight:800;flex-shrink:0;">✓</span>');
+    + 'color:' + job[1] + ';background:' + job[0] + ';box-shadow:inset 0 0 0 1px ' + job[1] + '55;';
   if(ty){
     const tg = document.createElement('span');
-    tg.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.04em;flex-shrink:0;" + (job ? '' : 'opacity:.85;');
+    tg.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.04em;flex-shrink:0;";
     tg.textContent = ty;
     chip.appendChild(tg);
   }
@@ -11383,7 +11749,7 @@ function calNameChip(text, state, title, ty){
   t.style.cssText = 'overflow:hidden;white-space:nowrap;min-width:0;flex:1 1 auto;';
   t.textContent = text;
   chip.appendChild(t);
-  if(job) chip.appendChild(calStateDot(state));
+  chip.appendChild(calStateDot(state));
   if(title) chip.title = title;
   return chip;
 }
@@ -11468,7 +11834,7 @@ const WCAL_TAGS = {
   fc: ['FC', 'Filter cleans', '#FBF1DD', '#8A5E0B'],
   pd: ['PD', 'Pool drains', '#C3DEF3', '#174C78'],
   wo: ['WO', 'Work orders', '#E9EEF0', '#3E5560'],
-  tk: ['TK', 'Tasks', '#E8F1E4', '#4D6B3C']
+  tk: ['TK', 'Tasks', '#D7F0A8', '#3D5E0A']
 };
 function openWorkCalendar(startDay, stayHere){
   // Opened at a day from elsewhere in WorkCenter: over to the Calendar first,
@@ -11646,6 +12012,9 @@ function openWorkCalendar(startDay, stayHere){
       if(!days.length) push.style.opacity = '0.5';
       push.addEventListener('click', ()=> pushDays(days));
       right.appendChild(push);
+      // Mirrored (Nov 1): Push to app on the left, then Remove from route,
+      // Select all, and Cancel at the far right; the hint stays first
+      [push, off, selAll, cancel].forEach(el => right.appendChild(el));
     }
     head.appendChild(right);
     calHeadToPageStyle(head);
@@ -11706,11 +12075,13 @@ function openWorkCalendar(startDay, stayHere){
         const st = j.status === 'done' ? 'done' : j.held ? '' : 'app';
         // A filter clean or pool drain on the work order shows in its tag (Oct 19)
         const li = j.lineItems || [];
-        const tag = 'WO' + (li.some(x => isFilterCleanItem(x) || /filter\s*clean/i.test(String((x && x.description) || ''))) ? ' FC' : '')
-          + (li.some(x => /\bdrain\b/i.test(String((x && x.description) || ''))) ? ' PD' : '');
-        names.push([displayName(custOf(j.customerId).name), st, 'Work order' + (j.workOrderNumber ? ' #' + quoteNumberText(j.workOrderNumber) : '') + stWords(st), tag]);
+        // Nov 1: one with a filter clean on it is a filter clean job: gold, tagged FC
+        const hasFc = li.some(x => isFilterCleanItem(x) || /filter\s*clean/i.test(String((x && x.description) || '')));
+        const hasPd = li.some(x => /\bdrain\b/i.test(String((x && x.description) || '')));
+        const tag = hasFc ? 'FC' + (hasPd ? ' PD' : '') : 'WO' + (hasPd ? ' PD' : '');
+        names.push([displayName(custOf(j.customerId).name), st, (hasFc ? 'Filter clean' : 'Work order') + (j.workOrderNumber ? ' #' + quoteNumberText(j.workOrderNumber) : '') + stWords(st), tag]);
       });
-      on.tk.forEach(t=>{ const st = t.done ? 'done' : t.held ? '' : 'app'; const cs = taskCusts(t); names.push([cs.length ? displayName(cs[0].name) : (t.title || 'Task'), st, 'Task: ' + (t.title || '') + stWords(st), 'TK']); });
+      on.tk.forEach(t=>{ const st = t.done ? 'done' : t.held ? '' : 'app'; const cs = taskCusts(t); const cr = calIsRefill(t); names.push([cs.length ? displayName(cs[0].name) : (t.title || 'Task'), st, (cr ? 'Clean & refill' : 'Task: ' + (t.title || '')) + stWords(st), cr ? 'CR' : 'TK']); });
       names.slice(0, 4).forEach(x => cell.appendChild(calNameChip(x[0], x[1], x[2], x[3])));
       if(names.length > 4) cell.insertAdjacentHTML('beforeend', '<div style="font-size:10px;color:var(--muted);margin-top:2px;">+ ' + (names.length - 4) + ' more</div>');
       cell.addEventListener('click', ()=>{
@@ -11729,7 +12100,7 @@ function openWorkCalendar(startDay, stayHere){
     const key = document.createElement('div');
     key.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12px;color:var(--muted);margin-top:12px;align-items:center;';
     // Each job in its colour, then the dots (Oct 28)
-    [['FC', 'Filter clean'], ['PD', 'Pool drain'], ['WO', 'Work order'], ['TK', 'Task']].forEach(([t, w])=>{
+    [['FC', 'Filter clean'], ['PD', 'Pool drain'], ['CR', 'Clean & refill'], ['WO', 'Work order'], ['TK', 'Task']].forEach(([t, w])=>{
       const s = document.createElement('span');
       s.style.cssText = 'display:inline-flex;align-items:center;gap:5px;';
       s.innerHTML = '<b style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:.04em;padding:2px 4px;border-radius:4px;color:' + CAL_JOB_COLOURS[t][1] + ';background:' + CAL_JOB_COLOURS[t][0] + ';box-shadow:inset 0 0 0 1px ' + CAL_JOB_COLOURS[t][1] + '55;"></b>';
@@ -11792,15 +12163,19 @@ function openWorkCalendar(startDay, stayHere){
         let all = pdCal();
         const want = new Set(ids);
         all.filter(e => e.date === sel && !want.has(e.customerId)).forEach(pdCalUnpush);
+        pdDropRefill(all.filter(e => e.date === sel && !want.has(e.customerId)).map(e => e.id));   // their clean & refill too (Nov 1)
         all = all.filter(e => e.date !== sel || want.has(e.customerId));
+        const added = [];
         ids.forEach(cid=>{
           if(!all.some(e => e.date === sel && e.customerId === cid)){
             // Every body of water they have, listed on the one row
             const kinds = pdKindsFor(customers.find(x => x.id === cid));
-            all.push({id: 'dc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), date: sel, customerId: cid, bodyKind: kinds[0], bodyKinds: kinds.slice()});
+            const ent = {id: 'dc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), date: sel, customerId: cid, bodyKind: kinds[0], bodyKinds: kinds.slice()};
+            all.push(ent); added.push(ent);
           }
         });
         pdCalSave(all);
+        setTimeout(()=> pdAfterScheduled(added), 0);
         renderPoolDrains();
         draw();
       });
@@ -12081,6 +12456,7 @@ function openWorkCalendar(startDay, stayHere){
         {
           const bin = binBtn('Take off this day', ()=>{
             pdCalUnpush(e);
+            pdDropRefill([e.id]);   // its clean & refill day too (Nov 1)
             pdCalSave(pdCal().filter(y => y.id !== e.id));
             renderPoolDrains();
             draw();
@@ -12091,6 +12467,7 @@ function openWorkCalendar(startDay, stayHere){
             name: displayName(c.name), what: 'Pool drain', techId: e.technicianId || c.technicianId || '',
             onMove: (iso, tech)=>{
               const all = pdCal(); const it = all.find(y => y.id === e.id); if(!it) return;
+              pdShiftRefill(e.id, it.date, iso);   // its clean & refill day moves with it (Nov 1)
               it.date = iso;
               if(tech && String(tech) !== String(c.technicianId || '')) it.technicianId = tech; else delete it.technicianId;
               const ids = new Set(pdEntryRecords(it).filter(x => x.rec && x.rec.status !== 'done').map(x => x.rec.id));
@@ -12726,11 +13103,21 @@ function openDrainEmail(){
       head.appendChild(hcb);
       head.insertAdjacentHTML('beforeend', '<span style="width:9px;height:9px;border-radius:50%;flex-shrink:0;background:' + b.tone + ';"></span><span></span>'
         + '<span style="font-size:12px;font-weight:600;color:var(--muted);">' + (ticked ? ticked + ' of ' + all.length + ' ticked' : all.length) + '</span>'
-        + '<span style="margin-left:auto;color:var(--muted);' + (all.length ? '' : 'visibility:hidden;') + '">' + (isOpen ? '‹' : '›') + '</span>');
+        // Click to open / Click to close on every list (Nov 1)
+        + '<span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap;">'
+        + (isOpen ? 'Click to close' : 'Click to open') + ' <span style="font-size:15px;">' + (isOpen ? '‹' : '›') + '</span></span>');
       head.children[2].textContent = b.label;
-      if(all.length) head.addEventListener('click', ()=>{ if(soonOpen.has(b.key)) soonOpen.delete(b.key); else soonOpen.add(b.key); draw(); });
+      head.style.cursor = 'pointer';
+      head.addEventListener('click', ()=>{ if(soonOpen.has(b.key)) soonOpen.delete(b.key); else soonOpen.add(b.key); draw(); });
       list.appendChild(head);
       if(!isOpen) return;
+      if(!all.length){
+        const none = document.createElement('div');
+        none.style.cssText = 'font-size:12.5px;color:var(--muted);padding:4px 10px 10px 38px;';
+        none.textContent = 'Nobody in this list right now.';
+        list.appendChild(none);
+        return;
+      }
       all.forEach(c=>{
         const ok = hasEmail(c);
         const lbl = document.createElement('label');
@@ -17685,6 +18072,11 @@ function renderLineItems(){
   currentLineItems.forEach((item, i)=>{
     const row = document.createElement('div');
     row.className = 'fountain-row';
+    // The product's description, under the line (Nov 1)
+    const detailLine = document.createElement('div');
+    detailLine.className = 'line-detail';
+    detailLine.style.cssText = 'display:' + (item.detail ? 'block' : 'none') + ';font-size:12.5px;color:var(--muted);margin:-4px 44px 10px 4px;white-space:pre-wrap;';
+    detailLine.textContent = item.detail || '';
 
     const descInput = document.createElement('input');
     descInput.value = item.description;
@@ -17757,6 +18149,12 @@ function renderLineItems(){
         item.price = match.price === undefined || match.price === null ? '' : match.price;
         priceInput.value = item.price;
       }
+      // Its description from Products & Services goes with the line (Nov 1):
+      // on the form, the quote or work order, and what the customer gets
+      const det = match && String(match.description || '').trim();
+      if(det) item.detail = det; else delete item.detail;
+      detailLine.textContent = item.detail || '';
+      detailLine.style.display = item.detail ? 'block' : 'none';
       recalcWorkOrderTotal();
     });
 
@@ -17807,6 +18205,7 @@ function renderLineItems(){
     row.appendChild(priceWrap);
     row.appendChild(removeBtn);
     container.appendChild(row);
+    container.appendChild(detailLine);
   });
 
   if(!document.getElementById('wcProductSuggestions')){
@@ -18289,7 +18688,7 @@ document.addEventListener('click', e=>{ selShiftHeld = !!e.shiftKey; }, true);
     const open = Array.from(document.querySelectorAll('.confirm-overlay')).some(o => o.getClientRects().length && getComputedStyle(o).display !== 'none');
     document.documentElement.classList.toggle('weir-win-open', open);
     // A group's names card goes with the window it was over
-    if(!open){ const tip = document.getElementById('groupNamesTip'); if(tip) tip.remove(); }
+    if(!open){ ['groupNamesTip', 'dayJobsTip'].forEach(id => { const tip = document.getElementById(id); if(tip) tip.remove(); }); }
   };
   let queued = false;
   const queue = ()=>{ if(!queued){ queued = true; requestAnimationFrame(()=>{ queued = false; check(); }); } };
@@ -18906,7 +19305,7 @@ function wcVisitEditor(kind, id, onSaved, onCancel){
     panel.appendChild(field('Details', details));
   } else {
     // Line items: description, quantity, price, and a bin
-    lines = (item.lineItems || []).map(li => ({description: li.description || '', qty: li.qty === undefined ? '' : li.qty, price: li.price === undefined ? '' : li.price, filterClean: li.filterClean}));
+    lines = (item.lineItems || []).map(li => Object.assign({description: li.description || '', qty: li.qty === undefined ? '' : li.qty, price: li.price === undefined ? '' : li.price, filterClean: li.filterClean}, li.detail ? {detail: li.detail} : {}));   // keeps its description (Nov 1)
     if(!lines.length) lines.push({description: '', qty: 1, price: ''});
     const liBox = document.createElement('div');
     const drawLines = ()=>{
@@ -20418,12 +20817,13 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
     + 'color:#0F766E;text-transform:uppercase;letter-spacing:0.05em;';
 
   // One answer for the whole quote (Nov 1): no buttons on the lines; Approve
-  // all and Decline all at the bottom
+  // and Decline at the bottom
   const rows = items.map(item=>{
     const qty = parseFloat(item.qty) || 0;
     const price = parseFloat(item.price) || 0;
     return '<tr>'
-      + '<td style="' + cell + 'color:#16302E;">' + esc(item.description) + '</td>'
+      + '<td style="' + cell + 'color:#16302E;">' + esc(item.description)
+        + (item.detail ? '<div style="font-size:12.5px;color:#6B7B79;margin-top:3px;line-height:1.4;white-space:pre-wrap;">' + esc(item.detail) + '</div>' : '') + '</td>'
       + '<td style="' + cell + 'color:#4A5A58;text-align:center;white-space:nowrap;">' + esc(String(qty)) + '</td>'
       + '<td style="' + cell + 'color:#4A5A58;text-align:right;white-space:nowrap;">' + money(price) + '</td>'
       + '<td style="' + cell + 'color:#16302E;font-weight:600;text-align:right;white-space:nowrap;">' + money(qty * price) + '</td>'
@@ -20493,8 +20893,8 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
         + '.</div>' : '')
     // Approve / Deny, when the quote can take an answer
     + (respondUrl ? '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 6px;width:100%;"><tr>'
-        + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">Approve all</a></td>'
-        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#B8492E;color:#ffffff;border:1.5px solid #B8492E;font-weight:700;font-size:15px;text-decoration:none;">Decline all</a></td>'
+        + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">Approve</a></td>'
+        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#B8492E;color:#ffffff;border:1.5px solid #B8492E;font-weight:700;font-size:15px;text-decoration:none;">Decline</a></td>'
         + '</tr></table>'
         // Download quote (Oct 15): the breakdown as a PDF to keep
         + (!quoteLinkCanDownload(respondUrl) ? '' : '<a href="' + respondUrl + '&a=download" style="display:block;text-align:center;margin:12px 0 6px;padding:12px 10px;border-radius:10px;'
@@ -20821,7 +21221,8 @@ function quoteDownloadDetails(customer, type, dateText, items, total, notes, quo
     date: dateText || '',
     expiresOn: expiresOn,
     customer: {name: customer.name || '', address: customer.address || ''},
-    items: (items || []).map(li => ({description: String(li.description || ''), qty: parseFloat(li.qty) || 0, price: parseFloat(li.price) || 0})),
+    items: (items || []).map(li => Object.assign({description: String(li.description || ''), qty: parseFloat(li.qty) || 0, price: parseFloat(li.price) || 0},
+      li.detail ? {detail: String(li.detail)} : {})),
     total: Number(total) || 0,
     notes: notes || '',
     colour: style.colour || '#134E4A',
@@ -21540,6 +21941,7 @@ function qoBodyInner(item, customerId){
         const tr = document.createElement('tr');
         const td1 = document.createElement('td');
         td1.textContent = li.description + (qty > 1 ? '  ×' + qty : '');
+        if(li.detail){ const dd = document.createElement('div'); dd.style.cssText = 'font-size:12px;color:var(--muted);margin-top:2px;white-space:pre-wrap;'; dd.textContent = li.detail; td1.appendChild(dd); }
         const td2 = document.createElement('td');
         td2.textContent = '$' + (qty * price).toFixed(2);
         // The customer's answer on this line (Nov 1)
@@ -22133,7 +22535,7 @@ function renderCustomerWorkOrders(customerId, fromSync){
     // Each kind its own colour (Tyrus, Oct 3): quote plum, work order slate,
     // filter clean gold, task sage
     const TAG_COLOURS = {quote: ['#F1E8F3', '#6B3E78'], workorder: ['#E9EEF0', '#3E5560'],
-      clean: ['#FBF1DD', '#8A5E0B'], task: ['#E8F1E4', '#4D6B3C'],
+      clean: ['#FBF1DD', '#8A5E0B'], task: ['#D7F0A8', '#3D5E0A'],
       // Pool drains in the app's sky blue (Oct 15)
       drain: ['#C3DEF3', '#174C78']};
     const tc = TAG_COLOURS[item.kind === 'series' ? item.of : item.kind] || ['var(--teal-pale)', 'var(--ink)'];
@@ -27101,7 +27503,7 @@ function twJobsFor(techId, iso){
 }
 // Each kind's colours, as the app shows them (Oct 11). [pale background, text]
 function twJobColours(kind){
-  return kind === 'task' ? ['#E8F1E4', '#4D6B3C']
+  return kind === 'task' ? ['#D7F0A8', '#3D5E0A']
     : kind === 'filter clean' ? ['#FBF1DD', '#8A5E0B']
     : kind === 'pool drain' ? ['#C3DEF3', '#174C78']
     : ['#E9EEF0', '#3E5560'];
@@ -31363,7 +31765,7 @@ function collectAlerts(){
     const qid = 'quote:' + w.id + ':' + (w.approved ? 'a' : 'd') + (Array.isArray(w.lineAnswers) && quoteLineTally(w).mixed ? ':' + w.lineAnswers.map(x => x === 'approved' ? 'a' : x === 'denied' ? 'd' : '-').join('') : '');
     if(!tm || isNaN(tm) || !noteOk(qid, tm)) return;   // answered in the last 30 days
     const what = (w.lineItems || []).map(li => li && li.description).filter(Boolean).join(', ') || w.name || '';
-    out.push({id: qid, kind: 'repair', tagText: 'Quote',
+    out.push({id: qid, kind: 'repair', tagText: 'Quote', answer: w.approved ? 'approved' : 'denied',
       customerId: c.id, name: displayName(c.name),
       body: 'Quote' + (w.number ? ' #' + quoteNumberText(w.number) : ''), t: tm, jobKey: 'q:' + w.id, tech: '',
       notes: (()=>{
@@ -31627,6 +32029,19 @@ function renderAlerts(){
     t1.style.cssText = 'font-size:14px;font-weight:600;';
     t1.textContent = a.name + ' \u2013 ' + (a.kind === 'reminder' ? a.bodyLabel : a.body);
     // NEW until it's opened, watched or marked seen
+    // A quote's answer (Nov 1): a green Approved or red Declined badge, with
+    // its tag and a stripe down the row's left edge in the same colour
+    if(a.answer){
+      const ok = a.answer === 'approved';
+      const pill = document.createElement('span');
+      pill.textContent = ok ? '\u2713 Approved' : '\u2715 Declined';
+      pill.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;vertical-align:middle;margin-left:8px;'
+        + (ok ? 'background:#E3F2E8;color:#2E6B47;' : 'background:#FBEAE4;color:var(--rust);');
+      t1.appendChild(pill);
+      tag.style.background = ok ? '#E3F2E8' : '#FBEAE4';
+      tag.style.color = ok ? '#2E6B47' : 'var(--rust)';
+      row.style.boxShadow = 'inset 4px 0 0 ' + (ok ? '#2E8B57' : '#B8492E');
+    }
     if(!seen[a.id]){
       const isNew = document.createElement('span');
       isNew.textContent = 'NEW';
@@ -34721,7 +35136,8 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
   // Buttons that keep their words: Remove changes, and Delete selected (Oct 3),
   // which deletes everything ticked rather than one row
   // Remove from route on the calendars keeps its words too (Oct 13)
-  const KEEP_WORDS = /^(remove changes|delete selected( \(\d+\))?|remove from route( \(.*\))?)$/i;
+  // Remove from schedule on the Drains page too (Nov 1)
+  const KEEP_WORDS = /^(remove changes|delete selected( \(\d+\))?|remove from route( \(.*\))?|remove from schedule)$/i;
   const filled = btn=>{
     try{
       const bg = getComputedStyle(btn).backgroundColor;
