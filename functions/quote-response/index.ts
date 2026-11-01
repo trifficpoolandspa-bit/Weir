@@ -17,6 +17,17 @@
 // the answers. Allowed whether or not the quote was answered or has expired.
 // A plain look (a = "message", no m) returns the company and quote number.
 //
+// Approve or Decline on each line (Nov 1): a = "approve" / "deny" with line =
+// the line's number (from 0) answers just that line; without line it answers
+// every line (Approve all / Decline all). The answers are kept with the
+// quote's breakdown as details.answers ('approved', 'denied' or null per
+// line), so no new column is needed. The quote's outcome is "approved" when
+// any line is approved, otherwise "denied" once any line is declined. The
+// reply carries the lines and answers so the page can show them all and let
+// the customer change any. Quotes without a breakdown (sent before snippet
+// 34) answer as a whole, as before. A line the office unticked (choice: false
+// in the breakdown) has no buttons of its own: it takes the quote's answer.
+//
 // Deploy in Supabase (Edge Functions) as "quote-response" with
 // "Verify JWT" OFF: the customer isn't signed in.
 
@@ -58,6 +69,7 @@ Deno.serve(async (req) => {
   let token = url.searchParams.get("t") || "";
   let action = url.searchParams.get("a") || "";
   let message = "";
+  let lineRaw = url.searchParams.get("line");
   const fromOldEmail = req.method === "GET" && !!action && action !== "message";   // a button in an older email
   if (req.method === "POST") {
     try {
@@ -65,6 +77,7 @@ Deno.serve(async (req) => {
       token = String(body.t || token);
       action = String(body.a || action);
       message = String(body.m || "").trim().slice(0, 2000);
+      if (body.line !== undefined && body.line !== null && body.line !== "") lineRaw = String(body.line);
     } catch (_e) { /* keep what the address had */ }
   }
   const outcome = action === "approve" ? "approved" : action === "deny" ? "denied" : null;
@@ -77,7 +90,7 @@ Deno.serve(async (req) => {
     // The database refused: say why, rather than "not found"
     return fromOldEmail ? text(sorry) : json({ state: "error", why: found.status + " " + found.body.slice(0, 200) }, 500);
   }
-  const row = Array.isArray(found.data) && found.data.length ? found.data[0] as { company_id: string; outcome: string | null; created_at: string; expires_days?: number | null; messages?: unknown; details?: { number?: string } | null } : null;
+  const row = Array.isArray(found.data) && found.data.length ? found.data[0] as { company_id: string; outcome: string | null; created_at: string; expires_days?: number | null; messages?: unknown; details?: { number?: string; items?: { description?: string; qty?: number; price?: number; choice?: boolean }[]; answers?: unknown[]; total?: number } | null } : null;
   if (!row) return fromOldEmail ? text(sorry) : json({ state: "missing" });
 
   const co = await db("companies?select=name&id=eq." + encodeURIComponent(row.company_id));
@@ -108,14 +121,39 @@ Deno.serve(async (req) => {
       : json({ state: "expired", outcome: row.outcome, company, days });
   }
 
-  if (!outcome) return json({ state: row.outcome ? "answered" : "open", outcome: row.outcome, company });
+  // The quote's lines and each one's answer, when its breakdown is kept (Nov 1)
+  const details = row.details && typeof row.details === "object" ? row.details : null;
+  const items = details && Array.isArray(details.items) ? details.items : [];
+  const clean = (x: unknown) => (x === "approved" || x === "denied" ? x : null);
+  let answers: ("approved" | "denied" | null)[] = items.map((_it, i) =>
+    clean(details && Array.isArray(details.answers) ? details.answers[i] : null) ?? (row.outcome && !(details && Array.isArray(details.answers)) ? clean(row.outcome) : null));
+  const lines = () => ({
+    number: details ? String(details.number || "") : "",
+    items: items.map((it) => ({ description: String(it.description || ""), qty: Number(it.qty) || 0, price: Number(it.price) || 0, choice: it.choice !== false })),
+    answers,
+  });
+
+  if (!outcome) return json({ state: row.outcome ? "answered" : "open", outcome: row.outcome, company, ...lines() });
 
   // The latest answer counts: a customer can change their mind
-  const recorded = outcome;
+  const lineNo = lineRaw !== null && /^\d+$/.test(lineRaw) ? Number(lineRaw) : -1;
+  let recorded: string = outcome;
+  const patch: Record<string, unknown> = { responded_at: new Date().toISOString() };
+  if (items.length) {
+    const asks = (i: number) => items[i].choice !== false;
+    if (lineNo >= 0 && lineNo < items.length && asks(lineNo)) answers[lineNo] = outcome;
+    else answers = items.map(() => outcome);
+    // Judged on the lines the customer answers; the rest go along with it
+    const own = answers.filter((_a, i) => asks(i));
+    recorded = (own.length ? own : answers).includes("approved") ? "approved" : "denied";
+    answers = answers.map((a, i) => (asks(i) ? a : (own.some((x) => x) ? recorded as "approved" | "denied" : a)));
+    patch.details = { ...details, answers };
+  }
+  patch.outcome = recorded;
   const saved = await db("quote_responses?token=eq." + encodeURIComponent(token), {
     method: "PATCH",
     headers: { Prefer: "return=minimal" },
-    body: JSON.stringify({ outcome, responded_at: new Date().toISOString() }),
+    body: JSON.stringify(patch),
   });
   if (!saved.ok) {
     return fromOldEmail ? text(sorry) : json({ state: "error", why: saved.status + " " + saved.body.slice(0, 200) }, 500);
@@ -125,5 +163,5 @@ Deno.serve(async (req) => {
     return text("Thank you for your response! " + (company ? company + " has" : "We have")
       + " your answer and will be in touch soon. You can close this page.");
   }
-  return json({ state: "recorded", outcome: recorded, company });
+  return json({ state: "recorded", outcome: recorded, company, line: lineNo >= 0 && lineNo < items.length ? lineNo : null, ...lines() });
 });
