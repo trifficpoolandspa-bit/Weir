@@ -326,6 +326,12 @@ input::placeholder{color:#A9BCB9;}
 @keyframes alertLanded{0%,60%{background:var(--gold-pale);}100%{background:transparent;}}
 .alert-landed{animation:alertLanded 2.6s ease-out;}
 .alerts-tab-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:7px;border-radius:999px;background:var(--gold);color:#fff;font-size:10.5px;font-weight:700;vertical-align:1px;}
+.alerts-tab-count.fav{background:#2F7BD8;margin-left:5px;}
+.alerts-fav-box{border:1.5px solid #9DC1E8;background:#F3F8FE;border-radius:12px;padding:4px 12px 2px;margin:10px 0 14px;}
+.alerts-fav-box > .alert-row{border-bottom:none;}
+.alerts-fav-head{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1F5FA8;padding:8px 2px 2px;}
+.alert-star{width:34px;height:34px;flex:0 0 34px;padding:0;display:inline-flex;align-items:center;justify-content:center;}
+.alert-star.on{background:#E6F0FB;border-color:#9DC1E8;}
 
 
 .reorder-placeholder{pointer-events:none;}
@@ -2155,6 +2161,8 @@ input::placeholder{color:#A9BCB9;}
       </div>
       <div class="seg-control" id="alertsKindControl" style="margin-bottom:6px;">
         <button type="button" class="history-type-btn active" data-kind="all">All</button>
+        <!-- Starred alerts (Nov 1) -->
+        <button type="button" class="history-type-btn" data-kind="fav">Favorites</button>
         <button type="button" class="history-type-btn" data-kind="video">Videos</button>
         <button type="button" class="history-type-btn" data-kind="note">Notes</button>
         <button type="button" class="history-type-btn" data-kind="repair">Repairs</button>
@@ -5324,6 +5332,31 @@ function populateWorkCenterCustomerSelect(selectEl){
     selectEl.value = prevValue;
   }
 }
+
+// A different sub-tab anywhere in the WorkCenter starts at the top (Oct 30):
+// a section on the left, the strip at the top, Quote / Work Order / Task,
+// Current, Groups / Records and the like. Pressing the one already open
+// leaves the page where it is.
+(function wcSubtabToTop(){
+  const sig = ()=>{
+    try{
+      const page = document.getElementById('view-workcenter');
+      if(!page || !page.classList.contains('active')) return '';
+      const on = Array.from(page.querySelectorAll('.history-type-btn.active, .seg-control .btn-primary, #wcTypeToggle .btn-primary, #wcTypeToggle .active'))
+        .filter(b => b.offsetParent).map(b => b.textContent.trim()).join('|');
+      return [typeof workCenterMode !== 'undefined' ? workCenterMode : '', typeof wcView !== 'undefined' ? wcView : '',
+              (document.getElementById('wcType') || {}).value || '', on].join('#');
+    }catch(e){ return ''; }
+  };
+  const isTab = el => el && el.closest && el.closest('#view-workcenter .history-type-btn, #view-workcenter .seg-control button, #wcTypeToggle button, #wcNavSubs .nav-sub, #view-workcenter [data-wctype], #view-workcenter [data-pdtab], #view-workcenter [data-fgtab]');
+  let before = null;
+  document.addEventListener('click', e=>{ before = isTab(e.target) ? sig() : null; }, true);
+  document.addEventListener('click', e=>{
+    if(before === null || !isTab(e.target)) return;
+    const was = before; before = null;
+    setTimeout(()=>{ const now = sig(); if(now && now !== was) window.scrollTo({top: 0, behavior: 'auto'}); }, 0);
+  });
+})();
 
 // ---------- WorkCenter: tab switching (Quotes vs Service Calls) ----------
 let workCenterMode = 'calendar';
@@ -14840,6 +14873,8 @@ const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'r
                          // Alerts seen and deleted, cleared on every office computer and
                          // phone at once (Oct 3; they were kept per computer)
                          'alertsSeen', 'alertsDismissed',
+                         // Starred alerts, the same on every office computer (Nov 1)
+                         'alertsFavs',
                          // When each alert first showed up, for its place in the list (Oct 10)
                          'alertsArrived',
                          // Emails that didn't go out, from any computer or phone (Oct 8)
@@ -15133,12 +15168,13 @@ function syncApplyRecord(kind, id, data, deleted){
     if(deleted || !('value' in data)) return true;
     // Alerts seen or deleted: what arrives is added to what's here, never
     // swapped for it, so two computers clearing at once both stick (Oct 3)
-    if(id === 'alertsSeen' || id === 'alertsDismissed' || id === 'emailFailures' || id === 'alertsArrived'){
+    if(id === 'alertsSeen' || id === 'alertsDismissed' || id === 'emailFailures' || id === 'alertsArrived' || id === 'alertsFavs'){
       const here = lsGet(id) || {}, there = (data.value && typeof data.value === 'object') ? data.value : {};
       const merged = Object.assign({}, there);
       let ownExtra = false;
       // When an alert arrived: the earliest any computer saw it
-      const better = id === 'alertsArrived' ? (a, b) => a < b : (a, b) => a > b;
+      // A star: the latest press wins, starred (+time) or unstarred (-time) (Nov 1)
+      const better = id === 'alertsArrived' ? (a, b) => a < b : id === 'alertsFavs' ? (a, b) => Math.abs(a) > Math.abs(b) : (a, b) => a > b;
       Object.keys(here).forEach(k=>{
         if(!(k in merged) || better(here[k], merged[k])){ merged[k] = here[k]; if(!(k in there) || better(here[k], there[k])) ownExtra = true; }
       });
@@ -17275,6 +17311,23 @@ function recalcWorkOrderTotal(){
   return total;
 }
 
+// The tick box under a quote line (Nov 1). item.answerable is false only when
+// it's been unticked, so lines from before this count as on.
+function lineAnswerTick(item, cls, shown){
+  const wrap = document.createElement('label');
+  wrap.className = cls;
+  wrap.style.cssText = 'display:' + (shown ? 'flex' : 'none') + ';align-items:center;gap:8px;width:max-content;max-width:100%;'
+    + 'margin:-2px 0 10px 4px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;'
+    + 'background:none;text-transform:none;letter-spacing:0;font-family:inherit;padding:0;';
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = item.answerable !== false;
+  box.style.cssText = 'width:18px;height:18px;margin:0;flex:0 0 auto;accent-color:var(--teal-deep, #114B4F);';
+  box.addEventListener('change', ()=>{ if(box.checked) delete item.answerable; else item.answerable = false; });
+  wrap.appendChild(box);
+  wrap.appendChild(document.createTextNode('Customer can approve or decline this line'));
+  return wrap;
+}
 function renderLineItems(){
   const container = document.getElementById('wcLineItems');
   container.innerHTML = '';
@@ -17403,6 +17456,11 @@ function renderLineItems(){
     row.appendChild(priceWrap);
     row.appendChild(removeBtn);
     container.appendChild(row);
+    // Quotes (Nov 1): whether the customer gets Approve and Decline on this
+    // line in the email. On to start with; a line left off goes with Approve
+    // all / Decline all.
+    container.appendChild(lineAnswerTick(item, 'wc-answer-tick',
+      (document.getElementById('wcType') || {}).value === 'Quote'));
   });
 
   if(!document.getElementById('wcProductSuggestions')){
@@ -19293,6 +19351,8 @@ function applyWorkOrderType(){
   const chosen = document.getElementById('wcType').value;
   const isTask = chosen === 'Task';
   const isWO = chosen === 'Work Order';
+  // The per-line Approve / Decline tick boxes are for quotes only (Nov 1)
+  document.querySelectorAll('#wcLineItems .wc-answer-tick').forEach(t => { t.style.display = chosen === 'Quote' ? 'flex' : 'none'; });
 
   // Photo required is for work orders only, never a quote
   const photoWrap = document.getElementById('wcPhotoRequiredWrap');
@@ -19947,15 +20007,31 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
   const head = 'padding:8px 10px;border-bottom:2px solid #E6E9E8;font-size:11.5px;font-weight:700;'
     + 'color:#0F766E;text-transform:uppercase;letter-spacing:0.05em;';
 
-  const rows = items.map(item=>{
+  // Approve and Decline under each line (Nov 1), when the quote has more than
+  // one line and its breakdown is on the server for the customer's page to
+  // show; the big buttons at the bottom then answer them all
+  // Lines unticked on the form (Nov 1) have no buttons of their own; with
+  // none ticked, or just one line, it's Approve and Decline at the bottom
+  const asks = item => item && item.answerable !== false;
+  const perLine = !!respondUrl && items.length > 1 && items.some(asks) && quoteLinkCanDownload(respondUrl);
+  const lineBtn = (i, a, word, ink, bg) => '<a href="' + respondUrl + '&a=' + a + '&line=' + i + '" style="display:inline-block;padding:6px 12px;border-radius:8px;'
+    + 'border:1.5px solid ' + ink + ';background:' + bg + ';color:' + ink + ';font-size:12.5px;font-weight:700;text-decoration:none;margin-left:6px;">'
+    // The words' own colour: the email's link rule would turn them black
+    + '<span style="color:' + ink + ';font-weight:700;">' + word + '</span></a>';
+  const rows = items.map((item, i)=>{
     const qty = parseFloat(item.qty) || 0;
     const price = parseFloat(item.price) || 0;
+    const c = perLine ? cell.replace('border-bottom:1px solid #E6E9E8;', 'border-bottom:none;') : cell;
     return '<tr>'
-      + '<td style="' + cell + 'color:#16302E;">' + esc(item.description) + '</td>'
-      + '<td style="' + cell + 'color:#4A5A58;text-align:center;white-space:nowrap;">' + esc(String(qty)) + '</td>'
-      + '<td style="' + cell + 'color:#4A5A58;text-align:right;white-space:nowrap;">' + money(price) + '</td>'
-      + '<td style="' + cell + 'color:#16302E;font-weight:600;text-align:right;white-space:nowrap;">' + money(qty * price) + '</td>'
-      + '</tr>';
+      + '<td style="' + c + 'color:#16302E;">' + esc(item.description) + '</td>'
+      + '<td style="' + c + 'color:#4A5A58;text-align:center;white-space:nowrap;">' + esc(String(qty)) + '</td>'
+      + '<td style="' + c + 'color:#4A5A58;text-align:right;white-space:nowrap;">' + money(price) + '</td>'
+      + '<td style="' + c + 'color:#16302E;font-weight:600;text-align:right;white-space:nowrap;">' + money(qty * price) + '</td>'
+      + '</tr>'
+      + (perLine ? '<tr><td colspan="4" style="padding:0 10px 10px;border-bottom:1px solid #E6E9E8;text-align:right;">'
+          + (asks(item) ? lineBtn(i, 'approve', '&#10003; Approve', esc(colour), '#F1F8F7')
+            + lineBtn(i, 'deny', '&#10005; Decline', '#B8492E', '#FDF1EE') : '')
+          + '</td></tr>' : '');
   }).join('');
 
   const bits = [];
@@ -20021,8 +20097,8 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
         + '.</div>' : '')
     // Approve / Deny, when the quote can take an answer
     + (respondUrl ? '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 6px;width:100%;"><tr>'
-        + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">Approve</a></td>'
-        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#B8492E;color:#ffffff;border:1.5px solid #B8492E;font-weight:700;font-size:15px;text-decoration:none;">Decline</a></td>'
+        + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">' + (perLine ? 'Approve all' : 'Approve') + '</a></td>'
+        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#B8492E;color:#ffffff;border:1.5px solid #B8492E;font-weight:700;font-size:15px;text-decoration:none;">' + (perLine ? 'Decline all' : 'Decline') + '</a></td>'
         + '</tr></table>'
         // Download quote (Oct 15): the breakdown as a PDF to keep
         + (!quoteLinkCanDownload(respondUrl) ? '' : '<a href="' + respondUrl + '&a=download" style="display:block;text-align:center;margin:12px 0 6px;padding:12px 10px;border-radius:10px;'
@@ -20215,7 +20291,13 @@ async function resendQuoteEmail(w, customer){
 // A sent quote shown in a window (Oct 20): the Approve, Decline and Download
 // buttons as in the email, white words on both answers and Decline red, but
 // only a look (nothing in them can be pressed)
-function quoteHtmlForLook(html){
+// How a quote's lines were answered (Nov 1): counts, and whether it's a mix
+function quoteLineTally(w){
+  const a = w && Array.isArray(w.lineAnswers) ? w.lineAnswers : [];
+  const yes = a.filter(x => x === 'approved').length, no = a.filter(x => x === 'denied').length;
+  return {yes: yes, no: no, of: (w && w.lineItems || []).length || a.length, mixed: yes > 0 && no > 0 || (yes > 0 && yes < ((w && w.lineItems || []).length || a.length))};
+}
+function quoteHtmlForLook(html, answers){
   try{
     const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
     doc.querySelectorAll('a[href*="quote-response"]').forEach(a=>{
@@ -20224,6 +20306,20 @@ function quoteHtmlForLook(html){
       a.removeAttribute('target');
       a.style.setProperty('pointer-events', 'none', 'important');
       a.style.setProperty('cursor', 'default', 'important');
+      // A line's own Approve / Decline (Nov 1) keeps its colours; once the
+      // customer has answered that line, their choice is filled in and the
+      // other one faded
+      const ln = href.match(/[?&]line=(\d+)/);
+      if(ln){
+        const ans = Array.isArray(answers) ? answers[Number(ln[1])] : null;
+        const mine = /[?&]a=deny/.test(href) ? 'denied' : 'approved';
+        if(ans === mine){
+          const ink = mine === 'denied' ? '#B8492E' : (a.style.borderColor || '#134E4A');
+          a.style.setProperty('background', ink, 'important');
+          a.querySelectorAll('span').forEach(sp => sp.style.setProperty('color', '#ffffff', 'important'));
+        } else if(ans) a.style.setProperty('opacity', '.35', 'important');
+        return;
+      }
       if(/[?&]a=deny/.test(href)){
         a.style.setProperty('background', '#B8492E', 'important');
         a.style.setProperty('color', '#ffffff', 'important');
@@ -20273,7 +20369,7 @@ function showSentQuoteEmail(w){
   view.appendChild(card);
   document.body.appendChild(view);
   const doc = frame.contentDocument || frame.contentWindow.document;
-  doc.open(); doc.write(quoteHtmlForLook(html)); doc.close();
+  doc.open(); doc.write(quoteHtmlForLook(html, w.lineAnswers)); doc.close();
   // Quotes sent while the number sat on the date line: shown here with it on
   // the top line beside QUOTE, like quotes sent now
   try{
@@ -20329,7 +20425,9 @@ function quoteDownloadDetails(customer, type, dateText, items, total, notes, quo
     date: dateText || '',
     expiresOn: expiresOn,
     customer: {name: customer.name || '', address: customer.address || ''},
-    items: (items || []).map(li => ({description: String(li.description || ''), qty: parseFloat(li.qty) || 0, price: parseFloat(li.price) || 0})),
+    // choice: false on a line the customer can't answer by itself (Nov 1)
+    items: (items || []).map(li => Object.assign({description: String(li.description || ''), qty: parseFloat(li.qty) || 0, price: parseFloat(li.price) || 0},
+      li.answerable === false ? {choice: false} : {})),
     total: Number(total) || 0,
     notes: notes || '',
     colour: style.colour || '#134E4A',
@@ -20425,14 +20523,18 @@ async function takeQuoteAnswers(){
       if(page && page.classList.contains('active') && workCenterMode === 'quotes') applyWorkOrderType();
     }
     if(typeof siteUser === 'undefined' || !siteUser || !siteUser.companyId) return;
-    const res = await sbFetch('/rest/v1/quote_responses?select=quote_id,outcome,responded_at&outcome=not.is.null', {method: 'GET'});
+    const res = await sbFetch('/rest/v1/quote_responses?select=quote_id,outcome,responded_at,details&outcome=not.is.null', {method: 'GET'});
     if(!res || !res.ok || !Array.isArray(res.body)) return;
     let changed = false;
     res.body.forEach(a=>{
       const w = workOrders.find(x => x.id === a.quote_id);
       if(!w) return;
       const approved = a.outcome === 'approved';
-      if(w.closed && !w.expired && !!w.approved === approved && !!w.denied === !approved) return;
+      // Each line's answer (Nov 1): 'approved', 'denied' or null, in line order
+      const lines = a.details && Array.isArray(a.details.answers) ? a.details.answers.map(x => x === 'approved' || x === 'denied' ? x : null) : null;
+      const sameLines = JSON.stringify(lines || null) === JSON.stringify(w.lineAnswers || null);
+      if(w.closed && !w.expired && !!w.approved === approved && !!w.denied === !approved && sameLines) return;
+      if(lines) w.lineAnswers = lines; else delete w.lineAnswers;
       w.closed = true;
       w.approved = approved;
       w.denied = !approved;
@@ -20555,7 +20657,8 @@ function qoEntriesFor(customerId){
     const isQuote = (w.type || 'Quote') === 'Quote';
     const num = w.number ? ' #' + quoteNumberText(w.number) : '';
     if(isQuote){
-      const outcome = w.approved ? 'Approved' : w.denied ? 'Declined' : w.expired ? 'Expired' : (w.status === 'draft' ? 'Draft' : 'Sent');
+      const lt = quoteLineTally(w);
+      const outcome = w.approved ? (lt.mixed ? 'Approved ' + lt.yes + ' of ' + lt.of : 'Approved') : w.denied ? 'Declined' : w.expired ? 'Expired' : (w.status === 'draft' ? 'Draft' : 'Sent');
       // The badge says where the customer stands; the row says what's on it (Oct 3)
       const status = w.approved ? 'approved' : w.denied ? 'declined' : w.expired ? 'expired' : 'pending';
       out.push({key: 'q:' + w.id, kind: 'quote', w: w, tag: 'Quote' + num, badge: 'Quote', num: num.trim(), outcome: outcome, status: status,
@@ -21045,6 +21148,15 @@ function qoBodyInner(item, customerId){
         td1.textContent = li.description + (qty > 1 ? '  ×' + qty : '');
         const td2 = document.createElement('td');
         td2.textContent = '$' + (qty * price).toFixed(2);
+        // The customer's answer on this line (Nov 1)
+        const ans = Array.isArray(w.lineAnswers) ? w.lineAnswers[w.lineItems.indexOf(li)] : null;
+        if(ans){
+          const pill = document.createElement('span');
+          pill.textContent = ans === 'approved' ? 'Approved' : 'Declined';
+          pill.style.cssText = 'margin-left:8px;padding:1px 7px;border-radius:6px;font-size:11px;font-weight:700;vertical-align:1px;'
+            + (ans === 'approved' ? 'background:#E3F2E8;color:#2E6B47;' : 'background:#FBEAE4;color:var(--rust);');
+          td1.appendChild(pill);
+        }
         tr.appendChild(td1); tr.appendChild(td2);
         table.appendChild(tr);
       });
@@ -30718,10 +30830,29 @@ function alertsSeen(){
   const seen = lsGet('alertsSeen');
   return seen && typeof seen === 'object' ? seen : {};
 }
+// Starred alerts (Nov 1): id -> time starred, or minus the time unstarred, so
+// the latest press wins when two computers meet. A starred note stays on the
+// list past its 30 days until it's unstarred or deleted.
+function alertsFavMap(){
+  const f = lsGet('alertsFavs');
+  return f && typeof f === 'object' ? f : {};
+}
+function alertIsFav(id){ return alertsFavMap()[id] > 0; }
+function setAlertFav(id, on){
+  const f = alertsFavMap();
+  f[id] = on ? Date.now() : -Date.now();
+  // Unstarred long ago: let go
+  const cut = Date.now() - 60 * 86400000;
+  Object.keys(f).forEach(k=>{ if(f[k] < 0 && -f[k] < cut) delete f[k]; });
+  lsSet('alertsFavs', f);
+  try{ if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange(); }catch(e){}
+}
 function saveAlertsSeen(seen){
   // Anything marked seen more than 40 days ago can no longer show: let it go
+  // (a starred one can, so it keeps its seen mark)
   const cut = Date.now() - 40 * 86400000;
-  Object.keys(seen).forEach(id=>{ if(!(seen[id] > cut)) delete seen[id]; });
+  const favs = alertsFavMap();
+  Object.keys(seen).forEach(id=>{ if(!(seen[id] > cut) && !(favs[id] > 0)) delete seen[id]; });
   lsSet('alertsSeen', seen);
   // To the other computers and phones straight away (Oct 3)
   try{ if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange(); }catch(e){}
@@ -30730,6 +30861,9 @@ function saveAlertsSeen(seen){
 function collectAlerts(){
   const out = [];
   const now = Date.now();
+  // A note shows for 30 days, or for as long as it's starred (Nov 1)
+  const favMap = alertsFavMap();
+  const noteOk = (id, t) => now - t <= ALERT_NOTE_DAYS * 86400000 || favMap[id] > 0;
   const techs = lsGet('technicians') || [];
   const techName = id => { const t = techs.find(x => x && String(x.id) === String(id)); return t ? (t.name || '') : ''; };
   (customers || []).forEach(c=>{
@@ -30746,7 +30880,7 @@ function collectAlerts(){
           out.push(Object.assign({id: 'video:' + r.id, kind: 'video', refs: refs}, base));
         }
         const notes = String(r.notes || '').trim();
-        if(notes && now - t <= ALERT_NOTE_DAYS * 86400000){
+        if(notes && noteOk('note:' + r.id, t)){
           out.push(Object.assign({id: 'note:' + r.id, kind: 'note', notes: notes}, base));
         }
       });
@@ -30763,7 +30897,7 @@ function collectAlerts(){
     const base = {customerId: c.id, name: displayName(c.name), body: 'Filter clean', t: t,
       jobKey: 'fc:' + f.id, tech: f.doneBy === 'office' ? 'the office' : techName(f.doneBy || f.technicianId)};
     const notes = String(f.doneNotes || '').trim();
-    if(notes && now - t <= ALERT_NOTE_DAYS * 86400000){
+    if(notes && noteOk('fcnote:' + f.id, t)){
       out.push(Object.assign({id: 'fcnote:' + f.id, kind: 'note', notes: notes}, base));
     }
     const items = partsStillNeeded(f);
@@ -30785,7 +30919,7 @@ function collectAlerts(){
       const base = {customerId: c.id, name: displayName(c.name), body: label, t: tm, jobKey: pre + ':' + j.id,
         tech: j.doneBy === 'office' ? 'the office' : techName(j.doneBy || j.technicianId)};
       const notes = String(j.doneNotes || '').trim();
-      if(notes && now - tm <= ALERT_NOTE_DAYS * 86400000) out.push(Object.assign({id: idp + ':' + j.id, kind: 'note', notes: notes}, base));
+      if(notes && noteOk(idp + ':' + j.id, tm)) out.push(Object.assign({id: idp + ':' + j.id, kind: 'note', notes: notes}, base));
       if(pre === 'pd'){
         const items = partsStillNeeded(j);
         if(items.length) out.push(Object.assign({id: 'pdrepair:' + j.id, kind: 'repair', notes: 'Needs replacing: ' + items.join(', ')}, base));
@@ -30816,7 +30950,7 @@ function collectAlerts(){
       body: 'Task' + (c && t.title ? ': ' + t.title : ''), t: tm, jobKey: c ? 'tk:' + t.id : '',
       tech: t.doneBy === 'office' ? 'the office' : techName(t.doneBy || t.technicianId)};
     const notes = String(t.doneNotes || '').trim();
-    if(notes && now - tm <= ALERT_NOTE_DAYS * 86400000) out.push(Object.assign({id: 'tknote:' + t.id, kind: 'note', notes: notes}, base));
+    if(notes && noteOk('tknote:' + t.id, tm)) out.push(Object.assign({id: 'tknote:' + t.id, kind: 'note', notes: notes}, base));
     const vids = [t.doneVideo].concat(t.doneVideoMore || []).filter(Boolean);
     if(vids.length && now - tm <= ALERT_VIDEO_DAYS * 86400000) out.push(Object.assign({id: 'tkvideo:' + t.id, kind: 'video', refs: vids}, base));
   });
@@ -30829,13 +30963,24 @@ function collectAlerts(){
     if(!c || c.deleted) return;
     const at = w.approved ? w.approvedAt : w.deniedAt;
     const tm = new Date(at || w.createdAt || 0).getTime();
-    if(!tm || isNaN(tm) || now - tm > ALERT_NOTE_DAYS * 86400000) return;   // answered in the last 30 days
+    // A changed answer on any line comes up new again (Nov 1)
+    const qid = 'quote:' + w.id + ':' + (w.approved ? 'a' : 'd') + (Array.isArray(w.lineAnswers) && quoteLineTally(w).mixed ? ':' + w.lineAnswers.map(x => x === 'approved' ? 'a' : x === 'denied' ? 'd' : '-').join('') : '');
+    if(!tm || isNaN(tm) || !noteOk(qid, tm)) return;   // answered in the last 30 days
     const what = (w.lineItems || []).map(li => li && li.description).filter(Boolean).join(', ') || w.name || '';
-    out.push({id: 'quote:' + w.id + ':' + (w.approved ? 'a' : 'd'), kind: 'repair', tagText: 'Quote',
+    out.push({id: qid, kind: 'repair', tagText: 'Quote',
       customerId: c.id, name: displayName(c.name),
       body: 'Quote' + (w.number ? ' #' + quoteNumberText(w.number) : ''), t: tm, jobKey: 'q:' + w.id, tech: '',
-      notes: (w.approved ? 'Approved' : 'Declined') + ' by the customer'
-        + (w.total ? ' — ' + qoMoney(w.total) : '') + (what ? '\n' + what : '')});
+      notes: (()=>{
+        // Some lines approved and some not (Nov 1): which is which
+        const lt = quoteLineTally(w);
+        if(w.approved && lt.mixed){
+          const pick = want => (w.lineItems || []).filter((li, i) => li && w.lineAnswers[i] === want).map(li => li.description).filter(Boolean).join(', ');
+          const ok = pick('approved'), no = pick('denied');
+          return 'Approved ' + lt.yes + ' of ' + lt.of + ' lines by the customer' + (ok ? '\nApproved: ' + ok : '') + (no ? '\nDeclined: ' + no : '');
+        }
+        return (w.approved ? 'Approved' : 'Declined') + ' by the customer'
+          + (w.total ? ' — ' + qoMoney(w.total) : '') + (what ? '\n' + what : '');
+      })()});
   });
   // Messages customers sent about a quote (Oct 22), on the Repairs tab with
   // the answers; pressing one opens the quote in their Jobs tab
@@ -30845,7 +30990,7 @@ function collectAlerts(){
     if(!c || c.deleted) return;
     w.customerMessages.forEach(m=>{
       const tm = new Date(m.at || 0).getTime();
-      if(!tm || isNaN(tm) || now - tm > ALERT_NOTE_DAYS * 86400000) return;
+      if(!tm || isNaN(tm) || !noteOk('qmsg:' + w.id + ':' + m.at, tm)) return;
       out.push({id: 'qmsg:' + w.id + ':' + m.at, kind: 'repair', tagText: 'Message',
         customerId: c.id, name: displayName(c.name),
         body: 'Message about quote' + (w.number ? ' #' + quoteNumberText(w.number) : ''), t: tm, jobKey: 'q:' + w.id, tech: '',
@@ -30993,11 +31138,16 @@ function renderAlerts(){
   document.querySelectorAll('#alertsSeenControl [data-alerts]').forEach(b => b.classList.toggle('active', b.dataset.alerts === alertsView));
   document.querySelectorAll('#alertsKindControl [data-kind]').forEach(b => b.classList.toggle('active', b.dataset.kind === alertsKind));
   // How many new on each tab (Oct 8)
+  // and in blue how many are starred (Nov 1)
+  const favs = alertsFavMap();
+  const isFav = a => favs[a.id] > 0;
   document.querySelectorAll('#alertsKindControl [data-kind]').forEach(b=>{
     if(!b.dataset.label) b.dataset.label = b.textContent;
     const k = b.dataset.kind;
-    const c = all.filter(a => !seen[a.id] && (k === 'all' || a.kind === k)).length;
+    const c = k === 'fav' ? 0 : all.filter(a => !seen[a.id] && (k === 'all' || a.kind === k)).length;
+    const fc = k === 'all' ? 0 : all.filter(a => isFav(a) && (k === 'fav' || a.kind === k)).length;
     b.textContent = '';
+    if(k === 'fav') b.insertAdjacentHTML('beforeend', '<svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" style="vertical-align:-2px;margin-right:5px;"><path d="M12 3.2l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.6 6.8 19.4l1-5.9L3.5 9.4l5.9-.8z" fill="#2F7BD8"/></svg>');
     b.appendChild(document.createTextNode(b.dataset.label));
     if(c){
       const pill = document.createElement('span');
@@ -31005,12 +31155,19 @@ function renderAlerts(){
       pill.textContent = String(c);
       b.appendChild(pill);
     }
+    if(fc){
+      const pill = document.createElement('span');
+      pill.className = 'alerts-tab-count fav';
+      pill.title = fc === 1 ? '1 starred' : fc + ' starred';
+      pill.textContent = String(fc);
+      b.appendChild(pill);
+    }
   });
   const allSeen = document.getElementById('btnAlertsAllSeen');
   if(allSeen) allSeen.style.display = n ? '' : 'none';
 
   // One list, new and seen together; new ones carry a NEW badge (Oct 3)
-  const rows = all.filter(a => alertsKind === 'all' || a.kind === alertsKind);
+  const rows = all.filter(a => alertsKind === 'all' || (alertsKind === 'fav' ? isFav(a) : a.kind === alertsKind));
   // Only redrawn when what it shows has changed. A sync saves visits and
   // customers often, and rebuilding the same list each time flashed the row
   // under the pointer white (Oct 2).
@@ -31035,14 +31192,22 @@ function renderAlerts(){
     }
   }
   if(allSeen && selSt.on) allSeen.style.display = 'none';
-  const shape = new Date().toDateString() + '|' + alertsKind + '|' + (selSt.on ? 'sel:' + Array.from(selSt.ids).join(',') : '') + '|' + rows.map(a => a.id + ':' + (seen[a.id] ? 's' : 'n') + ':' + (a.tech || '') + ':'
+  const shape = new Date().toDateString() + '|' + alertsKind + '|' + rows.filter(isFav).map(a => a.id).join(',') + '|' + (selSt.on ? 'sel:' + Array.from(selSt.ids).join(',') : '') + '|' + rows.map(a => a.id + ':' + (seen[a.id] ? 's' : 'n') + ':' + (a.tech || '') + ':'
     + (a.kind === 'video' ? a.refs.length : a.notes) + ':' + a.name + ':' + a.body).join('|');
   if(box.dataset.shape === shape && box.childNodes.length) return;
   box.dataset.shape = shape;
   box.innerHTML = '';
   if(!rows.length){
-    box.innerHTML = emptyState('No alerts yet.');
+    box.innerHTML = emptyState(alertsKind === 'fav' ? 'No favorites yet. Press the star on an alert to keep it here.' : 'No alerts yet.');
     return;
+  }
+  // On All, the starred ones sit in their own box at the top (Nov 1)
+  let favBox = null;
+  if(alertsKind === 'all' && rows.some(isFav)){
+    favBox = document.createElement('div');
+    favBox.className = 'alerts-fav-box';
+    favBox.innerHTML = '<div class="alerts-fav-head"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.6 6.8 19.4l1-5.9L3.5 9.4l5.9-.8z" fill="#2F7BD8"/></svg>Favorites</div>';
+    box.appendChild(favBox);
   }
   rows.forEach(a=>{
     const row = document.createElement('div');
@@ -31143,11 +31308,37 @@ function renderAlerts(){
       const ok = await confirmDialog('Delete this alert? It comes off this list on this computer; the report itself stays.', 'Delete');
       if(!ok) return;
       dismissAlerts([a.id]);
+      if(isFav(a)) setAlertFav(a.id, false);
       redrawSel();
     });
+    // Mark seen, on new ones only (its room kept on the rest so the columns
+    // line up), then the star, then the bin (Nov 1)
+    const markSeen = small('Mark seen', 84);
+    if(seen[a.id]) markSeen.style.visibility = 'hidden';
+    markSeen.title = 'Mark this alert seen';
+    markSeen.addEventListener('click', e=>{
+      e.stopPropagation();
+      const s = alertsSeen(); s[a.id] = Date.now(); saveAlertsSeen(s);
+      renderAlerts();
+    });
+    acts.appendChild(markSeen);
+    const fav = isFav(a);
+    const star = document.createElement('button');
+    star.type = 'button';
+    star.className = 'btn btn-ghost alert-star' + (fav ? ' on' : '');
+    star.title = fav ? 'Take out of Favorites' : 'Add to Favorites';
+    star.setAttribute('aria-label', star.title);
+    star.setAttribute('aria-pressed', fav ? 'true' : 'false');
+    star.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.6 6.8 19.4l1-5.9L3.5 9.4l5.9-.8z" fill="' + (fav ? '#2F7BD8' : 'none') + '" stroke="' + (fav ? '#2F7BD8' : '#7C918E') + '" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+    star.addEventListener('click', e=>{
+      e.stopPropagation();
+      setAlertFav(a.id, !fav);
+      renderAlerts();
+    });
+    acts.appendChild(star);
     acts.appendChild(del);
     row.appendChild(tag); row.appendChild(body); row.appendChild(acts);
-    box.appendChild(row);
+    (favBox && fav ? favBox : box).appendChild(row);
   });
 }
 

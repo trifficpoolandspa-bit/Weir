@@ -375,6 +375,10 @@ textarea{min-height:52px;resize:vertical;}
 .marquee-inner{display:inline-block;white-space:nowrap;will-change:transform;}
 .cust-name-text.marquee-on{-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent);mask-image:linear-gradient(90deg,#000 85%,transparent);}
 .marquee-on .marquee-inner{animation:weirMarquee var(--marquee-time, 6s) ease-in-out infinite;}
+/* Any cut-off text that slides (Nov 1): no dots while it moves, and a soft
+   fade at the right edge like the names on Today */
+.marquee-on{text-overflow:clip !important;}
+.mq-auto.marquee-on{-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent);mask-image:linear-gradient(90deg,#000 85%,transparent);}
 /* Technicians → Photo requirements: only its own card shows, whatever else
    redraws the list underneath (Oct 3) */
 #view-technicians.photos-mode #techListCard,
@@ -2984,6 +2988,8 @@ document.addEventListener('visibilitychange', ()=>{ if(document.hidden) closeRou
 // The tabs that come back as they were left, and for how long
 var TAB_KEEPS = ['serviced', 'technicians', 'customers', 'report', 'options'];
 var TAB_KEEP_MS = 30000;
+// The Customers tab keeps the customer that was open for a minute (Oct 30)
+var TAB_KEEP_MS_FOR = {customers: 60000};
 var tabLeftAt = {};
 var tabScrollAt = {};
 // Time away from the app counts as time away from the tab it was on (Oct 2):
@@ -2997,6 +3003,21 @@ document.addEventListener('visibilitychange', ()=>{
   // Oct 15: except the day on Today — coming back always shows today
   todayOnReturn();
 });
+// Nov 1: away from the app (home screen, another app) for 30 seconds or more
+// while on any tab but Today: coming back opens Today's list. A report in
+// progress, a form being filled in or a window that's up is left as it was.
+var AWAY_TO_TODAY_MS = 30000;
+function backToTodayAfterAway(){
+  try{
+    if(document.hidden || !tabHiddenAt) return;
+    const away = Date.now() - tabHiddenAt;
+    if(away < AWAY_TO_TODAY_MS || currentViewName === 'home' || busyForOpenOnToday()) return;
+    openOnToday();
+    window.scrollTo(0, 0);
+  }catch(e){}
+}
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) backToTodayAfterAway(); });
+window.addEventListener('pageshow', e=>{ if(e.persisted) backToTodayAfterAway(); });
 // Today's list back on today whenever the app comes back to the front: from
 // another app, the home screen, the phone waking, or the browser bringing the
 // page back from its cache
@@ -3029,7 +3050,7 @@ function switchView(view, opts){
   // Back within 30 seconds: as it was left. Opening a particular report
   // (skipRefresh) still shows that report.
   const keepAsLeft = !opts.skipRefresh && TAB_KEEPS.indexOf(view) !== -1 && cameFrom !== view
-    && !!tabLeftAt[view] && (Date.now() - tabLeftAt[view]) < TAB_KEEP_MS;
+    && !!tabLeftAt[view] && (Date.now() - tabLeftAt[view]) < (TAB_KEEP_MS_FOR[view] || TAB_KEEP_MS);
   if(view !== 'home' && currentViewName === 'home') closeRouteBriefs();
 
   // Leaving an open report to another tab — remember it so Today can bring it
@@ -3076,7 +3097,7 @@ function switchView(view, opts){
     try{ renderTechRoute(); }catch(e){}
   }
   if(view === 'customers' && !keepAsLeft){
-    // A search typed before leaving doesn't stay once the 30 seconds are up
+    // A search typed before leaving doesn't stay once the minute is up
     const search = document.getElementById('adminCustomerSearch');
     if(search) search.value = '';
     adminCustomerSearchTerm = '';
@@ -3183,8 +3204,16 @@ document.addEventListener('click', (ev)=>{
     if(Date.now() - stepBarPressedAt < 500) return;
 
     // Already on this tab — do nothing. Tapping Today twice used to drop you
-    // straight into a customer's report.
-    if(t.dataset.view === currentViewName) return;
+    // straight into a customer's report. A tab with two pages switches to the
+    // other one instead (Oct 30); its words do that themselves.
+    if(t.dataset.view === currentViewName){
+      if(t.dataset.twoWords === '1' && !(ev.target.closest && ev.target.closest('[data-tabword]'))) bottomTabCycle(t.dataset.view);
+      return;
+    }
+    // From another tab, a tab with two pages always opens on its top one
+    // (Oct 30): Today, Techs, Serviced, Customers. A customer left open on
+    // Customers is still there within its minute.
+    if(t.dataset.twoWords === '1'){ const v = t.dataset.view; setTimeout(()=> bottomTabPane(v, false), 0); }
 
     // Tapping Today with a report already under way goes back into that report
     // rather than the route. Leaving mid-report to check something else and
@@ -3371,8 +3400,8 @@ function isAdminUser(){
 let roleShown = null;
 // The admin app's bottom tabs say both things each holds (Oct 28): Today /
 // Calendar, Techs / Photo, Serviced / Reports, Customers / WorkCenter, split by
-// a thin line. The top word opens the first, the bottom word the second; the
-// rest of the tab opens it as it was left. A technician's tabs stay one word.
+// a thin line. From another tab it opens on the top page; pressed again it
+// switches between the two (Oct 30). A technician's tabs stay one word.
 const BOTTOM_TAB_WORDS = {home: ['Today', 'Calendar'], technicians: ['Techs', 'Photo'],
   report: ['Serviced', 'Reports'], customers: ['Customers', 'WorkCenter']};
 function bottomTabPane(view, second){
@@ -3387,6 +3416,18 @@ function bottomTabPane(view, second){
     }
   }catch(e){}
 }
+// Pressed again while open (Oct 30): the tab switches to its other page,
+// back and forth with each press
+function bottomTabOnSecond(view){
+  try{
+    if(view === 'home') return acalMode === 'calendar';
+    if(view === 'report') return reportMode === 'reports';
+    if(view === 'customers'){ const w = document.getElementById('custPaneWork'); return !!w && w.style.display !== 'none' && getComputedStyle(w).display !== 'none'; }
+    if(view === 'technicians') return document.getElementById('view-technicians').classList.contains('photos-mode');
+  }catch(e){}
+  return false;
+}
+function bottomTabCycle(view){ bottomTabPane(view, !bottomTabOnSecond(view)); }
 function bottomTabWords(admin){
   document.querySelectorAll('.bottombar .tab').forEach(t=>{
     const words = BOTTOM_TAB_WORDS[t.dataset.view];
@@ -3401,7 +3442,11 @@ function bottomTabWords(admin){
       + '<span style="display:block;width:60%;margin:2px auto;border-top:1px solid #CFDCD9;"></span>'
       + '<span data-tabword="1" style="display:block;line-height:1.2;">' + words[1] + '</span>';
     t.querySelectorAll('[data-tabword]').forEach(w=>{
-      w.addEventListener('click', ()=>{ const second = w.dataset.tabword === '1'; setTimeout(()=> bottomTabPane(t.dataset.view, second), 0); });
+      w.addEventListener('click', ()=>{
+        // Already open: each press switches to the other page. Coming from
+        // another tab it opens on the top page (Oct 30), as any press does.
+        if(currentViewName === t.dataset.view) bottomTabCycle(t.dataset.view);
+      });
     });
   });
 }
@@ -11155,6 +11200,27 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
       if(dogNames.length) line(dogNames.length === 1 ? '\ud83d\udc15 Dog' : '\ud83d\udc15 Dogs', dogNames.join(', '));
       line((jobKindIcon(job.kind) ? jobKindIcon(job.kind) + ' ' : '') + jobKindLabel(job.kind), job.title);
       if(job.details) line('Details', job.details);
+      // Extra work added to a filter clean or drain (Oct 30): a heading, then a
+      // line each; one too long for the window slides across to show the rest
+      const extra = (job.kind === 'filter clean' || job.kind === 'pool drain')
+        ? (job.lineItems || []).map(li => String((li && (li.description || li)) || '').trim()).filter(Boolean) : [];
+      if(extra.length){
+        const head = document.createElement('div');
+        head.innerHTML = '<strong>\ud83e\uddf0 Extra work:</strong>';
+        panel.appendChild(head);
+        extra.forEach(t=>{
+          const d = document.createElement('div');
+          d.style.cssText = 'display:flex;gap:8px;align-items:center;padding-left:6px;';
+          d.innerHTML = '<span style="flex-shrink:0;">\u2022</span>';
+          const s = document.createElement('span');
+          s.className = 'cust-name-text job-extra-item';
+          s.style.cssText = 'overflow:hidden;white-space:nowrap;min-width:0;flex:1;';
+          s.textContent = t;
+          d.appendChild(s);
+          panel.appendChild(d);
+        });
+        setTimeout(()=> panel.querySelectorAll('.job-extra-item').forEach(el=>{ try{ marqueeIfCut(el); }catch(e){} }), 0);
+      }
       // Photo and video requirements are shown on the job screen itself (Oct 3)
 
       // Laid out like a customer's (Oct 25): Reschedule, Directions and Share
@@ -11298,6 +11364,27 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
       if(dogNames.length) line(dogNames.length === 1 ? '\ud83d\udc15 Dog' : '\ud83d\udc15 Dogs', dogNames.join(', '));
       line((jobKindIcon(job.kind) ? jobKindIcon(job.kind) + ' ' : '') + jobKindLabel(job.kind), job.title);
       if(job.details) line('Details', job.details);
+      // Extra work added to a filter clean or drain (Oct 30): a heading, then a
+      // line each; one too long for the window slides across to show the rest
+      const extra = (job.kind === 'filter clean' || job.kind === 'pool drain')
+        ? (job.lineItems || []).map(li => String((li && (li.description || li)) || '').trim()).filter(Boolean) : [];
+      if(extra.length){
+        const head = document.createElement('div');
+        head.innerHTML = '<strong>\ud83e\uddf0 Extra work:</strong>';
+        panel.appendChild(head);
+        extra.forEach(t=>{
+          const d = document.createElement('div');
+          d.style.cssText = 'display:flex;gap:8px;align-items:center;padding-left:6px;';
+          d.innerHTML = '<span style="flex-shrink:0;">\u2022</span>';
+          const s = document.createElement('span');
+          s.className = 'cust-name-text job-extra-item';
+          s.style.cssText = 'overflow:hidden;white-space:nowrap;min-width:0;flex:1;';
+          s.textContent = t;
+          d.appendChild(s);
+          panel.appendChild(d);
+        });
+        setTimeout(()=> panel.querySelectorAll('.job-extra-item').forEach(el=>{ try{ marqueeIfCut(el); }catch(e){} }), 0);
+      }
       // Photo and video requirements are shown on the job screen itself (Oct 3)
 
       // Laid out like a customer's (Oct 25): Directions and Share on top,
@@ -16903,6 +16990,19 @@ function awcApply(){
   if(awcView === 'history') awcRenderHistory();
 }
 
+// A different sub-tab in the WorkCenter starts at the top (Oct 30): Quote /
+// Work Order / Task, Work Order / Current. The one already open stays put.
+(function awcSubtabToTop(){
+  let before = null;
+  const sig = ()=> { try{ return awcKind + '|' + awcView; }catch(e){ return ''; } };
+  const isTab = el => el && el.closest && el.closest('#awcKindRow button, #awcViewRow button');
+  document.addEventListener('click', e=>{ before = isTab(e.target) ? sig() : null; }, true);
+  document.addEventListener('click', e=>{
+    if(before === null || !isTab(e.target)) return;
+    const was = before; before = null;
+    setTimeout(()=>{ if(sig() !== was) window.scrollTo({top: 0, behavior: 'auto'}); }, 0);
+  });
+})();
 function awcApplyRepeats(){
   document.getElementById('awcWoCustom').style.display = document.getElementById('awcWoRepeat').value === 'custom' ? 'flex' : 'none';
   document.getElementById('awcWoUntilWrap').style.display = document.getElementById('awcWoRepeat').value === 'none' ? 'none' : 'block';
@@ -17123,6 +17223,22 @@ function awcRenderLines(boxId){
     x.addEventListener('click', ()=>{ items.splice(i, 1); awcRenderLines(boxId); });
     row.appendChild(descWrap); row.appendChild(qty); row.appendChild(priceWrap); row.appendChild(x); row.appendChild(sug);
     box.appendChild(row);
+    // Quotes (Nov 1): whether the customer gets Approve and Decline on this
+    // line in the email. On to start with; a line left off goes with Approve
+    // all / Decline all. (item.answerable is false only once unticked.)
+    if(isQuote){
+      const tick = document.createElement('label');
+      tick.className = 'inline-check awc-answer-tick';
+      tick.style.cssText = 'display:flex;width:max-content;max-width:100%;white-space:normal;margin:-2px 0 10px 4px;font-size:13px;font-weight:600;gap:8px;';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = item.answerable !== false;
+      cb.style.cssText = 'width:18px;height:18px;margin:0;flex:0 0 auto;';
+      cb.addEventListener('change', ()=>{ if(cb.checked) delete item.answerable; else item.answerable = false; });
+      tick.appendChild(cb);
+      tick.appendChild(document.createTextNode('Customer can approve or decline this line'));
+      box.appendChild(tick);
+    }
   });
   total();
 }
@@ -17358,7 +17474,7 @@ async function awcCheckQuoteAnswers(){
   if(Date.now() - awcAnswersAt < 30000) return;
   awcAnswersAt = Date.now();
   try{
-    const res = await fieldAuthed('/rest/v1/quote_responses?select=quote_id,outcome,responded_at&outcome=not.is.null', {method: 'GET'});
+    const res = await fieldAuthed('/rest/v1/quote_responses?select=quote_id,outcome,responded_at,details&outcome=not.is.null', {method: 'GET'});
     if(!res.ok || !Array.isArray(res.body)) return;
     const list = lsGet('workOrders') || [];
     let changed = false;
@@ -17366,7 +17482,11 @@ async function awcCheckQuoteAnswers(){
       const w = list.find(x => x && x.id === a.quote_id);
       if(!w) return;
       const approved = a.outcome === 'approved';
-      if(w.closed && !w.expired && !!w.approved === approved && !!w.denied === !approved) return;
+      // Each line's answer (Nov 1): 'approved', 'denied' or null, in line order
+      const lines = a.details && Array.isArray(a.details.answers) ? a.details.answers.map(x => x === 'approved' || x === 'denied' ? x : null) : null;
+      const sameLines = JSON.stringify(lines || null) === JSON.stringify(w.lineAnswers || null);
+      if(w.closed && !w.expired && !!w.approved === approved && !!w.denied === !approved && sameLines) return;
+      if(lines) w.lineAnswers = lines; else delete w.lineAnswers;
       w.closed = true; w.approved = approved; w.denied = !approved; w.expired = false;
       w[approved ? 'approvedAt' : 'deniedAt'] = a.responded_at || new Date().toISOString();
       w.answeredByCustomer = true;
@@ -17383,7 +17503,8 @@ async function awcCheckQuoteAnswers(){
 function awcQuoteStatus(w){
   const days = Number(w.expiresDays) || AWC_QUOTE_ANSWER_DAYS;
   const sentAt = new Date(w.createdAt || 0).getTime();
-  if(w.approved) return {key: 'approved', text: 'APPROVED', colour: '#3E8F5F'};
+  // Some lines approved, some not (Nov 1)
+  if(w.approved){ const lt = quoteLineTally(w); return {key: 'approved', text: lt.mixed ? 'APPROVED ' + lt.yes + ' OF ' + lt.of : 'APPROVED', colour: '#3E8F5F'}; }
   if(w.denied) return {key: 'declined', text: 'DECLINED', colour: '#B8492E'};
   if(w.expired || (sentAt && Date.now() - sentAt > days * 86400000)) return {key: 'expired', text: 'EXPIRED', colour: '#8A9997'};
   if(w.status === 'draft') return {key: 'draft', text: 'NOT SENT', colour: '#B8492E'};
@@ -17445,7 +17566,13 @@ function awcRenderQuoteCurrent(){
 // A sent quote shown in a window (Oct 20): the Approve, Decline and Download
 // buttons as in the email, white words on both answers and Decline red, but
 // only a look (nothing in them can be pressed)
-function quoteHtmlForLook(html){
+// How a quote's lines were answered (Nov 1): counts, and whether it's a mix
+function quoteLineTally(w){
+  const a = w && Array.isArray(w.lineAnswers) ? w.lineAnswers : [];
+  const yes = a.filter(x => x === 'approved').length, no = a.filter(x => x === 'denied').length;
+  return {yes: yes, no: no, of: (w && w.lineItems || []).length || a.length, mixed: yes > 0 && no > 0 || (yes > 0 && yes < ((w && w.lineItems || []).length || a.length))};
+}
+function quoteHtmlForLook(html, answers){
   try{
     const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
     doc.querySelectorAll('a[href*="quote-response"]').forEach(a=>{
@@ -17454,6 +17581,20 @@ function quoteHtmlForLook(html){
       a.removeAttribute('target');
       a.style.setProperty('pointer-events', 'none', 'important');
       a.style.setProperty('cursor', 'default', 'important');
+      // A line's own Approve / Decline (Nov 1) keeps its colours; once the
+      // customer has answered that line, their choice is filled in and the
+      // other one faded
+      const ln = href.match(/[?&]line=(\d+)/);
+      if(ln){
+        const ans = Array.isArray(answers) ? answers[Number(ln[1])] : null;
+        const mine = /[?&]a=deny/.test(href) ? 'denied' : 'approved';
+        if(ans === mine){
+          const ink = mine === 'denied' ? '#B8492E' : (a.style.borderColor || '#134E4A');
+          a.style.setProperty('background', ink, 'important');
+          a.querySelectorAll('span').forEach(sp => sp.style.setProperty('color', '#ffffff', 'important'));
+        } else if(ans) a.style.setProperty('opacity', '.35', 'important');
+        return;
+      }
       if(/[?&]a=deny/.test(href)){
         a.style.setProperty('background', '#B8492E', 'important');
         a.style.setProperty('color', '#ffffff', 'important');
@@ -17481,7 +17622,7 @@ function awcOpenQuote(w){
   const frame = document.createElement('iframe');
   frame.style.cssText = 'flex:1;min-height:360px;width:100%;border:1px solid var(--line);border-radius:10px;background:#F4F6F5;';
   frame.setAttribute('sandbox', '');
-  frame.srcdoc = w.emailHtml ? quoteHtmlForLook(w.emailHtml) : awcQuoteEmailHtml((customers || []).find(c => c && c.id === w.customerId) || {name: 'Customer'},
+  frame.srcdoc = w.emailHtml ? quoteHtmlForLook(w.emailHtml, w.lineAnswers) : awcQuoteEmailHtml((customers || []).find(c => c && c.id === w.customerId) || {name: 'Customer'},
     'Quote', w.date || '', w.lineItems || [], Number(w.total) || 0, w.notes || '', null, null, w.number);
   const btns = document.createElement('div');
   btns.className = 'btn-row';
@@ -17595,15 +17736,31 @@ function awcQuoteEmailHtml(customer, type, dateText, items, total, notes, styleO
   const head = 'padding:8px 10px;border-bottom:2px solid #E6E9E8;font-size:11.5px;font-weight:700;'
     + 'color:#0F766E;text-transform:uppercase;letter-spacing:0.05em;';
 
-  const rows = items.map(item=>{
+  // Approve and Decline under each line (Nov 1), when the quote has more than
+  // one line and its breakdown is on the server for the customer's page to
+  // show; the big buttons at the bottom then answer them all
+  // Lines unticked on the form (Nov 1) have no buttons of their own; with
+  // none ticked, or just one line, it's Approve and Decline at the bottom
+  const asks = item => item && item.answerable !== false;
+  const perLine = !!respondUrl && items.length > 1 && items.some(asks) && awcQuoteLinkCanDownload(respondUrl);
+  const lineBtn = (i, a, word, ink, bg) => '<a href="' + respondUrl + '&a=' + a + '&line=' + i + '" style="display:inline-block;padding:6px 12px;border-radius:8px;'
+    + 'border:1.5px solid ' + ink + ';background:' + bg + ';color:' + ink + ';font-size:12.5px;font-weight:700;text-decoration:none;margin-left:6px;">'
+    // The words' own colour: the email's link rule would turn them black
+    + '<span style="color:' + ink + ';font-weight:700;">' + word + '</span></a>';
+  const rows = items.map((item, i)=>{
     const qty = parseFloat(item.qty) || 0;
     const price = parseFloat(item.price) || 0;
+    const c = perLine ? cell.replace('border-bottom:1px solid #E6E9E8;', 'border-bottom:none;') : cell;
     return '<tr>'
-      + '<td style="' + cell + 'color:#16302E;">' + awcEsc(item.description) + '</td>'
-      + '<td style="' + cell + 'color:#4A5A58;text-align:center;white-space:nowrap;">' + awcEsc(String(qty)) + '</td>'
-      + '<td style="' + cell + 'color:#4A5A58;text-align:right;white-space:nowrap;">' + money(price) + '</td>'
-      + '<td style="' + cell + 'color:#16302E;font-weight:600;text-align:right;white-space:nowrap;">' + money(qty * price) + '</td>'
-      + '</tr>';
+      + '<td style="' + c + 'color:#16302E;">' + awcEsc(item.description) + '</td>'
+      + '<td style="' + c + 'color:#4A5A58;text-align:center;white-space:nowrap;">' + awcEsc(String(qty)) + '</td>'
+      + '<td style="' + c + 'color:#4A5A58;text-align:right;white-space:nowrap;">' + money(price) + '</td>'
+      + '<td style="' + c + 'color:#16302E;font-weight:600;text-align:right;white-space:nowrap;">' + money(qty * price) + '</td>'
+      + '</tr>'
+      + (perLine ? '<tr><td colspan="4" style="padding:0 10px 10px;border-bottom:1px solid #E6E9E8;text-align:right;">'
+          + (asks(item) ? lineBtn(i, 'approve', '&#10003; Approve', awcEsc(colour), '#F1F8F7')
+            + lineBtn(i, 'deny', '&#10005; Decline', '#B8492E', '#FDF1EE') : '')
+          + '</td></tr>' : '');
   }).join('');
 
   const bits = [];
@@ -17669,8 +17826,8 @@ function awcQuoteEmailHtml(customer, type, dateText, items, total, notes, styleO
         + '.</div>' : '')
     // Approve / Deny, when the quote can take an answer
     + (respondUrl ? '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 6px;width:100%;"><tr>'
-        + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">Approve</a></td>'
-        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#B8492E;color:#ffffff;border:1.5px solid #B8492E;font-weight:700;font-size:15px;text-decoration:none;">Decline</a></td>'
+        + '<td style="padding-right:6px;width:50%;"><a href="' + respondUrl + '&a=approve" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:' + colour + ';color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;">' + (perLine ? 'Approve all' : 'Approve') + '</a></td>'
+        + '<td style="padding-left:6px;width:50%;"><a href="' + respondUrl + '&a=deny" style="display:block;text-align:center;padding:13px 10px;border-radius:10px;background:#B8492E;color:#ffffff;border:1.5px solid #B8492E;font-weight:700;font-size:15px;text-decoration:none;">' + (perLine ? 'Decline all' : 'Decline') + '</a></td>'
         + '</tr></table>'
         // Download quote (Oct 15): the breakdown as a PDF to keep
         + (!awcQuoteLinkCanDownload(respondUrl) ? '' : '<a href="' + respondUrl + '&a=download" style="display:block;text-align:center;margin:12px 0 6px;padding:12px 10px;border-radius:10px;'
@@ -17706,7 +17863,9 @@ function awcQuoteDownloadDetails(customer, type, dateText, items, total, notes, 
     date: dateText || '',
     expiresOn: expiresOn,
     customer: {name: customer.name || '', address: customer.address || ''},
-    items: (items || []).map(li => ({description: String(li.description || ''), qty: parseFloat(li.qty) || 0, price: parseFloat(li.price) || 0})),
+    // choice: false on a line the customer can't answer by itself (Nov 1)
+    items: (items || []).map(li => Object.assign({description: String(li.description || ''), qty: parseFloat(li.qty) || 0, price: parseFloat(li.price) || 0},
+      li.answerable === false ? {choice: false} : {})),
     total: Number(total) || 0,
     notes: notes || '',
     colour: style.colour || '#134E4A',
@@ -25233,6 +25392,41 @@ function custNameLineHtml(c, justToday){
     + (justToday ? '<span style="flex:0 0 auto;background:var(--gold);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;white-space:nowrap;">JUST TODAY</span>' : '')
     + '</div>';
 }
+// Nov 1: anywhere in the app, a line cut off with dots slides the same way:
+// job rows on Technicians and Today, addresses, the drop-downs, lists in
+// windows. Checked shortly after anything on the page changes, after a press,
+// when the phone turns, and on coming back to the app. A line only moves while
+// it doesn't fit.
+(function slideCutTextEverywhere(){
+  let queued = false;
+  const pass = ()=>{
+    queued = false;
+    document.querySelectorAll('[style*="ellipsis"]').forEach(el=>{
+      try{
+        if(!el.clientWidth || !el.getClientRects().length) return;      // not on screen
+        if(el.matches('input, textarea, select') || el.querySelector('input, textarea, select, button')) return;
+        const inner = el.querySelector(':scope > .marquee-inner');
+        const w = inner ? inner.scrollWidth : el.scrollWidth;
+        const sig = el.clientWidth + ':' + w + ':' + (el.textContent || '').length;
+        if(el.dataset.mqSig === sig) return;                            // nothing changed
+        el.dataset.mqSig = sig;
+        if(w > el.clientWidth + 1 || el.classList.contains('marquee-on')){
+          el.classList.add('mq-auto');
+          marqueeIfCut(el);
+        }
+      }catch(e){}
+    });
+  };
+  const queue = ()=>{ if(!queued){ queued = true; setTimeout(pass, 150); } };
+  const start = ()=>{
+    try{ new MutationObserver(queue).observe(document.body, {childList: true, subtree: true, characterData: true}); }catch(e){}
+    queue();
+  };
+  if(document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+  window.addEventListener('resize', queue);
+  document.addEventListener('click', ()=> setTimeout(queue, 60), true);
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) queue(); });
+})();
 function marqueeIfCut(el){
   if(!el) return;
   let inner = el.querySelector(':scope > .marquee-inner');
