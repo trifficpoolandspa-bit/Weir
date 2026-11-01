@@ -609,6 +609,16 @@ input::placeholder{color:#A9BCB9;}
 .pd-xtag:hover .pd-xtag-x{display:inline-flex !important;align-items:center;justify-content:center;}
 /* The extra work counter's number, without the browser's own arrows (Oct 13) */
 .pd-qty::-webkit-outer-spin-button,.pd-qty::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+/* No blinking text bar anywhere you can't type (Nov 1): date and time boxes,
+   pickers, read-only boxes and everything else hide it; boxes you type in keep it */
+*{caret-color:transparent;}
+input:not([type=date]):not([type=month]):not([type=time]):not([type=week]):not([type=datetime-local]):not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([readonly]),
+textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-color:auto;}
+.row-dim{opacity:.45;filter:saturate(.4);transition:opacity .15s,filter .15s;}
+.row-dim:hover{opacity:1;filter:none;}
+.row-open{border-color:var(--teal-deep) !important;box-shadow:0 0 0 1px var(--teal-deep),0 6px 16px rgba(14,74,77,.15);}
+.row-open-body{margin-top:8px;border-radius:10px;box-shadow:0 0 0 2px var(--teal-deep);}
+.row-open-body > :first-child{margin-top:0 !important;}
 </style>
 </head>
 <body class="sidebar-subtabs">
@@ -1243,6 +1253,12 @@ input::placeholder{color:#A9BCB9;}
       <div class="field">
         <label>Line under the header (optional)</label>
         <input id="qeSubheader" placeholder="e.g. Licensed & insured · Serving Buckeye since 2010">
+      </div>
+      <!-- The body (Nov 1): under the customer, above the items -->
+      <div class="field">
+        <label>Body (optional)</label>
+        <textarea id="qeBody" rows="4" placeholder="A few words above the quote"></textarea>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">Shows under the customer’s name and address, above the items. {first name} becomes the customer’s first name.</div>
       </div>
       <div class="field">
         <label>Closing line</label>
@@ -2198,6 +2214,19 @@ input::placeholder{color:#A9BCB9;}
       <h2 style="margin-bottom:0;">Settings</h2>
     </div>
 
+    <!-- Colour-blind mode (Nov 1): this device only -->
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <h2 style="margin:0;">Colour-blind mode</h2>
+        <label class="toggle-switch">
+          <input type="checkbox" id="settingColourBlind">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <p style="font-size:12.5px;color:var(--muted);margin:12px 0 0;">Job and status colours that stay easy to tell apart with any kind of colour blindness. Just for this device.</p>
+      <div id="colourBlindKey" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;"></div>
+    </div>
+
     <div class="card">
       <h2>Backup &amp; restore</h2>
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Download a snapshot of everything — customers, technicians, readings, equipment, routes, and settings. Keep it somewhere safe. If data is ever changed or deleted by mistake, restoring a backup puts it all back.</p>
@@ -2753,6 +2782,21 @@ function lsGet(key){
   }catch(e){
     return null;
   }
+}
+
+// ---------- Colour-blind mode (Nov 1) ----------
+// This device only, from Settings. Swaps the job and status colours for a set
+// that stays apart for every kind of colour blindness: gold filter cleans, sky
+// drains, blue clean & refill, grey work orders, wine tasks; blue done, orange
+// in the app, light grey not in the app.
+var CB_ON = (function(){ try{ return localStorage.getItem(STORAGE_PREFIX + 'colourBlind') === 'true'; }catch(e){ return false; } })();
+var CB_JOB = {FC: ['#FFE45C', '#3A2E00'], PD: ['#7FC4F0', '#08263D'], CR: ['#0072B2', '#FFFFFF'], WO: ['#9A9A9A', '#FFFFFF'], TK: ['#882255', '#FFFFFF']};
+var CB_STATE = {done: '#0072B2', app: '#E69F00', '': '#C8C8C8'};
+function cbKindKey(kind){ return {'task': 'TK', 'filter clean': 'FC', 'pool drain': 'PD', 'clean refill': 'CR'}[kind] || 'WO'; }
+function setColourBlind(on){
+  try{ localStorage.setItem(STORAGE_PREFIX + 'colourBlind', on ? 'true' : 'false'); }catch(e){}
+  // Every colour is set as the page draws, so it starts afresh in the new colours
+  setTimeout(()=> location.reload(), 250);
 }
 // Storage is capped by the browser. When it fills, setItem throws — and this
 // used to swallow that quietly, so saves appeared to work but changed nothing.
@@ -4777,7 +4821,40 @@ document.querySelectorAll('#psCategoryControl .history-type-btn').forEach(btn=>{
   });
 });
 
+// A description's whole text in a card under its box (Nov 1), in the style of
+// the calendar's group names card
+function psDescTip(anchor, item){
+  let tip = document.getElementById('psDescTip');
+  const text = anchor ? String(anchor.value || '').trim() : '';
+  if(!anchor || !text){ if(tip) tip.remove(); return; }
+  if(!tip){ tip = document.createElement('div'); tip.id = 'psDescTip'; document.body.appendChild(tip); }
+  const W = 300;
+  tip.style.cssText = 'position:fixed;z-index:100000;width:' + W + 'px;background:#fff;border:1px solid var(--line);border-radius:12px;'
+    + 'box-shadow:0 12px 30px rgba(14,74,77,.2);padding:10px 12px;font-size:13px;pointer-events:none;';
+  tip.innerHTML = '';
+  const head = document.createElement('div');
+  head.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  head.textContent = (item && item.name ? item.name : 'Item') + ' \u00b7 Description';
+  tip.appendChild(head);
+  const body = document.createElement('div');
+  body.style.cssText = 'padding-top:6px;border-top:1px solid #EEF3F2;line-height:1.5;color:var(--ink);white-space:pre-wrap;word-wrap:break-word;';
+  body.textContent = text;
+  tip.appendChild(body);
+  const arrow = document.createElement('div');
+  tip.appendChild(arrow);
+  // Under the box, kept on screen; above it when there's no room below
+  const r = anchor.getBoundingClientRect();
+  const h = tip.offsetHeight;
+  const left = Math.min(Math.max(8, r.left), window.innerWidth - W - 8);
+  let top = r.bottom + 8, below = true;
+  if(top + h > window.innerHeight - 8){ top = Math.max(8, r.top - h - 8); below = false; }
+  tip.style.left = left + 'px'; tip.style.top = top + 'px';
+  const ax = Math.min(Math.max(14, r.left + 24 - left), W - 26);
+  arrow.style.cssText = 'position:absolute;left:' + ax + 'px;width:12px;height:12px;background:#fff;transform:rotate(45deg);'
+    + (below ? 'top:-7px;border-left:1px solid var(--line);border-top:1px solid var(--line);' : 'bottom:-7px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);');
+}
 function renderProductsServicesList(){
+  psDescTip(null);
   const container = document.getElementById('productsServicesList');
   container.innerHTML = '';
   if(productsServices.length === 0){
@@ -5020,7 +5097,11 @@ function renderProductsServicesList(){
       descInput.placeholder = 'Description';
       descInput.title = 'A description of this item';
       descInput.style.cssText = 'flex:0 0 254px;min-width:0;';
-      descInput.addEventListener('input', ()=>{ psSet(item, {description: descInput.value}); });
+      descInput.addEventListener('input', ()=>{ psSet(item, {description: descInput.value}); psDescTip(null); });
+      // The whole description in a card on hover (Nov 1), not while typing
+      descInput.addEventListener('mouseenter', ()=>{ if(document.activeElement !== descInput) psDescTip(descInput, item); });
+      descInput.addEventListener('mouseleave', ()=> psDescTip(null));
+      descInput.addEventListener('focus', ()=> psDescTip(null));
       row.appendChild(descInput);
     } else {
       row.appendChild(unitInput);
@@ -5104,31 +5185,42 @@ document.getElementById('btnAddProductService').addEventListener('click', ()=>{
   }, true);
 })();
 
-function openProductServiceModal(){
+function openProductServiceModal(opts){
+  opts = opts || {};
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
+  // Category first (Nov 1): the boxes under it follow it. Repairs, products,
+  // services (and uncategorised) get a price and a description; chemicals a
+  // price, a unit and Extra charge chemical, with its abbreviation and colour.
   overlay.innerHTML = `
     <div class="confirm-box ps-window" style="max-width:420px;">
       <!-- Add line item (Nov 1) -->
       <h3 style="font-size:15px;margin:0 0 4px;">Add line item</h3>
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Pick a category, give it a name and a price, and it’s ready to drop onto any quote or work order.</p>
-      <div class="field"><label>Product or service</label><input id="psName" placeholder="e.g. Filter replacement"></div>
-      <div class="field"><label>Price ($)</label><input id="psPrice" type="number" step="0.01" placeholder="0.00"></div>
-      <div class="field"><label>Unit (optional)</label><input id="psUnit" placeholder="gal, lb, oz, tab…"></div>
-      <!-- Only the box and its words tick it (Oct 2); the rest of the line does nothing -->
-      <div class="field">
-        <label class="ps-tick" style="display:inline-flex;align-items:center;gap:8px;width:auto;margin:0;padding:6px 10px 6px 8px;border:1px solid transparent;border-radius:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-family:'Inter',sans-serif;font-size:14px;font-weight:500;color:var(--ink);">
-          <input type="checkbox" id="psExtraCharge" style="width:18px;height:18px;margin:0;cursor:pointer;"> Extra charge chemical
-        </label>
-      </div>
       <div class="field"><label>Category</label>
         <select id="psCategoryPick">
           <option value="">Uncategorised</option>
           <option value="repairs">Repair</option>
-          <option value="chemicals">Chemical</option>
           <option value="products">Product</option>
           <option value="services">Service</option>
+          <option value="chemicals">Chemical</option>
         </select>
+      </div>
+      <div class="field"><label>Product or service</label><input id="psName" placeholder="e.g. Filter replacement"></div>
+      <div class="field"><label>Price ($)</label><input id="psPrice" type="number" step="0.01" placeholder="0.00"></div>
+      <div class="field" data-for="other"><label>Description (optional)</label><textarea id="psDesc" rows="3" placeholder="What’s included. Shows under the line on quotes and work orders."></textarea></div>
+      <div class="field" data-for="chem"><label>Unit (optional)</label><input id="psUnit" placeholder="gal, lb, oz, tab…"></div>
+      <!-- Only the box and its words tick it (Oct 2); the rest of the line does nothing -->
+      <div class="field" data-for="chem">
+        <label class="ps-tick" style="display:inline-flex;align-items:center;gap:8px;width:auto;margin:0;padding:6px 10px 6px 8px;border:1px solid transparent;border-radius:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-family:'Inter',sans-serif;font-size:14px;font-weight:500;color:var(--ink);">
+          <input type="checkbox" id="psExtraCharge" style="width:18px;height:18px;margin:0;cursor:pointer;"> Extra charge chemical
+        </label>
+      </div>
+      <!-- Ticked: its billing abbreviation and colour, as on the list (Nov 1) -->
+      <div data-for="extra" style="display:none;">
+        <div class="field"><label>Abbreviation</label><input id="psAbbr" maxlength="4" placeholder="e.g. MA">
+          <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">Four characters at most. It has to fit the billing column.</div></div>
+        <div class="field"><label>Colour</label><div id="psExtraDots" style="display:flex;gap:10px;flex-wrap:wrap;"></div></div>
       </div>
       <div class="btn-row">
         <button class="btn btn-primary" id="psSave" style="flex:1;">Save</button>
@@ -5140,7 +5232,45 @@ function openProductServiceModal(){
   const nameEl = overlay.querySelector('#psName');
   const priceEl = overlay.querySelector('#psPrice');
   const catPick = overlay.querySelector('#psCategoryPick');
+  const descEl = overlay.querySelector('#psDesc');
+  const extraEl = overlay.querySelector('#psExtraCharge');
+  const abbrEl = overlay.querySelector('#psAbbr');
   if(catPick && psCategory !== 'all') catPick.value = psCategory;
+  // From a quote or work order line (Nov 1): its name, price and description filled in
+  if(opts.name !== undefined){
+    nameEl.value = opts.name || '';
+    if(opts.price !== undefined && opts.price !== null && opts.price !== '') priceEl.value = opts.price;
+    if(opts.detail) descEl.value = String(opts.detail).trim();
+    const sub = overlay.querySelector('.ps-window p');
+    if(sub) sub.textContent = 'From your quote. Check the name and price, add anything else, and it’ll be ready for every quote and work order after this one.';
+    if(catPick.value === 'chemicals') catPick.value = '';
+  }
+  // The colour dots for an extra charge chemical
+  let colour = extraColourMatch(undefined);
+  const dots = overlay.querySelector('#psExtraDots');
+  const drawDots = ()=>{
+    dots.innerHTML = '';
+    EXTRA_COLOURS.forEach(c=>{
+      const d = document.createElement('button');
+      d.type = 'button';
+      d.setAttribute('aria-label', 'Colour');
+      d.style.cssText = 'width:34px;height:34px;min-width:34px;padding:0;border-radius:50%;border:3px solid #fff;cursor:pointer;background:' + c + ';'
+        + 'box-shadow:0 0 0 ' + (c === colour ? '2px var(--teal-deep)' : '1px var(--line)') + ';';
+      d.addEventListener('click', ()=>{ colour = c; drawDots(); });
+      dots.appendChild(d);
+    });
+  };
+  drawDots();
+  // Show the boxes for the category; anything typed stays as it is
+  const showFor = ()=>{
+    const chem = catPick.value === 'chemicals';
+    overlay.querySelectorAll('[data-for="other"]').forEach(el => { el.style.display = chem ? 'none' : ''; });
+    overlay.querySelectorAll('[data-for="chem"]').forEach(el => { el.style.display = chem ? '' : 'none'; });
+    overlay.querySelector('[data-for="extra"]').style.display = chem && extraEl.checked ? '' : 'none';
+  };
+  catPick.addEventListener('change', showFor);
+  extraEl.addEventListener('change', ()=>{ showFor(); if(extraEl.checked) setTimeout(()=> abbrEl.focus(), 30); });
+  showFor();
   setTimeout(()=> nameEl.focus(), 50);
 
   const cleanup = ()=> document.body.removeChild(overlay);
@@ -5148,17 +5278,21 @@ function openProductServiceModal(){
   function commit(){
     const name = nameEl.value.trim();
     if(!name){ showToast('Give it a name first'); nameEl.focus(); return null; }
+    const chem = catPick.value === 'chemicals';
+    const extra = chem && extraEl.checked;
+    const abbr = abbrEl.value.trim().slice(0, 4);
+    if(extra && !abbr){ showToast('Give it an abbreviation for the billing column'); abbrEl.focus(); return null; }
     const key = 'ps_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
-    const catEl = overlay.querySelector('#psCategoryPick');
     const unitEl = overlay.querySelector('#psUnit');
-    const extraEl = overlay.querySelector('#psExtraCharge');
     const item = {
       key, name,
       price: priceEl.value.trim(),
-      unit: unitEl ? unitEl.value.trim() : '',
-      extraCharge: extraEl ? extraEl.checked : false,
-      category: catEl ? catEl.value : ''
+      unit: chem && unitEl ? unitEl.value.trim() : '',
+      extraCharge: extra,
+      category: catPick.value
     };
+    if(extra){ item.abbr = abbr; item.extraColor = colour; }
+    if(!chem && descEl.value.trim()) item.description = descEl.value.trim();
     psAdd(item);
     renderProductsServicesList();
     return item;
@@ -5169,6 +5303,7 @@ function openProductServiceModal(){
     if(!item) return;
     cleanup();
     showToast(item.name + ' added');
+    if(typeof opts.onSaved === 'function'){ try{ opts.onSaved(item); }catch(e){} }
   });
 
   overlay.querySelector('#psCancel').addEventListener('click', cleanup);
@@ -6135,6 +6270,7 @@ const EH_KINDS = {
   onmyway: ['On my way', '#E4F0F8', '#1F5E86'],
   email: ['Email', 'var(--surface-alt)', 'var(--muted)']
 };
+if(CB_ON){ [['workorder', 'WO'], ['clean', 'FC'], ['drain', 'PD']].forEach(([k, K])=>{ EH_KINDS[k][1] = CB_JOB[K][0]; EH_KINDS[k][2] = CB_JOB[K][1]; }); }
 const EH_STATUS = {unsent: 'NOT SENT', sent: 'SENT', delivered: 'DELIVERED', viewed: 'VIEWED',
   delayed: 'DELAYED', bounced: 'BOUNCED', complained: 'SPAM', failed: 'FAILED'};
 const EH_PROBLEM = {bounced: 'bounced', complained: 'marked as spam', failed: 'failed'};
@@ -11502,7 +11638,8 @@ function pdScheduleCustomers(cids){
     const arrow = (text, delta, title)=>{
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'btn btn-ghost';
-      b.style.cssText = 'width:32px;padding:4px 0;';
+      // Small square arrows (Nov 1): they'd stretched to 134px each
+      b.style.cssText = 'flex:0 0 34px;width:34px;min-width:0;max-width:34px;height:34px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:18px;line-height:1;';
       b.textContent = text; b.title = title;
       b.addEventListener('click', e=>{ e.stopPropagation(); const d = new Date(yy, mm - 1 + delta, 1); month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); draw(); });
       return b;
@@ -11718,13 +11855,15 @@ function calClockSvg(size){
 // tick. ty is what it is: FC, PD, WO or TK.
 // Each job's own colour (Oct 28), as on Today and in the app's calendar: filter
 // clean gold, drain blue, work order grey, task green
-const CAL_JOB_COLOURS = {FC: ['#FBF1DD', '#8A5E0B'], PD: ['#C3DEF3', '#174C78'], CR: ['#8EC5F5', '#0D3A66'], WO: ['#E9EEF0', '#3E5560'], TK: ['#D7F0A8', '#3D5E0A']};
+const CAL_JOB_COLOURS = {FC: ['#FBF1DD', '#8A5E0B'], PD: ['#C3DEF3', '#174C78'], CR: ['#8EC5F5', '#0D3A66'], WO: ['#E9EEF0', '#3E5560'], TK: ['#C9EBC3', '#24601F']};
 // Clean & refill: the second day of an overnight drain, bright sky blue (Nov 1)
 function calIsRefill(t){ return !!(t && (t.refillOf || /^clean\s*&\s*refill$/i.test(String(t.title || '').trim()))); }
 const CAL_STATE_COLOURS = {done: '#2E8B57', app: '#C68A17', '': '#8A9795'};
+if(CB_ON){ Object.assign(CAL_JOB_COLOURS, CB_JOB); Object.assign(CAL_STATE_COLOURS, CB_STATE); }
 function calStateDot(state){
   const dot = document.createElement('i');
-  dot.style.cssText = 'flex-shrink:0;width:7px;height:7px;border-radius:50%;margin-left:auto;background:' + (CAL_STATE_COLOURS[state || ''] || CAL_STATE_COLOURS['']) + ';';
+  dot.style.cssText = 'flex-shrink:0;width:7px;height:7px;border-radius:50%;margin-left:auto;background:' + (CAL_STATE_COLOURS[state || ''] || CAL_STATE_COLOURS['']) + ';'
+    + (CB_ON ? 'box-shadow:0 0 0 1.5px #fff;' : '');
   return dot;
 }
 function calNameChip(text, state, title, ty){
@@ -11791,7 +11930,8 @@ function calHeadToPageStyle(head){
 // orders badges: done green, in the app gold, not sent yet blue, as on the
 // calendar. With onPick it's a menu: pick another status for just that one.
 function calStatusBadge(state, onPick){
-  const LOOK = {'': ['NOT IN APP', '#8A9795'], app: ['IN THE APP', '#C68A17'], done: ['COMPLETE', '#2E8B57']};   // COMPLETE, was DONE (Nov 1); the Jobs badges: Expired, Pending, Approved (Oct 18)
+  const LOOK = {'': ['NOT IN APP', '#8A9795'], app: ['IN THE APP', '#C68A17'], done: ['COMPLETE', '#2E8B57']};
+  if(CB_ON){ LOOK.app[1] = CB_STATE.app; LOOK.done[1] = CB_STATE.done; }   // COMPLETE, was DONE (Nov 1); the Jobs badges: Expired, Pending, Approved (Oct 18)
   const look = LOOK[state || ''] || LOOK[''];
   const css = 'display:inline-flex;align-items:center;justify-content:center;width:92px;padding:4px 0;border-radius:7px;border:0;margin:0;'
     + 'font-size:10.5px;font-weight:700;letter-spacing:.04em;color:#fff;white-space:nowrap;background:' + look[1] + ';';
@@ -11834,8 +11974,9 @@ const WCAL_TAGS = {
   fc: ['FC', 'Filter cleans', '#FBF1DD', '#8A5E0B'],
   pd: ['PD', 'Pool drains', '#C3DEF3', '#174C78'],
   wo: ['WO', 'Work orders', '#E9EEF0', '#3E5560'],
-  tk: ['TK', 'Tasks', '#D7F0A8', '#3D5E0A']
+  tk: ['TK', 'Tasks', '#C9EBC3', '#24601F']
 };
+if(CB_ON){ Object.keys(WCAL_TAGS).forEach(k=>{ const c = CB_JOB[WCAL_TAGS[k][0]]; if(c){ WCAL_TAGS[k][2] = c[0]; WCAL_TAGS[k][3] = c[1]; } }); }
 function openWorkCalendar(startDay, stayHere){
   // Opened at a day from elsewhere in WorkCenter: over to the Calendar first,
   // unless asked to stay (Nov 1: the drain list's Scheduled tag opens just the
@@ -18073,10 +18214,43 @@ function renderLineItems(){
     const row = document.createElement('div');
     row.className = 'fountain-row';
     // The product's description, under the line (Nov 1)
+    // Editable on this quote or work order only (Nov 1): click it to change
+    // the wording; Products & Services keeps its own. Emptied: no description.
     const detailLine = document.createElement('div');
     detailLine.className = 'line-detail';
-    detailLine.style.cssText = 'display:' + (item.detail ? 'block' : 'none') + ';font-size:12.5px;color:var(--muted);margin:-4px 44px 10px 4px;white-space:pre-wrap;';
-    detailLine.textContent = item.detail || '';
+    detailLine.style.cssText = 'display:' + (item.detail ? 'block' : 'none') + ';position:relative;margin:-4px 44px 10px 0;';
+    const detailBox = document.createElement('textarea');
+    detailBox.rows = 1;
+    detailBox.value = item.detail || '';
+    detailBox.title = 'Click to edit this line\u2019s description';
+    detailBox.style.cssText = 'display:block;width:100%;box-sizing:border-box;resize:none;overflow:hidden;font:inherit;font-size:14px;line-height:1.45;'
+      + 'color:var(--muted);background:transparent;border:1px solid transparent;border-radius:8px;padding:5px 30px 5px 6px;margin:0;min-height:0;cursor:text;transition:border-color .15s,background .15s;';
+    const detailPen = document.createElement('span');
+    detailPen.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+    detailPen.style.cssText = 'position:absolute;right:8px;top:7px;color:#9AB0AD;pointer-events:none;';
+    detailLine.appendChild(detailBox);
+    detailLine.appendChild(detailPen);
+    const fitDetail = ()=>{ detailBox.style.height = 'auto'; detailBox.style.height = detailBox.scrollHeight + 2 + 'px'; };
+    const detailLook = on=>{
+      detailBox.style.background = on ? '#fff' : 'transparent';
+      detailBox.style.borderColor = on ? 'var(--teal-deep)' : 'transparent';
+      detailBox.style.color = on ? 'var(--ink)' : 'var(--muted)';
+      detailBox.style.boxShadow = on ? '0 0 0 3px rgba(15,118,110,.12)' : 'none';
+      detailPen.style.color = on ? 'var(--teal-deep)' : '#9AB0AD';
+    };
+    detailBox.addEventListener('mouseenter', ()=>{ if(document.activeElement !== detailBox) detailBox.style.borderColor = 'var(--line)'; });
+    detailBox.addEventListener('mouseleave', ()=>{ if(document.activeElement !== detailBox) detailBox.style.borderColor = 'transparent'; });
+    detailBox.addEventListener('focus', ()=> detailLook(true));
+    detailBox.addEventListener('input', ()=>{
+      const v = detailBox.value;
+      if(v.trim()) item.detail = v; else delete item.detail;
+      fitDetail();
+    });
+    detailBox.addEventListener('blur', ()=>{
+      detailLook(false);
+      if(!String(item.detail || '').trim()){ delete item.detail; detailLine.style.display = 'none'; }
+    });
+    setTimeout(fitDetail, 0);
 
     const descInput = document.createElement('input');
     descInput.value = item.description;
@@ -18086,13 +18260,48 @@ function renderLineItems(){
     // Our own list of matches under the box (Oct 15): the browser's own list
     // (a datalist) shows nothing on phones, so typing there suggested nothing
     const descWrap = document.createElement('div');
-    descWrap.style.cssText = 'position:relative;flex:2;min-width:0;display:flex;';
+    descWrap.style.cssText = 'position:relative;flex:1 1 auto;min-width:0;display:flex;';   // all the room Qty and Price leave (Nov 1)
     const suggest = document.createElement('div');
     suggest.style.cssText = 'display:none;position:absolute;left:0;right:0;top:100%;z-index:45;background:#fff;'
       + 'border:1px solid var(--line);border-radius:10px;margin-top:4px;box-shadow:0 4px 14px rgba(15,46,46,0.14);'
       + 'max-height:240px;overflow-y:auto;';
     descWrap.appendChild(descInput);
     descWrap.appendChild(suggest);
+    // Not in Products & Services (Nov 1): a button on the right of the box
+    // opens Add line item with the line's name and price filled in
+    const addPs = document.createElement('button');
+    addPs.type = 'button';
+    addPs.className = 'line-add-ps';
+    addPs.innerHTML = '<span style="font-size:14px;line-height:1;margin-right:4px;">+</span>Add to Products &amp; Services';
+    addPs.style.cssText = 'display:none;position:absolute;right:7px;top:50%;transform:translateY(-50%);align-items:center;padding:5px 10px;border-radius:999px;'
+      + 'border:1.5px solid #9CC5BF;background:var(--teal-pale);color:var(--teal-deep);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;width:auto;margin:0;z-index:2;';
+    descWrap.appendChild(addPs);
+    const psHas = v => (productsServices || []).some(p => p && String(p.name || '').trim().toLowerCase() === v);
+    const drawAddPs = ()=>{
+      const v = descInput.value.trim().toLowerCase();
+      const show = !!v && !psHas(v);
+      addPs.style.display = show ? 'inline-flex' : 'none';
+      descInput.style.paddingRight = show ? (addPs.offsetWidth + 16) + 'px' : '';
+    };
+    addPs.addEventListener('mousedown', e => e.preventDefault());
+    addPs.addEventListener('click', e=>{
+      e.preventDefault(); e.stopPropagation();
+      openProductServiceModal({name: descInput.value.trim(), price: item.price, detail: item.detail, onSaved: saved=>{
+        // Renamed in the window: the line takes the new name; its price and
+        // description stay as they are on the line
+        if(saved.name !== descInput.value){
+          const keepPrice = item.price, keepDetail = item.detail;
+          descInput.value = saved.name;
+          descInput.dispatchEvent(new Event('input', {bubbles: true}));
+          if(keepPrice !== '' && keepPrice !== undefined){ item.price = keepPrice; priceInput.value = keepPrice; }
+          if(keepDetail){ item.detail = keepDetail; detailBox.value = keepDetail; detailLine.style.display = 'block'; fitDetail(); }
+          recalcWorkOrderTotal();
+        }
+        drawAddPs();
+      }});
+    });
+    descInput.addEventListener('input', drawAddPs);
+    setTimeout(drawAddPs, 0);
     const hideSuggest = ()=>{ suggest.style.display = 'none'; suggest.innerHTML = ''; };
     const showSuggest = ()=>{
       const t = descInput.value.trim().toLowerCase();
@@ -18153,8 +18362,9 @@ function renderLineItems(){
       // on the form, the quote or work order, and what the customer gets
       const det = match && String(match.description || '').trim();
       if(det) item.detail = det; else delete item.detail;
-      detailLine.textContent = item.detail || '';
+      detailBox.value = item.detail || '';
       detailLine.style.display = item.detail ? 'block' : 'none';
+      fitDetail();
       recalcWorkOrderTotal();
     });
 
@@ -18163,7 +18373,8 @@ function renderLineItems(){
     qtyInput.step = 'any';
     qtyInput.value = item.qty;
     qtyInput.placeholder = 'Qty';
-    qtyInput.style.flex = '0.5';
+    // Qty and Price the same narrow width (Nov 1)
+    qtyInput.style.cssText = 'flex:0 0 96px;width:96px;min-width:0;';
     qtyInput.addEventListener('input', ()=>{
       item.qty = qtyInput.value;
       recalcWorkOrderTotal();
@@ -18172,7 +18383,7 @@ function renderLineItems(){
     // The price box shows a $ in front; the box itself still holds just the
     // number, so totals work as before
     const priceWrap = document.createElement('div');
-    priceWrap.style.cssText = 'position:relative;flex:1;min-width:0;display:flex;';
+    priceWrap.style.cssText = 'position:relative;flex:0 0 96px;width:96px;min-width:0;display:flex;';
     const dollar = document.createElement('span');
     dollar.textContent = '$';
     dollar.style.cssText = 'position:absolute;left:11px;top:50%;transform:translateY(-50%);'
@@ -20793,10 +21004,19 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
 const QUOTE_EMAIL_DEFAULTS = {
   header: '',          // blank means the company name
   subheader: '',
+  body: 'Hi {first name},\nHere\u2019s your quote. Please review it when you have a chance, and let us know if you\u2019d like us to proceed.',   // above the items (Nov 1)
   closing: 'Questions, or ready to go ahead? Just reply to this email.',
   signoff: null,       // null means the report's sign-off
   showContact: true
 };
+// The quote email's body (Nov 1): a few words between the customer and the
+// items. {first name} becomes the customer's first name ("there" if none).
+function quoteBodyText(body, customer){
+  const raw = String(customer && customer.name || '').trim();
+  const first = (raw.indexOf(',') !== -1 ? raw.split(',')[1] : raw).trim().split(/\s+/)[0] || 'there';
+  return String(body || '').replace(/\{\s*first\s*name\s*\}/gi, first).trim();
+}
+
 function loadQuoteEmailStyle(){
   return Object.assign({}, QUOTE_EMAIL_DEFAULTS, lsGet('quoteEmailStyle') || {});
 }
@@ -20804,6 +21024,16 @@ function loadQuoteEmailStyle(){
 function quoteLinkCanDownload(url){
   const m = String(url || '').match(/[?&]t=([0-9a-f]+)/);
   return !!(m && quoteCanDownload[m[1]]);
+}
+// Buttons in an email keep their look (Nov 1): the email's rule that stops
+// phones turning numbers and addresses into links also took the white words
+// and bold off Approve, Decline, Download and Send a message in mail apps
+// that read it (Gmail among them). Each link's own colour, weight and size win.
+function emailLinksKeepLook(html){
+  return String(html).replace(/<a href="[^"]*"[^>]*>/g, tag => tag
+    .replace(/(;|")color:([^;"!]+);/, (m, a, c) => a + 'color:' + c + ' !important;')
+    .replace(/font-weight:([^;"!]+);/, (m, w) => 'font-weight:' + w + ' !important;')
+    .replace(/font-size:([^;"!]+);/, (m, w) => 'font-size:' + w + ' !important;'));
 }
 function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOverride, respondUrl, quoteNumber, expiresDays){
   const style = lsGet('reportEmailStyle') || {};
@@ -20840,7 +21070,7 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
   const signoff = q.signoff !== null && q.signoff !== undefined ? q.signoff
     : (style.signoff !== undefined ? style.signoff : 'Thank you for your business.');
 
-  return '<!DOCTYPE html><html><head><meta charset="utf-8">'
+  return emailLinksKeepLook('<!DOCTYPE html><html><head><meta charset="utf-8">'
     + '<meta name="format-detection" content="telephone=no,address=no,email=no,date=no">'
     + '<style>a[href^="tel"],a[href^="mailto"],a[href^="http"],a[x-apple-data-detectors]{'
     + 'color:inherit !important;text-decoration:none !important;font-size:inherit !important;'
@@ -20871,6 +21101,8 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
     + (customer.address ? '<div style="font-size:13.5px;color:#6B7B79;margin-top:3px;">' + esc(customer.address) + '</div>' : '')
     + '<div style="font-size:13.5px;color:#6B7B79;margin-top:3px;">' + esc(dateText) + '</div>'
     + '</td></tr>'
+    // The body (Nov 1): a soft panel under the customer, above the items
+    + (quoteBodyText(q.body, customer) ? '<tr><td style="padding:20px 26px 0;"><div style="font-size:14.5px;color:#33463F;line-height:1.6;white-space:pre-wrap;padding:16px 18px;background:#F6F9F8;border-radius:10px;">' + esc(quoteBodyText(q.body, customer)) + '</div></td></tr>' : '')
     // The items
     + '<tr><td style="padding:20px 26px 0;">'
     + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">'
@@ -20911,7 +21143,7 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
     + (bits.length ? '<div style="font-size:12.5px;color:#4A5A58;margin-top:4px;">' + bits.join(' &nbsp;&middot;&nbsp; ') + '</div>' : '')
     + (lsGet('licenseNumber') ? '<div style="font-size:11.5px;color:#8A9997;margin-top:3px;">License ' + esc(lsGet('licenseNumber')) + '</div>' : '')
     + '</td></tr>'
-    + '</table></td></tr></table></body></html>';
+    + '</table></td></tr></table></body></html>');
 }
 
 // ---------- Customize email: the window ----------
@@ -20919,6 +21151,7 @@ function quoteEmailFormValues(){
   return {
     header: document.getElementById('qeHeader').value,
     subheader: document.getElementById('qeSubheader').value,
+    body: document.getElementById('qeBody').value,
     closing: document.getElementById('qeClosing').value,
     signoff: document.getElementById('qeSignoff').value,
     showContact: document.getElementById('qeContact').checked
@@ -20929,6 +21162,7 @@ function fillQuoteEmailForm(q){
   document.getElementById('qeHeader').value = q.header || '';
   document.getElementById('qeHeader').placeholder = companyName();
   document.getElementById('qeSubheader').value = q.subheader || '';
+  document.getElementById('qeBody').value = q.body || '';
   document.getElementById('qeClosing').value = q.closing || '';
   document.getElementById('qeSignoff').value = q.signoff !== null && q.signoff !== undefined ? q.signoff
     : (report.signoff !== undefined ? report.signoff : 'Thank you for your business.');
@@ -22466,7 +22700,28 @@ document.getElementById('qoDateFilter').addEventListener('change', e=>{
 // What the Jobs list last drew, so a sync that changes nothing on it doesn't
 // draw it again: each redraw reloaded an open job's photos, and a steady run
 // of syncs made an open row flicker (Oct 21)
+// The open job or report stands out (Nov 1): the other rows fade (back to
+// full colour on hover) and the open row and what opens under it get a teal
+// outline, as one piece
+function markOpenRow(container, rowSel, isOpenRow){
+  if(!container) return;
+  const rows = Array.from(container.querySelectorAll(':scope > ' + rowSel));
+  const open = rows.find(isOpenRow) || null;
+  rows.forEach(r=>{ r.classList.toggle('row-dim', !!open && r !== open); r.classList.toggle('row-open', r === open); });
+  if(!open) return;
+  const pieces = [];
+  let n = open.nextElementSibling;
+  while(n && !n.matches(rowSel) && !n.querySelector('[data-list-page], [data-history-page]')){ pieces.push(n); n = n.nextElementSibling; }
+  if(!pieces.length) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'row-open-body';
+  open.after(wrap);
+  pieces.forEach(x => wrap.appendChild(x));
+}
 let qoLastDrawn = '';
+// 10 jobs a page (Nov 1); another customer, date or kind starts on page 1
+const QO_PER_PAGE = 10;
+let qoPage = 1, qoPageKey = '';
 function renderCustomerWorkOrders(customerId, fromSync){
   const container = document.getElementById('custWorkOrderList');
   const countEl = document.getElementById('custWorkOrderCount');
@@ -22476,32 +22731,44 @@ function renderCustomerWorkOrders(customerId, fromSync){
   qoCustomerId = customerId;
   const all = qoEntriesFor(customerId);
   const qoSlot = document.getElementById('qoSelectSlot');
-  if(qoSlot) qoSlot.innerHTML = '';
   if(countEl) countEl.textContent = all.length ? all.length + (all.length === 1 ? ' record' : ' records') : '';
   const box = document.getElementById('qoDateFilter');
   if(box && box.value !== qoDateFilter) box.value = qoDateFilter;
   try{ syncQoDateClear(); }catch(e){}
   const kindSel = document.getElementById('qoKindFilter');
   const kind = kindSel ? kindSel.value : '';
-  const list = all.filter(x => (!qoDateFilter || qoDay(x) === qoDateFilter) && (!kind || x.kind === kind));
+  let list = all.filter(x => (!qoDateFilter || qoDay(x) === qoDateFilter) && (!kind || x.kind === kind));
   if(!list.length){
     const kindName = {quote: 'quotes', workorder: 'work orders', clean: 'filter cleans', drain: 'pool drains', task: 'tasks'}[kind];
+    if(qoSlot) qoSlot.innerHTML = '';
     container.innerHTML = emptyState(qoDateFilter ? 'Nothing on that date.'
       : kindName ? 'No ' + kindName + ' for this customer yet.'
       : 'No quotes, work orders, filter cleans, pool drains or tasks for this customer yet.');
     return;
   }
   if(qoOpenId && !list.some(x => x.key === qoOpenId)) qoOpenId = null;
+  // Pages of 10 (Nov 1): the page with the open one on it, if one is open
+  const pk = customerId + '|' + qoDateFilter + '|' + kind;
+  if(pk !== qoPageKey){ qoPageKey = pk; qoPage = 1; }
+  const qoPages = Math.max(1, Math.ceil(list.length / QO_PER_PAGE));
+  if(qoOpenId){ const at = list.findIndex(x => x.key === qoOpenId); if(at !== -1) qoPage = Math.floor(at / QO_PER_PAGE) + 1; }
+  qoPage = Math.min(qoPages, Math.max(1, qoPage));
+  const fullList = list;
+  list = list.slice((qoPage - 1) * QO_PER_PAGE, qoPage * QO_PER_PAGE);
   // Select, on the hint's line, as on Service Reports (Oct 3)
   const qoKey = 'qo:' + customerId;
   let drawn = '';
   try{
     const sel = listSel(qoKey);
-    drawn = JSON.stringify([customerId, qoOpenId, qoDateFilter, kind, sel && sel.on, sel && sel.ids ? Array.from(sel.ids) : null,
+    drawn = JSON.stringify([customerId, qoOpenId, qoDateFilter, kind, qoPage, fullList.length, sel && sel.on, sel && sel.ids ? Array.from(sel.ids) : null,
       list.map(x => [x.key, x.done, x.title, x.date, x.status, x.w || null, x.j || null, x.f || null, x.t || null, (x.items || []).length])]);
   }catch(e){ drawn = ''; }
-  if(fromSync && drawn && drawn === qoLastDrawn && container.childElementCount) return;
+  // Nothing changed: the list and its Select multiple stay as they are. (The
+  // Select multiple slot used to be emptied before this check, so a sync that
+  // changed nothing left the list with no Select multiple; Nov 1)
+  if(fromSync && drawn && drawn === qoLastDrawn && container.childElementCount && (!qoSlot || qoSlot.childElementCount)) return;
   qoLastDrawn = drawn;
+  if(qoSlot) qoSlot.innerHTML = '';
   container.innerHTML = '';
   const redrawQo = () => renderCustomerWorkOrders(customerId);
   const byKey = {};
@@ -22535,9 +22802,10 @@ function renderCustomerWorkOrders(customerId, fromSync){
     // Each kind its own colour (Tyrus, Oct 3): quote plum, work order slate,
     // filter clean gold, task sage
     const TAG_COLOURS = {quote: ['#F1E8F3', '#6B3E78'], workorder: ['#E9EEF0', '#3E5560'],
-      clean: ['#FBF1DD', '#8A5E0B'], task: ['#D7F0A8', '#3D5E0A'],
+      clean: ['#FBF1DD', '#8A5E0B'], task: ['#C9EBC3', '#24601F'],
       // Pool drains in the app's sky blue (Oct 15)
       drain: ['#C3DEF3', '#174C78']};
+    if(CB_ON){ TAG_COLOURS.workorder = CB_JOB.WO; TAG_COLOURS.clean = CB_JOB.FC; TAG_COLOURS.task = CB_JOB.TK; TAG_COLOURS.drain = CB_JOB.PD; }
     const tc = TAG_COLOURS[item.kind === 'series' ? item.of : item.kind] || ['var(--teal-pale)', 'var(--ink)'];
     const tag = document.createElement('span');
     tag.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;white-space:nowrap;"
@@ -22609,6 +22877,15 @@ function renderCustomerWorkOrders(customerId, fromSync){
     container.appendChild(bar);
     if(isOpen) container.appendChild(qoBody(item, customerId));
   });
+  markOpenRow(container, '[data-qo-id]', r => r.dataset.qoId === qoOpenId);
+  // Page numbers under the list, as on Service reports (Nov 1)
+  if(qoPages > 1){
+    container.appendChild(buildListPager(qoPage, qoPages, fullList.length, pg=>{
+      qoPage = pg; qoOpenId = null; renderCustomerWorkOrders(customerId);
+      const top = document.getElementById('custWorkOrderList');
+      if(top){ const r = top.getBoundingClientRect(); if(r.top < 0) window.scrollBy(0, r.top - 120); }
+    }, 'margin-top:16px;padding-top:14px;border-top:1px solid var(--line);'));
+  }
   // Every badge as wide as the widest (Oct 25), centred, so they line up
   const tags = Array.from(container.querySelectorAll('.qo-kind-tag'));
   tags.forEach(t => { t.style.display = 'inline-block'; t.style.textAlign = 'center'; t.style.width = ''; });
@@ -27503,7 +27780,8 @@ function twJobsFor(techId, iso){
 }
 // Each kind's colours, as the app shows them (Oct 11). [pale background, text]
 function twJobColours(kind){
-  return kind === 'task' ? ['#D7F0A8', '#3D5E0A']
+  if(CB_ON) return CB_JOB[cbKindKey(kind)];
+  return kind === 'task' ? ['#C9EBC3', '#24601F']
     : kind === 'filter clean' ? ['#FBF1DD', '#8A5E0B']
     : kind === 'pool drain' ? ['#C3DEF3', '#174C78']
     : ['#E9EEF0', '#3E5560'];
@@ -29784,6 +30062,7 @@ function showHistory(customerId, name){
   list.forEach(v=>{
     if(v.wo){ renderWorkOrderReportRow(histList, customerId, customer, name, v, repKey, redrawRep); return; }
     const bar = document.createElement('div');
+    bar.dataset.histId = v.id;
     const isOpen = historyOpenId === v.id;
     const repTick = selectionTick(repKey, v.id, redrawRep);
     bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;'
@@ -29882,6 +30161,7 @@ function showHistory(customerId, name){
     histList.appendChild(buildReportDoc(customerId, name, customer, part.type, part.r, ()=> deleteHistoryVisit(customerId, v)));
   });
 
+  markOpenRow(histList, '[data-hist-id]', r => r.dataset.histId === historyOpenId);
   // Page numbers, only once there's more than one page. Built the same way as
   // the customer list's.
   if(totalPages > 1){
@@ -35653,6 +35933,8 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
     if(!btn || btn.disabled) return;
     // Tabs inside a pop-up window aren't on the page
     if(btn.closest('.confirm-overlay')) return;
+    // WorkCenter's sections go to the top instead (Tyrus, Nov 1)
+    if(btn.closest('#view-workcenter, #wcNavSubs')){ release(); return; }
     const main = document.querySelector('main');
     const view = document.querySelector('.view.active');
     if(!main || !view || !view.contains(btn) && !btn.closest('.nav-subs')) return;
@@ -35666,6 +35948,166 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
     setTimeout(back, 150);
     setTimeout(back, 400);
   }, true);
+})();
+
+// Colour-blind mode switch in Settings (Nov 1), with its colours shown under it
+(function colourBlindSetting(){
+  const box = document.getElementById('settingColourBlind');
+  if(!box) return;
+  box.checked = CB_ON;
+  box.addEventListener('change', ()=>{ showToast(box.checked ? 'Colour-blind mode on' : 'Colour-blind mode off'); setColourBlind(box.checked); });
+  const key = document.getElementById('colourBlindKey');
+  if(key) [['FC', 'Filter clean'], ['PD', 'Pool drain'], ['CR', 'Clean & refill'], ['WO', 'Work order'], ['TK', 'Task']].forEach(([t, w])=>{
+    const c = CB_JOB[t];
+    const s = document.createElement('span');
+    s.style.cssText = 'font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:6px;background:' + c[0] + ';color:' + c[1] + ';';
+    s.textContent = w;
+    key.appendChild(s);
+  });
+})();
+
+// ---------- Our own little calendar for date boxes (Nov 1) ----------
+// The browser's own calendar filled in the 1st of each month as you moved
+// between months, and anything watching the box acted on it. This one only
+// picks a date when a day is pressed. On a computer (a mouse), the calendar
+// icon in every date box opens it, and so does anything that asked for the
+// browser's calendar. Phones keep their own date picker. Typing a date into
+// the box works as before.
+(function weirDatePopup(){
+  let fine = false;
+  try{ fine = window.matchMedia('(pointer: fine)').matches; }catch(e){}
+  if(!fine) return;
+  const css = document.createElement('style');
+  css.textContent = 'input[type=date]::-webkit-calendar-picker-indicator{pointer-events:none;}'
+    + '.weir-datepop{position:fixed;z-index:2147483000;width:252px;background:var(--card,#fff);border:1px solid var(--line);border-radius:12px;'
+    + 'box-shadow:0 12px 30px rgba(14,74,77,.22);padding:10px;font-family:Inter,system-ui,sans-serif;color:var(--ink);user-select:none;}'
+    + '.weir-datepop .dp-head{display:flex;align-items:center;gap:6px;margin-bottom:6px;}'
+    + '.weir-datepop .dp-head b{flex:1;text-align:center;font-size:14px;}'
+    + '.weir-datepop button{all:unset;box-sizing:border-box;cursor:pointer;text-align:center;}'
+    + '.weir-datepop .dp-arrow{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);font-size:17px;line-height:28px;}'
+    + '.weir-datepop .dp-arrow:hover{background:var(--teal-pale);}'
+    + '.weir-datepop .dp-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}'
+    + '.weir-datepop .dp-wd{font-size:10.5px;font-weight:700;color:var(--muted);text-align:center;padding:3px 0;}'
+    + '.weir-datepop .dp-day{height:31px;border-radius:8px;font-size:13px;line-height:31px;}'
+    + '.weir-datepop .dp-day:hover{background:var(--teal-pale);}'
+    + '.weir-datepop .dp-day.today{box-shadow:inset 0 0 0 1.5px var(--teal-deep);font-weight:700;}'
+    + '.weir-datepop .dp-day.on{background:var(--teal-deep);color:#fff;font-weight:700;}'
+    + '.weir-datepop .dp-day.off{color:#C2CFCC;cursor:default;background:none;}'
+    + '.weir-datepop .dp-foot{display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--line);}'
+    + '.weir-datepop .dp-link{font-size:12.5px;font-weight:700;color:var(--teal-deep);padding:4px 6px;border-radius:6px;}'
+    + '.weir-datepop .dp-link:hover{background:var(--teal-pale);}';
+  (document.head || document.documentElement).appendChild(css);
+  const pad = n => String(n).padStart(2, '0');
+  const iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  let pop = null, forInput = null, swallow = false;
+  const close = ()=>{ if(pop){ pop.remove(); pop = null; forInput = null; } };
+  window.weirCloseDatePopup = close;
+  function open(input){
+    close();
+    forInput = input;
+    const val = /^\d{4}-\d{2}-\d{2}$/.test(input.value) ? input.value : '';
+    const start = val ? new Date(val + 'T12:00:00') : new Date();
+    let y = start.getFullYear(), m = start.getMonth();
+    pop = document.createElement('div');
+    pop.className = 'weir-datepop';
+    const draw = ()=>{
+      const today = iso(new Date());
+      const min = input.min || '', max = input.max || '';
+      pop.innerHTML = '';
+      const head = document.createElement('div'); head.className = 'dp-head';
+      const arrow = (t, d, label)=>{
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'dp-arrow'; b.textContent = t; b.setAttribute('aria-label', label);
+        // Moving between months picks nothing
+        b.addEventListener('click', e=>{ e.stopPropagation(); m += d; if(m < 0){ m = 11; y--; } if(m > 11){ m = 0; y++; } draw(); });
+        return b;
+      };
+      const title = document.createElement('b');
+      title.textContent = new Date(y, m, 1).toLocaleDateString(undefined, {month: 'long', year: 'numeric'});
+      head.appendChild(arrow('‹', -1, 'Previous month')); head.appendChild(title); head.appendChild(arrow('›', 1, 'Next month'));
+      pop.appendChild(head);
+      const grid = document.createElement('div'); grid.className = 'dp-grid';
+      ['S', 'M', 'T', 'W', 'T', 'F', 'S'].forEach(w=>{ const c = document.createElement('div'); c.className = 'dp-wd'; c.textContent = w; grid.appendChild(c); });
+      const first = new Date(y, m, 1).getDay();
+      for(let i = 0; i < first; i++) grid.appendChild(document.createElement('div'));
+      const days = new Date(y, m + 1, 0).getDate();
+      for(let d = 1; d <= days; d++){
+        const day = y + '-' + pad(m + 1) + '-' + pad(d);
+        const b = document.createElement('button'); b.type = 'button';
+        const off = (min && day < min) || (max && day > max);
+        b.className = 'dp-day' + (day === today ? ' today' : '') + (day === input.value ? ' on' : '') + (off ? ' off' : '');
+        b.textContent = d;
+        if(!off) b.addEventListener('click', e=>{ e.stopPropagation(); pick(day); });
+        grid.appendChild(b);
+      }
+      pop.appendChild(grid);
+      const foot = document.createElement('div'); foot.className = 'dp-foot';
+      const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'dp-link'; clear.textContent = 'Clear';
+      clear.addEventListener('click', e=>{ e.stopPropagation(); pick(''); });
+      const now = document.createElement('button'); now.type = 'button'; now.className = 'dp-link'; now.textContent = 'Today';
+      const tOff = (min && today < min) || (max && today > max);
+      if(tOff) now.style.visibility = 'hidden';
+      now.addEventListener('click', e=>{ e.stopPropagation(); if(!tOff) pick(today); });
+      if(input.required) clear.style.visibility = 'hidden';
+      foot.appendChild(clear); foot.appendChild(now);
+      pop.appendChild(foot);
+    };
+    const pick = v=>{
+      const inp = forInput;
+      close();
+      if(!inp) return;
+      if(inp.value !== v){
+        inp.value = v;
+        inp.dispatchEvent(new Event('input', {bubbles: true}));
+        inp.dispatchEvent(new Event('change', {bubbles: true}));
+      }
+      // (Not focused afterwards: a date box emptied on focus, ready to type)
+    };
+    draw();
+    document.body.appendChild(pop);
+    // Under the box, kept on screen; above it when there's no room below
+    const r = input.getBoundingClientRect();
+    const h = pop.offsetHeight, w = pop.offsetWidth;
+    let top = r.bottom + 6;
+    if(top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    pop.style.top = top + 'px';
+    pop.style.left = Math.min(Math.max(8, r.right - w), window.innerWidth - w - 8) + 'px';
+  }
+  window.weirOpenDatePopup = open;
+  // The calendar icon: the right-hand end of a date box
+  const onIcon = (input, e)=>{
+    const r = input.getBoundingClientRect();
+    return e.clientX >= r.right - 34 && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+  };
+  document.addEventListener('mousedown', e=>{
+    const t = e.target;
+    if(pop && !pop.contains(t)){
+      const sameBox = t === forInput && onIcon(t, e);
+      close();
+      // That press only closes the calendar, not a window behind it
+      if(!sameBox && !(t && t.matches && t.matches('input[type=date]'))) swallow = true;
+      if(sameBox){ e.preventDefault(); swallow = true; return; }
+    }
+    if(t && t.matches && t.matches('input[type=date]') && !t.disabled && !t.readOnly && onIcon(t, e)){
+      e.preventDefault();
+      open(t);
+    }
+  }, true);
+  document.addEventListener('click', e=>{
+    if(swallow){ swallow = false; if(!(e.target && e.target.matches && e.target.matches('input[type=date]'))){ e.stopPropagation(); e.preventDefault(); } return; }
+    // The browser's own calendar never opens from a click on the icon
+    if(e.target && e.target.matches && e.target.matches('input[type=date]') && onIcon(e.target, e)) e.preventDefault();
+  }, true);
+  document.addEventListener('keydown', e=>{ if(pop && e.key === 'Escape'){ e.stopPropagation(); close(); } }, true);
+  window.addEventListener('resize', close);
+  document.addEventListener('scroll', e=>{ if(pop && !pop.contains(e.target)) close(); }, true);
+  // Code that asked for the browser's calendar gets this one
+  try{
+    const orig = HTMLInputElement.prototype.showPicker;
+    HTMLInputElement.prototype.showPicker = function(){
+      if(this.type === 'date'){ open(this); return; }
+      if(orig) return orig.apply(this, arguments);
+    };
+  }catch(e){}
 })();
 </script>
 

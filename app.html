@@ -589,6 +589,13 @@ select#customerSelect{font-weight:600;}
   nav{display:none;}
   header{display:none;}
 }
+.cb-dark-row .cust-meta,.cb-dark-row .route-grip,.cb-dark-row .chev{color:rgba(255,255,255,.88) !important;}
+.cb-dark-row > div:first-child{color:rgba(255,255,255,.88);}
+/* No blinking text bar anywhere you can't type (Nov 1): date and time boxes,
+   pickers, read-only boxes and everything else hide it; boxes you type in keep it */
+*{caret-color:transparent;}
+input:not([type=date]):not([type=month]):not([type=time]):not([type=week]):not([type=datetime-local]):not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([readonly]),
+textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-color:auto;}
 </style>
 </head>
 <body>
@@ -1265,6 +1272,20 @@ select#customerSelect{font-weight:600;}
       <p id="fieldSyncStatus" style="font-size:12.5px;color:var(--muted);margin:10px 0 0;">Checking&hellip;</p>
       <p style="font-size:11.5px;color:var(--muted);margin:8px 0 0;">Everything is saved on this phone first and works with no signal. It goes to the office whenever there is a connection.</p>
     </div>
+      <!-- Colour-blind mode (Nov 1): this phone only -->
+      <div class="card" id="colourBlindCard">
+        <div class="field">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
+            <h2 style="margin:0;">Colour-blind mode</h2>
+            <label class="toggle-switch">
+              <input type="checkbox" id="settingColourBlind">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <p style="font-size:12.5px;color:var(--muted);margin:12px 0 0;">Job and status colours that stay easy to tell apart with any kind of colour blindness. Just for this phone.</p>
+          <div id="colourBlindKey" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;"></div>
+        </div>
+      </div>
       <!-- Left-handed mode: this phone only -->
       <div class="card" id="leftHandedCard">
         <div class="field">
@@ -3248,6 +3269,26 @@ function lsGet(key){
   }catch(e){
     return null;
   }
+}
+
+// ---------- Colour-blind mode (Nov 1) ----------
+// This device only, from Settings. Swaps the job and status colours for a set
+// that stays apart for every kind of colour blindness: gold filter cleans, sky
+// drains, blue clean & refill, grey work orders, wine tasks; blue done, orange
+// in the app, light grey not in the app.
+var CB_ON = (function(){ try{ return localStorage.getItem(STORAGE_PREFIX + 'colourBlind') === 'true'; }catch(e){ return false; } })();
+var CB_JOB = {FC: ['#FFE45C', '#3A2E00'], PD: ['#7FC4F0', '#08263D'], CR: ['#0072B2', '#FFFFFF'], WO: ['#9A9A9A', '#FFFFFF'], TK: ['#882255', '#FFFFFF']};
+var CB_STATE = {done: '#0072B2', app: '#E69F00', '': '#C8C8C8'};
+function cbKindKey(kind){ return {'task': 'TK', 'filter clean': 'FC', 'pool drain': 'PD', 'clean refill': 'CR'}[kind] || 'WO'; }
+function setColourBlind(on){
+  try{ localStorage.setItem(STORAGE_PREFIX + 'colourBlind', on ? 'true' : 'false'); }catch(e){}
+  // Every colour is set as the page draws, so it starts afresh in the new colours
+  setTimeout(()=> location.reload(), 250);
+}
+// Job rows in a dark colour get light words throughout (Nov 1)
+function cbMarkRow(row, kind){
+  if(!CB_ON || !row) return;
+  if(CB_JOB[cbKindKey(kind)][1] === '#FFFFFF') row.classList.add('cb-dark-row');
 }
 
 // Storage is capped by the browser. When it fills, setItem throws — and this
@@ -9491,6 +9532,7 @@ function techRouteJobRow(job, iso, onReorder){
   row.className = 'cust-row';
   row.style.gap = '8px';
   row.style.background = jobKindColours(shownJobKind(job))[0];
+  cbMarkRow(row, shownJobKind(job));
   if(job.done) row.style.opacity = '0.85';
   // Its own place in the route, dragged like a stop (Oct 3)
   row.dataset.reorderKey = 'job:' + job.key;
@@ -10968,7 +11010,8 @@ function shownJobKind(job){
   return job && job.kind === 'work order' && woIsFilterClean(job.lineItems) ? 'filter clean' : (job && job.kind);
 }
 function jobKindColours(kind){
-  return kind === 'task' ? ['#D7F0A8', '#3D5E0A']
+  if(CB_ON) return CB_JOB[cbKindKey(kind)];
+  return kind === 'task' ? ['#C9EBC3', '#24601F']
     : kind === 'clean refill' ? ['#8EC5F5', '#0D3A66']
     : kind === 'filter clean' ? ['#FBF1DD', '#8A5E0B']
     : kind === 'pool drain' ? ['#C3DEF3', '#174C78']      // sky blue (Oct 15), apart from the work order grey
@@ -11128,6 +11171,7 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
     row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:0;'
       + 'padding:15px 4px 15px 12px;border-bottom:1px solid var(--line);cursor:pointer;'
       + 'background:' + jobKindColours(shownJobKind(job))[0] + ';';
+    cbMarkRow(row, shownJobKind(job));
     // The same grip as a customer, so names line up down the list
     if(canReorder){
       const handle = document.createElement('div');
@@ -11292,6 +11336,7 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
     row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:0;'
       + 'padding:15px 4px 15px 12px;border-bottom:1px solid var(--line);cursor:pointer;'
       + 'background:' + jobKindColours(shownJobKind(job))[0] + ';';
+    cbMarkRow(row, shownJobKind(job));
     // The same grip as a customer, so names line up down the list
     if(canReorder){
       const handle = document.createElement('div');
@@ -13112,6 +13157,7 @@ function servicedJobRow(job){
   row.className = 'cust-row';
   row.dataset.doneAt = job.doneAt || '';
   row.style.background = jobKindColours(shownJobKind(job))[0];
+  cbMarkRow(row, shownJobKind(job));
   const left = document.createElement('div');
   left.style.cssText = 'min-width:0;';
   const name = document.createElement('div');
@@ -16673,6 +16719,7 @@ function awcBuild(pane){
         <div id="awcQuoteLines"></div>
         <div class="btn-row" style="gap:8px;margin-top:4px;">
           <button type="button" class="btn btn-ghost" id="awcQuoteAddLine" style="width:auto;">+ Add line item</button>
+          <button type="button" class="btn btn-ghost" data-new-ps style="width:auto;">+ New product or service</button>
         </div>
       </div>
       <div class="field">
@@ -16724,6 +16771,7 @@ function awcBuild(pane){
         <div class="btn-row" style="gap:8px;margin-top:4px;">
           <button type="button" class="btn btn-ghost" id="awcAddLine" style="width:auto;">+ Add line item</button>
           <button type="button" class="btn btn-ghost" id="awcAddFilterClean" style="width:auto;">+ Filter clean</button>
+          <button type="button" class="btn btn-ghost" data-new-ps style="width:auto;">+ New product or service</button>
         </div>
       </div>
       <div class="field">
@@ -16936,6 +16984,8 @@ function awcBuild(pane){
   };
   if(fcBtn) fcBtn.addEventListener('click', ()=> awcPickFilterCleans(addFcLines));
   awcWireQuote();
+  // + New product or service (Nov 1): a blank Add line item window
+  pane.querySelectorAll('[data-new-ps]').forEach(b => b.addEventListener('click', ()=> awcProductWindow()));
   document.getElementById('awcAddLine').addEventListener('click', ()=>{
     awcLineItems.push({description: '', qty: '', price: ''});
     awcRenderLines();
@@ -17130,6 +17180,103 @@ function awcTotal(){
   return total;
 }
 
+// ---------- Add a product or service from the app (Nov 1) ----------
+// The website's Add line item window: category first, then a price and a
+// description for repairs, products and services (and uncategorised), or a
+// price, a unit and Extra charge chemical (abbreviation and colour) for
+// chemicals. Saved into Products & Services and sent to the office.
+var AWC_EXTRA_COLOURS = ['#C68A17', '#6B3E78', '#1F5E86', '#3E8F5F', '#A8386A', '#B8492E', '#8A5E0B', '#3E5560'];
+function awcHasProduct(name){
+  const v = String(name || '').trim().toLowerCase();
+  return !!v && (lsGet('productsServices') || []).some(p => p && String(p.name || '').trim().toLowerCase() === v);
+}
+function awcProductWindow(opts){
+  opts = opts || {};
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:420px;width:100%;text-align:left;max-height:88vh;overflow-y:auto;';
+  box.innerHTML = '<h3 style="font-size:17px;margin:0 0 4px;">Add line item</h3>'
+    + '<p data-sub style="font-size:13px;color:var(--muted);margin:0 0 14px;">Pick a category, give it a name and a price, and it’s ready to drop onto any quote or work order.</p>'
+    + '<div class="field"><label>Category</label><select data-cat>'
+    + '<option value="">Uncategorised</option><option value="repairs">Repair</option><option value="products">Product</option>'
+    + '<option value="services">Service</option><option value="chemicals">Chemical</option></select></div>'
+    + '<div class="field"><label>Product or service</label><input data-name placeholder="e.g. Filter replacement"></div>'
+    + '<div class="field"><label>Price ($)</label><input data-price type="number" step="0.01" inputmode="decimal" placeholder="0.00"></div>'
+    + '<div class="field" data-for="other"><label>Description (optional)</label><textarea data-desc rows="3" placeholder="What’s included. Shows under the line on quotes and work orders."></textarea></div>'
+    + '<div class="field" data-for="chem"><label>Unit (optional)</label><input data-unit placeholder="gal, lb, oz, tab…"></div>'
+    + '<div class="field" data-for="chem"><label class="inline-check" style="margin:0;"><input type="checkbox" data-extra> Extra charge chemical</label></div>'
+    + '<div data-for="extra" style="display:none;">'
+    + '<div class="field"><label>Abbreviation</label><input data-abbr maxlength="4" placeholder="e.g. MA">'
+    + '<div style="font-size:12px;color:var(--muted);margin-top:4px;">Four characters at most. It has to fit the billing column.</div></div>'
+    + '<div class="field"><label>Colour</label><div data-dots style="display:flex;gap:10px;flex-wrap:wrap;"></div></div></div>'
+    + '<div class="btn-row" style="flex-wrap:nowrap;">'
+    + '<button type="button" class="btn btn-primary" data-save style="flex:1 1 0;min-width:0;">Save</button>'
+    + '<button type="button" class="btn btn-ghost" data-cancel style="flex:1 1 0;min-width:0;">Cancel</button></div>';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const q = sel => box.querySelector(sel);
+  const cat = q('[data-cat]'), nameEl = q('[data-name]'), priceEl = q('[data-price]'), descEl = q('[data-desc]');
+  const unitEl = q('[data-unit]'), extraEl = q('[data-extra]'), abbrEl = q('[data-abbr]');
+  if(opts.name !== undefined){
+    nameEl.value = opts.name || '';
+    if(opts.price !== undefined && opts.price !== null && opts.price !== '') priceEl.value = opts.price;
+    if(opts.detail) descEl.value = String(opts.detail).trim();
+    q('[data-sub]').textContent = 'From your ' + (opts.from || 'quote') + '. Check the name and price, add anything else, and it’ll be ready for every quote and work order after this one.';
+  }
+  let colour = AWC_EXTRA_COLOURS[0];
+  const dots = q('[data-dots]');
+  const drawDots = ()=>{
+    dots.innerHTML = '';
+    AWC_EXTRA_COLOURS.forEach(c=>{
+      const d = document.createElement('button');
+      d.type = 'button';
+      d.setAttribute('aria-label', 'Colour');
+      d.style.cssText = 'width:36px;height:36px;min-width:36px;padding:0;border-radius:50%;border:3px solid #fff;cursor:pointer;background:' + c + ';'
+        + 'box-shadow:0 0 0 ' + (c === colour ? '2px var(--teal-deep)' : '1px var(--line)') + ';';
+      d.addEventListener('click', ()=>{ colour = c; drawDots(); });
+      dots.appendChild(d);
+    });
+  };
+  drawDots();
+  const showFor = ()=>{
+    const chem = cat.value === 'chemicals';
+    box.querySelectorAll('[data-for="other"]').forEach(el => { el.style.display = chem ? 'none' : ''; });
+    box.querySelectorAll('[data-for="chem"]').forEach(el => { el.style.display = chem ? '' : 'none'; });
+    q('[data-for="extra"]').style.display = chem && extraEl.checked ? '' : 'none';
+  };
+  cat.addEventListener('change', showFor);
+  extraEl.addEventListener('change', showFor);
+  showFor();
+  const shut = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+  q('[data-cancel]').addEventListener('click', shut);
+  q('[data-save]').addEventListener('click', ()=>{
+    const name = nameEl.value.trim();
+    if(!name){ showToast('Give it a name first'); nameEl.focus(); return; }
+    const chem = cat.value === 'chemicals';
+    const extra = chem && extraEl.checked;
+    const abbr = abbrEl.value.trim().slice(0, 4);
+    if(extra && !abbr){ showToast('Give it an abbreviation for the billing column'); abbrEl.focus(); return; }
+    const item = {
+      key: 'ps_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      name: name, price: priceEl.value.trim(),
+      unit: chem ? unitEl.value.trim() : '', extraCharge: extra, category: cat.value
+    };
+    if(extra){ item.abbr = abbr; item.extraColor = colour; }
+    if(!chem && descEl.value.trim()) item.description = descEl.value.trim();
+    const list = lsGet('productsServices') || [];
+    list.push(item);
+    lsSet('productsServices', list);
+    // To the office, so the website's Products & Services has it
+    queueSetupSend('productsServices');
+    try{ fieldSync(); }catch(e){}
+    shut();
+    showToast(name + ' added');
+    if(typeof opts.onSaved === 'function'){ try{ opts.onSaved(item); }catch(e){} }
+  });
+  setTimeout(()=>{ try{ nameEl.focus(); }catch(e){} }, 50);
+}
 function awcRenderLines(boxId){
   // The work order's lines, or the quote's (Oct 15): the same rows for both
   const isQuote = boxId === 'awcQuoteLines';
@@ -17245,6 +17392,23 @@ function awcRenderLines(boxId){
     row.appendChild(descWrap); row.appendChild(qty); row.appendChild(priceWrap); row.appendChild(x); row.appendChild(sug);
     box.appendChild(row);
     box.appendChild(detailLine);
+    // Not in Products & Services (Nov 1): a button under the line opens Add
+    // line item with the line's name, price and description filled in
+    const addPs = document.createElement('button');
+    addPs.type = 'button';
+    addPs.innerHTML = '<span style="font-size:15px;line-height:1;margin-right:5px;">+</span>Add to Products &amp; Services';
+    addPs.style.cssText = 'display:none;align-items:center;width:auto;margin:-2px 0 10px 2px;padding:6px 12px;border-radius:999px;'
+      + 'border:1.5px solid #9CC5BF;background:var(--teal-pale);color:var(--teal-deep);font-size:13px;font-weight:700;cursor:pointer;';
+    const drawAddPs = ()=>{ addPs.style.display = desc.value.trim() && !awcHasProduct(desc.value) ? 'inline-flex' : 'none'; };
+    addPs.addEventListener('click', ()=>{
+      awcProductWindow({name: desc.value.trim(), price: item.price, detail: item.detail, from: isQuote ? 'quote' : 'work order', onSaved: saved=>{
+        if(saved.name !== desc.value){ item.description = saved.name; desc.value = saved.name; }
+        drawAddPs();
+      }});
+    });
+    desc.addEventListener('input', drawAddPs);
+    drawAddPs();
+    box.appendChild(addPs);
   });
   total();
 }
@@ -17282,9 +17446,18 @@ function awcQuoteExpiresDays(){
 }
 var AWC_QUOTE_EMAIL_DEFAULTS = {
   header: '', subheader: '',
+  body: 'Hi {first name},\nHere\u2019s your quote. Please review it when you have a chance, and let us know if you\u2019d like us to proceed.',   // above the items (Nov 1)
   closing: 'Questions, or ready to go ahead? Just reply to this email.',
   signoff: null, showContact: true
 };
+// The quote email's body (Nov 1): a few words between the customer and the
+// items. {first name} becomes the customer's first name ("there" if none).
+function quoteBodyText(body, customer){
+  const raw = String(customer && customer.name || '').trim();
+  const first = (raw.indexOf(',') !== -1 ? raw.split(',')[1] : raw).trim().split(/\s+/)[0] || 'there';
+  return String(body || '').replace(/\{\s*first\s*name\s*\}/gi, first).trim();
+}
+
 function awcQuoteEmailStyle(){
   return Object.assign({}, AWC_QUOTE_EMAIL_DEFAULTS, lsGet('quoteEmailStyle') || {});
 }
@@ -17673,6 +17846,8 @@ function awcCustomizeQuoteEmail(){
     + '<p style="font-size:13px;color:var(--muted);margin:0 0 14px;">The top and bottom of every quote email, here and on the website.</p>'
     + '<div class="field"><label>Header</label><input data-f="header"></div>'
     + '<div class="field"><label>Line under the header (optional)</label><input data-f="subheader" placeholder="e.g. Licensed &amp; insured"></div>'
+    + '<div class="field"><label>Body (optional)</label><textarea data-f="body" rows="4" placeholder="A few words above the quote"></textarea>'
+    + '<div style="font-size:11.5px;color:var(--muted);margin-top:4px;">Shows under the customer\u2019s name and address, above the items. {first name} becomes the customer\u2019s first name.</div></div>'
     + '<div class="field"><label>Closing line</label><textarea data-f="closing" rows="2"></textarea></div>'
     + '<div class="field"><label>Sign-off</label><input data-f="signoff"></div>'
     + '<label class="inline-check" style="margin:2px 0 16px;"><input type="checkbox" data-f="showContact"> Show phone, email and website</label>'
@@ -17688,12 +17863,13 @@ function awcCustomizeQuoteEmail(){
     f('header').value = v.header || '';
     f('header').placeholder = awcCompanyName();
     f('subheader').value = v.subheader || '';
+    f('body').value = v.body || '';
     f('closing').value = v.closing || '';
     f('signoff').value = v.signoff !== null && v.signoff !== undefined ? v.signoff
       : (report.signoff !== undefined ? report.signoff : 'Thank you for your business.');
     f('showContact').checked = v.showContact !== false;
   };
-  const values = ()=> ({header: f('header').value, subheader: f('subheader').value, closing: f('closing').value,
+  const values = ()=> ({header: f('header').value, subheader: f('subheader').value, body: f('body').value, closing: f('closing').value,
     signoff: f('signoff').value, showContact: f('showContact').checked});
   fill(q);
   const shut = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
@@ -17731,6 +17907,16 @@ function awcCustomizeQuoteEmail(){
   document.body.appendChild(overlay);
 }
 
+// Buttons in an email keep their look (Nov 1): the email's rule that stops
+// phones turning numbers and addresses into links also took the white words
+// and bold off Approve, Decline, Download and Send a message in mail apps
+// that read it (Gmail among them). Each link's own colour, weight and size win.
+function emailLinksKeepLook(html){
+  return String(html).replace(/<a href="[^"]*"[^>]*>/g, tag => tag
+    .replace(/(;|")color:([^;"!]+);/, (m, a, c) => a + 'color:' + c + ' !important;')
+    .replace(/font-weight:([^;"!]+);/, (m, w) => 'font-weight:' + w + ' !important;')
+    .replace(/font-size:([^;"!]+);/, (m, w) => 'font-size:' + w + ' !important;'));
+}
 function awcQuoteEmailHtml(customer, type, dateText, items, total, notes, styleOverride, respondUrl, quoteNumber, expiresDays){
   const style = lsGet('reportEmailStyle') || {};
   const q = styleOverride || awcQuoteEmailStyle();
@@ -17766,7 +17952,7 @@ function awcQuoteEmailHtml(customer, type, dateText, items, total, notes, styleO
   const signoff = q.signoff !== null && q.signoff !== undefined ? q.signoff
     : (style.signoff !== undefined ? style.signoff : 'Thank you for your business.');
 
-  return '<!DOCTYPE html><html><head><meta charset="utf-8">'
+  return emailLinksKeepLook('<!DOCTYPE html><html><head><meta charset="utf-8">'
     + '<meta name="format-detection" content="telephone=no,address=no,email=no,date=no">'
     + '<style>a[href^="tel"],a[href^="mailto"],a[href^="http"],a[x-apple-data-detectors]{'
     + 'color:inherit !important;text-decoration:none !important;font-size:inherit !important;'
@@ -17797,6 +17983,8 @@ function awcQuoteEmailHtml(customer, type, dateText, items, total, notes, styleO
     + (customer.address ? '<div style="font-size:13.5px;color:#6B7B79;margin-top:3px;">' + awcEsc(customer.address) + '</div>' : '')
     + '<div style="font-size:13.5px;color:#6B7B79;margin-top:3px;">' + awcEsc(dateText) + '</div>'
     + '</td></tr>'
+    // The body (Nov 1): a soft panel under the customer, above the items
+    + (quoteBodyText(q.body, customer) ? '<tr><td style="padding:20px 26px 0;"><div style="font-size:14.5px;color:#33463F;line-height:1.6;white-space:pre-wrap;padding:16px 18px;background:#F6F9F8;border-radius:10px;">' + awcEsc(quoteBodyText(q.body, customer)) + '</div></td></tr>' : '')
     // The items
     + '<tr><td style="padding:20px 26px 0;">'
     + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">'
@@ -17837,7 +18025,7 @@ function awcQuoteEmailHtml(customer, type, dateText, items, total, notes, styleO
     + (bits.length ? '<div style="font-size:12.5px;color:#4A5A58;margin-top:4px;">' + bits.join(' &nbsp;&middot;&nbsp; ') + '</div>' : '')
     + (lsGet('licenseNumber') ? '<div style="font-size:11.5px;color:#8A9997;margin-top:3px;">License ' + awcEsc(lsGet('licenseNumber')) + '</div>' : '')
     + '</td></tr>'
-    + '</table></td></tr></table></body></html>';
+    + '</table></td></tr></table></body></html>');
 }
 
 function awcQuoteDownloadDetails(customer, type, dateText, items, total, notes, quoteNumber, expiresDays, quoteName){
@@ -19389,8 +19577,9 @@ var acalSlide = 0, acalSwipedAt = 0;   // which way the month just moved by a sw
 var acalOffice = {filterGroups: null, drainCalendar: null, at: 0};
 const ACAL_TAGS = {fc: ['FC', 'Filter cleans', '#FBF1DD', '#8A5E0B'], pd: ['PD', 'Pool drains', '#C3DEF3', '#174C78'],
   cr: ['CR', 'Clean & refill', '#8EC5F5', '#0D3A66'],   // overnight drain's second day (Nov 1)
-  wo: ['WO', 'Work orders', '#E9EEF0', '#3E5560'], tk: ['TK', 'Tasks', '#D7F0A8', '#3D5E0A']};
+  wo: ['WO', 'Work orders', '#E9EEF0', '#3E5560'], tk: ['TK', 'Tasks', '#C9EBC3', '#24601F']};
 const ACAL_STATES = {'': ['Not in app', '#8A9795'], app: ['In the app', '#C68A17'], done: ['Done', '#2E8B57']};
+if(CB_ON){ Object.keys(ACAL_TAGS).forEach(k=>{ const c = CB_JOB[ACAL_TAGS[k][0]]; if(c){ ACAL_TAGS[k][2] = c[0]; ACAL_TAGS[k][3] = c[1]; } }); Object.keys(ACAL_STATES).forEach(k=>{ ACAL_STATES[k][1] = CB_STATE[k]; }); }
 function acalEsc(t){ return String(t == null ? '' : t).replace(/[&<>"]/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[ch])); }
 function acalCust(id){ return (customers || []).find(c => c && String(c.id) === String(id)) || null; }
 function acalTechName(id){ const t = (lsGet('technicians') || []).find(x => x && String(x.id) === String(id)); return (t && t.name) || (id ? 'Technician' : 'No technician'); }
@@ -25621,6 +25810,166 @@ function marqueeIfCut(el){
     }
   });
 }
+
+// Colour-blind mode switch in Settings (Nov 1), with its colours shown under it
+(function colourBlindSetting(){
+  const box = document.getElementById('settingColourBlind');
+  if(!box) return;
+  box.checked = CB_ON;
+  box.addEventListener('change', ()=>{ try{ showToast(box.checked ? 'Colour-blind mode on' : 'Colour-blind mode off'); }catch(e){} setColourBlind(box.checked); });
+  const key = document.getElementById('colourBlindKey');
+  if(key) [['FC', 'Filter clean'], ['PD', 'Pool drain'], ['CR', 'Clean & refill'], ['WO', 'Work order'], ['TK', 'Task']].forEach(([t, w])=>{
+    const c = CB_JOB[t];
+    const s = document.createElement('span');
+    s.style.cssText = 'font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:6px;background:' + c[0] + ';color:' + c[1] + ';';
+    s.textContent = w;
+    key.appendChild(s);
+  });
+})();
+
+// ---------- Our own little calendar for date boxes (Nov 1) ----------
+// The browser's own calendar filled in the 1st of each month as you moved
+// between months, and anything watching the box acted on it. This one only
+// picks a date when a day is pressed. On a computer (a mouse), the calendar
+// icon in every date box opens it, and so does anything that asked for the
+// browser's calendar. Phones keep their own date picker. Typing a date into
+// the box works as before.
+(function weirDatePopup(){
+  let fine = false;
+  try{ fine = window.matchMedia('(pointer: fine)').matches; }catch(e){}
+  if(!fine) return;
+  const css = document.createElement('style');
+  css.textContent = 'input[type=date]::-webkit-calendar-picker-indicator{pointer-events:none;}'
+    + '.weir-datepop{position:fixed;z-index:2147483000;width:252px;background:var(--card,#fff);border:1px solid var(--line);border-radius:12px;'
+    + 'box-shadow:0 12px 30px rgba(14,74,77,.22);padding:10px;font-family:Inter,system-ui,sans-serif;color:var(--ink);user-select:none;}'
+    + '.weir-datepop .dp-head{display:flex;align-items:center;gap:6px;margin-bottom:6px;}'
+    + '.weir-datepop .dp-head b{flex:1;text-align:center;font-size:14px;}'
+    + '.weir-datepop button{all:unset;box-sizing:border-box;cursor:pointer;text-align:center;}'
+    + '.weir-datepop .dp-arrow{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);font-size:17px;line-height:28px;}'
+    + '.weir-datepop .dp-arrow:hover{background:var(--teal-pale);}'
+    + '.weir-datepop .dp-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}'
+    + '.weir-datepop .dp-wd{font-size:10.5px;font-weight:700;color:var(--muted);text-align:center;padding:3px 0;}'
+    + '.weir-datepop .dp-day{height:31px;border-radius:8px;font-size:13px;line-height:31px;}'
+    + '.weir-datepop .dp-day:hover{background:var(--teal-pale);}'
+    + '.weir-datepop .dp-day.today{box-shadow:inset 0 0 0 1.5px var(--teal-deep);font-weight:700;}'
+    + '.weir-datepop .dp-day.on{background:var(--teal-deep);color:#fff;font-weight:700;}'
+    + '.weir-datepop .dp-day.off{color:#C2CFCC;cursor:default;background:none;}'
+    + '.weir-datepop .dp-foot{display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--line);}'
+    + '.weir-datepop .dp-link{font-size:12.5px;font-weight:700;color:var(--teal-deep);padding:4px 6px;border-radius:6px;}'
+    + '.weir-datepop .dp-link:hover{background:var(--teal-pale);}';
+  (document.head || document.documentElement).appendChild(css);
+  const pad = n => String(n).padStart(2, '0');
+  const iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  let pop = null, forInput = null, swallow = false;
+  const close = ()=>{ if(pop){ pop.remove(); pop = null; forInput = null; } };
+  window.weirCloseDatePopup = close;
+  function open(input){
+    close();
+    forInput = input;
+    const val = /^\d{4}-\d{2}-\d{2}$/.test(input.value) ? input.value : '';
+    const start = val ? new Date(val + 'T12:00:00') : new Date();
+    let y = start.getFullYear(), m = start.getMonth();
+    pop = document.createElement('div');
+    pop.className = 'weir-datepop';
+    const draw = ()=>{
+      const today = iso(new Date());
+      const min = input.min || '', max = input.max || '';
+      pop.innerHTML = '';
+      const head = document.createElement('div'); head.className = 'dp-head';
+      const arrow = (t, d, label)=>{
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'dp-arrow'; b.textContent = t; b.setAttribute('aria-label', label);
+        // Moving between months picks nothing
+        b.addEventListener('click', e=>{ e.stopPropagation(); m += d; if(m < 0){ m = 11; y--; } if(m > 11){ m = 0; y++; } draw(); });
+        return b;
+      };
+      const title = document.createElement('b');
+      title.textContent = new Date(y, m, 1).toLocaleDateString(undefined, {month: 'long', year: 'numeric'});
+      head.appendChild(arrow('‹', -1, 'Previous month')); head.appendChild(title); head.appendChild(arrow('›', 1, 'Next month'));
+      pop.appendChild(head);
+      const grid = document.createElement('div'); grid.className = 'dp-grid';
+      ['S', 'M', 'T', 'W', 'T', 'F', 'S'].forEach(w=>{ const c = document.createElement('div'); c.className = 'dp-wd'; c.textContent = w; grid.appendChild(c); });
+      const first = new Date(y, m, 1).getDay();
+      for(let i = 0; i < first; i++) grid.appendChild(document.createElement('div'));
+      const days = new Date(y, m + 1, 0).getDate();
+      for(let d = 1; d <= days; d++){
+        const day = y + '-' + pad(m + 1) + '-' + pad(d);
+        const b = document.createElement('button'); b.type = 'button';
+        const off = (min && day < min) || (max && day > max);
+        b.className = 'dp-day' + (day === today ? ' today' : '') + (day === input.value ? ' on' : '') + (off ? ' off' : '');
+        b.textContent = d;
+        if(!off) b.addEventListener('click', e=>{ e.stopPropagation(); pick(day); });
+        grid.appendChild(b);
+      }
+      pop.appendChild(grid);
+      const foot = document.createElement('div'); foot.className = 'dp-foot';
+      const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'dp-link'; clear.textContent = 'Clear';
+      clear.addEventListener('click', e=>{ e.stopPropagation(); pick(''); });
+      const now = document.createElement('button'); now.type = 'button'; now.className = 'dp-link'; now.textContent = 'Today';
+      const tOff = (min && today < min) || (max && today > max);
+      if(tOff) now.style.visibility = 'hidden';
+      now.addEventListener('click', e=>{ e.stopPropagation(); if(!tOff) pick(today); });
+      if(input.required) clear.style.visibility = 'hidden';
+      foot.appendChild(clear); foot.appendChild(now);
+      pop.appendChild(foot);
+    };
+    const pick = v=>{
+      const inp = forInput;
+      close();
+      if(!inp) return;
+      if(inp.value !== v){
+        inp.value = v;
+        inp.dispatchEvent(new Event('input', {bubbles: true}));
+        inp.dispatchEvent(new Event('change', {bubbles: true}));
+      }
+      // (Not focused afterwards: a date box emptied on focus, ready to type)
+    };
+    draw();
+    document.body.appendChild(pop);
+    // Under the box, kept on screen; above it when there's no room below
+    const r = input.getBoundingClientRect();
+    const h = pop.offsetHeight, w = pop.offsetWidth;
+    let top = r.bottom + 6;
+    if(top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    pop.style.top = top + 'px';
+    pop.style.left = Math.min(Math.max(8, r.right - w), window.innerWidth - w - 8) + 'px';
+  }
+  window.weirOpenDatePopup = open;
+  // The calendar icon: the right-hand end of a date box
+  const onIcon = (input, e)=>{
+    const r = input.getBoundingClientRect();
+    return e.clientX >= r.right - 34 && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+  };
+  document.addEventListener('mousedown', e=>{
+    const t = e.target;
+    if(pop && !pop.contains(t)){
+      const sameBox = t === forInput && onIcon(t, e);
+      close();
+      // That press only closes the calendar, not a window behind it
+      if(!sameBox && !(t && t.matches && t.matches('input[type=date]'))) swallow = true;
+      if(sameBox){ e.preventDefault(); swallow = true; return; }
+    }
+    if(t && t.matches && t.matches('input[type=date]') && !t.disabled && !t.readOnly && onIcon(t, e)){
+      e.preventDefault();
+      open(t);
+    }
+  }, true);
+  document.addEventListener('click', e=>{
+    if(swallow){ swallow = false; if(!(e.target && e.target.matches && e.target.matches('input[type=date]'))){ e.stopPropagation(); e.preventDefault(); } return; }
+    // The browser's own calendar never opens from a click on the icon
+    if(e.target && e.target.matches && e.target.matches('input[type=date]') && onIcon(e.target, e)) e.preventDefault();
+  }, true);
+  document.addEventListener('keydown', e=>{ if(pop && e.key === 'Escape'){ e.stopPropagation(); close(); } }, true);
+  window.addEventListener('resize', close);
+  document.addEventListener('scroll', e=>{ if(pop && !pop.contains(e.target)) close(); }, true);
+  // Code that asked for the browser's calendar gets this one
+  try{
+    const orig = HTMLInputElement.prototype.showPicker;
+    HTMLInputElement.prototype.showPicker = function(){
+      if(this.type === 'date'){ open(this); return; }
+      if(orig) return orig.apply(this, arguments);
+    };
+  }catch(e){}
+})();
 </script>
 </body>
 </html>
