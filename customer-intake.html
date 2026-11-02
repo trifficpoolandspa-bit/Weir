@@ -1245,7 +1245,7 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
   <div id="quoteEmailOverlay" style="display:none;position:fixed;inset:0;z-index:320;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
     <div style="background:var(--card);border-radius:14px;padding:22px;max-width:480px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);max-height:88vh;overflow-y:auto;">
       <h2 style="font-size:18px;margin:0 0 4px;">Quote email</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:0 0 16px;">What goes at the top and the bottom of every quote you send. The colour comes from your report email settings.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 16px;">What goes at the top and the bottom of every quote you send. The color comes from your report email settings.</p>
       <div class="field">
         <label>Header</label>
         <input id="qeHeader" placeholder="Your company name">
@@ -2217,13 +2217,13 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
     <!-- Colour-blind mode (Nov 1): this device only -->
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-        <h2 style="margin:0;">Colour-blind mode</h2>
+        <h2 style="margin:0;">Color-blind mode</h2>
         <label class="toggle-switch">
           <input type="checkbox" id="settingColourBlind">
           <span class="toggle-slider"></span>
         </label>
       </div>
-      <p style="font-size:12.5px;color:var(--muted);margin:12px 0 0;">Job and status colours that stay easy to tell apart with any kind of colour blindness. Just for this device.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:12px 0 0;">Job and status colors that stay easy to tell apart with any kind of color blindness. Just for this device.</p>
       <div id="colourBlindKey" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;"></div>
     </div>
 
@@ -4868,7 +4868,7 @@ function renderProductsServicesList(){
     .filter(i => !term || (i.name || '').toLowerCase().includes(term))
     .slice()
     .sort((a,b)=>{
-      // Repairs, Products, Services, Uncategorised, and chemicals last (Nov 1)
+      // Repairs, Products, Services, Uncategorized, and chemicals last (Nov 1)
       const rank = i => { const n = ['repairs', 'products', 'services', '', 'chemicals'].indexOf(i.category || ''); return n === -1 ? 3 : n; };
       const ra = rank(a), rb = rank(b);
       if(ra !== rb) return ra - rb;
@@ -4964,7 +4964,7 @@ function renderProductsServicesList(){
     catSel.style.cssText = 'flex:0 0 132px;padding:8px 10px;font-size:12.5px;';
     const noneOpt = document.createElement('option');
     noneOpt.value = '';
-    noneOpt.textContent = 'Uncategorised';
+    noneOpt.textContent = 'Uncategorized';
     catSel.appendChild(noneOpt);
     PS_CATEGORIES.forEach(cat=>{
       const o = document.createElement('option');
@@ -5067,7 +5067,7 @@ function renderProductsServicesList(){
 
       if(item.extraCharge && item.abbr){
         const abbrTag = document.createElement('span');
-        abbrTag.title = 'Billing abbreviation and colour — tap to change';
+        abbrTag.title = 'Billing abbreviation and color — tap to change';
         abbrTag.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;background:" + extraColourOf(item) + ";color:#fff;padding:2px 6px;border-radius:5px;cursor:pointer;flex-shrink:0;";
         abbrTag.textContent = item.abbr;
         abbrTag.addEventListener('click', async (e)=>{
@@ -5199,7 +5199,7 @@ function openProductServiceModal(opts){
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Pick a category, give it a name and a price, and it’s ready to drop onto any quote or work order.</p>
       <div class="field"><label>Category</label>
         <select id="psCategoryPick">
-          <option value="">Uncategorised</option>
+          <option value="">Uncategorized</option>
           <option value="repairs">Repair</option>
           <option value="products">Product</option>
           <option value="services">Service</option>
@@ -5220,7 +5220,7 @@ function openProductServiceModal(opts){
       <div data-for="extra" style="display:none;">
         <div class="field"><label>Abbreviation</label><input id="psAbbr" maxlength="4" placeholder="e.g. MA">
           <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">Four characters at most. It has to fit the billing column.</div></div>
-        <div class="field"><label>Colour</label><div id="psExtraDots" style="display:flex;gap:10px;flex-wrap:wrap;"></div></div>
+        <div class="field"><label>Color</label><div id="psExtraDots" style="display:flex;gap:10px;flex-wrap:wrap;"></div></div>
       </div>
       <div class="btn-row">
         <button class="btn btn-primary" id="psSave" style="flex:1;">Save</button>
@@ -5253,7 +5253,7 @@ function openProductServiceModal(opts){
     EXTRA_COLOURS.forEach(c=>{
       const d = document.createElement('button');
       d.type = 'button';
-      d.setAttribute('aria-label', 'Colour');
+      d.setAttribute('aria-label', 'Color');
       d.style.cssText = 'width:34px;height:34px;min-width:34px;padding:0;border-radius:50%;border:3px solid #fff;cursor:pointer;background:' + c + ';'
         + 'box-shadow:0 0 0 ' + (c === colour ? '2px var(--teal-deep)' : '1px var(--line)') + ';';
       d.addEventListener('click', ()=>{ colour = c; drawDots(); });
@@ -7062,6 +7062,8 @@ function loadBroadcastTemplates(){
   });
 
   const saved = lsGet('broadcastTemplates');
+  // Saved with the old spelling (before Nov 1): read as Uncategorized
+  if(Array.isArray(saved)) saved.forEach(t=>{ if(t && t.category === 'Uncategorised') t.category = 'Uncategorized'; });
   if(Array.isArray(saved) && saved.length) return saved.map(t=>{
     const was = t && OLD_BROADCAST_DEFAULTS.find(o => o.id === t.id);
     const now = t && DEFAULT_BROADCAST_TEMPLATES.find(o => o.id === t.id);
@@ -7080,7 +7082,7 @@ function saveBroadcastTemplates(list){
 // empty — otherwise a new category would vanish until a template used it.
 function loadBroadcastCategories(){
   const saved = lsGet('broadcastCategories');
-  return Array.isArray(saved) ? saved : [];
+  return Array.isArray(saved) ? saved.map(c => c === 'Uncategorised' ? 'Uncategorized' : c) : [];
 }
 
 function saveBroadcastCategories(list){
@@ -7091,7 +7093,7 @@ function broadcastCategories(list){
   const out = ['All'];
   // Ones in use
   list.forEach(t=>{
-    const cat = (t.category || 'Uncategorised').trim() || 'Uncategorised';
+    const cat = (t.category || 'Uncategorized').trim() || 'Uncategorized';
     if(out.indexOf(cat) === -1) out.push(cat);
   });
   // Ones created but not yet used
@@ -7491,11 +7493,11 @@ async function addBroadcastCategory(){
 // Rename moves every template in that category too, so nothing is orphaned
 async function manageBroadcastCategory(cat){
   const templates = loadBroadcastTemplates();
-  const inUse = templates.filter(t => (t.category || 'Uncategorised') === cat).length;
+  const inUse = templates.filter(t => (t.category || 'Uncategorized') === cat).length;
 
   const rename = await confirmDialog(
     '"' + cat + '"' + (inUse ? ' holds ' + inUse + ' template' + (inUse === 1 ? '' : 's') + '.' : ' is empty.')
-    + '\n\nRename it, or remove it? Removing leaves its templates in place under Uncategorised.',
+    + '\n\nRename it, or remove it? Removing leaves its templates in place under Uncategorized.',
     'Rename');
 
   if(rename){
@@ -7504,7 +7506,7 @@ async function manageBroadcastCategory(cat){
     const clean = name.trim();
 
     templates.forEach(t=>{
-      if((t.category || 'Uncategorised') === cat) t.category = clean;
+      if((t.category || 'Uncategorized') === cat) t.category = clean;
     });
     saveBroadcastTemplates(templates);
 
@@ -7519,12 +7521,12 @@ async function manageBroadcastCategory(cat){
 
   const remove = await confirmDialog(
     'Remove the "' + cat + '" category?'
-    + (inUse ? ' Its ' + inUse + ' template' + (inUse === 1 ? '' : 's') + ' will move to Uncategorised.' : ''),
+    + (inUse ? ' Its ' + inUse + ' template' + (inUse === 1 ? '' : 's') + ' will move to Uncategorized.' : ''),
     'Remove');
   if(!remove) return;
 
   templates.forEach(t=>{
-    if((t.category || 'Uncategorised') === cat) t.category = 'Uncategorised';
+    if((t.category || 'Uncategorized') === cat) t.category = 'Uncategorized';
   });
   saveBroadcastTemplates(templates);
   saveBroadcastCategories(loadBroadcastCategories().filter(x => x !== cat));
@@ -7536,7 +7538,7 @@ async function manageBroadcastCategory(cat){
 
 
 // Edit categories (Oct 10): pick a category, tick the templates that belong in
-// it. Ticking moves a template in; unticking moves it to Uncategorised.
+// it. Ticking moves a template in; unticking moves it to Uncategorized.
 function openEditBroadcastCategories(startCat){
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
@@ -7607,7 +7609,7 @@ function openEditBroadcastCategories(startCat){
         if(!name || !name.trim() || name.trim() === pick) return;
         const clean = name.trim();
         const list = loadBroadcastTemplates();
-        list.forEach(t => { if((t.category || 'Uncategorised') === pick) t.category = clean; });
+        list.forEach(t => { if((t.category || 'Uncategorized') === pick) t.category = clean; });
         saveBroadcastTemplates(list);
         saveBroadcastCategories(loadBroadcastCategories().map(x => x === pick ? clean : x).filter((x, i, a) => a.indexOf(x) === i));
         if(broadcastCategory === pick) broadcastCategory = clean;
@@ -7617,11 +7619,11 @@ function openEditBroadcastCategories(startCat){
       head.appendChild(ren);
       const rm = small('Remove', 'color:var(--rust);border-color:#EFC9BC;');
       rm.addEventListener('click', async ()=>{
-        const n = loadBroadcastTemplates().filter(t => (t.category || 'Uncategorised') === pick).length;
-        const ok = await confirmDialog('Remove the "' + pick + '" category?' + (n ? ' Its ' + n + (n === 1 ? ' template moves' : ' templates move') + ' to Uncategorised.' : ''), 'Remove');
+        const n = loadBroadcastTemplates().filter(t => (t.category || 'Uncategorized') === pick).length;
+        const ok = await confirmDialog('Remove the "' + pick + '" category?' + (n ? ' Its ' + n + (n === 1 ? ' template moves' : ' templates move') + ' to Uncategorized.' : ''), 'Remove');
         if(!ok) return;
         const list = loadBroadcastTemplates();
-        list.forEach(t => { if((t.category || 'Uncategorised') === pick) t.category = 'Uncategorised'; });
+        list.forEach(t => { if((t.category || 'Uncategorized') === pick) t.category = 'Uncategorized'; });
         saveBroadcastTemplates(list);
         saveBroadcastCategories(loadBroadcastCategories().filter(x => x !== pick));
         if(broadcastCategory === pick) broadcastCategory = 'All';
@@ -7634,7 +7636,7 @@ function openEditBroadcastCategories(startCat){
       listEl.style.cssText = 'border:1px solid var(--line);border-radius:10px;padding:2px 10px;overflow-y:auto;flex:1;min-height:0;';
       if(!templates.length) listEl.innerHTML = '<div style="padding:10px 0;font-size:12.5px;color:var(--muted);">No templates yet.</div>';
       templates.forEach(t=>{
-        const cat = t.category || 'Uncategorised';
+        const cat = t.category || 'Uncategorized';
         const lab = document.createElement('label');
         lab.className = 'pick-row';
         const cb = document.createElement('input');
@@ -7645,7 +7647,7 @@ function openEditBroadcastCategories(startCat){
           const list = loadBroadcastTemplates();
           const it = list.find(x => x.id === t.id);
           if(!it) return;
-          it.category = cb.checked ? pick : 'Uncategorised';
+          it.category = cb.checked ? pick : 'Uncategorized';
           saveBroadcastTemplates(list);
           draw();
         });
@@ -7767,7 +7769,7 @@ function renderBroadcast(){
   if(box){
     box.innerHTML = '';
     const shown = list.filter(t => broadcastCategory === 'All'
-      || (t.category || 'Uncategorised') === broadcastCategory);
+      || (t.category || 'Uncategorized') === broadcastCategory);
 
     if(shown.length === 0){
       const none = document.createElement('span');
@@ -7935,7 +7937,7 @@ document.getElementById('wcBroadcastSave').addEventListener('click', async ()=>{
   const t = {
     id: 'bt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
     name: name.trim(),
-    category: (category || '').trim() || 'Uncategorised',
+    category: (category || '').trim() || 'Uncategorized',
     subject, body
   };
   list.push(t);
@@ -9841,6 +9843,7 @@ const DRAIN_BUCKETS = [
 
 let pdKeepHeight = false;
 function renderPoolDrains(){
+  try{ pdHeadTip(null); }catch(e){}
   // Any other redraw lets the list take its own height again
   if(!pdKeepHeight){ const l = document.getElementById('drainStatusList'); if(l) l.style.minHeight = ''; }
   try{ pdReconcileDone(); }catch(e){}
@@ -9951,31 +9954,39 @@ function renderPoolDrains(){
       all.appendChild(pdSortButton(b.key));
       // The two tick columns' headings, over them (Oct 19)
       const heads = document.createElement('span');
-      heads.style.cssText = 'margin-left:auto;display:flex;gap:12px;align-items:center;';
-      heads.innerHTML = '<span data-col="photo" style="flex:0 0 64px;width:64px;text-align:center;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">Photo</span>'
+      heads.style.cssText = 'margin-left:auto;display:flex;gap:12px;align-items:flex-end;';   // Email level with Drain and Cleaning (Nov 2)
+      // Photo required (Nov 2): one tick for the drain, one for the cleaning visit
+      const colHead = (col, word) => '<span data-col="' + col + '" style="flex:0 0 64px;width:64px;text-align:center;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">' + word + '</span>';
+      heads.innerHTML = '<span style="display:flex;flex-direction:column;align-items:center;gap:2px;">'
+        + '<span style="font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap;">Photo required</span>'
+        + '<span style="display:flex;gap:12px;">' + colHead('photo', 'Drain') + colHead('cleanphoto', 'Cleaning') + '</span></span>'
         + '<span data-col="email" style="flex:0 0 64px;width:64px;text-align:center;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">Email</span>'
         + '<span style="flex:0 0 150px;"></span><span style="flex:0 0 150px;"></span>';
       // All · None under Photo and Email (Oct 25): everyone in this list at once
       heads.querySelectorAll('[data-col]').forEach(h=>{
         const col = h.dataset.col;
         h.style.display = 'flex'; h.style.flexDirection = 'column'; h.style.alignItems = 'center'; h.style.gap = '3px';
+        // What each column does, in a card on hover (Nov 2)
+        h.style.cursor = 'help';
+        h.addEventListener('mouseenter', ()=> pdHeadTip(h, col));
+        h.addEventListener('mouseleave', ()=> pdHeadTip(null));
         const pick = document.createElement('span');
         pick.style.cssText = 'text-transform:none;letter-spacing:0;font-weight:600;white-space:nowrap;color:var(--muted);';
         const link = (word, on)=>{
           const a = document.createElement('span');
           a.textContent = word;
           a.style.cssText = 'color:var(--ink);text-decoration:underline;cursor:pointer;';
-          a.title = (on ? 'Tick ' : 'Untick ') + (col === 'photo' ? 'Photo required' : 'Email customer') + ' for everyone in this list';
+          a.title = (on ? 'Tick ' : 'Untick ') + PD_COL_WORDS[col] + ' for everyone in this list';
           a.addEventListener('click', e=>{
             e.preventDefault(); e.stopPropagation();   // not the Select all box this sits in
             list.forEach(c=>{
-              if(col === 'photo') c.drainPhotoRequired = on; else c.drainEmailCustomer = on;
+              pdColSet(c, col, on);
               pdApplyCustSettings(c);
             });
             saveCustomers();
             pdKeepHeight = true;
             try{ renderPoolDrains(); } finally { pdKeepHeight = false; }
-            showToast((col === 'photo' ? 'Photo required' : 'Email customer') + (on ? ' on' : ' off') + ' for ' + list.length + (list.length === 1 ? ' customer' : ' customers'));
+            showToast(PD_COL_WORDS[col] + (on ? ' on' : ' off') + ' for ' + list.length + (list.length === 1 ? ' customer' : ' customers'));
           });
           return a;
         };
@@ -10024,6 +10035,42 @@ function renderPoolDrains(){
 // drains already there and not done follow a change.
 function pdCustPhoto(c){ return !(c && c.drainPhotoRequired === false); }
 function pdCustEmail(c){ return !(c && c.drainEmailCustomer === false); }
+// A photo for the Clean & refill visit (Nov 2): on to start, overnight drains only
+function pdCustCleanPhoto(c){ return !(c && c.drainCleanPhotoRequired === false); }
+const PD_COL_HELP = {
+  photo: ['Drain', 'The technician has to take a photo before they can submit the drain in the app.'],
+  cleanphoto: ['Cleaning', 'The technician has to take a photo before they can submit the Clean & refill visit, the day after an overnight drain.'],
+  email: ['Email', 'The customer gets an email with the drain report when the drain is done.']
+};
+// The column's card under its heading, in the style of the other hover cards
+function pdHeadTip(anchor, col){
+  let tip = document.getElementById('pdHeadTip');
+  if(!anchor || !PD_COL_HELP[col]){ if(tip) tip.remove(); return; }
+  if(!tip){ tip = document.createElement('div'); tip.id = 'pdHeadTip'; document.body.appendChild(tip); }
+  const W = 240;
+  tip.style.cssText = 'position:fixed;z-index:100000;width:' + W + 'px;background:#fff;border:1px solid var(--line);border-radius:12px;'
+    + 'box-shadow:0 12px 30px rgba(14,74,77,.2);padding:10px 12px;font-size:13px;pointer-events:none;';
+  tip.innerHTML = '';
+  const head = document.createElement('div');
+  head.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;';
+  head.textContent = PD_COL_HELP[col][0];
+  const body = document.createElement('div');
+  body.style.cssText = 'padding-top:6px;border-top:1px solid #EEF3F2;line-height:1.5;color:var(--ink);';
+  body.textContent = PD_COL_HELP[col][1];
+  tip.appendChild(head); tip.appendChild(body);
+  const r = anchor.getBoundingClientRect(), h = tip.offsetHeight;
+  const left = Math.min(Math.max(8, r.left + r.width / 2 - W / 2), window.innerWidth - W - 8);
+  let top = r.bottom + 8;
+  if(top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 8);
+  tip.style.left = left + 'px'; tip.style.top = top + 'px';
+}
+const PD_COL_WORDS = {photo: 'Drain photo required', cleanphoto: 'Cleaning photo required', email: 'Email customer'};
+function pdColGet(c, col){ return col === 'photo' ? pdCustPhoto(c) : col === 'cleanphoto' ? pdCustCleanPhoto(c) : pdCustEmail(c); }
+function pdColSet(c, col, on){
+  if(col === 'photo') c.drainPhotoRequired = on;
+  else if(col === 'cleanphoto') c.drainCleanPhotoRequired = on;
+  else c.drainEmailCustomer = on;
+}
 function pdApplyCustSettings(c){
   const recs = pdScheduled();
   let changed = false;
@@ -10033,6 +10080,14 @@ function pdApplyCustSettings(c){
     if(r.emailCustomer !== pdCustEmail(c)){ r.emailCustomer = pdCustEmail(c); changed = true; }
   });
   if(changed) lsSet('scheduledPoolDrains', recs);
+  // Their Clean & refill visits not done yet follow the Cleaning tick (Nov 2)
+  let tChanged = false;
+  (typeof tasks !== 'undefined' ? tasks : []).forEach(t=>{
+    if(!t || !t.refillOf || t.done || (t.customerIds || []).indexOf(c.id) === -1) return;
+    const want = pdCustCleanPhoto(c);
+    if(!!t.photoRequired !== want){ t.photoRequired = want; tChanged = true; }
+  });
+  if(tChanged){ saveTasks(); try{ renderTaskList(); }catch(e){} }
 }
 // Shift-click a run (Oct 19), as on the filter clean groups: the box pressed
 // and every one between it and the last pressed in the same column and list
@@ -10050,28 +10105,36 @@ function pdTickRange(col, cid, on, listEl){
   ids.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(id=>{
     const c = customers.find(x => x && String(x.id) === id);
     if(!c) return;
-    if(col === 'photo') c.drainPhotoRequired = on; else c.drainEmailCustomer = on;
+    pdColSet(c, col, on);
     pdApplyCustSettings(c);
   });
   return true;
 }
 // One tick column on a row: the whole column presses the box, not the row
 function pdTickCol(c, col){
+  // No cleaning visit without an overnight drain: a dash, same width (Nov 2)
+  if(col === 'cleanphoto' && !pdIsOvernight(c)){
+    const dash = document.createElement('span');
+    dash.style.cssText = 'flex:0 0 76px;width:76px;box-sizing:border-box;margin:0 -6px;display:flex;align-items:center;justify-content:center;color:#B7C4C1;font-weight:700;';
+    dash.title = 'Not an overnight drain, so no cleaning visit';
+    dash.textContent = '\u2014';
+    return dash;
+  }
   const lab = document.createElement('label');
   // Its whole column, full height and 6px into the gap each side (Nov 1)
   lab.style.cssText = 'flex:0 0 76px;width:76px;box-sizing:border-box;align-self:stretch;margin:-9px -6px;padding:9px 6px;display:flex;align-items:center;justify-content:center;cursor:pointer;';
-  lab.title = col === 'photo' ? 'Photo required to finish the drain in the app' : 'Email the customer when the drain is done';
+  lab.title = col === 'photo' ? 'Photo required to finish the drain in the app' : col === 'cleanphoto' ? 'Photo required to finish the clean & refill in the app' : 'Email the customer when the drain is done';
   const box = document.createElement('input');
   box.type = 'checkbox';
   box.style.cssText = 'margin:0;';   // the filter cleans' size (Oct 25)
-  box.checked = col === 'photo' ? pdCustPhoto(c) : pdCustEmail(c);
+  box.checked = pdColGet(c, col);
   box.dataset.ownShift = '1';      // its own Shift-click ranges (pdTickRange)
   lab.addEventListener('pointerdown', e=>{ pdTickShift = e.shiftKey; });
   lab.addEventListener('click', e => e.stopPropagation());
   box.addEventListener('change', ()=>{
     const listEl = lab.closest('[data-pd-rows]');
     if(!(listEl && pdTickRange(col, c.id, box.checked, listEl))){
-      if(col === 'photo') c.drainPhotoRequired = box.checked; else c.drainEmailCustomer = box.checked;
+      pdColSet(c, col, box.checked);
       pdApplyCustSettings(c);
     }
     saveCustomers();
@@ -10146,7 +10209,30 @@ function pdRow(c, b){
       const tag = document.createElement('span');
       tag.style.cssText = 'flex-shrink:0;background:#FBF1DD;color:#8A5E0B;font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;';
       tag.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
-      tag.appendChild(document.createTextNode('Scheduled ' + days.map(d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})).join(', ')));
+      // The words in their own part, so they can slide across when the badge
+      // is squeezed on a narrow screen (Nov 2) instead of pushing the columns
+      const tagWords = document.createElement('span');
+      tagWords.className = 'cal-chip-name';
+      tagWords.style.cssText = 'overflow:hidden;white-space:nowrap;min-width:0;';
+      tagWords.textContent = 'Scheduled ' + days.map(d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})).join(', ');
+      tag.appendChild(tagWords);
+      tag.style.maxWidth = '100%';
+      // Tight for room: just the date ("Nov 5"), so the name still shows
+      setTimeout(()=>{
+        try{
+          const nb = tag.closest('[data-pd-customer]') && tag.closest('[data-pd-customer]').querySelector('.pd-name-box');
+          if(nb && nb.offsetWidth < 90){
+            // Under the name instead, with just the date
+            const box = nb.parentElement;
+            box.style.flexDirection = 'column'; box.style.alignItems = 'flex-start'; box.style.justifyContent = 'center'; box.style.gap = '3px';
+            nb.style.width = '100%';
+            tagCell.style.margin = '0'; tagCell.style.padding = '0'; tagCell.style.alignSelf = 'flex-start'; tagCell.style.maxWidth = '100%';
+            // The full words when they fit under the name, else just the date
+            if(box.offsetWidth < 190) tagWords.textContent = days.map(d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'})).join(', ');
+          }
+          webMarqueeIfCut(tagWords);
+        }catch(e){}
+      }, 0);
       tag.title = 'On the calendar';
       tag.style.cursor = 'pointer';
       // Just the day's window, over this page (Nov 1); the list catches up
@@ -10163,11 +10249,19 @@ function pdRow(c, b){
       };
       // Its press area (Nov 1): the badge with room round it, the row's full height
       const tagCell = document.createElement('div');
-      tagCell.style.cssText = 'flex:0 0 auto;align-self:stretch;display:flex;align-items:center;margin:-9px -6px;padding:9px 6px;cursor:pointer;';
+      tagCell.style.cssText = 'flex:0 0 auto;align-self:stretch;display:flex;align-items:center;margin:-9px 0;padding:9px 6px;cursor:pointer;';
       tagCell.title = tag.title;
       tagCell.addEventListener('click', openDay);
       tagCell.appendChild(tag);
-      row.appendChild(tagCell);
+      // Beside the name, inside its space (Nov 2): the columns to its right
+      // line up on every row whether or not a customer is scheduled
+      const nameBox = document.createElement('div');
+      nameBox.className = 'pd-name-box';
+      nameBox.style.cssText = 'flex:1 1 auto;min-width:0;';
+      while(who.firstChild) nameBox.appendChild(who.firstChild);
+      who.style.display = 'flex'; who.style.alignItems = 'center'; who.style.gap = '10px'; who.style.alignSelf = 'stretch';
+      who.appendChild(nameBox);
+      who.appendChild(tagCell);
     }
   }catch(e){}
 
@@ -10188,6 +10282,7 @@ function pdRow(c, b){
   row.appendChild(schedCell);
   // Photo required and Email customer, after Schedule (Oct 19)
   row.appendChild(pdTickCol(c, 'photo'));
+  row.appendChild(pdTickCol(c, 'cleanphoto'));
   row.appendChild(pdTickCol(c, 'email'));
 
   const rowBody = pdSoonestBody(c);
@@ -10389,17 +10484,19 @@ function pdAfterScheduled(entries){
   (entries || []).forEach(e=>{
     const c = customers.find(x => x && x.id === e.customerId);
     if(!e || !e.date || !pdIsOvernight(c)) return;
-    if(pdRefillTasks([e.id]).length) return;   // already has one
+    if(pdRefillTasks([e.id]).length || tasks.some(t => t && t.refillOf === e.id)) return;   // already has one
     const day2 = pdAddDays(e.date, pdCleanDays(c));
     tasks.push({
-      id: 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9),
+      // The same id on every computer, so two can't make two of them
+      id: 'task_refill_' + e.id,
       title: 'Clean & refill', details: 'Second day of the overnight drain on ' + nice(e.date) + '.',
       technicianId: e.technicianId || (c && c.technicianId) || '',
       date: day2, customerIds: [e.customerId], everyWeeks: 0, everyDays: 0, seriesId: '', taskGroupId: '',
-      photoRequired: false, videoRequired: false, done: false, createdAt: new Date().toISOString(),
+      photoRequired: pdCustCleanPhoto(c), videoRequired: false, done: false, createdAt: new Date().toISOString(),
       refillOf: e.id
     });
     made.push(day2);
+    pdMarkRefillMade(e.id);
   });
   if(!made.length) return;
   saveTasks();
@@ -10408,6 +10505,44 @@ function pdAfterScheduled(entries){
   const days = Array.from(new Set(made)).sort();
   showToast('Clean & refill on ' + (days.length === 1 ? nice(days[0]) : days.length + ' days'));
 }
+
+// The drain knows its clean & refill was made (Nov 2), so taking that job off
+// by hand doesn't bring it back
+function pdMarkRefillMade(entryId){
+  const cal = pdCal();
+  const e = cal.find(x => x && x.id === entryId);
+  if(!e || e.refillMade) return;
+  e.refillMade = true;
+  lsSet('drainCalendar', cal);
+}
+// Every drain on the calendar from today on, for an overnight customer, gets
+// its Clean & refill (Nov 2): drains scheduled before overnight drains
+// existed, ones put on from the app's calendar, imported ones, and any that
+// came in from another computer. Runs when the website opens, every minute,
+// and when the calendar opens.
+let pdRefillSweeping = false;
+function pdEnsureRefills(){
+  if(pdRefillSweeping) return 0;
+  pdRefillSweeping = true;
+  try{
+    if(typeof tasks === 'undefined' || !Array.isArray(customers)) return 0;
+    const today = pdToday();
+    const want = pdCal().filter(e=>{
+      if(!e || !e.id || !e.date || e.refillMade) return false;
+      const c = customers.find(x => x && x.id === e.customerId);
+      if(!c || c.active === false || !pdIsOvernight(c)) return false;
+      if(pdAddDays(e.date, pdCleanDays(c)) < today) return false;
+      return !tasks.some(t => t && (t.refillOf === e.id || t.id === 'task_refill_' + e.id));
+    });
+    if(!want.length) return 0;
+    const before = tasks.length;
+    pdAfterScheduled(want);
+    return tasks.length - before;
+  }catch(err){ return 0; }
+  finally{ pdRefillSweeping = false; }
+}
+setTimeout(()=>{ try{ pdEnsureRefills(); }catch(e){} }, 3000);
+setInterval(()=>{ try{ pdEnsureRefills(); }catch(e){} }, 60000);
 
 // Take customers off every upcoming day on the drain calendar (Nov 1)
 async function pdUnschedule(cids){
@@ -11978,6 +12113,7 @@ const WCAL_TAGS = {
 };
 if(CB_ON){ Object.keys(WCAL_TAGS).forEach(k=>{ const c = CB_JOB[WCAL_TAGS[k][0]]; if(c){ WCAL_TAGS[k][2] = c[0]; WCAL_TAGS[k][3] = c[1]; } }); }
 function openWorkCalendar(startDay, stayHere){
+  try{ pdEnsureRefills(); }catch(e){}   // any drain still missing its clean & refill (Nov 2)
   // Opened at a day from elsewhere in WorkCenter: over to the Calendar first,
   // unless asked to stay (Nov 1: the drain list's Scheduled tag opens just the
   // day's window over the page it's on)
@@ -21879,7 +22015,11 @@ function qoJobInfo(item){
       + (x.doneBy ? ' by ' + (tech(x.doneBy) || 'a technician') : ''));
     if(x.doneDurationMs) info.lines.push('Time on the job: ' + jobDurationText(x.doneDurationMs));
     if((x.doneReplacements || []).length) info.sections.push(['Needs replacing', x.doneReplacements.join(', ')]);
-    if(Array.isArray(x.doneExtraWork) && x.doneExtraWork.length) info.sections.push(['Extra work done', x.doneExtraWork.map(e => (e && (e.description || e)) || '').filter(Boolean).join(', ')]);
+    if(Array.isArray(x.doneExtraWork) && x.doneExtraWork.length){
+      const [checks, rest] = splitDrainChecks(x.doneExtraWork);
+      if(checks.length) info.sections.push(['Before draining', checks.map(t => t + ' \u2713').join(' \u00b7 ')]);
+      if(rest.length) info.sections.push(['Extra work done', rest.join(', ')]);
+    }
     if(x.doneNotes) info.sections.push(['Technician’s notes', x.doneNotes]);
     info.photos = [x.donePhoto].concat(x.donePhotoMore || []).filter(Boolean);
   };
@@ -22718,6 +22858,13 @@ function markOpenRow(container, rowSel, isOpenRow){
   open.after(wrap);
   pieces.forEach(x => wrap.appendChild(x));
 }
+// A pool drain's Before draining ticks (Nov 1) arrive in doneExtraWork with
+// any extra work: split them out to show under their own heading
+var DRAIN_CHECKS = ['Autofill valve turned off', 'Pump turned off'];
+function splitDrainChecks(list){
+  const all = (Array.isArray(list) ? list : []).map(e => (e && (e.description || e)) || '').filter(Boolean);
+  return [all.filter(t => DRAIN_CHECKS.indexOf(t) !== -1), all.filter(t => DRAIN_CHECKS.indexOf(t) === -1)];
+}
 let qoLastDrawn = '';
 // 10 jobs a page (Nov 1); another customer, date or kind starts on page 1
 const QO_PER_PAGE = 10;
@@ -23482,7 +23629,7 @@ function openColorPicker(item, idx, onDone){
   overlay.style.zIndex = '300';
   overlay.innerHTML = `
     <div class="confirm-box" style="max-width:320px;">
-      <h3 style="font-size:15px;margin:0 0 12px;">Button colour</h3>
+      <h3 style="font-size:15px;margin:0 0 12px;">Button color</h3>
       <div id="colorGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;"></div>
       <div class="btn-row" style="margin-top:14px;">
         <button class="btn btn-ghost" id="colorCancel" style="flex:1;">Cancel</button>
@@ -23627,7 +23774,7 @@ function openQuickButtonsModal(item){
       // Colour swatch — opens the palette for this button
       const swatch = document.createElement('button');
       swatch.type = 'button';
-      swatch.title = 'Change colour';
+      swatch.title = 'Change color';
       swatch.style.cssText = 'width:26px;height:26px;flex-shrink:0;padding:0;border-radius:50%;'
         + 'border:2px solid rgba(0,0,0,0.18);cursor:pointer;background:' + pal.solid + ';';
       swatch.addEventListener('click', (e)=>{
@@ -23714,9 +23861,9 @@ function openQuickButtonsModal(item){
       allColors.className = 'btn btn-ghost';
       allColors.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;margin-left:auto;';
       allColors.textContent = 'All colors';
-      allColors.title = 'Make every button in this list one colour';
+      allColors.title = 'Make every button in this list one color';
       allColors.addEventListener('click', async ()=>{
-        const pick = await pickQuickColor('Colour for every button here', false);
+        const pick = await pickQuickColor('Color for every button here', false);
         if(!pick) return;
         colorAllButtons(item, pick.key);
         item.buttonColor = pick.key;          // new buttons here start in it too
@@ -24705,7 +24852,7 @@ document.getElementById('btnAllCustomQuickColors').addEventListener('click', asy
     showToast('Nobody has a custom setup yet');
     return;
   }
-  const pick = await pickQuickColor('Colour for every customized customer\u2019s quick buttons', false);
+  const pick = await pickQuickColor('Color for every customized customer\u2019s quick buttons', false);
   if(!pick) return;
   const lists = [];
   const everyone = lsGet('customChemConfig') || {};
@@ -25918,7 +26065,7 @@ document.getElementById('btnAddChemical').addEventListener('click', ()=>{
 // All quick button colors: every chemical's and dosage's buttons on this body
 // of water, or on all of them, in one colour
 document.getElementById('btnAllQuickColors').addEventListener('click', async ()=>{
-  const pick = await pickQuickColor('Colour for every quick button', true);
+  const pick = await pickQuickColor('Color for every quick button', true);
   if(!pick) return;
   let lists = [];
   if(pick.allBodies){
@@ -26424,7 +26571,7 @@ function extraChargeDialog(message, abbr, color, okLabel){
       <div class="confirm-box">
         <p>${message}</p>
         <input id="promptInput" placeholder="e.g. MA" style="margin-bottom:14px;">
-        <div class="field" style="margin-bottom:18px;"><label>Colour</label><div id="extraDots" style="display:flex;gap:10px;"></div></div>
+        <div class="field" style="margin-bottom:18px;"><label>Color</label><div id="extraDots" style="display:flex;gap:10px;"></div></div>
         <div class="btn-row">
           <button class="btn btn-ghost" id="promptCancel">Cancel</button>
           <button class="btn btn-primary" id="promptOk">Add</button>
@@ -26441,7 +26588,7 @@ function extraChargeDialog(message, abbr, color, okLabel){
       EXTRA_COLOURS.forEach(c=>{
         const d = document.createElement('button');
         d.type = 'button';
-        d.setAttribute('aria-label', 'Colour');
+        d.setAttribute('aria-label', 'Color');
         d.style.cssText = 'width:34px;height:34px;min-width:34px;padding:0;border-radius:50%;border:3px solid #fff;cursor:pointer;background:' + c + ';'
           + 'box-shadow:0 0 0 ' + (c === picked ? '2px var(--teal-deep)' : '1px var(--line)') + ';';
         d.addEventListener('click', ()=>{ picked = c; draw(); input.focus(); });
@@ -29926,7 +30073,8 @@ function buildWorkOrderDoc(customerId, j){
     + (items.length ? '<div class="report-sec">' + (j._drain ? 'Extra work' : 'Line items') + '</div><table class="report-table">' + rows + '</table>' : '')
     + (j.notes ? '<div class="report-sec">Work order notes</div><div class="report-notes">' + esc(j.notes) + '</div>' : '')
     + ((j.doneReplacements || []).length ? '<div class="report-sec">Needs replacing</div><div class="report-notes">' + esc(j.doneReplacements.join(', ')) + '</div>' : '')
-    + (Array.isArray(j.doneExtraWork) && j.doneExtraWork.length ? '<div class="report-sec">Extra work done</div><div class="report-notes">' + esc(j.doneExtraWork.map(e => (e && (e.description || e)) || '').filter(Boolean).join(', ')) + '</div>' : '')
+    + (splitDrainChecks(j.doneExtraWork)[0].length ? '<div class="report-sec">Before draining</div><div class="report-notes">' + esc(splitDrainChecks(j.doneExtraWork)[0].map(t => t + ' \u2713').join(' \u00b7 ')) + '</div>' : '')
+    + (splitDrainChecks(j.doneExtraWork)[1].length ? '<div class="report-sec">Extra work done</div><div class="report-notes">' + esc(splitDrainChecks(j.doneExtraWork)[1].join(', ')) + '</div>' : '')
     + (j.doneNotes ? '<div class="report-sec">Technician\u2019s notes</div><div class="report-notes">' + esc(j.doneNotes) + '</div>' : '')
     + (j.donePhoto ? '<div class="report-sec">' + ((j.donePhotoMore || []).length ? 'Photos' : 'Photo') + '</div><div class="report-photos" data-wo-photo>'
        + '<span style="font-size:12.5px;color:var(--muted);">Loading the photo\u2026</span></div>' : '');
@@ -33092,6 +33240,8 @@ function bodiesForSizes(cust){
 // Sizes live in one object keyed by body. The old single poolGallons value is
 // read as the pool's size so nothing already entered is lost.
 const SIZE_UNITS = ['gallons','litres','m³'];
+// Shown in American spelling (Nov 1); saved as before, so older entries still match
+function sizeUnitWord(u){ return u === 'litres' ? 'liters' : u; }
 
 function waterBodySize(cust, key){
   const all = cust.waterSizes || {};
@@ -33142,7 +33292,7 @@ function inlineWaterBodySizes(cust){
       unit.style.cssText = 'flex:0 0 auto;width:auto;font-size:13px;padding:6px 8px;';
       SIZE_UNITS.forEach(u=>{
         const o = document.createElement('option');
-        o.value = u; o.textContent = u;
+        o.value = u; o.textContent = sizeUnitWord(u);
         if((existing.unit || 'gallons') === u) o.selected = true;
         unit.appendChild(o);
       });
@@ -34209,7 +34359,7 @@ function viewCustomer(c){
     const sizeParts = [];
     bodiesForSizes(c).forEach(b=>{
       const v = waterBodySize(c, b.key);
-      if(v && v.amount) sizeParts.push(b.label + ': ' + v.amount + ' ' + (v.unit || 'gallons'));
+      if(v && v.amount) sizeParts.push(b.label + ': ' + v.amount + ' ' + sizeUnitWord(v.unit || 'gallons'));
     });
     profileRow(meta, {label:'Water body sizes', value: sizeParts.join(' \u00b7 '),
       placeholder:'Add volumes', editor: inlineWaterBodySizes(c)});
@@ -35955,7 +36105,7 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
   const box = document.getElementById('settingColourBlind');
   if(!box) return;
   box.checked = CB_ON;
-  box.addEventListener('change', ()=>{ showToast(box.checked ? 'Colour-blind mode on' : 'Colour-blind mode off'); setColourBlind(box.checked); });
+  box.addEventListener('change', ()=>{ showToast(box.checked ? 'Color-blind mode on' : 'Color-blind mode off'); setColourBlind(box.checked); });
   const key = document.getElementById('colourBlindKey');
   if(key) [['FC', 'Filter clean'], ['PD', 'Pool drain'], ['CR', 'Clean & refill'], ['WO', 'Work order'], ['TK', 'Task']].forEach(([t, w])=>{
     const c = CB_JOB[t];

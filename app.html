@@ -1276,13 +1276,13 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
       <div class="card" id="colourBlindCard">
         <div class="field">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
-            <h2 style="margin:0;">Colour-blind mode</h2>
+            <h2 style="margin:0;">Color-blind mode</h2>
             <label class="toggle-switch">
               <input type="checkbox" id="settingColourBlind">
               <span class="toggle-slider"></span>
             </label>
           </div>
-          <p style="font-size:12.5px;color:var(--muted);margin:12px 0 0;">Job and status colours that stay easy to tell apart with any kind of colour blindness. Just for this phone.</p>
+          <p style="font-size:12.5px;color:var(--muted);margin:12px 0 0;">Job and status colors that stay easy to tell apart with any kind of color blindness. Just for this phone.</p>
           <div id="colourBlindKey" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;"></div>
         </div>
       </div>
@@ -3234,7 +3234,15 @@ document.addEventListener('click', (ev)=>{
     // From another tab, a tab with two pages always opens on its top one
     // (Oct 30): Today, Techs, Serviced, Customers. A customer left open on
     // Customers is still there within its minute.
-    if(t.dataset.twoWords === '1'){ const v = t.dataset.view; setTimeout(()=> bottomTabPane(v, false), 0); }
+    // Set before the page shows (Nov 1), not just after: it used to switch a
+    // moment later, so the page it was left on (the Calendar, say) flashed up
+    // first
+    const twoPages = t.dataset.twoWords === '1';
+    if(twoPages && t.dataset.view === 'home' && typeof acalMode !== 'undefined' && acalMode === 'calendar'){
+      acalMode = 'today';
+      const card = document.getElementById('appCalCard'); if(card) card.style.display = 'none';
+      ['homeHeaderWrap', 'homeListCard'].forEach(id=>{ const el = document.getElementById(id); if(el) el.style.display = ''; });
+    }
 
     // Tapping Today with a report already under way goes back into that report
     // rather than the route. Leaving mid-report to check something else and
@@ -3258,6 +3266,8 @@ document.addEventListener('click', (ev)=>{
     }catch(e){ /* fall through to the normal tab change */ }
 
     switchView(t.dataset.view);
+    // Its top page straight away, in the same moment the tab opens
+    if(twoPages) bottomTabPane(t.dataset.view, false);
   })();
 }, true);
 
@@ -11615,6 +11625,10 @@ function jobWasSkipped(j){
 // Items to tick before Submit (Oct 20): each its own white tile with a bigger
 // box and bold words; ticked, it turns pale teal with a teal border, so what's
 // left stands out. The whole tile can be pressed.
+// Before a pool drain (Nov 1): both ticked before Submit. They travel in
+// doneExtraWork (the field the office already takes from the phones) and the
+// website shows them under their own heading.
+var DRAIN_CHECKS = ['Autofill valve turned off', 'Pump turned off'];
 function jobTickTile(line, cb){
   line.style.cssText = 'display:flex;align-items:center;gap:12px;padding:13px 14px;margin:0 0 8px;cursor:pointer;'
     + 'border:1.5px solid #BFDCD8;border-radius:12px;background:#fff;font-size:15.5px;font-weight:700;color:var(--ink);'
@@ -11676,6 +11690,7 @@ function openJobPage(customer, job){
   // A work order shows its line items and a task its name, in black, with no
   // customer name or address (Oct 3)
   const lineChecks = [];       // a work order's line items, all ticked before Submit
+  const drainChecks = [];      // a pool drain's Before draining ticks (Nov 1)
   if(job.kind === 'work order' || job.kind === 'task'){
     where.style.display = 'none';
     who.style.color = 'var(--ink)';
@@ -11700,6 +11715,29 @@ function openJobPage(customer, job){
     } else {
       who.textContent = job.title || jobKindLabel(job.kind);
     }
+  }
+  // Before draining (Nov 1): the autofill valve and the pump off, both ticked
+  // before Submit, first on the screen
+  if(job.kind === 'pool drain'){
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'margin:2px 0 14px;';
+    const hd = document.createElement('div');
+    hd.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;margin:4px 0 6px;";
+    hd.textContent = 'Before draining';
+    wrap.appendChild(hd);
+    DRAIN_CHECKS.forEach(t=>{
+      const line = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.dataset.drainCheck = t;
+      jobTickTile(line, cb);
+      drainChecks.push(cb);
+      const span = document.createElement('span');
+      span.textContent = t;
+      line.appendChild(cb); line.appendChild(span);
+      wrap.appendChild(line);
+    });
+    card.appendChild(wrap);
   }
   // A pool drain's extra work from the office (Oct 13): each item with a box to
   // tick, all ticked before Submit, like a work order's items
@@ -11891,6 +11929,12 @@ function openJobPage(customer, job){
   submit.addEventListener('click', async ()=>{
     // A task marked "Photo required" can't go without one
     const shots = photos ? photos.getAll() : [];
+    // Autofill valve and pump off first (Nov 1)
+    const notOff = drainChecks.filter(cb => !cb.checked).map(cb => cb.dataset.drainCheck);
+    if(notOff.length){
+      showToast('Tick ' + notOff.map(t => '\u201c' + t + '\u201d').join(' and ') + ' first');
+      return;
+    }
     // Every line item ticked first (Oct 3)
     const unticked = lineChecks.filter(cb => !cb.checked).length;
     if(unticked){
@@ -11992,7 +12036,9 @@ function openJobPage(customer, job){
         pd.doneNotes = noteText;
         pd.doneDurationMs = durationMs;
         // Every extra work item was ticked to get here (Oct 13)
-        if(Array.isArray(pd.lineItems) && pd.lineItems.length) pd.doneExtraWork = pd.lineItems.map(li => String((li && li.description) || '').trim()).filter(Boolean);
+        const extraDone = Array.isArray(pd.lineItems) ? pd.lineItems.map(li => String((li && li.description) || '').trim()).filter(Boolean) : [];
+        // With the Before draining ticks first (Nov 1)
+        pd.doneExtraWork = DRAIN_CHECKS.concat(extraDone);
         if(isPhotoRef(stored)) pd.donePhoto = stored;
         if(storedMore.length) pd.donePhotoMore = storedMore;
         if(isPhotoRef(videoRef)) pd.doneVideo = videoRef;
@@ -17200,7 +17246,7 @@ function awcProductWindow(opts){
   box.innerHTML = '<h3 style="font-size:17px;margin:0 0 4px;">Add line item</h3>'
     + '<p data-sub style="font-size:13px;color:var(--muted);margin:0 0 14px;">Pick a category, give it a name and a price, and it’s ready to drop onto any quote or work order.</p>'
     + '<div class="field"><label>Category</label><select data-cat>'
-    + '<option value="">Uncategorised</option><option value="repairs">Repair</option><option value="products">Product</option>'
+    + '<option value="">Uncategorized</option><option value="repairs">Repair</option><option value="products">Product</option>'
     + '<option value="services">Service</option><option value="chemicals">Chemical</option></select></div>'
     + '<div class="field"><label>Product or service</label><input data-name placeholder="e.g. Filter replacement"></div>'
     + '<div class="field"><label>Price ($)</label><input data-price type="number" step="0.01" inputmode="decimal" placeholder="0.00"></div>'
@@ -17210,7 +17256,7 @@ function awcProductWindow(opts){
     + '<div data-for="extra" style="display:none;">'
     + '<div class="field"><label>Abbreviation</label><input data-abbr maxlength="4" placeholder="e.g. MA">'
     + '<div style="font-size:12px;color:var(--muted);margin-top:4px;">Four characters at most. It has to fit the billing column.</div></div>'
-    + '<div class="field"><label>Colour</label><div data-dots style="display:flex;gap:10px;flex-wrap:wrap;"></div></div></div>'
+    + '<div class="field"><label>Color</label><div data-dots style="display:flex;gap:10px;flex-wrap:wrap;"></div></div></div>'
     + '<div class="btn-row" style="flex-wrap:nowrap;">'
     + '<button type="button" class="btn btn-primary" data-save style="flex:1 1 0;min-width:0;">Save</button>'
     + '<button type="button" class="btn btn-ghost" data-cancel style="flex:1 1 0;min-width:0;">Cancel</button></div>';
@@ -17232,7 +17278,7 @@ function awcProductWindow(opts){
     AWC_EXTRA_COLOURS.forEach(c=>{
       const d = document.createElement('button');
       d.type = 'button';
-      d.setAttribute('aria-label', 'Colour');
+      d.setAttribute('aria-label', 'Color');
       d.style.cssText = 'width:36px;height:36px;min-width:36px;padding:0;border-radius:50%;border:3px solid #fff;cursor:pointer;background:' + c + ';'
         + 'box-shadow:0 0 0 ' + (c === colour ? '2px var(--teal-deep)' : '1px var(--line)') + ';';
       d.addEventListener('click', ()=>{ colour = c; drawDots(); });
@@ -17885,7 +17931,7 @@ function awcCustomizeQuoteEmail(){
   card.querySelector('[data-preview]').addEventListener('click', ()=>{
     const sample = {name: 'Sample Customer', address: '123 Main St'};
     const html = awcQuoteEmailHtml(sample, 'Quote', new Date().toLocaleDateString(undefined, {month: 'long', day: 'numeric', year: 'numeric'}),
-      [{description: 'Variable-speed pump', qty: 1, price: 1249}, {description: 'Install labour', qty: 2, price: 95}],
+      [{description: 'Variable-speed pump', qty: 1, price: 1249}, {description: 'Install labor', qty: 2, price: 95}],
       1439, 'Sample notes.', values(), null, awcNextQuoteNumber(), awcQuoteExpiresDays());
     const pv = document.createElement('div');
     pv.className = 'confirm-overlay';
@@ -20190,8 +20236,9 @@ function acalDayWindow(on){
         bin.type = 'button';
         bin.title = 'Take this ' + kinds[k][2] + ' off';
         bin.setAttribute('aria-label', bin.title);
-        bin.style.cssText = 'width:28px;height:28px;flex-shrink:0;border-radius:7px;border:1px solid #EFC0B4;background:#fff;color:var(--rust);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;';
-        bin.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>';
+        // The same bin as the WorkCenter's (Nov 1)
+        bin.style.cssText = 'display:inline-flex;cursor:pointer;';
+        bin.innerHTML = '<svg class="weir-bin" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
         bin.addEventListener('click', async ()=>{
           const ok = await confirmDialog('Take this ' + kinds[k][2] + ' off ' + h.textContent + '? It comes off the route too.', 'Take off');
           if(!ok) return;
@@ -23502,6 +23549,10 @@ function buildJobEmailHtml(customer, job, techName){
       + '<td style="padding:7px 0;text-align:right;font-weight:700;color:#16302E;">$' + total.toFixed(2) + '</td></tr>';
   } else {
     rows = '<tr><td style="' + cell + '">' + esc(what) + '</td><td style="' + cell + '"></td></tr>';
+    // A drain: the autofill valve and pump checks (Nov 1)
+    if(job.kind === 'pool drain') (job.doneExtraWork || []).filter(t => DRAIN_CHECKS.indexOf(t) !== -1).forEach(t=>{
+      rows += '<tr><td style="' + cell + '">' + esc(t) + '</td><td style="' + cell + 'text-align:right;color:#2E8B57;font-weight:700;">\u2713</td></tr>';
+    });
   }
   const contact = b.showContact ? emailContactLine() : '';
   return '<!DOCTYPE html><html><head><meta charset="utf-8">'
@@ -23945,7 +23996,7 @@ async function adminVersion_attemptAutoSend(customerId, type, manual){
       }
     }catch(err){
       if(err && err.name === 'AbortError'){
-        showToast('Send cancelled — report is ready below whenever you want it');
+        showToast('Send canceled — report is ready below whenever you want it');
         return;
       }
       // fall through to mailto below on other errors
@@ -24066,7 +24117,7 @@ async function techVersion_attemptAutoSend(customerId, type, manual){
       }
     }catch(err){
       if(err && err.name === 'AbortError'){
-        showToast('Send cancelled — report is ready below whenever you want it');
+        showToast('Send canceled — report is ready below whenever you want it');
         return;
       }
       // fall through to mailto below on other errors
@@ -25816,7 +25867,7 @@ function marqueeIfCut(el){
   const box = document.getElementById('settingColourBlind');
   if(!box) return;
   box.checked = CB_ON;
-  box.addEventListener('change', ()=>{ try{ showToast(box.checked ? 'Colour-blind mode on' : 'Colour-blind mode off'); }catch(e){} setColourBlind(box.checked); });
+  box.addEventListener('change', ()=>{ try{ showToast(box.checked ? 'Color-blind mode on' : 'Color-blind mode off'); }catch(e){} setColourBlind(box.checked); });
   const key = document.getElementById('colourBlindKey');
   if(key) [['FC', 'Filter clean'], ['PD', 'Pool drain'], ['CR', 'Clean & refill'], ['WO', 'Work order'], ['TK', 'Task']].forEach(([t, w])=>{
     const c = CB_JOB[t];
