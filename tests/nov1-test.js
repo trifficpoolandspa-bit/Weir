@@ -476,6 +476,31 @@ const SEED = `
   check('Pool drains: unticking it takes the photo off the Clean & refill', cp.after === false, cp.after);
   check('Pool drains: no overnight drain shows a dash for Cleaning', cp.dash);
 
+  // The calendar follows the route: jobs moved in the app show on their new day (Nov 2)
+  const fr = await p.evaluate(()=>{
+    const d = n => isoIn(n);
+    customers.push({id: 'fr0', name: 'Fern Rae', technicianId: 't1', hasPool: true, active: true}); saveCustomers();
+    filterGroups.push({id: 'frg', name: 'Fr group', date: d(2), finalized: true, customerIds: ['fr0', 'c1']}); saveFilterGroups();
+    lsSet('scheduledFilterCleans', (lsGet('scheduledFilterCleans') || []).concat([{id: 'frf', groupId: 'frg', customerId: 'fr0', date: d(5), status: 'scheduled', technicianId: 't1'}]));
+    lsSet('drainCalendar', pdCal().concat([{id: 'fre', customerId: 'fr0', date: d(3), pushed: {pool: 'frp'}}]));
+    lsSet('scheduledPoolDrains', pdScheduled().concat([{id: 'frp', calendarId: 'fre', customerId: 'fr0', date: d(6), status: 'scheduled', bodyKey: 'pool'}]));
+    calFollowRoute();
+    const g = filterGroups.find(x => x.id === 'frg'); const solo = filterGroups.find(x => x.solo && x.date === d(5));
+    return {outOfGroup: g.customerIds.indexOf('fr0') === -1, onOwn: !!solo && solo.customerIds.indexOf('fr0') !== -1, drainDay: pdCal().find(e => e.id === 'fre').date === d(6)};
+  });
+  check('Calendar follows the route: a filter clean moved in the app shows on its new day', fr.outOfGroup && fr.onOwn, JSON.stringify(fr));
+  check('Calendar follows the route: a drain moved in the app shows on its new day', fr.drainDay);
+
+  // Calendar Export button, right of the technician menu (Nov 2)
+  const exb = await p.evaluate(()=>{
+    closeWins(); switchView('workcenter'); openWorkCalendar();
+    const b = document.querySelector('#wcCalendarCard button[title="Save the calendar as a spreadsheet"]');
+    const lines = calExportLines({wo: [{customerId: 'c2', technicianId: 't1', workOrderNumber: 7, title: 'Fix light', lineItems: [{description: 'Light repair'}]}], tk: [{title: 'Clean & refill', customerIds: ['c0'], refillOf: 'x'}]});
+    return {there: !!b, lines: lines.map(l => l[0] + ':' + l[1]).join(',')};
+  });
+  check('Calendar: Export button is there', exb.there);
+  check('Calendar export: each job becomes a line with its tag and customer', /CR:/.test(exb.lines) && /WO:/.test(exb.lines), exb.lines);
+
   // --- Colour-blind mode ---
   const cbSet = await p.evaluate(()=>{ switchView('settings'); const b = document.getElementById('settingColourBlind'); return {there: !!b && b.getClientRects().length > 0, on: b && b.checked, keys: document.getElementById('colourBlindKey').children.length}; });
   check('Colour-blind: switch in Settings', cbSet.there, JSON.stringify(cbSet));
@@ -591,6 +616,104 @@ const SEED = `
     return {flashed, mode: acalMode};
   });
   check('App: back to Today from another tab, no Calendar flash', !fl.flashed && fl.mode === 'today', JSON.stringify(fl));
+  // App calendar day: Clean & refill under its own heading; pool drains can be taken off (Nov 2)
+  const ad = await p.evaluate(async ()=>{
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const d2 = new Date(); d2.setDate(d2.getDate() + 2); const iso = new Date(d2.getTime() - d2.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    const wasAdmin = window.isAdminUser, wasFetch = acalFetchOffice, wasAuth = fieldAuthed, wasConfirm = window.confirmDialog;
+    window.isAdminUser = () => true; acalFetchOffice = async () => false; window.confirmDialog = async () => true;
+    const pushed = []; fieldAuthed = async (u, o) => { pushed.push(o && o.body); return {ok: true, body: {result: true}}; };
+    lsSet('customers', (lsGet('customers') || []).concat([{id: 'ad0', name: 'Ann Day', technicianId: 't1'}, {id: 'ad1', name: 'Bob Day', technicianId: 't1'}])); customers = lsGet('customers');
+    lsSet('tasks', (lsGet('tasks') || []).concat([{id: 'task_refill_ade1', title: 'Clean & refill', date: iso, customerIds: ['ad1'], technicianId: 't1', refillOf: 'ade1'}]));
+    lsSet('scheduledPoolDrains', [{id: 'adpd1', calendarId: 'ade0', customerId: 'ad0', date: iso, status: 'scheduled', bodyName: 'Pool'}]);
+    acalOffice.drainCalendar = [{id: 'ade0', customerId: 'ad0', date: iso, pushed: {pool: 'adpd1'}}];
+    acalTech = ''; switchView('home'); await wait(150); showHomeTab('calendar'); await wait(80); acalSel = iso; acalDraw(); await wait(120);
+    const day = document.getElementById('acalDay');
+    const txt = day ? day.textContent : '';
+    const crSection = /Clean & refill/.test(txt) && /Bob Day/.test(txt);
+    const pdBin = day && day.querySelector('button[title="Take this pool drain off"] svg.weir-bin');
+    let asked = false; window.confirmDialog = async () => { asked = true; return true; };
+    viewChangedAt = 0; if(pdBin) pdBin.parentElement.click(); await wait(600);
+    window.__adAsked = asked;
+    const res = {crSection, pdBin: !!pdBin, entryGone: !(acalOffice.drainCalendar || []).some(e => e.id === 'ade0'),
+      routeGone: !(lsGet('scheduledPoolDrains') || []).some(x => x.id === 'adpd1'), sent: pushed.some(b => /_deleted/.test(b || '')), asked: window.__adAsked};
+    window.isAdminUser = wasAdmin; acalFetchOffice = wasFetch; fieldAuthed = wasAuth; window.confirmDialog = wasConfirm; showHomeTab('today');
+    return res;
+  });
+  check('App calendar: a day shows its Clean & refill', ad.crSection);
+  check('App calendar: pool drains have the WorkCenter bin', ad.pdBin);
+  check('App calendar: taking a drain off removes it at the office and from the route', ad.entryGone && ad.routeGone && ad.sent, JSON.stringify(ad));
+  // App: Customers tab opens on WorkCenter, words in that order (Nov 2)
+  const wc = await p.evaluate(async ()=>{
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const was = window.isAdminUser; window.isAdminUser = () => true; bottomTabWords(true);
+    document.querySelectorAll('.bottombar .tab').forEach(t => t.style.display = '');
+    switchView('home'); await wait(450);
+    const tab = document.querySelector('.bottombar .tab[data-view="customers"]');
+    viewChangedAt = 0; tab.querySelector('[data-tabword="1"]').click(); await wait(250);
+    const first = document.getElementById('custPaneWork').style.display !== 'none';
+    await wait(450); viewChangedAt = 0; tab.querySelector('[data-tabword="0"]').click(); await wait(250);
+    const again = document.getElementById('custPaneList').style.display !== 'none';
+    const words = tab.innerText.replace(/\s+/g, ' ').replace('●', '').trim();
+    window.isAdminUser = was; switchView('home');
+    return {first, again, words};
+  });
+  check('App: Customers tab opens on WorkCenter, whichever word is pressed', wc.first);
+  check('App: pressing it again goes to Customers', wc.again);
+  check('App: WorkCenter is the top word', /^WorkCenter Customers$/.test(wc.words), wc.words);
+  // App: Where in the route — a tap puts it there, no Assign, scroll kept, opens on the job (Nov 2)
+  const rp = await p.evaluate(async ()=>{
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const was = window.appRouteStopsFor;
+    window.appRouteStopsFor = () => Array.from({length: 15}, (_, i) => ({id: 'rs' + i, name: 'Stop ' + i, address: i + ' Main'}));
+    awcRpTask = null; awcRpWo = null;
+    const pane = document.createElement('div'); document.body.prepend(pane); awcBuild(pane); awcKind = 'Task'; awcView = 'main'; awcApply(); await wait(80);
+    document.getElementById('awcTaskDate').value = '2026-11-10'; awcTaskTechs = ['t1']; awcTaskCustomers = ['rs11']; awcRoutePlaceRefresh(); await wait(80);
+    const host = document.getElementById('awcTaskRoutePlace'); const box = host.querySelector('.rp-box'); const job = box.querySelector('.rp-job');
+    const opensOnJob = box.scrollTop > 0 && job.offsetTop - box.offsetTop <= box.scrollTop + box.clientHeight;
+    box.scrollTop = 60; viewChangedAt = 0; box.querySelectorAll('.rp-gap')[3].click(); await wait(80);
+    const res = {opensOnJob, value: awcRpTask.value(), buttons: host.querySelectorAll('[data-rp-assign], [data-rp-back]').length, kept: host.querySelector('.rp-box').scrollTop};
+    pane.remove(); window.appRouteStopsFor = was; awcRpTask = null; awcRpWo = null;
+    return res;
+  });
+  check('App route place: opens on where the job is', rp.opensOnJob);
+  check('App route place: a tap puts it there', rp.value === 'rs2', rp.value);
+  check('App route place: no Assign or Put it back', rp.buttons === 0, rp.buttons);
+  check('App route place: the list stays where it was scrolled', rp.kept === 60, rp.kept);
+  // App calendar: + Job opens a window with Clean & refill (Nov 2)
+  const jw = await p.evaluate(async ()=>{
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const was = window.isAdminUser, wf = acalFetchOffice; window.isAdminUser = () => true; acalFetchOffice = async () => false;
+    switchView('home'); await wait(150); showHomeTab('calendar'); await wait(80); acalSel = '2026-11-10'; acalMonth = '2026-11'; acalDraw(); await wait(80);
+    const add = Array.from(document.querySelectorAll('#acalDay button')).find(b => b.textContent.trim() === '+ Job');
+    viewChangedAt = 0; add.click(); await wait(80);
+    const w = Array.from(document.querySelectorAll('.confirm-overlay')).pop();
+    const items = w ? Array.from(w.querySelectorAll('.press-row')).map(r => r.children[1].textContent).join(',') : '';
+    if(w) Array.from(w.querySelectorAll('.press-row')).pop().click(); await wait(250);
+    const res = {items, title: (document.getElementById('awcTaskTitle') || {}).value, date: (document.getElementById('awcTaskDate') || {}).value};
+    window.isAdminUser = was; acalFetchOffice = wf; window.acalReturnTo = null; switchView('home');
+    return res;
+  });
+  check('App calendar: + Job opens a window with all five', jw.items === 'Work order,Task,Filter clean,Pool drain,Clean & refill', jw.items);
+  check('App calendar: Clean & refill opens a task on that day, filled in', jw.title === 'Clean & refill' && jw.date === '2026-11-10', JSON.stringify(jw));
+  // App: wet-finger taps — a tap that slides a little still presses (Nov 2)
+  check('App: wet-finger taps are on', /wetFingerTaps/.test(fs.readFileSync('app.html', 'utf8')));
+  // App calendar shows a drain and a filter clean moved on the route on their new day (Nov 2)
+  const ac2 = await p.evaluate(()=>{
+    const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+    lsSet('customers', (lsGet('customers') || []).concat([{id: 'mv0', name: 'Mo Vee', technicianId: 't1'}])); customers = lsGet('customers');
+    acalOffice.filterGroups = [{id: 'mvg', name: 'Mv group', date: d(2), finalized: true, customerIds: ['mv0']}];
+    acalOffice.drainCalendar = [{id: 'mve', customerId: 'mv0', date: d(3), pushed: {pool: 'mvp'}}];
+    lsSet('scheduledFilterCleans', [{id: 'mvf', groupId: 'mvg', customerId: 'mv0', date: d(5), status: 'scheduled', technicianId: 't1'}]);
+    lsSet('scheduledPoolDrains', [{id: 'mvp', calendarId: 'mve', customerId: 'mv0', date: d(6), status: 'scheduled', bodyName: 'Pool'}]);
+    acalTech = '';
+    const by = acalOnDays();
+    const has = (day, k) => !!(by[day] && (k === 'fc' ? by[day].fc.some(g => g.rows.some(r => r.cid === 'mv0')) : by[day][k].some(r => r.cid === 'mv0')));
+    acalOffice.filterGroups = null; acalOffice.drainCalendar = null;
+    return {fcOld: has(d(2), 'fc'), fcNew: has(d(5), 'fc'), pdOld: has(d(3), 'pd'), pdNew: has(d(6), 'pd')};
+  });
+  check('App calendar: a filter clean moved on the route shows on its new day only', !ac2.fcOld && ac2.fcNew, JSON.stringify(ac2));
+  check('App calendar: a drain moved on the route shows on its new day only', !ac2.pdOld && ac2.pdNew, JSON.stringify(ac2));
   check('App: no page errors', !p.__errors.length, p.__errors.join(' | ').slice(0, 300));
   await p.context().close();
   p = await open('app.html', `localStorage.setItem('weir:colourBlind', 'true');`);
