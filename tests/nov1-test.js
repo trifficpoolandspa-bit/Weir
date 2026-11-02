@@ -14,6 +14,10 @@
 // App: Clean & refill and filter clean work order colours, mint tasks, Move,
 // the month picker, back to Today after time away, colour-blind mode.
 // Quote page: Approve / Decline.
+// Also: narrower Qty and Price, Add to Products & Services (website and app),
+// the Add line item window by category, description hover cards, the quote
+// email body and white button words, narrow Schedule arrows, the open job
+// standing out, our date calendar, Jobs in pages of 10.
 // Run from the main folder: node tests/nov1-test.js
 const path = require('path');
 const fs = require('fs');
@@ -323,6 +327,155 @@ const SEED = `
   });
   check('Customer Jobs: 10 a page with page numbers', /^10\|2$/.test(jp), jp);
 
+  // --- Since the last check: line widths, Add to Products & Services, the Add line item window ---
+  const lw = await p.evaluate(async ()=>{
+    closeWins(); switchView('workcenter'); applyWorkCenterMode('quotes'); await wait(150);
+    currentLineItems = [{description: 'Replace pump seal', qty: 1, price: 85}, {description: 'Pool light LED swap', qty: 1, price: 180, detail: 'LED and gasket'}];
+    renderLineItems(); await wait(30);
+    const k = document.querySelector('#wcLineItems .fountain-row').children;
+    const pills = Array.from(document.querySelectorAll('#wcLineItems .line-add-ps')).map(x => x.style.display);
+    return {qty: Math.round(k[1].getBoundingClientRect().width), price: Math.round(k[2].getBoundingClientRect().width), item: Math.round(k[0].getBoundingClientRect().width), pills: pills.join(',')};
+  });
+  check('Line item: Qty and Price the same narrow width', lw.qty === 96 && lw.price === 96 && lw.item > 500, JSON.stringify(lw));
+  check('Line item: Add to Products & Services only on lines not in the list', lw.pills === 'none,inline-flex', lw.pills);
+  const ap1 = await p.evaluate(async ()=>{
+    document.querySelectorAll('#wcLineItems .line-add-ps')[1].click(); await wait(80);
+    const w = topWin().querySelector('.ps-window');
+    const r = {name: w.querySelector('#psName').value, price: w.querySelector('#psPrice').value, desc: w.querySelector('#psDesc').value,
+      first: w.querySelector('.field label').textContent.trim(), cats: Array.from(w.querySelectorAll('#psCategoryPick option')).map(o => o.textContent).join(',')};
+    const cat = w.querySelector('#psCategoryPick');
+    cat.value = 'repairs'; cat.dispatchEvent(new Event('change'));
+    r.repairShows = [w.querySelector('#psDesc').closest('.field').style.display, w.querySelector('#psUnit').closest('.field').style.display, w.querySelector('#psExtraCharge').closest('.field').style.display].join('/');
+    w.querySelector('#psSave').click(); await wait(80);
+    const saved = (lsGet('productsServices') || []).find(x => x.name === 'Pool light LED swap');
+    r.saved = saved ? [saved.category, saved.price, saved.description].join('|') : null;
+    r.pillAfter = document.querySelectorAll('#wcLineItems .line-add-ps')[1].style.display;
+    // A chemical, extra charge: needs its abbreviation
+    openProductServiceModal(); await wait(50);
+    const w2 = topWin().querySelector('.ps-window');
+    const c2 = w2.querySelector('#psCategoryPick'); c2.value = 'chemicals'; c2.dispatchEvent(new Event('change'));
+    r.chemShows = [w2.querySelector('#psUnit').closest('.field').style.display, w2.querySelector('#psDesc').closest('.field').style.display].join('/');
+    w2.querySelector('#psExtraCharge').click(); await wait(30);
+    r.abbrShows = w2.querySelector('[data-for="extra"]').style.display;
+    w2.querySelector('#psName').value = 'Muriatic acid'; w2.querySelector('#psSave').click(); await wait(30);
+    r.blocked = !!document.querySelector('.ps-window');
+    w2.querySelector('#psAbbr').value = 'MA'; w2.querySelector('#psSave').click(); await wait(50);
+    const ma = (lsGet('productsServices') || []).find(x => x.name === 'Muriatic acid');
+    r.ma = ma ? [ma.category, ma.extraCharge, ma.abbr, !!ma.extraColor].join('|') : null;
+    return r;
+  });
+  check('Add to Products & Services: window filled from the line', ap1.name === 'Pool light LED swap' && ap1.price === '180' && ap1.desc === 'LED and gasket', JSON.stringify(ap1));
+  check('Add line item window: Category at the top', ap1.first === 'Category', ap1.first);
+  check('Add line item window: Chemical last in the list', ap1.cats === 'Uncategorized,Repair,Product,Service,Chemical', ap1.cats);
+  check('Add line item window: repairs get a description, no unit or extra charge', ap1.repairShows === '/none/none', ap1.repairShows);
+  check('Add to Products & Services: saved to the list', ap1.saved === 'repairs|180|LED and gasket', ap1.saved);
+  check('Add to Products & Services: button goes once it’s in the list', ap1.pillAfter === 'none', ap1.pillAfter);
+  check('Add line item window: chemicals get unit and extra charge, no description', ap1.chemShows === '/none', ap1.chemShows);
+  check('Add line item window: extra charge asks for the abbreviation', ap1.abbrShows === '' && ap1.blocked, JSON.stringify([ap1.abbrShows, ap1.blocked]));
+  check('Add line item window: chemical saved with abbreviation and colour', ap1.ma === 'chemicals|true|MA|true', ap1.ma);
+
+  // --- Description hover card on Products & Services ---
+  await p.evaluate(()=>{ closeWins(); switchView('productsservices'); });
+  await p.waitForTimeout(250);
+  const dh = await p.evaluateHandle(()=> Array.from(document.querySelectorAll('#productsServicesList input[placeholder="Description"]')).find(i => i.value));
+  let tipText = null;
+  if(dh && dh.asElement()){
+    await dh.asElement().scrollIntoViewIfNeeded(); await dh.asElement().hover(); await p.waitForTimeout(120);
+    tipText = await p.evaluate(()=>{ const t = document.getElementById('psDescTip'); return t ? t.textContent : null; });
+    await p.mouse.move(2, 2); await p.waitForTimeout(80);
+  }
+  const tipGone = await p.evaluate(()=> !document.getElementById('psDescTip'));
+  check('Products: hovering a description shows it in full', !!tipText && /Description/.test(tipText), tipText);
+  check('Products: the card goes when the mouse leaves', tipGone);
+
+  // --- Quote email: body line, default wording, white button words ---
+  const qe = await p.evaluate(()=>{
+    const cust = {name: 'Alpha Ann', address: '1 Main St'};
+    const items = [{description: 'Acid wash', qty: 1, price: 250}];
+    const h = quoteEmailHtml(cust, 'Quote', 'Nov 1', items, 250, '', null, 'https://x.test/q?t=abc', 1, 14);
+    const none = quoteEmailHtml(cust, 'Quote', 'Nov 1', items, 250, '', Object.assign({}, QUOTE_EMAIL_DEFAULTS, {body: ''}), 'https://x.test/q?t=abc', 1, 14);
+    const box = document.createElement('div'); box.innerHTML = h;
+    const appr = Array.from(box.querySelectorAll('a')).find(a => /Approve/.test(a.textContent));
+    return {hi: /Hi Alpha,/.test(h), words: /Here’s your quote\. Please review it when you have a chance/.test(h),
+      order: h.indexOf('Hi Alpha') > h.indexOf('1 Main St') && h.indexOf('Hi Alpha') < h.indexOf('Acid wash'),
+      noBody: !/Hi Alpha/.test(none), field: !!document.getElementById('qeBody'),
+      white: appr ? /color:#ffffff !important/.test(appr.getAttribute('style')) && /font-weight:700 !important/.test(appr.getAttribute('style')) : false};
+  });
+  check('Quote email: body says hi with the first name', qe.hi);
+  check('Quote email: default wording', qe.words);
+  check('Quote email: body sits under the customer, above the items', qe.order);
+  check('Quote email: an empty body is left out', qe.noBody);
+  check('Quote email: Body box in Customize email', qe.field);
+  check('Quote email: Approve keeps white bold words', qe.white);
+
+  // --- Drain Schedule window arrows ---
+  const arr = await p.evaluate(async ()=>{ closeWins(); switchView('workcenter'); applyWorkCenterMode('drains'); pdScheduleCustomers(['c0']); await wait(150);
+    const w = Array.from(document.querySelectorAll('.confirm-overlay button[title$="month"]')).map(b => Math.round(b.getBoundingClientRect().width)); closeWins(); return w.join(','); });
+  check('Drain Schedule: month arrows are narrow', arr === '34,34', arr);
+
+  // --- The open job stands out ---
+  const dim = await p.evaluate(()=>{
+    lsSet('tasks', (lsGet('tasks') || []).concat([1, 2, 3].map(i => ({id: 'dm' + i, title: 'Dim ' + i, date: isoIn(i), customerIds: ['c3']}))));
+    tasks = lsGet('tasks'); qoOpenId = null; renderCustomerWorkOrders('c3');
+    const rows = document.querySelectorAll('#custWorkOrderList [data-qo-id]'); rows[1].click();
+    const r = [document.querySelectorAll('#custWorkOrderList .row-dim').length, document.querySelectorAll('#custWorkOrderList .row-open').length, document.querySelectorAll('#custWorkOrderList .row-open-body').length].join(',');
+    document.querySelector('#custWorkOrderList .row-open').click();
+    return r + '/' + document.querySelectorAll('#custWorkOrderList .row-dim').length;
+  });
+  check('Customer Jobs: other rows fade and the open one is outlined', dim === (dim.split(',')[0] + ',1,1/0') && Number(dim.split(',')[0]) >= 2, dim);
+
+  const sdc = await p.evaluate(()=> JSON.stringify(splitDrainChecks(['Autofill valve turned off', 'Pump turned off', 'Acid wash'])));
+  check('Website: drain ticks shown apart from extra work', sdc === '[["Autofill valve turned off","Pump turned off"],["Acid wash"]]', sdc);
+
+  // Drains already on the calendar get their Clean & refill (Nov 2)
+  const rf = await p.evaluate(()=>{
+    const cal = pdCal().filter(e => !/^rf/.test(e.id));
+    cal.push({id: 'rf1', customerId: 'c0', date: isoIn(3)}, {id: 'rf2', customerId: 'c1', date: isoIn(-20)});
+    lsSet('drainCalendar', cal);
+    const c1 = customers.find(x => x.id === 'c0'); delete c1.drainCleanDays; c1.drainOvernight = true; saveCustomers();
+    pdEnsureRefills();
+    const t = tasks.find(x => x.refillOf === 'rf1');
+    const past = tasks.some(x => x.refillOf === 'rf2');
+    tasks = tasks.filter(x => x.refillOf !== 'rf1'); saveTasks();
+    const again = pdEnsureRefills();
+    return {day: t && t.date, want: isoIn(4), id: t && t.id, past, again};
+  });
+  check('Calendar drains: a scheduled drain gets its Clean & refill the next day', rf.day === rf.want, rf.day + ' vs ' + rf.want);
+  check('Calendar drains: the same job id on every computer', rf.id === 'task_refill_rf1', rf.id);
+  check('Calendar drains: past drains are left alone', !rf.past);
+  check('Calendar drains: one taken off by hand doesn’t come back', rf.again === 0, rf.again);
+
+  // Pool drains: Drain and Cleaning photo ticks, Email level with them, hover help (Nov 2)
+  await p.evaluate(async ()=>{ closeWins(); switchView('workcenter'); applyWorkCenterMode('drains'); openDrainBuckets.clear(); openDrainBuckets.add('overdue'); renderPoolDrains(); await wait(200); });
+  const ph = await p.evaluate(()=>{
+    const tops = ['photo', 'cleanphoto', 'email'].map(c => { const h = document.querySelector('#drainStatusList [data-col="' + c + '"]'); return h ? Math.round(h.getBoundingClientRect().top) : null; });
+    const row = document.querySelector('#drainStatusList .press-row');
+    const cleanBox = row && row.querySelector('label[title*="clean & refill"] input');
+    return {tops: tops.join(','), hasClean: !!cleanBox};
+  });
+  check('Pool drains: Drain, Cleaning and Email headings on one line', /^(\d+),\1,\1$/.test(ph.tops), ph.tops);
+  check('Pool drains: a Cleaning photo tick on each overnight customer', ph.hasClean);
+  const hd = await p.$('#drainStatusList [data-col="cleanphoto"]');
+  if(hd){ await hd.hover(); await p.waitForTimeout(100); }
+  const tipTxt = await p.evaluate(()=>{ const t = document.getElementById('pdHeadTip'); return t ? t.textContent : ''; });
+  await p.mouse.move(2, 2);
+  check('Pool drains: hovering a heading says what it does', /Clean & refill/.test(tipTxt), tipTxt.slice(0, 60));
+  const cp = await p.evaluate(()=>{
+    const c = customers.find(x => x.id === 'c0'); c.drainOvernight = true; c.drainCleanPhotoRequired = true; saveCustomers();
+    const cal = pdCal().filter(e => e.id !== 'cp1'); cal.push({id: 'cp1', customerId: 'c0', date: isoIn(6)}); lsSet('drainCalendar', cal);
+    pdEnsureRefills();
+    const before = (tasks.find(t => t.refillOf === 'cp1') || {}).photoRequired;
+    c.drainCleanPhotoRequired = false; pdApplyCustSettings(c); saveCustomers();
+    const after = (tasks.find(t => t.refillOf === 'cp1') || {}).photoRequired;
+    c.drainOvernight = false; saveCustomers(); renderPoolDrains();
+    const dash = !!document.querySelector('#drainStatusList [data-pd-customer="c0"] span[title*="Not an overnight"]');
+    c.drainOvernight = true; c.drainCleanPhotoRequired = true; saveCustomers();
+    return {before, after, dash};
+  });
+  check('Pool drains: Cleaning tick makes the Clean & refill need a photo', cp.before === true, cp.before);
+  check('Pool drains: unticking it takes the photo off the Clean & refill', cp.after === false, cp.after);
+  check('Pool drains: no overnight drain shows a dash for Cleaning', cp.dash);
+
   // --- Colour-blind mode ---
   const cbSet = await p.evaluate(()=>{ switchView('settings'); const b = document.getElementById('settingColourBlind'); return {there: !!b && b.getClientRects().length > 0, on: b && b.checked, keys: document.getElementById('colourBlindKey').children.length}; });
   check('Colour-blind: switch in Settings', cbSet.there, JSON.stringify(cbSet));
@@ -371,6 +524,73 @@ const SEED = `
   check('App: Move and month picker are there', ap.move && ap.month);
   check('App: back to Today after time away is there', ap.away !== 'undefined', ap.away);
   check('App: colour-blind switch in Settings', ap.cbSwitch);
+  // App: Add to Products & Services, New product or service, the quote email
+  const apx = await p.evaluate(async ()=>{
+    localStorage.setItem('weir:productsServices', JSON.stringify([{key: 'p1', name: 'Replace pump seal', price: 85, category: 'repairs'}]));
+    const pane = document.createElement('div'); document.body.appendChild(pane); awcBuild(pane);
+    awcQuoteLines = [{description: 'Replace pump seal', qty: 1, price: 85}, {description: 'Pool light LED swap', qty: 1, price: 180, detail: 'LED and gasket'}];
+    awcRenderLines('awcQuoteLines');
+    const chips = Array.from(document.querySelectorAll('#awcQuoteLines > button')).map(b => b.style.display).join(',');
+    const newBtns = pane.querySelectorAll('[data-new-ps]').length;
+    document.querySelectorAll('#awcQuoteLines > button')[1].click(); await new Promise(r => setTimeout(r, 50));
+    const w = Array.from(document.querySelectorAll('.confirm-overlay')).pop();
+    const filled = [w.querySelector('[data-name]').value, w.querySelector('[data-price]').value, w.querySelector('[data-desc]').value].join('|');
+    w.querySelector('[data-cat]').value = 'repairs'; w.querySelector('[data-cat]').dispatchEvent(new Event('change'));
+    w.querySelector('[data-save]').click(); await new Promise(r => setTimeout(r, 50));
+    const saved = (lsGet('productsServices') || []).some(x => x.name === 'Pool light LED swap' && x.category === 'repairs' && x.description === 'LED and gasket');
+    const queued = !!(lsGet('setupToSend') || {}).productsServices;
+    const h = awcQuoteEmailHtml({name: 'Bravo Bob'}, 'Quote', 'Nov 1', [{description: 'X', qty: 1, price: 1}], 1, '', null, 'https://x.test/q?t=a', 1, 14);
+    return {chips, newBtns, filled, saved, queued, chipAfter: document.querySelectorAll('#awcQuoteLines > button')[1].style.display,
+      body: /Hi Bravo,/.test(h) && /Here’s your quote\./.test(h), white: /color:#ffffff !important/.test(h)};
+  });
+  check('App: Add to Products & Services under lines not in the list', apx.chips === 'none,inline-flex', apx.chips);
+  check('App: New product or service on quotes and work orders', apx.newBtns === 2, apx.newBtns);
+  check('App: window filled from the line', apx.filled === 'Pool light LED swap|180|LED and gasket', apx.filled);
+  check('App: saved to Products & Services and sent to the office', apx.saved && apx.queued);
+  check('App: button goes once it’s in the list', apx.chipAfter === 'none', apx.chipAfter);
+  check('App: quote email body with the new wording', apx.body);
+  check('App: quote email buttons keep white words', apx.white);
+  // App: Before draining ticks on a pool drain, required before Submit (Nov 1)
+  const dc = await p.evaluate(async ()=>{
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const toasts = []; window.showToast = m => toasts.push(m);
+    const t = new Date().toISOString().slice(0, 10);
+    lsSet('scheduledPoolDrains', [{id: 'pdx', customerId: 'cz', date: t, status: 'scheduled'}]);
+    openJobPage({id: 'cz', name: 'Zed Zane'}, {kind: 'pool drain', id: 'pdx', key: 'pool drain:pdx', title: 'Pool drain', customerId: 'cz', date: t});
+    const page = document.getElementById('jobPage');
+    const tiles = Array.from(page.querySelectorAll('[data-drain-check]')).map(c => c.dataset.drainCheck).join('|');
+    const sub = Array.from(page.querySelectorAll('button')).find(b => b.textContent.trim() === 'Submit');
+    sub.click(); await wait(80);
+    const blocked = (lsGet('scheduledPoolDrains') || [])[0].status !== 'done';
+    const msg = toasts.pop() || '';
+    page.querySelectorAll('[data-drain-check]').forEach(c => c.click());
+    sub.click(); await wait(800);
+    const pd = (lsGet('scheduledPoolDrains') || [])[0];
+    const page2 = document.getElementById('jobPage'); if(page2) page2.remove();
+    return {tiles, blocked, msg, status: pd.status, extra: (pd.doneExtraWork || []).join('|'),
+      email: /Pump turned off/.test(buildJobEmailHtml({name: 'Zed Zane'}, Object.assign({kind: 'pool drain'}, pd), 'Amy'))};
+  });
+  check('App drain: Before draining has both ticks', dc.tiles === 'Autofill valve turned off|Pump turned off', dc.tiles);
+  check('App drain: Submit waits for both ticks', dc.blocked && /Autofill valve turned off/.test(dc.msg) && /Pump turned off/.test(dc.msg), dc.msg);
+  check('App drain: both ticked, it submits', dc.status === 'done', dc.status);
+  check('App drain: the ticks go with the drain to the office', dc.extra === 'Autofill valve turned off|Pump turned off', dc.extra);
+  check('App drain: the email shows them', dc.email);
+  // App: going back to Today from another tab never flashes the Calendar (Nov 1)
+  const fl = await p.evaluate(async ()=>{
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const was = window.isAdminUser; window.isAdminUser = () => true; bottomTabWords(true);
+    document.querySelectorAll('.bottombar .tab').forEach(t => t.style.display = '');
+    switchView('home'); await wait(200); showHomeTab('calendar'); await wait(150);
+    const tab = v => document.querySelector('.bottombar .tab[data-view="' + v + '"]');
+    viewChangedAt = 0; tab('customers').click(); await wait(500);
+    const card = document.getElementById('appCalCard');
+    viewChangedAt = 0; tab('home').click();
+    const flashed = card.style.display === 'block' && document.getElementById('view-home').classList.contains('active');
+    await wait(200);
+    window.isAdminUser = was;
+    return {flashed, mode: acalMode};
+  });
+  check('App: back to Today from another tab, no Calendar flash', !fl.flashed && fl.mode === 'today', JSON.stringify(fl));
   check('App: no page errors', !p.__errors.length, p.__errors.join(' | ').slice(0, 300));
   await p.context().close();
   p = await open('app.html', `localStorage.setItem('weir:colourBlind', 'true');`);
