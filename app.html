@@ -175,6 +175,12 @@ input,select,textarea{
   transition:border-color .15s ease, box-shadow .15s ease;
 }
 input.mono{font-family:'JetBrains Mono',monospace;font-weight:600;font-size:18px;}
+/* An empty date box keeps its full size (Nov 2): a phone shrinks one with no date */
+input[type=date]:not([style*="opacity:0"]):not([style*="width:0"]){min-height:42px;min-width:160px;}
+@media (pointer:coarse){
+  input[type=date]:not([style*="opacity:0"]):not([style*="width:0"]){-webkit-appearance:none;appearance:none;display:block;line-height:22px;}
+  input[type=date]::-webkit-date-and-time-value{text-align:left;min-height:22px;}
+}
 input:focus,select:focus,textarea:focus{
   outline:none;
   border-color:var(--teal-mid);
@@ -1059,8 +1065,9 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
     <!-- Customers / WorkCenter (Oct 2), the same two-button style as the Report tab -->
     <div class="card" id="custPaneCard" style="padding:10px;">
       <div class="btn-row" style="gap:6px;">
-        <button type="button" class="btn btn-primary" id="btnCustPaneList" style="flex:1;">Customers</button>
+        <!-- WorkCenter on the left (Nov 2) -->
         <button type="button" class="btn btn-ghost" id="btnCustPaneWork" style="flex:1;">WorkCenter</button>
+        <button type="button" class="btn btn-primary" id="btnCustPaneList" style="flex:1;">Customers</button>
       </div>
     </div>
     <div id="custPaneList">
@@ -3228,7 +3235,10 @@ document.addEventListener('click', (ev)=>{
     // straight into a customer's report. A tab with two pages switches to the
     // other one instead (Oct 30); its words do that themselves.
     if(t.dataset.view === currentViewName){
-      if(t.dataset.twoWords === '1' && !(ev.target.closest && ev.target.closest('[data-tabword]'))) bottomTabCycle(t.dataset.view);
+      // Pressed again while open: the other page. Handled only here (Nov 2):
+      // the words used to switch it too, so a press from another tab opened
+      // the top page and then jumped straight to the second one
+      if(t.dataset.twoWords === '1') bottomTabCycle(t.dataset.view);
       return;
     }
     // From another tab, a tab with two pages always opens on its top one
@@ -3454,13 +3464,21 @@ let roleShown = null;
 // a thin line. From another tab it opens on the top page; pressed again it
 // switches between the two (Oct 30). A technician's tabs stay one word.
 const BOTTOM_TAB_WORDS = {home: ['Today', 'Calendar'], technicians: ['Techs', 'Photo'],
-  report: ['Serviced', 'Reports'], customers: ['Customers', 'WorkCenter']};
+  report: ['Serviced', 'Reports'], customers: ['WorkCenter', 'Customers']};   // WorkCenter first (Nov 2)
 function bottomTabPane(view, second){
   try{
     if(currentViewName !== view) return;
     if(view === 'home') showHomeTab(second ? 'calendar' : 'today');
     else if(view === 'report') setReportMode(second ? 'reports' : 'serviced');
-    else if(view === 'customers') showCustomerPane(second ? 'work' : 'list');
+    else if(view === 'customers'){
+      // WorkCenter is the top page (Nov 2), opening on Quote as its button does
+      if(!second){
+        const w = document.getElementById('custPaneWork');
+        const showing = w && w.style.display !== 'none';
+        if(!showing && !(typeof awcEdit !== 'undefined' && awcEdit)){ awcKind = 'Quote'; awcView = 'main'; awcShown = 20; }
+      }
+      showCustomerPane(second ? 'list' : 'work');
+    }
     else if(view === 'technicians'){
       const b = document.querySelector('#techMainTabs [data-techmain="' + (second ? 'photos' : 'list') + '"]');
       if(b){ viewChangedAt = 0; b.click(); }
@@ -3473,7 +3491,7 @@ function bottomTabOnSecond(view){
   try{
     if(view === 'home') return acalMode === 'calendar';
     if(view === 'report') return reportMode === 'reports';
-    if(view === 'customers'){ const w = document.getElementById('custPaneWork'); return !!w && w.style.display !== 'none' && getComputedStyle(w).display !== 'none'; }
+    if(view === 'customers'){ const w = document.getElementById('custPaneWork'); return !(!!w && w.style.display !== 'none' && getComputedStyle(w).display !== 'none'); }   // Customers is the second page now (Nov 2)
     if(view === 'technicians') return document.getElementById('view-technicians').classList.contains('photos-mode');
   }catch(e){}
   return false;
@@ -3492,13 +3510,8 @@ function bottomTabWords(admin){
     t.innerHTML = dot + '<span data-tabword="0" style="display:block;line-height:1.2;">' + words[0] + '</span>'
       + '<span style="display:block;width:60%;margin:2px auto;border-top:1px solid #CFDCD9;"></span>'
       + '<span data-tabword="1" style="display:block;line-height:1.2;">' + words[1] + '</span>';
-    t.querySelectorAll('[data-tabword]').forEach(w=>{
-      w.addEventListener('click', ()=>{
-        // Already open: each press switches to the other page. Coming from
-        // another tab it opens on the top page (Oct 30), as any press does.
-        if(currentViewName === t.dataset.view) bottomTabCycle(t.dataset.view);
-      });
-    });
+    // (A press on either word is handled with the tab's own press: the top
+    // page from another tab, the other page when it's already open.)
   });
 }
 function applyRoleUI(){
@@ -18132,9 +18145,32 @@ function makeRoutePlace(o){
     const c = ctx();
     if(c.off){ host.style.display = 'none'; host.innerHTML = ''; return; }
     host.style.display = '';
+    // Redrawn in place (Nov 2): the list keeps its own scroll and the page
+    // stays exactly where it is
+    const oldBox = host.querySelector('.rp-box');
+    const keepBoxTop = oldBox ? oldBox.scrollTop : 0;
+    const keepY = window.scrollY;
+    const keepH = host.offsetHeight;
+    if(keepH) host.style.minHeight = keepH + 'px';
+    const settle = ()=>{
+      const nb = host.querySelector('.rp-box');
+      // A new technician, day or customer (or the first look): the list opens
+      // on where the job is in the route already (Nov 2); otherwise it stays put
+      const key = [c.techId, c.iso, c.own].join('|');
+      const fresh = !oldBox || st.lastKey !== key;
+      st.lastKey = key;
+      if(nb){
+        const job = nb.querySelector('.rp-job');
+        if(fresh && job) nb.scrollTop = Math.max(0, job.offsetTop - nb.offsetTop - nb.clientHeight / 2 + job.offsetHeight / 2);
+        else nb.scrollTop = keepBoxTop;
+      }
+      host.style.minHeight = '';
+      if(Math.abs(window.scrollY - keepY) > 1) window.scrollTo(0, keepY);
+    };
     if(c.note){
       st.pending = undefined;
       host.innerHTML = '<label>Where in the route</label><div class="rp-note">' + esc2(c.note) + '</div>';
+      settle();
       return;
     }
     const ids = c.stops.map(s => String(s.id));
@@ -18160,9 +18196,11 @@ function makeRoutePlace(o){
       g.className = 'rp-gap';
       g.title = 'Put it here';
       g.addEventListener('click', e=>{
-        e.stopPropagation();
-        // Back where it already is: nothing to assign
-        st.pending = (ok(st.assigned) ? st.assigned : ownAt) === after ? undefined : after;
+        e.stopPropagation(); e.preventDefault();
+        // A tap puts it there (Nov 2): no Assign to press. Back under its
+        // own customer counts as no place chosen.
+        st.pending = undefined;
+        st.assigned = after === ownAt ? undefined : after;
         draw();
       });
       return g;
@@ -18180,20 +18218,16 @@ function makeRoutePlace(o){
     if(shown === null) box.appendChild(jobRow());
     const foot = host.querySelector('.rp-foot');
     const after = v => v === '' ? 'at the start of the route' : 'after ' + o.nameOf(c.stops.find(s => String(s.id) === v) || {});
-    if(st.pending !== undefined){
-      foot.innerHTML = '<div class="btn-row" style="flex-wrap:nowrap;margin-top:10px;">'
-        + '<button type="button" class="btn btn-primary" data-rp-assign style="flex:1 1 0;min-width:0;">Assign</button>'
-        + '<button type="button" class="btn btn-ghost" data-rp-back style="flex:1 1 0;min-width:0;">Put it back</button></div>';
-      foot.querySelector('[data-rp-assign]').addEventListener('click', e=>{ e.stopPropagation(); st.assigned = st.pending; st.pending = undefined; draw(); });
-      foot.querySelector('[data-rp-back]').addEventListener('click', e=>{ e.stopPropagation(); st.pending = undefined; draw(); });
-    } else if(ok(st.assigned)){
-      foot.innerHTML = '<div class="rp-done">✓ Assigned ' + esc2(after(st.assigned)) + '</div>'
-        + '<button type="button" class="btn btn-ghost" data-rp-own style="width:auto;margin-top:6px;padding:5px 10px;font-size:12px;">Put it under its customer</button>';
-      foot.querySelector('[data-rp-own]').addEventListener('click', e=>{ e.stopPropagation(); st.assigned = undefined; draw(); });
+    if(ok(st.assigned)){
+      foot.innerHTML = '<div class="rp-done">✓ Goes ' + esc2(after(st.assigned)) + '</div>'
+        + (ownAt ? '<button type="button" class="btn btn-ghost" data-rp-own style="width:auto;margin-top:6px;padding:5px 10px;font-size:12px;">Put it under its customer</button>' : '');
+      const own = foot.querySelector('[data-rp-own]');
+      if(own) own.addEventListener('click', e=>{ e.stopPropagation(); st.assigned = undefined; draw(); });
     } else {
       foot.innerHTML = '<div class="rp-note">' + (ownAt ? 'It goes under its customer. ' : (c.own ? 'Its customer isn’t on this route that day, so it goes at the end. ' : 'It goes at the end. '))
-        + 'Tap a gap to move it, then press Assign.</div>';
+        + 'Tap a gap to put it somewhere else.</div>';
     }
+    settle();
   }
   return {
     refresh: draw,
@@ -18201,7 +18235,7 @@ function makeRoutePlace(o){
     value: ()=>{ const c = ctx(); return (!c.off && !c.note && typeof st.assigned === 'string') ? st.assigned : undefined; },
     unassigned: ()=> st.pending !== undefined && !!el() && !!el().querySelector('[data-rp-assign]'),
     assignBtn: ()=> el() && el().querySelector('[data-rp-assign]'),
-    set: v=>{ st.assigned = typeof v === 'string' ? v : undefined; st.pending = undefined; draw(); },
+    set: v=>{ st.assigned = typeof v === 'string' ? v : undefined; st.pending = undefined; st.lastKey = undefined; draw(); },
     reset: ()=>{ st.assigned = undefined; st.pending = undefined; draw(); }
   };
 }
@@ -19547,16 +19581,21 @@ function awcRenderHistory(){
 // leaves it blank. A grey overlay, gone once there's a date, however the date
 // was set.
 (function datePlaceholders(){
-  const ids = ['awcWoDate', 'awcTaskDate'];
+  // Every date box you can see (Nov 2), not just the WorkCenter's two
+  const isBox = el => el && el.tagName === 'INPUT' && el.type === 'date' && !/opacity:\s*0|width:\s*0|display:\s*none/.test(el.getAttribute('style') || '');
   const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
   // Only where the phone draws nothing itself: a computer shows its own
   const own = !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) && !(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const wire = ()=> ids.forEach(id=>{
-    const el = document.getElementById(id);
-    if(own || !el || el.dataset.ph) return;
+  const wireOne = el=>{
+    if(own || !isBox(el) || el.dataset.ph) return;
     el.dataset.ph = '1';
     const wrap = document.createElement('span');
-    wrap.style.cssText = 'position:relative;display:inline-flex;vertical-align:top;max-width:100%;';
+    // As wide as the box was meant to be: a full-width box keeps the full width
+    const auto = /width:\s*auto/.test(el.getAttribute('style') || '');
+    const inFlexRow = el.parentElement && getComputedStyle(el.parentElement).display.indexOf('flex') !== -1 && getComputedStyle(el.parentElement).flexDirection.indexOf('row') === 0;
+    wrap.style.cssText = 'position:relative;vertical-align:top;max-width:100%;'
+      + (auto ? 'display:inline-flex;' : inFlexRow ? 'display:flex;flex:1 1 auto;min-width:0;' : 'display:flex;width:100%;');
+    if(el.style.flex){ wrap.style.flex = el.style.flex; }
     el.parentNode.insertBefore(wrap, el);
     wrap.appendChild(el);
     const ph = document.createElement('span');
@@ -19576,9 +19615,20 @@ function awcRenderHistory(){
     show();
     // Sized once it's on screen
     if(window.ResizeObserver){ try{ new ResizeObserver(show).observe(el); }catch(e){} }
-  });
-  // The WorkCenter is built the first time it's opened
+  };
+  const wire = ()=> document.querySelectorAll('input[type=date]').forEach(wireOne);
+  // The WorkCenter is built the first time it's opened; windows come and go
   window.wireDatePlaceholders = wire;
+  if(!own){
+    const start = ()=>{
+      wire();
+      try{ new MutationObserver(list => list.forEach(m => m.addedNodes.forEach(n=>{
+        if(n.nodeType !== 1) return;
+        if(n.tagName === 'INPUT') wireOne(n); else if(n.querySelectorAll) n.querySelectorAll('input[type=date]').forEach(wireOne);
+      }))).observe(document.body, {childList: true, subtree: true}); }catch(e){}
+    };
+    if(document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+  }
 })();
 (function noTypedHistory(){
   const isSearch = el => el && el.tagName === 'INPUT' && /^(text|search)?$/i.test(el.getAttribute('type') || '')
@@ -19665,6 +19715,43 @@ async function acalPushOffice(kind, item){
     });
     return !!(res && res.ok && res.body && res.body.result);
   }catch(e){ return false; }
+}
+// Take a pool drain off the calendar from the app (Nov 2): its calendar entry
+// goes at the office, its drains on the route that aren't done come off, and
+// so does its Clean & refill visit
+async function acalTakeOffDrain(r, iso){
+  const e = r.entry;
+  if(e){
+    try{
+      const res = await fieldAuthed('/rest/v1/rpc/push_record_fields', {
+        method: 'POST',
+        body: JSON.stringify({p_kind: 'drain_entry', p_id: String(e.id), p_changes: {_deleted: {t: new Date().toISOString(), v: true}}, p_base: null})
+      });
+      if(!(res && res.ok && res.body && res.body.result)) return false;
+    }catch(err){ return false; }
+    if(Array.isArray(acalOffice.drainCalendar)) acalOffice.drainCalendar = acalOffice.drainCalendar.filter(x => !(x && x.id === e.id));
+  }
+  // Its drains on the route
+  const ids = e ? Object.keys(e.pushed || {}).map(k => e.pushed[k]).concat(e.pushedId ? [e.pushedId] : []) : [];
+  const recs = lsGet('scheduledPoolDrains') || [];
+  const gone = recs.filter(x => x && x.status !== 'done' && (ids.indexOf(x.id) !== -1 || (!e && String(x.customerId) === String(r.cid) && x.date === iso)));
+  if(gone.length){
+    lsSet('scheduledPoolDrains', recs.filter(x => gone.indexOf(x) === -1));
+    gone.forEach(x => queueOfficeWork('pool_drain', x.id, true));
+  }
+  // Its Clean & refill
+  if(e){
+    const list = lsGet('tasks') || [];
+    const refills = list.filter(t => t && t.refillOf === e.id && !t.done);
+    if(refills.length){
+      const keep = list.filter(t => refills.indexOf(t) === -1);
+      lsSet('tasks', keep);
+      try{ if(typeof tasks !== 'undefined') tasks = keep; }catch(err){}
+      refills.forEach(t => queueOfficeWork('task', t.id, true));
+    }
+  }
+  try{ fieldNoteLocalChange(); }catch(err){}
+  return true;
 }
 // A customer's bodies of water, as the website lists them for a drain
 function acalBodies(c){
@@ -19884,7 +19971,10 @@ function acalOnDays(){
       if(!g || !g.date) return;
       const paused = id => Array.isArray(g.pausedIds) && g.pausedIds.indexOf(id) !== -1;
       const techOf = cid => (g.custTech && g.custTech[cid]) || g.technicianId || (g.solo ? ((acalCust(cid) || {}).technicianId || '') : '');
-      const rows = (g.customerIds || []).filter(cid => !paused(cid) && acalCust(cid)).map(cid=>{
+      // Rescheduled to another day on the route (Nov 2): shown on that day instead
+      const movedAway = cid => fcRecs.some(f => f && !f.reopened && f.groupId === g.id && f.customerId === cid && f.status !== 'done' && f.date && f.date !== g.date)
+        && !fcRecs.some(f => f && !f.reopened && f.groupId === g.id && f.customerId === cid && f.date === g.date);
+      const rows = (g.customerIds || []).filter(cid => !paused(cid) && acalCust(cid) && !movedAway(cid)).map(cid=>{
         const rec = fcRecs.find(f => f && !f.reopened && f.groupId === g.id && f.customerId === cid && f.date === g.date && f.status === 'done')
           || fcRecs.find(f => f && !f.reopened && f.groupId === g.id && f.customerId === cid && f.date === g.date);
         const st = rec && rec.status === 'done' ? 'done' : (g.finalized && !(g.custHold && g.custHold[cid]) ? 'app' : '');
@@ -19892,6 +19982,18 @@ function acalOnDays(){
       }).filter(r => mineTech(r.tech));
       if(rows.length) day(g.date).fc.push({name: g.solo ? 'On their own' : (g.name || 'Group'), solo: !!g.solo, tech: g.technicianId, rows: rows});
     });
+    // Filter cleans on the route on a day their group isn't (moved, or made
+    // again from Serviced): on that day, on their own (Nov 2)
+    const extra = {};
+    fcRecs.forEach(f=>{
+      if(!f || f.reopened || !f.date || !acalCust(f.customerId) || !mineTech(f.technicianId)) return;
+      const g = f.groupId ? acalOffice.filterGroups.find(x => x && x.id === f.groupId) : null;
+      if(g && g.date === f.date && (g.customerIds || []).indexOf(f.customerId) !== -1) return;
+      const solo = acalOffice.filterGroups.find(x => x && x.solo && x.date === f.date && (x.customerIds || []).indexOf(f.customerId) !== -1);
+      if(solo) return;
+      (extra[f.date] = extra[f.date] || {name: 'On their own', solo: true, tech: '', rows: []}).rows.push({cid: f.customerId, st: f.status === 'done' ? 'done' : 'app', tech: f.technicianId});
+    });
+    Object.keys(extra).forEach(d => day(d).fc.push(extra[d]));
   } else {
     // Not reached the server yet: what's in the app
     const groups = {};
@@ -19910,10 +20012,23 @@ function acalOnDays(){
       if(!mineTech(tech)) return;
       const ids = Object.keys(e.pushed || {}).map(k => e.pushed[k]).concat(e.pushedId ? [e.pushedId] : []);
       const recs = pdRecs.filter(r => r && ids.indexOf(r.id) !== -1);
+      // Every drain of it rescheduled to another day on the route (Nov 2): shown there
+      if(recs.length && recs.every(r => !r.reopened && r.status !== 'done' && r.date && r.date !== e.date)) return;
       const st = !recs.length ? '' : (recs.every(r => r.status === 'done') ? 'done' : 'app');
       const kinds = (Array.isArray(e.bodyKinds) && e.bodyKinds.length ? e.bodyKinds : [e.bodyKind || 'pool']);
       const bodies = recs.length ? recs.map(r => r.bodyName || r.bodyKind) : kinds.map(k => ({pool: 'Pool', spa: 'Spa', fountain: 'Fountain', extra: 'Extra'})[k] || 'Body of water');
       day(e.date).pd.push({cid: e.customerId, st: st, tech: tech, bodies: bodies, entry: e});
+    });
+    // Drains on the route on a day their calendar entry isn't: on that day (Nov 2)
+    const shown = {};
+    pdRecs.forEach(r=>{
+      if(!r || r.reopened || !r.date || !acalCust(r.customerId) || !mineTech(r.technicianId)) return;
+      const e = acalOffice.drainCalendar.find(x => x && (x.id === r.calendarId || Object.keys(x.pushed || {}).some(k => x.pushed[k] === r.id) || x.pushedId === r.id));
+      if(e && e.date === r.date) return;
+      const k = r.date + '\u0002' + r.customerId;
+      if(shown[k]){ shown[k].bodies.push(r.bodyName || r.bodyKind); if(r.status !== 'done') shown[k].st = 'app'; return; }
+      shown[k] = {cid: r.customerId, st: r.status === 'done' ? 'done' : 'app', tech: r.technicianId, bodies: [r.bodyName || r.bodyKind || 'Pool'], entry: e ? Object.assign({}, e, {date: r.date}) : null};
+      day(r.date).pd.push(shown[k]);
     });
   } else {
     const seen = {};
@@ -20091,7 +20206,8 @@ function acalDayWindow(on){
   const add = document.createElement('button');
   add.type = 'button'; add.className = 'btn btn-ghost'; add.style.cssText = 'width:auto;flex:0 0 auto;padding:7px 12px;font-size:13px;';
   add.textContent = '+ Job';
-  add.addEventListener('click', e=>{ e.stopPropagation(); acalJobMenu = !acalJobMenu; acalDraw(); });
+  // A window with every kind of job (Nov 2): the drop-down ran off the screen
+  add.addEventListener('click', e=>{ e.stopPropagation(); acalJobMenu = false; acalJobWindow(iso); });
   const close = document.createElement('button');
   close.type = 'button'; close.className = 'btn btn-primary'; close.style.cssText = 'width:auto;flex:0 0 auto;padding:7px 12px;font-size:13px;';
   close.textContent = 'Close';
@@ -20179,20 +20295,41 @@ function acalDayWindow(on){
           return true;
         }
       }));
+      // Take it off (Nov 2): the drain, what of it is on the route, and its
+      // Clean & refill, with the same bin as the WorkCenter's
+      if(r.st !== 'done'){
+        const bin = document.createElement('button');
+        bin.type = 'button';
+        bin.title = 'Take this pool drain off';
+        bin.setAttribute('aria-label', bin.title);
+        bin.style.cssText = 'display:inline-flex;cursor:pointer;';
+        bin.innerHTML = '<svg class="weir-bin" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        bin.addEventListener('click', async e=>{
+          e.stopPropagation();
+          const who = (acalCust(r.cid) || {}).name || 'this customer';
+          const ok = await confirmDialog('Take ' + who + '\u2019s pool drain off ' + h.textContent + '? It comes off the route too, with its Clean & refill.', 'Take off');
+          if(!ok) return;
+          if(!(await acalTakeOffDrain(r, iso))){ showToast('Couldn\u2019t reach the office \u2014 try again with a connection'); return; }
+          acalDraw();
+          showToast('Taken off');
+        });
+        right.push(bin);
+      }
       row((acalCust(r.cid) || {}).name || 'Customer', r.bodies.join(', '), r.st, right);
     });
   }
   // Work orders and tasks: the technician can be changed and one taken off
   // here, as on the website
   const kinds = {wo: ['scheduledWorkOrders', 'work_order', 'work order'], tk: ['tasks', 'task', 'task']};
-  ['wo', 'tk'].forEach(k=>{
-    if(!on[k].length) return;
-    badge(k);
-    on[k].forEach(it=>{
+  // Clean & refill visits under their own CR heading (Nov 2), then the tasks
+  [['wo', 'wo', on.wo], ['cr', 'tk', on.tk.filter(it => it.crLike)], ['tk', 'tk', on.tk.filter(it => !it.crLike)]].forEach(([tag, k, items])=>{
+    if(!items.length) return;
+    badge(tag);
+    items.forEach(it=>{
       const rec = it.rec;
       const c = acalCust(it.cid);
       const name = k === 'wo' ? ((c && c.name) || 'Customer') : (c ? c.name : (rec.title || 'Task'));
-      const sub = k === 'wo' ? ((rec.workOrderNumber ? '#' + String(rec.workOrderNumber).padStart(4, '0') + ' · ' : '') + (rec.title || '')) : (rec.title || '');
+      const sub = k === 'wo' ? ((rec.workOrderNumber ? '#' + String(rec.workOrderNumber).padStart(4, '0') + ' · ' : '') + (rec.title || '')) : tag === 'cr' ? 'Clean & refill' : (rec.title || '');
       const right = [];
       const done = it.st === 'done';
       const sel = document.createElement('select');
@@ -20246,6 +20383,11 @@ function acalDayWindow(on){
           if(!lsSet(kinds[k][0], list)) return;
           if(k === 'tk'){ try{ if(typeof tasks !== 'undefined') tasks = list; }catch(e){} }
           queueOfficeWork(kinds[k][1], rec.id, true);
+          // A Clean & refill taken off stays off (Nov 2): its drain says so
+          if(tag === 'cr' && rec.refillOf && Array.isArray(acalOffice.drainCalendar)){
+            const ent = acalOffice.drainCalendar.find(x => x && x.id === rec.refillOf);
+            if(ent && !ent.refillMade){ ent.refillMade = true; try{ await acalPushOffice('drain_entry', ent); }catch(e){} }
+          }
           try{ fieldNoteLocalChange(); }catch(e){}
           acalDraw();
           showToast('Taken off');
@@ -20380,7 +20522,41 @@ function acalMoveDialog(opts){
   });
 }
 // + Job: the WorkCenter's own Work Order or Task form, with the day filled in
-function acalNewJob(kind, iso){
+// + Job's window (Nov 2): Work order, Task, Filter clean, Pool drain and
+// Clean & refill, each in its calendar color
+function acalJobWindow(iso){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:380px;width:100%;text-align:left;';
+  box.innerHTML = '<h3 style="font-size:17px;margin:0 0 2px;">Add a job</h3><p data-day style="font-size:13px;color:var(--muted);margin:0 0 12px;"></p>';
+  box.querySelector('[data-day]').textContent = new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric'});
+  const shut = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+  [['wo', 'Work order'], ['tk', 'Task'], ['fc', 'Filter clean'], ['pd', 'Pool drain'], ['cr', 'Clean & refill']].forEach(([k, label])=>{
+    const it = document.createElement('div');
+    it.className = 'press-row';
+    it.style.cssText = 'display:flex;align-items:center;gap:12px;padding:13px 12px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px;font-size:15.5px;font-weight:600;cursor:pointer;';
+    it.innerHTML = "<span style=\"font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;width:34px;text-align:center;padding:4px 0;border-radius:6px;background:" + ACAL_TAGS[k][2] + ';color:' + ACAL_TAGS[k][3] + ';">' + ACAL_TAGS[k][0] + '</span>'
+      + '<span style="flex:1;"></span><span style="color:var(--muted);font-size:20px;">\u203a</span>';
+    it.children[1].textContent = label;
+    it.addEventListener('click', ()=>{
+      shut();
+      if(k === 'fc' || k === 'pd'){ acalDraw(); acalAddFcPd(k, iso); }
+      else if(k === 'cr') acalNewJob('Task', iso, 'Clean & refill');
+      else acalNewJob(k === 'wo' ? 'Work Order' : 'Task', iso);
+    });
+    box.appendChild(it);
+  });
+  const cancel = document.createElement('button');
+  cancel.type = 'button'; cancel.className = 'btn btn-ghost'; cancel.style.cssText = 'width:100%;margin-top:4px;';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', shut);
+  box.appendChild(cancel);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+function acalNewJob(kind, iso, title){
   switchView('customers');
   showCustomerPane('work');
   awcKind = kind; awcView = 'main'; awcApply();
@@ -20389,6 +20565,9 @@ function acalNewJob(kind, iso){
   setTimeout(()=>{
     const d = document.getElementById(kind === 'Task' ? 'awcTaskDate' : 'awcWoDate');
     if(d){ d.value = iso; d.dispatchEvent(new Event('change', {bubbles: true})); }
+    // Clean & refill (Nov 2): the task's title filled in, so it shows as CR
+    const t = document.getElementById('awcTaskTitle');
+    if(title && kind === 'Task' && t){ t.value = title; t.dispatchEvent(new Event('input', {bubbles: true})); }
     window.scrollTo(0, 0);
   }, 50);
 }
@@ -26020,6 +26199,64 @@ function marqueeIfCut(el){
       if(orig) return orig.apply(this, arguments);
     };
   }catch(e){}
+})();
+
+// ---------- Taps with wet fingers (Nov 2) ----------
+// A wet fingertip often slides a little or smudges, and the phone then treats
+// the touch as the start of a scroll and drops the tap, so the button never
+// hears it. Here a touch that lifts close to where it started, quickly, with
+// nothing scrolled, still presses what was under the finger, if the phone
+// didn't press it itself. Real scrolls, drags and long presses are left alone.
+(function wetFingerTaps(){
+  const PRESSABLE = 'button, a[href], label, .press-row, .tab, .cust-row, .route-job, .rp-gap, .awc-pick-row, [role="button"], input[type="checkbox"], input[type="radio"], summary';
+  const SKIP = 'input:not([type="checkbox"]):not([type="radio"]), textarea, select, [contenteditable="true"], .route-grip, [data-no-wet-tap]';
+  const SLIDE = 24;          // how far the finger may slide, in screen points
+  const QUICK = 700;         // a longer press is a hold, not a tap
+  let t = null;
+  const scrollers = el=>{
+    const out = [];
+    for(let n = el; n && n !== document.body; n = n.parentElement){
+      if(n.scrollHeight > n.clientHeight + 1 || n.scrollWidth > n.clientWidth + 1) out.push([n, n.scrollTop, n.scrollLeft]);
+    }
+    return out;
+  };
+  document.addEventListener('touchstart', e=>{
+    t = null;
+    if(!e.touches || e.touches.length !== 1) return;
+    const target = e.target;
+    if(!target || !target.closest || target.closest(SKIP)) return;
+    const el = target.closest(PRESSABLE);
+    if(!el || el.disabled) return;
+    const p = e.touches[0];
+    t = {el: el, x: p.clientX, y: p.clientY, at: Date.now(), sy: window.scrollY, sx: window.scrollX, boxes: scrollers(target), pressed: false};
+  }, {capture: true, passive: true});
+  document.addEventListener('touchmove', e=>{
+    if(!t || !e.touches || e.touches.length !== 1) return;
+    const p = e.touches[0];
+    if(Math.abs(p.clientX - t.x) > SLIDE || Math.abs(p.clientY - t.y) > SLIDE) t = null;   // a real swipe or scroll
+  }, {capture: true, passive: true});
+  document.addEventListener('touchcancel', ()=>{ /* the phone gave up on it: the lift decides */ }, {capture: true, passive: true});
+  // The phone pressed it itself: nothing for us to do
+  document.addEventListener('click', e=>{
+    if(t && !t.synthetic && e.isTrusted && (t.el === e.target || t.el.contains(e.target) || (e.target.contains && e.target.contains(t.el)))) t.pressed = true;
+  }, true);
+  document.addEventListener('touchend', e=>{
+    const s = t;
+    if(!s) return;
+    const p = e.changedTouches && e.changedTouches[0];
+    if(!p) return;
+    const moved = Math.max(Math.abs(p.clientX - s.x), Math.abs(p.clientY - s.y));
+    if(moved > SLIDE || Date.now() - s.at > QUICK) return;
+    // Anything scrolled at all: that was a scroll
+    if(Math.abs(window.scrollY - s.sy) > 1 || Math.abs(window.scrollX - s.sx) > 1) return;
+    if(s.boxes.some(([n, top, left]) => Math.abs(n.scrollTop - top) > 1 || Math.abs(n.scrollLeft - left) > 1)) return;
+    // Give the phone its moment to press it the normal way first
+    setTimeout(()=>{
+      if(s.pressed || t !== s || !s.el.isConnected || s.el.disabled) return;
+      s.synthetic = true;
+      try{ s.el.click(); }catch(err){}
+    }, 260);
+  }, {capture: true, passive: true});
 })();
 </script>
 </body>

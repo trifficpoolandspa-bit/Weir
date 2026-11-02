@@ -10527,6 +10527,12 @@ function pdEnsureRefills(){
   try{
     if(typeof tasks === 'undefined' || !Array.isArray(customers)) return 0;
     const today = pdToday();
+    // Drains that already have their Clean & refill (made before this kept
+    // track): noted, so one taken off by hand later stays off
+    const cal0 = pdCal();
+    let noted = false;
+    cal0.forEach(e=>{ if(e && e.id && !e.refillMade && tasks.some(t => t && (t.refillOf === e.id || t.id === 'task_refill_' + e.id))){ e.refillMade = true; noted = true; } });
+    if(noted) lsSet('drainCalendar', cal0);
     const want = pdCal().filter(e=>{
       if(!e || !e.id || !e.date || e.refillMade) return false;
       const c = customers.find(x => x && x.id === e.customerId);
@@ -10541,8 +10547,77 @@ function pdEnsureRefills(){
   }catch(err){ return 0; }
   finally{ pdRefillSweeping = false; }
 }
-setTimeout(()=>{ try{ pdEnsureRefills(); }catch(e){} }, 3000);
-setInterval(()=>{ try{ pdEnsureRefills(); }catch(e){} }, 60000);
+// The calendar follows the route (Nov 2): a filter clean or drain moved to
+// another day in the app (or made again from Serviced) shows on that day here
+// too. A filter clean comes out of its group onto its own that day, as Move
+// does; a drain's calendar day moves with it, and its Clean & refill too.
+let calFollowing = false;
+function calFollowRoute(){
+  if(calFollowing) return 0;
+  calFollowing = true;
+  let changes = 0;
+  try{
+    const today = pdToday();
+    // Filter cleans
+    const fcRecs = lsGet('scheduledFilterCleans') || [];
+    let fcChanged = false, groupsChanged = false;
+    fcRecs.forEach(r=>{
+      if(!r || r.reopened || r.status === 'done' || !r.date || r.date < today || !r.customerId) return;
+      const g = r.groupId ? filterGroups.find(x => x && x.id === r.groupId) : null;
+      if(g && g.date === r.date) return;
+      if(g && (!g.finalized || !g.date)) return;   // not sent, or taken off its day: the group decides
+      const solo = fgSoloFor(r.date);
+      if(g && g !== solo){
+        g.customerIds = (g.customerIds || []).filter(id => id !== r.customerId);
+        if(g.custTech) delete g.custTech[r.customerId];
+      }
+      if((solo.customerIds || []).indexOf(r.customerId) === -1) solo.customerIds.push(r.customerId);
+      const own = String((customers.find(c => c && c.id === r.customerId) || {}).technicianId || '');
+      if(r.technicianId && String(r.technicianId) !== own){ solo.custTech = solo.custTech || {}; solo.custTech[r.customerId] = r.technicianId; }
+      solo.finalized = true;
+      if(solo.custHold) delete solo.custHold[r.customerId];
+      r.groupId = solo.id;
+      fcChanged = true; groupsChanged = true; changes++;
+    });
+    if(fcChanged) lsSet('scheduledFilterCleans', fcRecs);
+    if(groupsChanged){ saveFilterGroups(); try{ renderFilterGroups(); }catch(e){} }
+    // Drains
+    const recs = pdScheduled();
+    const cal = pdCal();
+    let calChanged = false, recsChanged = false;
+    const live = r => r && !r.reopened && r.status !== 'done' && r.date;
+    cal.forEach(e=>{
+      if(!e || !e.id || !e.date) return;
+      const mine = recs.filter(r => live(r) && (r.calendarId === e.id || Object.keys(e.pushed || {}).some(k => e.pushed[k] === r.id)));
+      if(!mine.length) return;
+      const to = mine[0].date;
+      if(to === e.date || !mine.every(r => r.date === to) || to < today) return;
+      const from = e.date;
+      e.date = to;
+      const own = String((customers.find(c => c && c.id === e.customerId) || {}).technicianId || '');
+      if(mine[0].technicianId && String(mine[0].technicianId) !== own) e.technicianId = mine[0].technicianId;
+      try{ pdShiftRefill(e.id, from, to); }catch(err){}
+      calChanged = true; changes++;
+    });
+    // A drain on the route with no calendar day of its own (made again from Serviced)
+    recs.forEach(r=>{
+      if(!live(r) || r.date < today || !r.customerId) return;
+      if(cal.some(e => e && (e.id === r.calendarId || Object.keys(e.pushed || {}).some(k => e.pushed[k] === r.id)))) return;
+      const e = {id: 'pdcal_' + r.id, customerId: r.customerId, date: r.date, pushed: {}};
+      e.pushed[r.bodyKey || 'pool'] = r.id;
+      cal.push(e);
+      r.calendarId = e.id;
+      calChanged = true; recsChanged = true; changes++;
+    });
+    if(recsChanged) lsSet('scheduledPoolDrains', recs);
+    if(calChanged) lsSet('drainCalendar', cal);
+    if(changes){ try{ wcalRefresh(); }catch(e){} try{ if(workCenterMode === 'drains') renderPoolDrains(); }catch(e){} }
+  }catch(err){}
+  finally{ calFollowing = false; }
+  return changes;
+}
+setTimeout(()=>{ try{ calFollowRoute(); pdEnsureRefills(); }catch(e){} }, 3000);
+setInterval(()=>{ try{ calFollowRoute(); pdEnsureRefills(); }catch(e){} }, 60000);
 
 // Take customers off every upcoming day on the drain calendar (Nov 1)
 async function pdUnschedule(cids){
@@ -12112,8 +12187,187 @@ const WCAL_TAGS = {
   tk: ['TK', 'Tasks', '#C9EBC3', '#24601F']
 };
 if(CB_ON){ Object.keys(WCAL_TAGS).forEach(k=>{ const c = CB_JOB[WCAL_TAGS[k][0]]; if(c){ WCAL_TAGS[k][2] = c[0]; WCAL_TAGS[k][3] = c[1]; } }); }
+// ---------- Calendar export (Nov 2) ----------
+// The calendar as an Excel spreadsheet, kept in case anything is ever lost:
+// one tab a month laid out as a calendar, each day's jobs one to a line
+// (FC, PD, CR, WO, TK and the customer, with the technician in brackets).
+const CAL_EXPORT_TYPES = [['FC', 'Filter clean', '8A5E0B', 'FBF1DD'], ['PD', 'Pool drain', '174C78', 'C3DEF3'], ['CR', 'Clean & refill', '0D3A66', '8EC5F5'], ['WO', 'Work order', '3E5560', 'E9EEF0'], ['TK', 'Task', '24601F', 'C9EBC3']];
+function loadExcelJs(){
+  if(window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  return new Promise((res, rej)=>{
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+    sc.onload = ()=> window.ExcelJS ? res(window.ExcelJS) : rej(new Error('no ExcelJS'));
+    sc.onerror = ()=> rej(new Error('not loaded'));
+    document.head.appendChild(sc);
+  });
+}
+// One day's jobs as lines: [tag, customer, technician, details]
+function calExportLines(on){
+  const out = [];
+  const nm = c => c ? displayName(c.name) : '';
+  const techName = id => { const n = technicianNameById(id); return n ? String(n).split(/\s+/)[0] : ''; };
+  const cust = id => customers.find(c => c && c.id === id);
+  (on.fc || []).forEach(g => fgLiveIds(g).forEach(cid=>{
+    const c = cust(cid); if(!c) return;
+    out.push(['FC', nm(c), techName(fgCustTech(g, cid) || c.technicianId), g.solo ? '' : (g.name || '')]);
+  }));
+  (on.pd || []).forEach(e=>{
+    const c = cust(e.customerId); if(!c) return;
+    out.push(['PD', nm(c), techName(e.technicianId || c.technicianId), '']);
+  });
+  (on.wo || []).forEach(j=>{
+    const c = cust(j.customerId); if(!c) return;
+    const li = j.lineItems || [];
+    const fc = li.some(x => (typeof isFilterCleanItem === 'function' && isFilterCleanItem(x)) || /filter\s*clean/i.test(String((x && x.description) || '')));
+    const num = j.workOrderNumber ? '#' + quoteNumberText(j.workOrderNumber) : '';
+    out.push([fc ? 'FC' : 'WO', nm(c), techName(j.technicianId), [num, j.title || ''].filter(Boolean).join(' ')]);
+  });
+  (on.tk || []).forEach(t=>{
+    const cr = calIsRefill(t);
+    const cs = (t.customerIds || (t.customerId ? [t.customerId] : [])).map(cust).filter(Boolean);
+    if(!cs.length) out.push([cr ? 'CR' : 'TK', t.title || 'Task', techName(t.technicianId), '']);
+    cs.forEach(c => out.push([cr ? 'CR' : 'TK', nm(c), techName(t.technicianId), cr ? '' : (t.title || '')]));
+  });
+  const order = CAL_EXPORT_TYPES.map(x => x[0]);
+  return out.sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]) || a[1].localeCompare(b[1], undefined, {sensitivity: 'base'}));
+}
+async function calBuildExport(fromMonth, toMonth, byDay, techLabel){
+  const ExcelJS = await loadExcelJs();
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Weir';
+  const F = 'Arial';
+  const thin = {style: 'thin', color: {argb: 'FFC9D6D3'}};
+  const hair = {style: 'hair', color: {argb: 'FFDCE5E3'}};
+  const fill = hex => ({type: 'pattern', pattern: 'solid', fgColor: {argb: 'FF' + hex}});
+  const now = new Date();
+  const stamp = now.toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Phoenix'})
+    + ', ' + now.toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', timeZone: 'America/Phoenix'}) + ' Arizona time';
+  const pad = n => String(n).padStart(2, '0');
+  let [y, m] = fromMonth.split('-').map(Number);
+  const [ty, tm] = toMonth.split('-').map(Number);
+  let total = 0;
+  while(y < ty || (y === ty && m <= tm)){
+    const title = new Date(y, m - 1, 1).toLocaleDateString('en-US', {month: 'long', year: 'numeric'});
+    const ws = wb.addWorksheet(title, {views: [{showGridLines: false}],
+      pageSetup: {orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true}});
+    ws.columns = Array.from({length: 7}, () => ({width: 37}));
+    ws.mergeCells('A1:G1');
+    ws.getCell('A1').value = title;
+    ws.getCell('A1').font = {name: F, bold: true, size: 20, color: {argb: 'FF0B2422'}};
+    ws.getRow(1).height = 34;
+    ws.mergeCells('A2:G2');
+    ws.getCell('A2').value = 'Weir calendar' + (techLabel ? ' · ' + techLabel : '') + ' · exported ' + stamp;
+    ws.getCell('A2').font = {name: F, italic: true, size: 9, color: {argb: 'FF5B7370'}};
+    ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].forEach((w, i)=>{
+      const c = ws.getCell(3, i + 1);
+      c.value = w; c.font = {name: F, bold: true, color: {argb: 'FFFFFFFF'}}; c.fill = fill('134E4A');
+      c.alignment = {horizontal: 'center', vertical: 'middle'}; c.border = {top: thin, left: thin, right: thin, bottom: thin};
+    });
+    ws.getRow(3).height = 22;
+    // The weeks, Sunday first
+    const first = new Date(y, m - 1, 1);
+    let d = new Date(first); d.setDate(d.getDate() - d.getDay());
+    let r = 4;
+    const lastDay = new Date(y, m, 0);
+    while(d <= lastDay){
+      const week = Array.from({length: 7}, (_, i) => { const x = new Date(d); x.setDate(d.getDate() + i); return x; });
+      const lists = week.map(x => x.getMonth() === m - 1 ? calExportLines(byDay[x.getFullYear() + '-' + pad(x.getMonth() + 1) + '-' + pad(x.getDate())] || {}) : []);
+      const n = Math.max(2, ...lists.map(l => l.length));
+      week.forEach((x, i)=>{
+        const inMonth = x.getMonth() === m - 1;
+        const h = ws.getCell(r, i + 1);
+        if(inMonth) h.value = x.getDate();
+        h.font = {name: F, bold: true, size: 12, color: {argb: inMonth ? 'FF0B2422' : 'FFB7C4C1'}};
+        h.alignment = {horizontal: 'left', vertical: 'middle', indent: 1};
+        h.fill = fill(inMonth ? 'EEF4F3' : 'F7F9F9');
+        h.border = {top: thin, left: thin, right: thin};
+        for(let k = 0; k < n; k++){
+          const c = ws.getCell(r + 1 + k, i + 1);
+          c.border = {left: thin, right: thin, bottom: k === n - 1 ? thin : hair};
+          c.alignment = {vertical: 'middle', indent: 1};
+          if(!inMonth){ c.fill = fill('F7F9F9'); continue; }
+          const line = lists[i][k];
+          if(!line) continue;
+          const t = CAL_EXPORT_TYPES.find(z => z[0] === line[0]);
+          const tail = (line[3] ? ' · ' + line[3] : '') + (line[2] ? ' (' + line[2] + ')' : '');
+          c.value = {richText: [
+            {text: '• ', font: {name: F, size: 10, color: {argb: 'FF9AA8A6'}}},
+            {text: line[0] + '  ', font: {name: F, bold: true, size: 9, color: {argb: 'FF' + t[2]}}},
+            {text: line[1], font: {name: F, size: 10, color: {argb: 'FF0B2422'}}},
+            {text: tail, font: {name: F, size: 8, color: {argb: 'FF6B7B79'}}}
+          ]};
+          total++;
+        }
+      });
+      ws.getRow(r).height = 20;
+      for(let k = 0; k < n; k++) ws.getRow(r + 1 + k).height = 17;
+      r += 1 + n;
+      d.setDate(d.getDate() + 7);
+    }
+    r += 1;
+    ws.getCell(r, 1).value = 'Key';
+    ws.getCell(r, 1).font = {name: F, bold: true, size: 10};
+    CAL_EXPORT_TYPES.forEach((t, i)=>{
+      const c = ws.getCell(r + 1, i + 1);
+      c.value = t[0] + '  ' + t[1]; c.font = {name: F, bold: true, size: 10, color: {argb: 'FF' + t[2]}}; c.fill = fill(t[3]);
+      c.alignment = {indent: 1};
+    });
+    ws.getCell(r + 2, 1).value = 'One job a line. Technician in brackets.';
+    ws.getCell(r + 2, 1).font = {name: F, italic: true, size: 9, color: {argb: 'FF5B7370'}};
+    m++; if(m > 12){ m = 1; y++; }
+  }
+  return {buffer: await wb.xlsx.writeBuffer(), jobs: total};
+}
+function calExportWindow(shownMonth, viewTech, onDaysFn){
+  // Months that have jobs, and the months either side of the one on screen
+  const byDay = onDaysFn();
+  const days = Object.keys(byDay).filter(k => calExportLines(byDay[k]).length).sort();
+  const months = new Set([shownMonth]);
+  days.forEach(k => months.add(k.slice(0, 7)));
+  const list = Array.from(months).sort();
+  const nice = mm => { const [y, m] = mm.split('-').map(Number); return new Date(y, m - 1, 1).toLocaleDateString(undefined, {month: 'long', year: 'numeric'}); };
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:400px;width:100%;text-align:left;';
+  box.innerHTML = '<h3 style="font-size:16px;margin:0 0 4px;">Export the calendar</h3>'
+    + '<p data-sub style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">A spreadsheet with a tab for each month, laid out like the calendar: every day’s jobs, one to a line, with the customer and technician. Keep it somewhere safe.</p>'
+    + '<div style="display:flex;gap:10px;"><div class="field" style="flex:1;"><label>From</label><select data-from></select></div><div class="field" style="flex:1;"><label>To</label><select data-to></select></div></div>'
+    + '<div class="btn-row" style="margin-top:6px;"><button type="button" class="btn btn-primary" data-go style="flex:1;">Download spreadsheet</button><button type="button" class="btn btn-ghost" data-cancel style="width:auto;">Cancel</button></div>';
+  const from = box.querySelector('[data-from]'), to = box.querySelector('[data-to]');
+  list.forEach(mm=>{ [from, to].forEach(sel => { const o = document.createElement('option'); o.value = mm; o.textContent = nice(mm); sel.appendChild(o); }); });
+  from.value = list.indexOf(shownMonth) !== -1 ? shownMonth : list[0];
+  to.value = list[list.length - 1];
+  if(viewTech){ const sub = box.querySelector('[data-sub]'); sub.textContent += ' Just ' + (technicianNameById(viewTech) || 'this technician') + '’s jobs, as the calendar is showing.'; }
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const close = ()=> overlay.remove();
+  box.querySelector('[data-cancel]').addEventListener('click', close);
+  const go = box.querySelector('[data-go]');
+  go.addEventListener('click', async ()=>{
+    let a = from.value, b = to.value;
+    if(b < a){ const x = a; a = b; b = x; }
+    go.disabled = true; go.textContent = 'Making the spreadsheet…';
+    try{
+      const out = await calBuildExport(a, b, byDay, viewTech ? (technicianNameById(viewTech) || '') : 'All technicians');
+      const blob = new Blob([out.buffer], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'Weir calendar ' + nice(a) + (a === b ? '' : ' to ' + nice(b)) + '.xlsx';
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(()=> URL.revokeObjectURL(link.href), 4000);
+      close();
+      showToast('Calendar saved — ' + out.jobs + (out.jobs === 1 ? ' job' : ' jobs'));
+    }catch(err){
+      go.disabled = false; go.textContent = 'Download spreadsheet';
+      showToast('Couldn’t make the spreadsheet — check the internet connection and try again');
+    }
+  });
+}
 function openWorkCalendar(startDay, stayHere){
-  try{ pdEnsureRefills(); }catch(e){}   // any drain still missing its clean & refill (Nov 2)
+  try{ calFollowRoute(); pdEnsureRefills(); }catch(e){}   // jobs moved in the app, and any drain still missing its clean & refill (Nov 2)
   // Opened at a day from elsewhere in WorkCenter: over to the Calendar first,
   // unless asked to stay (Nov 1: the drain list's Scheduled tag opens just the
   // day's window over the page it's on)
@@ -12222,6 +12476,14 @@ function openWorkCalendar(startDay, stayHere){
     nav.appendChild(pickBtn);
     head.appendChild(nav);
     { const tm = calTechMenu(viewTech, v => { viewTech = v; draw(); }); tm.style.marginLeft = '6px'; nav.appendChild(tm); }
+    // Export (Nov 2): the calendar as a spreadsheet, one tab a month, to keep
+    {
+      const ex = smallBtn('', 'btn-ghost', 'display:inline-flex;align-items:center;gap:6px;margin-left:6px;');
+      ex.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span>Export</span>';
+      ex.title = 'Save the calendar as a spreadsheet';
+      ex.addEventListener('click', ()=> calExportWindow(month, viewTech, onDays));
+      nav.appendChild(ex);
+    }
     // Select for route on a row of its own below, at the right: filter cleans
     // and drains on the days picked go to the app
     const right = document.createElement('div');
@@ -18161,6 +18423,11 @@ function fcPickGroupForDay(iso, after){
     const chosen = filterGroups.filter(x => x && picked.has(x.id));
     overlay.remove();
     chosen.forEach(g => { g.date = iso; });
+    // Their filter cleans already on the route go with them (Nov 2), until done
+    const sched = lsGet('scheduledFilterCleans') || [];
+    let moved = false;
+    sched.forEach(sc=>{ if(sc && chosen.some(g => g.id === sc.groupId) && sc.status !== 'done' && sc.date !== iso){ sc.date = iso; moved = true; } });
+    if(moved) lsSet('scheduledFilterCleans', sched);
     if(after) after();
     showToast(chosen.length === 1 ? (chosen[0].name || 'Group') + ' put on ' + nice : chosen.length + ' groups put on ' + nice);
   });
