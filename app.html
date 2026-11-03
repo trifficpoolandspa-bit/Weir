@@ -1194,7 +1194,7 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
       <div class="field" id="reportDateField">
         <label>Jump to a date</label>
         <div style="display:flex;align-items:center;gap:8px;">
-          <select id="reportReadingSelect" style="flex:1;padding-right:16px;"></select>
+          <select id="reportReadingSelect" style="flex:1 1 0;min-width:0;padding-right:16px;"><option value="">mm/dd/yyyy</option></select>
           <button type="button" id="btnReportDatePicker" title="Pick a date from the calendar"
             style="flex:0 0 44px;height:40px;padding:0;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--teal-mid);border-radius:10px;background:var(--teal-pale);cursor:pointer;line-height:0;">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--teal-deep)" stroke-width="2" stroke-linecap="round">
@@ -3146,7 +3146,7 @@ function switchView(view, opts){
     if(clear) clear.style.display = 'none';
     // ...and the page back as it starts: no dates, no report, no buttons
     const dates = document.getElementById('reportReadingSelect');
-    if(dates) dates.innerHTML = '';
+    if(dates) dates.innerHTML = '<option value="">mm/dd/yyyy</option>';
     try{ availableReportDates = []; reportDateDays = []; }catch(e){}
     const out = document.getElementById('reportOutput');
     if(out) out.innerHTML = '';
@@ -9534,11 +9534,11 @@ function techRouteJobsFor(techId, iso){
   });
   (lsGet('scheduledFilterCleans') || []).filter(f => f && f.date === iso && mine(f) && !f.reopened).forEach(f=>{
     out.push({kind: 'filter clean', id: f.id, key: 'filter clean:' + f.id, report: 'fc:' + f.id, title: 'Filter clean', customerId: f.customerId,
-      done: f.status === 'done', doneAt: f.doneAt, date: f.date, technicianId: f.technicianId});
+      done: f.status === 'done', doneAt: f.doneAt, date: f.date, technicianId: f.technicianId, placeAfter: f.placeAfter});
   });
   (lsGet('scheduledPoolDrains') || []).filter(f => f && f.date === iso && mine(f) && !f.reopened).forEach(f=>{
     out.push({kind: 'pool drain', id: f.id, key: 'pool drain:' + f.id, report: 'pd:' + f.id, title: drainTitle(f), customerId: f.customerId,
-      done: f.status === 'done', doneAt: f.doneAt, date: f.date, technicianId: f.technicianId});
+      done: f.status === 'done', doneAt: f.doneAt, date: f.date, technicianId: f.technicianId, placeAfter: f.placeAfter});
   });
   (lsGet('tasks') || []).filter(t => t && t.date === iso && mine(t) && !t.held && !t.reopened).forEach(t=>{
     const ids = (t.customerIds || []).length ? t.customerIds : [''];
@@ -10942,7 +10942,7 @@ function routeJobsFor(customerId, dayISO, techId){
   // Filter cleans are jobs too, done on the job screen (Oct 3)
   const cleans = (lsGet('scheduledFilterCleans') || [])
     .filter(s => s && s.status === 'scheduled' && s.date === dayISO && s.customerId === customerId && mine(s))
-    .map(s => ({key: 'filter clean:' + s.id, kind: 'filter clean', id: s.id,
+    .map(s => ({key: 'filter clean:' + s.id, kind: 'filter clean', id: s.id, placeAfter: s.placeAfter,
                 // Only when the group's Photo required was ticked (Oct 3)
                 title: 'Filter clean', details: '', photoRequired: s.photoRequired === true, videoRequired: false,
                 // Extra work the office added on the calendar's day window (Oct 13)
@@ -10950,7 +10950,7 @@ function routeJobsFor(customerId, dayISO, techId){
   // Pool drains, sent from the website's Pool drains page (Oct 10)
   const drains = (lsGet('scheduledPoolDrains') || [])
     .filter(s => s && s.status === 'scheduled' && s.date === dayISO && s.customerId === customerId && mine(s))
-    .map(s => ({key: 'pool drain:' + s.id, kind: 'pool drain', id: s.id,
+    .map(s => ({key: 'pool drain:' + s.id, kind: 'pool drain', id: s.id, placeAfter: s.placeAfter,
                 title: drainTitle(s), details: s.notes || '', photoRequired: s.photoRequired === true, videoRequired: false,
                 // Extra work the office added on the drain calendar, ticked off like a work order's items (Oct 13)
                 lineItems: Array.isArray(s.lineItems) ? s.lineItems : []}));
@@ -11752,6 +11752,20 @@ function openJobPage(customer, job){
     });
     card.appendChild(wrap);
   }
+  // A Clean & refill: Turn on autofill, ticked before Submit (Nov 3)
+  const refillChecks = [];
+  if(job.kind === 'task' && (isRefillJob(job) || isRefillJob((lsGet('tasks') || []).find(x => x && x.id === job.id)))){
+    const line = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    jobTickTile(line, cb);
+    line.style.margin = '0 0 14px';
+    refillChecks.push(cb);
+    const span = document.createElement('span');
+    span.textContent = 'Turn on autofill';
+    line.appendChild(cb); line.appendChild(span);
+    card.appendChild(line);
+  }
   // A pool drain's extra work from the office (Oct 13): each item with a box to
   // tick, all ticked before Submit, like a work order's items
   if(job.kind === 'pool drain' || job.kind === 'filter clean'){   // filter cleans too (Oct 13)
@@ -11946,6 +11960,11 @@ function openJobPage(customer, job){
     const notOff = drainChecks.filter(cb => !cb.checked).map(cb => cb.dataset.drainCheck);
     if(notOff.length){
       showToast('Tick ' + notOff.map(t => '\u201c' + t + '\u201d').join(' and ') + ' first');
+      return;
+    }
+    // A Clean & refill can't go until autofill is turned on (Nov 3)
+    if(refillChecks.some(cb => !cb.checked)){
+      showToast('Tick \u201cTurn on autofill\u201d first');
       return;
     }
     // Every line item ticked first (Oct 3)
@@ -14585,17 +14604,19 @@ async function refreshDateSelector(customerId){
   // Nothing picked until a date is chosen here or a row is pressed (Oct 3)
   const none = document.createElement('option');
   none.value = '';
-  none.textContent = 'Pick a date';
+  // mm/dd/yyyy, like every other date box (Nov 2)
+  none.textContent = 'mm/dd/yyyy';
   sel.appendChild(none);
+  const mdy = ts => { const t = new Date(ts); return isNaN(t) ? '' : String(t.getMonth() + 1).padStart(2, '0') + '/' + String(t.getDate()).padStart(2, '0') + '/' + t.getFullYear(); };
   dates.forEach(d=>{
     const opt = document.createElement('option');
     opt.value = d.dateStr;
     opt.textContent = d.wo
-      ? fmtDate(d.ts) + '  \u2014 Work order ' + workOrderNumberText(d.wo.workOrderNumber)
-      : d.fc ? fmtDate(d.ts) + '  \u2014 Filter clean'
-      : d.pd ? fmtDate(d.ts) + '  \u2014 ' + drainTitle(d.pd)
-      : d.task ? fmtDate(d.ts) + '  \u2014 Task'
-      : fmtDate(d.ts) + (d.isRedo ? '  \u2014 redone' : '');
+      ? mdy(d.ts) + '  \u2014 Work order ' + workOrderNumberText(d.wo.workOrderNumber)
+      : d.fc ? mdy(d.ts) + '  \u2014 Filter clean'
+      : d.pd ? mdy(d.ts) + '  \u2014 ' + drainTitle(d.pd)
+      : d.task ? mdy(d.ts) + '  \u2014 Task'
+      : mdy(d.ts) + (d.isRedo ? '  \u2014 redone' : '');
     sel.appendChild(opt);
   });
   document.getElementById('reportDateHint').style.display = 'none';
@@ -14894,7 +14915,7 @@ document.getElementById('btnClearReportCustomer').addEventListener('click', ()=>
   const rowsBox = document.getElementById('reportRows');
   if(rowsBox) rowsBox.innerHTML = '';
   const dateSel = document.getElementById('reportReadingSelect');
-  if(dateSel) dateSel.innerHTML = '';
+  if(dateSel) dateSel.innerHTML = '<option value="">mm/dd/yyyy</option>';
   availableReportDates = []; reportDateDays = [];
   document.getElementById('reportDateHint').style.display = 'none';
   input.focus();
@@ -16805,7 +16826,7 @@ function awcBuild(pane){
           <label style="margin:0;">Scheduled date</label>
           <span class="awc-num" id="awcWoNumber"></span>
         </div>
-        <input type="date" id="awcWoDate" style="width:auto;">
+        <input type="date" id="awcWoDate" style="width:auto;min-width:0;max-width:140px;">
         <!-- The four ticks in two even columns under the date (Oct 19): Photo and
              Video required, then Email customer and Include prices, as on the
              website. A label too long for its half wraps rather than running
@@ -16883,7 +16904,7 @@ function awcBuild(pane){
       <div class="field">
         <label>Scheduled date</label>
         <div style="display:flex;align-items:center;gap:10px;">
-          <input type="date" id="awcTaskDate" style="width:auto;">
+          <input type="date" id="awcTaskDate" style="width:auto;min-width:0;max-width:140px;">
           <button type="button" class="btn btn-primary" id="awcSavedTasks" style="width:auto;margin-left:auto;padding:9px 14px;font-size:14px;white-space:nowrap;flex-shrink:0;">Saved tasks</button>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:12px;">
@@ -19786,6 +19807,7 @@ function acalAddFcPd(kind, iso){
     + '<input type="text" data-search placeholder="Start typing a name\u2026" autocomplete="off">'
     + '<div data-sug style="display:none;position:absolute;left:0;right:0;z-index:40;background:#fff;border:1px solid var(--line);border-radius:10px;margin-top:4px;box-shadow:0 4px 14px rgba(15,46,46,0.14);max-height:240px;overflow-y:auto;"></div></div>'
     + '<div class="field"><label>Technician</label><select data-tech></select></div>'
+    + '<div class="field" id="acalRpHost" style="display:none;"></div>'
     + '<label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;margin:2px 0 8px;cursor:pointer;"><input type="checkbox" data-photo checked style="width:auto;margin:0;"> Photo required</label>'
     + (isFc ? '<label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;margin:0 0 16px;cursor:pointer;"><input type="checkbox" data-email checked style="width:auto;margin:0;"> Email the customer</label>' : '<div style="height:8px;"></div>')
     + '<div class="btn-row" style="flex-wrap:nowrap;"><button type="button" class="btn btn-primary" data-go style="flex:1 1 0;">Add to route</button>'
@@ -19805,6 +19827,14 @@ function acalAddFcPd(kind, iso){
   techniciansInOrder().forEach(t => { if(t && t.id) addOpt(String(t.id), t.name || 'Technician'); });
   if(acalTech) techSel.value = acalTech;
   const nameOf = c => (typeof displayName === 'function' ? displayName(c.name) : c.name) || 'Customer';
+  // Where in the route (Nov 2): the same picker a work order or task has, for a
+  // single customer; with more than one, each goes under its own customer
+  const rp = makeRoutePlace({host: 'acalRpHost', active: ()=> true, date: ()=> iso,
+    techIds: ()=> techSel.value ? [techSel.value] : Array.from(new Set(picked.map(id => String((acalCust(id) || {}).technicianId || '')).filter(Boolean))),
+    customerIds: ()=> picked.slice(),
+    label: ()=> (isFc ? 'Filter clean' : 'Pool drain') + (picked.length === 1 ? ' \u00b7 ' + nameOf(acalCust(picked[0]) || {}) : ''),
+    stopsFor: appRouteStopsFor, techName: id => acalTechName(id), nameOf: c => c.name || ''});
+  techSel.addEventListener('change', ()=> rp.refresh());
   function drawChips(){
     chips.innerHTML = '';
     chips.style.marginBottom = picked.length ? '8px' : '0';
@@ -19821,6 +19851,7 @@ function acalAddFcPd(kind, iso){
       chip.appendChild(x);
       chips.appendChild(chip);
     });
+    rp.refresh();
   }
   function drawSug(){
     const term = search.value.trim().toLowerCase();
@@ -19857,8 +19888,9 @@ function acalAddFcPd(kind, iso){
     const fresh = await acalFetchOffice(true);
     if(!fresh){ go.disabled = false; go.textContent = 'Add to route'; showToast('This needs signal \u2014 try again when you have some'); return; }
     const photo = box.querySelector('[data-photo]').checked;
-    const ok = isFc ? await acalAddFilterCleans(iso, picked, tech, photo, box.querySelector('[data-email]').checked)
-                    : await acalAddDrains(iso, picked, tech, photo);
+    const place = rp.value();
+    const ok = isFc ? await acalAddFilterCleans(iso, picked, tech, photo, box.querySelector('[data-email]').checked, place)
+                    : await acalAddDrains(iso, picked, tech, photo, place);
     if(!ok){ go.disabled = false; go.textContent = 'Add to route'; showToast('That didn\u2019t reach the office \u2014 try again when you have signal'); return; }
     close();
     acalDraw();
@@ -19868,7 +19900,7 @@ function acalAddFcPd(kind, iso){
   });
   setTimeout(()=> search.focus(), 0);
 }
-async function acalAddFilterCleans(iso, ids, tech, photo, email){
+async function acalAddFilterCleans(iso, ids, tech, photo, email, placeAfter){
   const groups = acalOffice.filterGroups || [];
   let g = groups.find(x => x && x.solo && x.date === iso);
   const isNew = !g;
@@ -19877,11 +19909,13 @@ async function acalAddFilterCleans(iso, ids, tech, photo, email){
   g = JSON.parse(JSON.stringify(g));
   const wasSent = !!g.finalized;
   g.customerIds = g.customerIds || [];
-  g.custTech = g.custTech || {}; g.custPhoto = g.custPhoto || {}; g.custEmail = g.custEmail || {};
+  g.custTech = g.custTech || {}; g.custPhoto = g.custPhoto || {}; g.custEmail = g.custEmail || {}; g.custPlace = g.custPlace || {};
   ids.forEach(id=>{
     if(g.customerIds.indexOf(id) === -1) g.customerIds.push(id);
     const own = String((acalCust(id) || {}).technicianId || '');
     if(tech && tech !== own) g.custTech[id] = tech; else delete g.custTech[id];
+    // Where in the route (Nov 2), kept on the group so the website keeps it too
+    if(typeof placeAfter === 'string') g.custPlace[id] = placeAfter; else delete g.custPlace[id];
     g.custPhoto[id] = photo;
     g.custEmail[id] = email;
     if(g.custHold) delete g.custHold[id];
@@ -19904,13 +19938,14 @@ async function acalAddFilterCleans(iso, ids, tech, photo, email){
     let r = sched.find(x => x && !x.reopened && x.groupId === g.id && x.customerId === id && x.status !== 'done');
     if(!r){ r = {id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), groupId: g.id, customerId: id, status: 'scheduled', lineItems: []}; sched.push(r); }
     Object.assign(r, {groupName: g.name, technicianId: tId, date: iso, order: g.customerIds.indexOf(id), photoRequired: photo, emailCustomer: email});
+    if(typeof placeAfter === 'string') r.placeAfter = placeAfter; else delete r.placeAfter;
     queueOfficeWork('filter_clean', r.id);
   });
   lsSet('scheduledFilterCleans', sched);
   try{ fieldNoteLocalChange(); }catch(e){}
   return true;
 }
-async function acalAddDrains(iso, ids, tech, photo){
+async function acalAddDrains(iso, ids, tech, photo, placeAfter){
   const cal = acalOffice.drainCalendar || [];
   const recs = lsGet('scheduledPoolDrains') || [];
   const entries = [];
@@ -19925,6 +19960,7 @@ async function acalAddDrains(iso, ids, tech, photo){
     const own = String((c && c.technicianId) || '');
     if(tech && tech !== own) e.technicianId = tech; else delete e.technicianId;
     if(!photo) e.photoRequired = false; else delete e.photoRequired;
+    if(typeof placeAfter === 'string') e.placeAfter = placeAfter; else delete e.placeAfter;   // where in the route (Nov 2)
     e.pushed = e.pushed || {};
     const order = Math.max(0, sameDay.findIndex(x => x.customerId === cid)) || sameDay.length;
     bodies.forEach(b=>{
@@ -19933,6 +19969,7 @@ async function acalAddDrains(iso, ids, tech, photo){
       Object.assign(r, {date: iso, technicianId: tech || own, bodyKey: b.key, bodyName: b.label,
         bodyKind: b.key === 'pool' || b.key === 'spa' ? b.key : (/fountain/i.test(b.label) ? 'fountain' : 'extra'), order: order,
         photoRequired: !(c && c.drainPhotoRequired === false) && photo, emailCustomer: !(c && c.drainEmailCustomer === false)});
+      if(typeof placeAfter === 'string') r.placeAfter = placeAfter; else delete r.placeAfter;
     });
     entries.push(e);
   });
@@ -19978,7 +20015,7 @@ function acalOnDays(){
         const rec = fcRecs.find(f => f && !f.reopened && f.groupId === g.id && f.customerId === cid && f.date === g.date && f.status === 'done')
           || fcRecs.find(f => f && !f.reopened && f.groupId === g.id && f.customerId === cid && f.date === g.date);
         const st = rec && rec.status === 'done' ? 'done' : (g.finalized && !(g.custHold && g.custHold[cid]) ? 'app' : '');
-        return {cid: cid, st: st, tech: (rec && rec.technicianId) || techOf(cid)};
+        return {cid: cid, st: st, tech: (rec && rec.technicianId) || techOf(cid), gid: g.id};
       }).filter(r => mineTech(r.tech));
       if(rows.length) day(g.date).fc.push({name: g.solo ? 'On their own' : (g.name || 'Group'), solo: !!g.solo, tech: g.technicianId, rows: rows});
     });
@@ -20257,6 +20294,24 @@ function acalDayWindow(on){
     return r;
   };
   const techText = id=>{ const s = document.createElement('span'); s.style.cssText = 'font-size:11.5px;color:var(--muted);width:84px;text-align:right;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'; s.textContent = acalTechName(id); return s; };
+  // The technician menu a work order or task has (Nov 2), for a filter clean or
+  // a pool drain: onPick saves it and answers true, or false if it didn't go
+  const techPick = (curId, locked, onPick)=>{
+    const sel = document.createElement('select');
+    sel.style.cssText = 'width:90px;padding:4px 6px;font-size:11.5px;flex-shrink:0;';
+    techniciansInOrder().forEach(t => { if(t && t.id){ const o = document.createElement('option'); o.value = String(t.id); o.textContent = t.name || 'Technician'; sel.appendChild(o); } });
+    if(!Array.from(sel.options).some(o => o.value === String(curId || ''))){ const o = document.createElement('option'); o.value = String(curId || ''); o.textContent = acalTechName(curId); sel.insertBefore(o, sel.firstChild); }
+    sel.value = String(curId || '');
+    sel.disabled = locked;
+    sel.addEventListener('change', async ()=>{
+      if(!sel.value){ sel.value = String(curId || ''); return; }
+      if(!(await onPick(sel.value))){ showToast('Couldn’t reach the office — try again with a connection'); acalDraw(); return; }
+      try{ fieldNoteLocalChange(); }catch(e){}
+      acalDraw();
+      showToast('Now on ' + acalTechName(sel.value) + '’s route');
+    });
+    return sel;
+  };
   // Move to another day (Nov 1): the calendar-with-arrow button
   const moveBtn = opts=>{
     const m = document.createElement('button');
@@ -20270,12 +20325,51 @@ function acalDayWindow(on){
   };
   on.fc.forEach(g=>{
     badge('fc', g.name + (g.solo ? '' : g.tech ? ' · ' + acalTechName(g.tech) : ''));
-    g.rows.forEach(r => row((acalCust(r.cid) || {}).name || 'Customer', '', r.st, [techText(r.tech)]));
+    g.rows.forEach(r => row((acalCust(r.cid) || {}).name || 'Customer', '', r.st, [techPick(r.tech, r.st === 'done', async tech=>{
+      // The group's own list says who does this customer; the filter clean on
+      // the route (if it's been sent) follows
+      const grp = r.gid ? (acalOffice.filterGroups || []).find(x => x && x.id === r.gid) : null;
+      if(grp){
+        const ng = JSON.parse(JSON.stringify(grp));
+        ng.custTech = ng.custTech || {};
+        ng.custTech[r.cid] = tech;
+        if(!(await acalPushOffice('filter_group', ng))) return false;
+        grp.custTech = ng.custTech;
+      }
+      const sched = lsGet('scheduledFilterCleans') || [];
+      let n = 0;
+      sched.forEach(f=>{
+        if(f && !f.reopened && f.status !== 'done' && String(f.customerId) === String(r.cid) && f.date === iso && (!r.gid || f.groupId === r.gid)){
+          f.technicianId = tech; queueOfficeWork('filter_clean', f.id, false); n++;
+        }
+      });
+      if(n && !lsSet('scheduledFilterCleans', sched)){ showToast('Could not save — the phone is full'); return true; }
+      return true;
+    })]));
   });
   if(on.pd.length){
     badge('pd');
     on.pd.forEach(r=>{
-      const right = [techText(r.tech)];
+      const right = [techPick(r.tech, r.st === 'done', async tech=>{
+        // The calendar entry at the office, and each of its drains on the route
+        const real = r.entry && Array.isArray(acalOffice.drainCalendar) ? acalOffice.drainCalendar.find(x => x && x.id === r.entry.id) : null;
+        if(real){
+          const e = JSON.parse(JSON.stringify(real));
+          e.technicianId = tech;
+          if(!(await acalPushOffice('drain_entry', e))) return false;
+          real.technicianId = tech;
+        }
+        const ids = real ? Object.keys(real.pushed || {}).map(k => real.pushed[k]).concat(real.pushedId ? [real.pushedId] : []) : [];
+        const recs = lsGet('scheduledPoolDrains') || [];
+        let n = 0;
+        recs.forEach(x=>{
+          if(x && !x.reopened && x.status !== 'done' && (ids.indexOf(x.id) !== -1 || (String(x.customerId) === String(r.cid) && x.date === iso))){
+            x.technicianId = tech; queueOfficeWork('pool_drain', x.id, false); n++;
+          }
+        });
+        if(n && !lsSet('scheduledPoolDrains', recs)){ showToast('Could not save — the phone is full'); return true; }
+        return true;
+      })];
       // Move (Nov 1): the day's drain and anything of it on the route, not done
       if(r.entry && r.st !== 'done') right.push(moveBtn({
         name: (acalCust(r.cid) || {}).name || 'Customer', what: 'Pool drain', techId: r.tech || '',
@@ -20322,7 +20416,8 @@ function acalDayWindow(on){
   // here, as on the website
   const kinds = {wo: ['scheduledWorkOrders', 'work_order', 'work order'], tk: ['tasks', 'task', 'task']};
   // Clean & refill visits under their own CR heading (Nov 2), then the tasks
-  [['wo', 'wo', on.wo], ['cr', 'tk', on.tk.filter(it => it.crLike)], ['tk', 'tk', on.tk.filter(it => !it.crLike)]].forEach(([tag, k, items])=>{
+  // (Nov 3: Clean & refill goes right under the pool drains, before work orders)
+  [['cr', 'tk', on.tk.filter(it => it.crLike)], ['wo', 'wo', on.wo], ['tk', 'tk', on.tk.filter(it => !it.crLike)]].forEach(([tag, k, items])=>{
     if(!items.length) return;
     badge(tag);
     items.forEach(it=>{
