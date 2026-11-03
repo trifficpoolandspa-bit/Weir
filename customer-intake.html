@@ -2214,19 +2214,6 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
       <h2 style="margin-bottom:0;">Settings</h2>
     </div>
 
-    <!-- Colour-blind mode (Nov 1): this device only -->
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-        <h2 style="margin:0;">Color-blind mode</h2>
-        <label class="toggle-switch">
-          <input type="checkbox" id="settingColourBlind">
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-      <p style="font-size:12.5px;color:var(--muted);margin:12px 0 0;">Job and status colors that stay easy to tell apart with any kind of color blindness. Just for this device.</p>
-      <div id="colourBlindKey" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;"></div>
-    </div>
-
     <div class="card">
       <h2>Backup &amp; restore</h2>
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Download a snapshot of everything — customers, technicians, readings, equipment, routes, and settings. Keep it somewhere safe. If data is ever changed or deleted by mistake, restoring a backup puts it all back.</p>
@@ -2247,26 +2234,19 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
       </div>
       <p id="syncStatus" style="font-size:11.5px;color:var(--muted);margin:12px 0 0;">Not synced yet on this device.</p>
     </div>
-      <!-- The "Last 4 weeks" readings table on the phones' visits: on or off for the company -->
-      <div class="card">
-        <div class="field">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px;">
-            <h2 style="margin:0;">Service history table</h2>
-            <label class="toggle-switch">
-              <input type="checkbox" id="settingRecentReadings">
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-          <p style="font-size:12.5px;color:var(--muted);margin:16px 0 0;">Shows the last 3 months of readings at the top of each visit.</p>
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;">
-            <span style="font-size:13.5px;font-weight:600;">Show chemicals added too</span>
-            <label class="toggle-switch">
-              <input type="checkbox" id="settingRecentDosages">
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-        </div>
+
+    <!-- Colour-blind mode (Nov 1): this device only -->
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <h2 style="margin:0;">Color-blind mode</h2>
+        <label class="toggle-switch">
+          <input type="checkbox" id="settingColourBlind">
+          <span class="toggle-slider"></span>
+        </label>
       </div>
+      <p style="font-size:12.5px;color:var(--muted);margin:12px 0 0;">Job and status colors that stay easy to tell apart with any kind of color blindness. Just for this device.</p>
+      <div id="colourBlindKey" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;"></div>
+    </div>
 
       <!-- Water balance (LSI) is hidden until calcium hardness and water temperature
      are part of the readings. The calculator and the readout are still in the
@@ -5193,7 +5173,7 @@ function openProductServiceModal(opts){
   // services (and uncategorised) get a price and a description; chemicals a
   // price, a unit and Extra charge chemical, with its abbreviation and colour.
   overlay.innerHTML = `
-    <div class="confirm-box ps-window" style="max-width:420px;">
+    <div class="confirm-box ps-window" style="max-width:460px;">
       <!-- Add line item (Nov 1) -->
       <h3 style="font-size:15px;margin:0 0 4px;">Add line item</h3>
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Pick a category, give it a name and a price, and it’s ready to drop onto any quote or work order.</p>
@@ -5220,7 +5200,7 @@ function openProductServiceModal(opts){
       <div data-for="extra" style="display:none;">
         <div class="field"><label>Abbreviation</label><input id="psAbbr" maxlength="4" placeholder="e.g. MA">
           <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">Four characters at most. It has to fit the billing column.</div></div>
-        <div class="field"><label>Color</label><div id="psExtraDots" style="display:flex;gap:10px;flex-wrap:wrap;"></div></div>
+        <div class="field"><label>Color</label><div id="psExtraDots" style="display:flex;gap:10px;justify-content:space-between;"></div></div>
       </div>
       <div class="btn-row">
         <button class="btn btn-primary" id="psSave" style="flex:1;">Save</button>
@@ -5254,7 +5234,7 @@ function openProductServiceModal(opts){
       const d = document.createElement('button');
       d.type = 'button';
       d.setAttribute('aria-label', 'Color');
-      d.style.cssText = 'width:34px;height:34px;min-width:34px;padding:0;border-radius:50%;border:3px solid #fff;cursor:pointer;background:' + c + ';'
+      d.style.cssText = 'flex:0 1 34px;width:34px;max-width:34px;aspect-ratio:1/1;height:auto;min-width:0;padding:0;border-radius:50%;border:3px solid #fff;cursor:pointer;background:' + c + ';'
         + 'box-shadow:0 0 0 ' + (c === colour ? '2px var(--teal-deep)' : '1px var(--line)') + ';';
       d.addEventListener('click', ()=>{ colour = c; drawDots(); });
       dots.appendChild(d);
@@ -12596,12 +12576,10 @@ function openWorkCalendar(startDay, stayHere){
     // and drains on the days picked go to the app
     const right = document.createElement('div');
     right.style.cssText = 'display:flex;align-items:center;gap:8px;justify-content:flex-end;flex:1 0 100%;flex-wrap:wrap;';
-    if(!selecting){
-      const selBtn = smallBtn('Select for route', 'btn-primary');
-      selBtn.title = 'Pick days to send to the app';
-      selBtn.addEventListener('click', ()=>{ selecting = true; picked.clear(); draw(); });
-      right.appendChild(selBtn);
-    } else {
+    // No Select for route button any more (Nov 3): jobs go to the app when
+    // they're put on a day, so this mode can't be started
+    selecting = false;
+    if(selecting){
       const hint = document.createElement('span');
       hint.style.cssText = 'font-size:12.5px;font-weight:600;color:var(--ink);';
       hint.textContent = 'Tap the days to send';
@@ -12663,7 +12641,7 @@ function openWorkCalendar(startDay, stayHere){
       // Select all, and Cancel at the far right; the hint stays first
       [push, off, selAll, cancel].forEach(el => right.appendChild(el));
     }
-    head.appendChild(right);
+    // (the row below the heading is gone with the button, so the calendar sits higher)
     calHeadToPageStyle(head);
     box.appendChild(head);
     if(monthPick){
@@ -27042,10 +27020,10 @@ function extraChargeDialog(message, abbr, color, okLabel){
     const overlay = document.createElement('div');
     overlay.className = 'confirm-overlay';
     overlay.innerHTML = `
-      <div class="confirm-box">
+      <div class="confirm-box" style="max-width:420px;">
         <p>${message}</p>
         <input id="promptInput" placeholder="e.g. MA" style="margin-bottom:14px;">
-        <div class="field" style="margin-bottom:18px;"><label>Color</label><div id="extraDots" style="display:flex;gap:10px;"></div></div>
+        <div class="field" style="margin-bottom:18px;"><label>Color</label><div id="extraDots" style="display:flex;gap:10px;justify-content:space-between;"></div></div>
         <div class="btn-row">
           <button class="btn btn-ghost" id="promptCancel">Cancel</button>
           <button class="btn btn-primary" id="promptOk">Add</button>
@@ -27063,7 +27041,7 @@ function extraChargeDialog(message, abbr, color, okLabel){
         const d = document.createElement('button');
         d.type = 'button';
         d.setAttribute('aria-label', 'Color');
-        d.style.cssText = 'width:34px;height:34px;min-width:34px;padding:0;border-radius:50%;border:3px solid #fff;cursor:pointer;background:' + c + ';'
+        d.style.cssText = 'flex:0 1 34px;width:34px;max-width:34px;aspect-ratio:1/1;height:auto;min-width:0;padding:0;border-radius:50%;border:3px solid #fff;cursor:pointer;background:' + c + ';'
           + 'box-shadow:0 0 0 ' + (c === picked ? '2px var(--teal-deep)' : '1px var(--line)') + ';';
         d.addEventListener('click', ()=>{ picked = c; draw(); input.focus(); });
         dots.appendChild(d);
@@ -35745,22 +35723,7 @@ document.getElementById('settingPushToTalk').checked = appSettings.pushToTalkEna
 renderMicSideButtons();
 document.getElementById('settingShowDosageSuggestions').checked = appSettings.showDosageSuggestions;
 document.getElementById('settingWaterBalance').checked = appSettings.showWaterBalance === true;
-document.getElementById('settingRecentReadings').checked = appSettings.showRecentReadings !== false;
-document.getElementById('settingRecentDosages').checked = appSettings.showRecentDosages !== false;
-document.getElementById('settingRecentDosages').addEventListener('change', (e)=>{
-  appSettings.showRecentDosages = e.target.checked;
-  saveSettings();
-  showToast(appSettings.showRecentDosages ? 'Chemicals added shown in the readings history' : 'Chemicals added hidden');
-});
-document.getElementById('settingRecentReadings').addEventListener('change', (e)=>{
-  appSettings.showRecentReadings = e.target.checked;
-  // Chemicals added follows it, on or off (Oct 2)
-  appSettings.showRecentDosages = e.target.checked;
-  const doses = document.getElementById('settingRecentDosages');
-  if(doses) doses.checked = e.target.checked;
-  saveSettings();
-  showToast(appSettings.showRecentReadings ? 'Service history table shown on visits' : 'Service history table hidden on visits');
-});
+// The service history table switch lives in the app only (Nov 3)
 document.getElementById('settingAutoNotifyAll').checked = appSettings.autoNotifyAll === true;
 document.getElementById('settingAutoNotifyLead').value = String(appSettings.autoNotifyAllLead || 2);
 document.getElementById('settingAutoNotifyLeadField').style.display =
