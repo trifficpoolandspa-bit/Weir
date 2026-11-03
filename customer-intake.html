@@ -11745,7 +11745,7 @@ function pdOpenExtraWork(e, name, onDone){
   box.className = 'confirm-box';
   box.style.cssText = 'max-width:440px;text-align:left;';
   box.innerHTML = '<h3 style="font-size:16px;margin:0 0 4px;"></h3>'
-    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;">Each item shows on the drain job in the app with a box to tick, like a work order\u2019s items.</p>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;">Each item shows on the job in the app with a box to tick, like a work order\u2019s items.</p>'
     + '<div data-list></div>'
     + '<div style="display:flex;gap:8px;margin-top:12px;"><input type="text" data-new placeholder="Search Products & Services or type a new item\u2026" style="flex:1;" autocomplete="off">'
     + '<button type="button" class="btn btn-ghost" data-add style="width:auto;flex:0 0 auto;padding:6px 12px;font-size:12.5px;">Add</button></div>'
@@ -12845,7 +12845,7 @@ function openWorkCalendar(startDay, stayHere){
     }
     // Every section on the same columns, so they line up down the window
     // The last column holds Move and the bin (Nov 1)
-    const COLS = 'display:grid;grid-template-columns:22px 170px minmax(150px,1fr) 110px 140px 112px;gap:10px;align-items:center;min-width:784px;';
+    const COLS = 'display:grid;grid-template-columns:22px 170px minmax(150px,1fr) 110px 140px 196px;gap:10px;align-items:center;min-width:868px;';
     const listWrap = document.createElement('div');
     listWrap.style.cssText = 'overflow-x:auto;';
     panel.appendChild(listWrap);
@@ -12908,20 +12908,10 @@ function openWorkCalendar(startDay, stayHere){
       els.forEach(el => { el.style.justifySelf = ''; w.appendChild(el); });
       return w;
     };
-    // Edit (Nov 3): opens the job in its form, as Edit does on the Current list.
-    // The day's window closes first.
-    const editBtn = (fn)=>{
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'btn btn-ghost';
-      b.style.cssText = 'width:auto;flex:0 0 auto;padding:3px 9px;font-size:11.5px;';
-      b.textContent = 'Edit';
-      b.title = 'Change this job';
-      b.addEventListener('click', ev=>{ ev.stopPropagation(); sel = ''; draw(); fn(); });
-      return b;
-    };
     // Which technician gets a work order or task: its own menu (Nov 3)
     const techMenu = (curId, onPick, locked)=>{
+      // A finished job shows no technician menu (Nov 3)
+      if(locked) return document.createElement('span');
       const m = document.createElement('select');
       m.style.cssText = 'width:100%;padding:4px 8px;font-size:12px;';
       m.title = 'Which technician gets this in the app';
@@ -12940,10 +12930,18 @@ function openWorkCalendar(startDay, stayHere){
       addX.addEventListener('click', fn);
       return addX;
     };
+    // The button sits in the row, right of the technician menu (Nov 3), before
+    // Move and the bin; the items added show under the item column
+    const placeExtraBtn = (row, has, fn)=>{
+      const b = extraBtn(has, fn);
+      const acts = row.lastElementChild;
+      if(acts && acts.tagName === 'SPAN' && acts.style.justifyContent === 'flex-end') acts.insertBefore(b, acts.firstChild);
+      else { const w = actCell(b); row.appendChild(w); }
+    };
     const extraLine = ()=>{
       const extra = document.createElement('div');
       // One line: tags that run past the end tuck away behind the button
-      extra.style.cssText = 'grid-column:2 / 6;display:flex;gap:6px;flex-wrap:nowrap;align-items:center;padding:0 0 2px;min-width:0;';
+      extra.style.cssText = 'grid-column:3 / 4;display:flex;gap:6px;flex-wrap:nowrap;align-items:center;padding:0 0 2px;min-width:0;';
       const tagsWrap = document.createElement('div');
       tagsWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:nowrap;align-items:center;flex:0 1 auto;min-width:0;overflow:hidden;';
       tagsWrap.className = 'pd-extra-tags';
@@ -13035,7 +13033,7 @@ function openWorkCalendar(startDay, stayHere){
             // The group's own technician is the default, not a choice to keep
             if(techSel.value && String(techSel.value) !== String(it.technicianId || '')) it.custTech[cid] = techSel.value; else delete it.custTech[cid];
           }));
-          row.appendChild(techSel);
+          row.appendChild(isDone ? document.createElement('span') : techSel);   // none once finished (Nov 3)
           // A bin at the far right: out of the group for this day and off the
           // app. A done one too (Oct 19): it leaves the calendar, and the clean
           // stays in their history.
@@ -13083,12 +13081,12 @@ function openWorkCalendar(startDay, stayHere){
               if(items.length) it.custExtra[cid] = items; else delete it.custExtra[cid];
             })));
           });
-          if(!isDone) extra.appendChild(extraBtn(exItems.length, ()=>{
+          if(!isDone) placeExtraBtn(row, exItems.length, ()=>{
             pdOpenExtraWork({extraWork: exItems}, displayName(c.name), items=> editGroup(g.id, it=>{
               it.custExtra = it.custExtra || {};
               if(items.length) it.custExtra[cid] = items; else delete it.custExtra[cid];
             }));
-          }));
+          });
           if(!tagsWrap.children.length) tagsWrap.remove();
           if(extra.children.length) row.appendChild(extra);
           listEl.appendChild(row);
@@ -13126,7 +13124,7 @@ function openWorkCalendar(startDay, stayHere){
           if(ids.size && to){ const recs = pdScheduled(); recs.forEach(rr => { if(ids.has(rr.id)) rr.technicianId = to; }); lsSet('scheduledPoolDrains', recs); }
           draw();
         });
-        row.appendChild(techSel);
+        row.appendChild(st === 'done' ? document.createElement('span') : techSel);   // none once finished (Nov 3)
         {
           const bin = binBtn('Take off this day', ()=>{
             pdCalUnpush(e);
@@ -13170,7 +13168,7 @@ function openWorkCalendar(startDay, stayHere){
         exItems.forEach((li, idx)=>{
           tagsWrap.appendChild(pdExtraTag(li, isDone ? null : ()=>{ const items = exItems.slice(); items.splice(idx, 1); saveExtra(items); }));
         });
-        if(!isDone) extra.appendChild(extraBtn(exItems.length, ()=> pdOpenExtraWork(e, displayName(c.name), saveExtra)));
+        if(!isDone) placeExtraBtn(row, exItems.length, ()=> pdOpenExtraWork(e, displayName(c.name), saveExtra));
         if(!tagsWrap.children.length) tagsWrap.remove();
         if(extra.children.length) row.appendChild(extra);
         listWrap.appendChild(row);
@@ -13216,7 +13214,7 @@ function openWorkCalendar(startDay, stayHere){
         });
         // Move (Nov 1): this visit to another day; the app follows
         if(j.status === 'done') row.appendChild(woBin);
-        else row.appendChild(actCell(editBtn(()=> openCurrentForEditing('Work Order', {id: j.id})), moveBtn({
+        else row.appendChild(actCell(moveBtn({
           name: displayName(c.name), what: 'Work order' + (j.workOrderNumber ? ' #' + quoteNumberText(j.workOrderNumber) : ''), techId: j.technicianId || '',
           onMove: (iso, tech)=>{
             const list = woJobs(); const it = list.find(x => x && x.id === j.id); if(!it) return;
@@ -13228,6 +13226,24 @@ function openWorkCalendar(startDay, stayHere){
             return true;
           }
         }), woBin));
+        // Extra work (Nov 3), in the same place as on drains and filter cleans:
+        // it shows in the app on the job, each with a box to tick
+        {
+          const isDone = j.status === 'done';
+          const saveWoExtra = items=>{
+            const list = woJobs(); const it = list.find(x => x && x.id === j.id); if(!it) return;
+            if(items.length) it.extraWork = items; else delete it.extraWork;
+            lsSet('scheduledWorkOrders', list);
+            try{ renderWorkOrderHistory(); }catch(e){}
+            draw();
+          };
+          const [extra, tagsWrap] = extraLine();
+          const exItems = pdExtraOf(j);
+          exItems.forEach((li, idx)=>{ tagsWrap.appendChild(pdExtraTag(li, isDone ? null : ()=>{ const items = exItems.slice(); items.splice(idx, 1); saveWoExtra(items); })); });
+          if(!isDone) placeExtraBtn(row, exItems.length, ()=> pdOpenExtraWork(j, displayName(c.name), saveWoExtra));
+          if(!tagsWrap.children.length) tagsWrap.remove();
+          if(extra.children.length) row.appendChild(extra);
+        }
         listWrap.appendChild(row);
       });
     }
@@ -13270,7 +13286,7 @@ function openWorkCalendar(startDay, stayHere){
         });
         // Move (Nov 1): this task to another day; the app follows
         if(t.done) row.appendChild(tkBin);
-        else row.appendChild(actCell(editBtn(()=> openCurrentForEditing('Task', {id: t.id})), moveBtn({
+        else row.appendChild(actCell(moveBtn({
           name: cs.length ? cs.map(c => displayName(c.name)).join(', ') : (t.title || 'Task'), what: 'Task' + (cs.length && t.title ? ': ' + t.title : ''), techId: t.technicianId || '',
           onMove: (iso, tech)=>{
             const it = tasks.find(x => x && x.id === t.id); if(!it) return;
@@ -13282,6 +13298,22 @@ function openWorkCalendar(startDay, stayHere){
             return true;
           }
         }), tkBin));
+        // Extra work (Nov 3): same place as the drains, a Clean & refill too
+        {
+          const saveTkExtra = items=>{
+            const it = tasks.find(x => x && x.id === t.id); if(!it) return;
+            if(items.length) it.extraWork = items; else delete it.extraWork;
+            saveTasks();
+            try{ renderTaskList(); }catch(e){}
+            draw();
+          };
+          const [extra, tagsWrap] = extraLine();
+          const exItems = pdExtraOf(t);
+          exItems.forEach((li, idx)=>{ tagsWrap.appendChild(pdExtraTag(li, t.done ? null : ()=>{ const items = exItems.slice(); items.splice(idx, 1); saveTkExtra(items); })); });
+          if(!t.done) placeExtraBtn(row, exItems.length, ()=> pdOpenExtraWork(t, cs.length ? cs.map(c => displayName(c.name)).join(', ') : (t.title || 'Task'), saveTkExtra));
+          if(!tagsWrap.children.length) tagsWrap.remove();
+          if(extra.children.length) row.appendChild(extra);
+        }
         listWrap.appendChild(row);
       });
     }
@@ -22910,6 +22942,7 @@ function qoBodyInner(item, customerId){
     t.done && t.doneAt ? qoDoneRow('Completed', when(t.doneAt), t.doneBy ? (tech(t.doneBy) || 'a technician') : '', t.doneDurationMs) : '',
     !t.done && tech(t.technicianId) ? 'Technician: ' + tech(t.technicianId) : ''], !t.done, complete);
   if(t.details) qoSection(doc, 'Details', qoNotes(t.details));
+  if(Array.isArray(t.doneExtraWork) && t.doneExtraWork.length) qoSection(doc, 'Extra work done', qoNotes(t.doneExtraWork.join(', ')));
   if(t.doneNotes) qoSection(doc, 'Technician\u2019s notes', qoNotes(t.doneNotes));
   return doc;
 }
@@ -23136,6 +23169,7 @@ function qoItemText(item){
     if((j.lineItems || w.lineItems || []).length){ lines.push('Line items:'); items(j.lineItems || w.lineItems); }
     if(j.notes || w.notes) lines.push('Work order notes: ' + (j.notes || w.notes));
     if(item.j && item.j.doneAt) lines.push('Submitted ' + fmtDate(item.j.doneAt) + (item.j.doneBy ? ' by ' + (tech(item.j.doneBy) || 'a technician') : ''));
+    if(item.j && Array.isArray(item.j.doneExtraWork) && item.j.doneExtraWork.length) lines.push('Extra work done: ' + item.j.doneExtraWork.join(', '));
     if(item.j && item.j.doneNotes) lines.push('Technician\u2019s notes: ' + item.j.doneNotes);
   } else if(item.kind === 'drain'){
     const f = item.f;
@@ -23157,6 +23191,7 @@ function qoItemText(item){
     if(t.date) lines.push('Scheduled for ' + fmtDate(t.date + 'T12:00:00'));
     if(t.details) lines.push('Details: ' + t.details);
     if(t.done && t.doneAt) lines.push('Completed ' + fmtDate(t.doneAt) + (t.doneBy ? ' by ' + (tech(t.doneBy) || 'a technician') : ''));
+    if(Array.isArray(t.doneExtraWork) && t.doneExtraWork.length) lines.push('Extra work done: ' + t.doneExtraWork.join(', '));
     if(t.doneNotes) lines.push('Technician\u2019s notes: ' + t.doneNotes);
   }
   return lines.join('\n');
