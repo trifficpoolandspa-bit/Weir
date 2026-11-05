@@ -10989,6 +10989,9 @@ function openDrainHistory(c){
         <input id="pdhPrice" inputmode="decimal" placeholder="0.00" autocomplete="off" style="padding-left:24px;">
       </div>
       <p id="pdhPriceHint" style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Just for this customer.</p>
+      <label for="pdhNotes" style="font-size:12.5px;font-weight:600;">Customer notes</label>
+      <textarea id="pdhNotes" rows="3" placeholder="Important things to know for the drain and the clean and refill..." style="min-height:74px;margin:4px 0 4px;"></textarea>
+      <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Shown on the pool drain and the clean and refill in the app.</p>
       <div style="font-size:12.5px;font-weight:600;margin-bottom:4px;">Drains</div>
       <div id="pdhList" style="border:1px solid var(--line);border-radius:10px;padding:2px 10px;margin-bottom:12px;max-height:36vh;overflow-y:auto;"></div>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
@@ -11100,6 +11103,19 @@ function openDrainHistory(c){
   }
   fillPrice();
   priceIn.addEventListener('change', savePrice);
+  // Customer notes: saved as they are typed, shown on the drain and the clean & refill in the app
+  const notesIn = overlay.querySelector('#pdhNotes');
+  notesIn.value = c.drainNotes || '';
+  let notesTimer = null;
+  const saveNotes = ()=>{
+    clearTimeout(notesTimer);
+    const v = notesIn.value.trim();
+    if((c.drainNotes || '') === v) return;
+    if(v) c.drainNotes = v; else delete c.drainNotes;
+    saveCustomers();
+  };
+  notesIn.addEventListener('input', ()=>{ clearTimeout(notesTimer); notesTimer = setTimeout(saveNotes, 500); });
+  notesIn.addEventListener('blur', saveNotes);
   const listEl = overlay.querySelector('#pdhList');
   const nextEl = overlay.querySelector('#pdhNext');
   const dateIn = overlay.querySelector('#pdhDate');
@@ -11147,6 +11163,7 @@ function openDrainHistory(c){
   });
   overlay.querySelector('#pdhDone').addEventListener('click', ()=>{
     savePrice();
+    saveNotes();
     // A date left in the box is a drain too (Oct 10)
     if(dateIn.value){
       pdRecord([c.id], dateIn.value, undefined, body);
@@ -25697,6 +25714,8 @@ function photoEveryone(){
 }
 function photoEveryoneOn(step, key){
   const all = photoEveryone();
+  // Skipping a service or job needs a photo and note unless the office turned it off
+  if(step === 'skipjob') return !(all.skipjob && all.skipjob.skipjob === false);
   return !!(all[step] && all[step][key] === true);
 }
 // After photo starts on for everyone — Optional, and required at the pool
@@ -25728,7 +25747,8 @@ function seedAfterPhotoDefaults(state){
 function setPhotoEveryone(step, key, on){
   const all = photoEveryone();
   all[step] = all[step] || {};
-  if(on) all[step][key] = true; else delete all[step][key];
+  if(step === 'skipjob') all[step][key] = !!on;      // on by default, so "off" is written down
+  else if(on) all[step][key] = true; else delete all[step][key];
   lsSet('photoEveryone', all);
 }
 
@@ -25874,7 +25894,7 @@ function photoTechnicianList(step, bodies){
     return box;
   }
   // The gate and the skip rule are one each per person; the rest are per body
-  const single = step === 'gate' || step === 'skip' || step === 'video' || step === 'saltcell';
+  const single = step === 'gate' || step === 'skip' || step === 'skipjob' || step === 'video' || step === 'saltcell';
   const columns = single
     ? [[step, '']]
     : PHOTO_BODIES.filter(([key]) => bodies[key]);
@@ -25882,7 +25902,7 @@ function photoTechnicianList(step, bodies){
   // is only ever optional, so its tick is all there is
   // After photo is always shown now, so it has no Optional button (Oct 3)
   // Skip has Optional too (Oct 3): the photo-and-note window, nothing in it needed
-  const offersOptional = step !== 'video' && step !== 'after' && step !== 'saltcell';   // it's the button or nothing
+  const offersOptional = step !== 'video' && step !== 'after' && step !== 'saltcell' && step !== 'skipjob';   // it's the button or nothing
 
   // Always the technician as they are in the list right now. A sync replaces
   // the whole list with fresh objects, so the one captured when this was drawn
@@ -25895,6 +25915,7 @@ function photoTechnicianList(step, bodies){
     return step === 'gate' ? cur.requireGatePhoto === true
       : step === 'saltcell' ? cur.requireSaltCellPhoto === true
       : step === 'skip' ? cur.requireSkipProof === true
+      : step === 'skipjob' ? cur.requireSkipJobProof === true
       : step === 'video' ? cur.allowVideo === true
       : photoRuleFor(cur, step, key) === true;
   };
@@ -25903,6 +25924,7 @@ function photoTechnicianList(step, bodies){
     if(step === 'gate') cur.requireGatePhoto = on;
     else if(step === 'saltcell') cur.requireSaltCellPhoto = on;
     else if(step === 'skip') cur.requireSkipProof = on;
+    else if(step === 'skipjob') cur.requireSkipJobProof = on;
     else if(step === 'video') cur.allowVideo = on;
     else setPhotoRule(cur, step, key, on);
   };
@@ -26068,6 +26090,7 @@ function photoRowCountText(step, bodies){
     step === 'gate' ? (t.requireGatePhoto === true || photoEveryoneOn('gate', 'gate'))
     : step === 'saltcell' ? (t.requireSaltCellPhoto === true || photoEveryoneOn('saltcell', 'saltcell'))
     : step === 'skip' ? (t.requireSkipProof === true || photoEveryoneOn('skip', 'skip'))
+    : step === 'skipjob' ? (t.requireSkipJobProof === true || photoEveryoneOn('skipjob', 'skipjob'))
     : PHOTO_BODIES.some(([k]) => bodies[k] && (photoRuleFor(t, step, k) || photoEveryoneOn(step, k)))
   );
   const optional = technicians.filter(t => must.indexOf(t) === -1
@@ -26117,6 +26140,10 @@ function renderPhotoRequirements(){
      bodies: {}, oneTick: true},
     // Not a photo step of its own: what a technician must do before skipping
     {step: 'skip', label: 'Skip body of water photo and note', off: false,
+     why: '', bodies: {}, oneTick: true},
+    // Skip service / Skip job on the Today list. On for everyone to start with.
+    {step: 'skipjob', label: 'Skip service / job photo and note', off: false,
+     note: 'When Skip service or Skip job is pressed on the Today list, the technician has to take a photo and write a note before it can be skipped.',
      why: '', bodies: {}, oneTick: true}
   ];
   const own = photoTasks().map(task => ({
@@ -31343,27 +31370,38 @@ function openEquipmentOptionsModal(type, onDone){
 // The sizes are kept once for the whole company (with the equipment buttons),
 // so every customer with a filter picks from the same list. A customer's own
 // choice is kept on their filter as filterSize.
-function filterSizeList(){
+// Styles (Nov 5): every kind of equipment has its own list of styles, kept once
+// for the company. The filter's is the list it started with as sizes
+// (__filterSizes, chosen on the filter as filterSize); the rest are kept by type
+// in __styles and chosen on the item as style.
+function styleField(type){ return baseEquipmentType(type) === 'Filter' ? 'filterSize' : 'style'; }
+function styleList(type){
   const store = lsGet('equipmentChoices') || {};
-  return Array.isArray(store.__filterSizes) ? store.__filterSizes.slice() : [];
+  if(baseEquipmentType(type) === 'Filter') return Array.isArray(store.__filterSizes) ? store.__filterSizes.slice() : [];
+  const own = store.__styles && store.__styles[baseEquipmentType(type)];
+  return Array.isArray(own) ? own.slice() : [];
 }
-function saveFilterSizeList(list){
+function saveStyleList(type, list){
   const store = lsGet('equipmentChoices') || {};
-  store.__filterSizes = list;
+  if(baseEquipmentType(type) === 'Filter') store.__filterSizes = list;
+  else { store.__styles = Object.assign({}, store.__styles || {}); store.__styles[baseEquipmentType(type)] = list; }
   lsSet('equipmentChoices', store);
 }
 // Right of a Cartridge, DE or Other filter: a Size button, or the size chosen
-function addFilterSizeControl(container, type){
+function addStyleControl(container, type){
+  const F = styleField(type);
   const item = currentEquipmentItems.find(i => i.type === type);
-  if(!item || ['Cartridge', 'DE', 'Other'].indexOf(item.filterTypeChoice) === -1) return;
-  if(item.filterSize){
+  // A filter shows it once its kind is chosen (sand included); every other row always does
+  if(baseEquipmentType(type) === 'Filter' && !(item && item.filterTypeChoice)) return;
+  if(!item && baseEquipmentType(type) === 'Filter') return;
+  if(item && item[F]){
     const pill = document.createElement('div');
-    pill.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:140px;flex:0 0 auto;margin-left:8px;'
+    pill.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-width:140px;max-width:100%;flex:0 0 auto;'
       + 'padding:6px 11px;border-radius:9px;background:var(--teal-deep);color:#fff;font-size:14.4px;font-weight:600;'
       + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;position:relative;cursor:pointer;';
     const text = document.createElement('span');
     text.style.cssText = 'display:block;width:100%;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:opacity .12s ease;';
-    text.textContent = item.filterSize;
+    text.textContent = item[F];
     const x = document.createElement('span');
     x.textContent = '×';
     x.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:19px;line-height:1;opacity:0;transition:opacity .12s ease;pointer-events:none;';
@@ -31373,7 +31411,7 @@ function addFilterSizeControl(container, type){
     pill.title = 'Press again to clear';
     pill.addEventListener('click', (e)=>{
       e.stopPropagation();
-      item.filterSize = '';
+      item[F] = '';
       persistCurrentEquipmentItems();
       renderEquipmentTypeList();
     });
@@ -31383,54 +31421,82 @@ function addFilterSizeControl(container, type){
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'btn btn-ghost';
-  btn.style.cssText = 'width:auto;flex:0 0 auto;margin-left:8px;padding:6px 12px;font-size:13px;';
-  btn.textContent = 'Size';
-  btn.addEventListener('click', (e)=>{ e.stopPropagation(); openFilterSizeWindow(type); });
+  btn.style.cssText = 'width:auto;flex:0 0 auto;padding:6px 12px;font-size:13px;';
+  btn.textContent = 'Style';
+  btn.addEventListener('click', (e)=>{ e.stopPropagation(); openStyleWindow(type); });
   container.appendChild(btn);
 }
-function openFilterSizeWindow(type){
+function openStyleWindow(type){
+  const F = styleField(type), baseName = baseEquipmentType(type);
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
   overlay.innerHTML = '<div class="confirm-box" style="max-width:420px;">'
-    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 4px;"><h3 style="font-size:15px;margin:0;">Filter sizes</h3>'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 4px;"><h3 style="font-size:15px;margin:0;">' + esc(baseName) + ' styles</h3>'
     + '<button type="button" id="fsClose" aria-label="Close" title="Close" style="flex:0 0 auto;width:28px;height:28px;padding:0;border-radius:50%;border:1.5px solid var(--line);background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;">'
     + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--teal-deep)" stroke-width="2.6" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg></button></div>'
-    + '<p style="font-size:11.5px;color:var(--muted);margin:0 0 12px;">Add the sizes you work with. They are kept for every customer with a filter, so you only add each one once. Press a size to choose it.</p>'
-    + '<div style="display:flex;gap:8px;margin-bottom:14px;"><input id="fsNew" placeholder="e.g. 100 sq ft" maxlength="24" autocomplete="off" style="flex:1;min-width:0;">'
+    + '<p style="font-size:11.5px;color:var(--muted);margin:0 0 12px;">Add the styles you use for ' + esc(baseName.toLowerCase()) + '. They are kept for every customer with one, so you only add each one once. Press a style to choose it.</p>'
+    + '<div style="display:flex;gap:8px;margin-bottom:14px;"><input id="fsNew" placeholder="' + (baseName === 'Filter' ? 'e.g. 100 sq ft' : 'Add a style') + '" maxlength="24" autocomplete="off" style="flex:1;min-width:0;">'
     + '<button type="button" class="btn btn-primary" id="fsAdd" style="width:auto;padding:0 16px;">Add</button></div>'
-    + '<div id="fsGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;min-height:44px;max-height:50vh;overflow-y:auto;"></div></div>';
+    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px;"><span id="fsArrangeNote" style="font-size:11.5px;color:var(--muted);"></span>'
+    + '<button type="button" class="btn btn-ghost" id="fsArrange" style="width:auto;flex:0 0 auto;padding:5px 12px;font-size:12.5px;">Arrange order</button></div>'
+    + '<div id="fsGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;min-height:44px;max-height:50vh;overflow-y:auto;padding:3px;margin:-3px;"></div></div>';
   document.body.appendChild(overlay);
+  let arranging = false;
   const grid = overlay.querySelector('#fsGrid'), input = overlay.querySelector('#fsNew');
   const shut = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
   overlay.addEventListener('click', (e)=>{ if(e.target === overlay) shut(); });
-  const current = ()=>{ const it = currentEquipmentItems.find(i => i.type === type); return it ? it.filterSize || '' : ''; };
+  const current = ()=>{ const it = currentEquipmentItems.find(i => i.type === type); return it ? it[F] || '' : ''; };
   function draw(){
-    const list = filterSizeList(), mine = current();
+    const list = styleList(type), mine = current();
     grid.innerHTML = '';
+    const arrBtn = overlay.querySelector('#fsArrange');
+    arrBtn.style.display = list.length > 1 ? '' : 'none';
+    if(list.length < 2) arranging = false;
+    arrBtn.textContent = arranging ? 'Done arranging' : 'Arrange order';
+    arrBtn.className = 'btn ' + (arranging ? 'btn-primary' : 'btn-ghost');
+    overlay.querySelector('#fsArrangeNote').textContent = arranging ? 'Drag a size to where you want it.' : '';
     if(!list.length){
       const none = document.createElement('div');
       none.style.cssText = 'grid-column:1/-1;font-size:12.5px;color:var(--muted);padding:6px 0;';
-      none.textContent = 'No sizes yet. Type one above and press Add.';
+      none.textContent = 'No styles yet. Type one above and press Add.';
       grid.appendChild(none);
       return;
     }
     list.forEach(size=>{
       const b = document.createElement('div');
       b.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 6px;border-radius:9px;background:var(--teal-deep);'
-        + 'color:#fff;font-size:14.4px;font-weight:600;white-space:nowrap;cursor:pointer;min-width:0;'
+        + 'color:#fff;font-size:14.4px;font-weight:600;white-space:normal;text-align:center;line-height:1.2;cursor:pointer;min-width:0;'
         + (size === mine ? 'box-shadow:0 0 0 2px #fff,0 0 0 4px var(--teal-mid);' : '');
       const t = document.createElement('span');
-      t.style.cssText = 'overflow:hidden;text-overflow:ellipsis;min-width:0;';
+      t.style.cssText = 'min-width:0;overflow-wrap:anywhere;';
       t.textContent = (size === mine ? '✓ ' : '') + size;
       const x = document.createElement('span');
       x.textContent = '×';
-      x.title = 'Delete this size';
+      x.title = 'Delete this style';
       x.style.cssText = 'opacity:.75;font-size:17px;line-height:1;flex:0 0 auto;padding:0 2px;';
       b.appendChild(t); b.appendChild(x);
+      // Arranging: drag to reorder; pressing does nothing else
+      if(arranging){
+        x.style.display = 'none';
+        b.dataset.reorderKey = size;
+        b.style.cursor = 'grab';
+        b.style.touchAction = 'none';
+        b.style.userSelect = 'none';
+        b.style.boxShadow = '0 0 0 1.5px var(--teal-mid)';
+        t.textContent = size;
+        grid.appendChild(b);
+        attachTouchReorder(b, b, grid, ':scope > [data-reorder-key]', keys=>{
+          const known = new Set(styleList(type));
+          const next = keys.filter(k => known.has(k));
+          styleList(type).forEach(k => { if(next.indexOf(k) === -1) next.push(k); });
+          saveStyleList(type, next);
+        });
+        return;
+      }
       // Pressing a size chooses it and closes the window
       b.addEventListener('click', ()=>{
         const it = ensureEquipmentItem(type);
-        it.filterSize = size;
+        it[F] = size;
         persistCurrentEquipmentItems();
         shut();
         renderEquipmentTypeList();
@@ -31438,12 +31504,12 @@ function openFilterSizeWindow(type){
       // The x deletes it, for every customer, after asking
       x.addEventListener('click', async (e)=>{
         e.stopPropagation();
-        const ok = await confirmDialog('Delete the size "' + size + '"? It will be taken off every one of your customers who has it.', 'Delete');
+        const ok = await confirmDialog('Delete the style "' + size + '"? It will be taken off every one of your customers who has it.', 'Delete');
         if(!ok) return;
-        saveFilterSizeList(filterSizeList().filter(v => v !== size));
+        saveStyleList(type, styleList(type).filter(v => v !== size));
         let changed = false;
-        customers.forEach(c => (c.equipment || []).forEach(it => { if(it && it.filterSize === size){ it.filterSize = ''; changed = true; } }));
-        currentEquipmentItems.forEach(it => { if(it && it.filterSize === size) it.filterSize = ''; });
+        customers.forEach(c => (c.equipment || []).forEach(it => { if(it && baseEquipmentType(it.type) === baseName && it[F] === size){ it[F] = ''; changed = true; } }));
+        currentEquipmentItems.forEach(it => { if(it && baseEquipmentType(it.type) === baseName && it[F] === size) it[F] = ''; });
         if(changed) saveCustomers();
         draw();
         renderEquipmentTypeList();
@@ -31454,15 +31520,16 @@ function openFilterSizeWindow(type){
   function add(){
     const v = input.value.trim();
     if(!v){ input.focus(); return; }
-    const list = filterSizeList();
-    if(list.some(x => x.toLowerCase() === v.toLowerCase())){ showToast('That size is already there'); input.select(); return; }
+    const list = styleList(type);
+    if(list.some(x => x.toLowerCase() === v.toLowerCase())){ showToast('That style is already there'); input.select(); return; }
     list.push(v);
-    saveFilterSizeList(list);
+    saveStyleList(type, list);
     input.value = '';
     draw();
     input.focus();
   }
   overlay.querySelector('#fsAdd').addEventListener('click', add);
+  overlay.querySelector('#fsArrange').addEventListener('click', ()=>{ arranging = !arranging; draw(); });
   overlay.querySelector('#fsClose').addEventListener('click', shut);
   input.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); add(); } if(e.key === 'Escape') shut(); });
   draw();
@@ -32025,27 +32092,42 @@ function renderEquipmentTypeList(){
     row.appendChild(label);
 
     const middleArea = document.createElement('div');
-    middleArea.style.flex = '1';
+    // Its width is whatever is left between the name and the fixed columns on
+    // the right; what it holds wraps inside it instead of pushing them along
+    // (a size chosen no longer moves the Type box, Notes or the camera)
+    middleArea.style.flex = '1 1 0';
+    middleArea.style.minWidth = '0';
+    // The choice on top, and the Style button (or the chosen style) underneath it
     middleArea.style.display = 'flex';
-    middleArea.style.justifyContent = 'flex-start';
+    middleArea.style.flexDirection = 'column';
+    middleArea.style.alignItems = 'flex-start';
+    middleArea.style.gap = '6px';
     row.appendChild(middleArea);
+    const pickArea = document.createElement('div');
+    pickArea.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0;max-width:100%;';
+    middleArea.appendChild(pickArea);
 
     if(baseEquipmentType(type) === 'Filter'){
-      renderChoicePicker(middleArea, type, ['Cartridge', 'Sand', 'DE', 'Other'], 'filterTypeChoice', 'filterTypeCustom', ()=> renderEquipmentTypeList());
-      addFilterSizeControl(middleArea, type);
+      renderChoicePicker(pickArea, type, ['Cartridge', 'Sand', 'DE', 'Other'], 'filterTypeChoice', 'filterTypeCustom', ()=> renderEquipmentTypeList());
+      addStyleControl(middleArea, type);
     } else if(baseEquipmentType(type) === 'Pump'){
-      renderChoicePicker(middleArea, type, ['Variable Speed', 'Single Speed', 'Other'], 'pumpSpeedChoice', 'pumpSpeedCustom', ()=> renderEquipmentTypeList());
+      renderChoicePicker(pickArea, type, ['Variable Speed', 'Single Speed', 'Other'], 'pumpSpeedChoice', 'pumpSpeedCustom', ()=> renderEquipmentTypeList());
+      addStyleControl(middleArea, type);
     } else if(baseEquipmentType(type) === 'Cleaning System'){
-      renderChoicePicker(middleArea, type, ['Pop Ups', 'Vacuum', 'Other'], 'cleaningSystemChoice', 'cleaningSystemCustom', ()=> renderEquipmentTypeList());
+      renderChoicePicker(pickArea, type, ['Pop Ups', 'Vacuum', 'Other'], 'cleaningSystemChoice', 'cleaningSystemCustom', ()=> renderEquipmentTypeList());
+      addStyleControl(middleArea, type);
     } else if(baseEquipmentType(type) === 'Chlorination'){
-      renderChoicePicker(middleArea, type, ['Tabs', 'Salt Cell', 'Liquid', 'Other'], 'chlorinationChoice', 'chlorinationCustom', ()=> renderEquipmentTypeList());
+      renderChoicePicker(pickArea, type, ['Tabs', 'Salt Cell', 'Liquid', 'Other'], 'chlorinationChoice', 'chlorinationCustom', ()=> renderEquipmentTypeList());
+      addStyleControl(middleArea, type);
     } else if(baseEquipmentType(type) === 'Heater'){
-      renderChoicePicker(middleArea, type, ['Solar', 'Heat Pump', 'Gas', 'Other'], 'heaterChoice', 'heaterCustom', ()=> renderEquipmentTypeList());
+      renderChoicePicker(pickArea, type, ['Solar', 'Heat Pump', 'Gas', 'Other'], 'heaterChoice', 'heaterCustom', ()=> renderEquipmentTypeList());
+      addStyleControl(middleArea, type);
     } else {
       // An equipment type the user created — its buttons come from the saved
       // list, which renderChoicePicker merges in
-      renderChoicePicker(middleArea, type, ['Other'],
+      renderChoicePicker(pickArea, type, ['Other'],
         'customChoice', 'customChoiceOther', ()=> renderEquipmentTypeList());
+      addStyleControl(middleArea, type);
     }
 
     // Every type, built-in or not, can have buttons added. They are stored
@@ -32065,7 +32147,7 @@ function renderEquipmentTypeList(){
     });
     // No "+ Quick buttons" bubble on a row with none (Tyrus, Oct 2): they're
     // set up in the Add equipment window. A row that has some keeps "Edit buttons".
-    if(extraCount) middleArea.appendChild(setupBtn);
+    if(extraCount) pickArea.appendChild(setupBtn);
 
     const existingItem = currentEquipmentItems.find(i => i.type === type);
 
@@ -32084,31 +32166,6 @@ function renderEquipmentTypeList(){
       row.appendChild(slot);
     }
 
-    const quickTextInput = document.createElement('input');
-    quickTextInput.type = 'text';
-    quickTextInput.className = 'equip-quick-text';
-    quickTextInput.placeholder = 'Type';
-    quickTextInput.value = existingItem ? (existingItem.quickText || '') : '';
-    quickTextInput.style.width = '155px';
-    quickTextInput.style.flexShrink = '0';
-    quickTextInput.style.fontSize = '13px';
-    quickTextInput.style.padding = '7px 10px';
-    quickTextInput.addEventListener('click', (e)=> e.stopPropagation());
-    quickTextInput.addEventListener('change', ()=>{
-      const it = ensureEquipmentItem(type);
-      it.quickText = quickTextInput.value;
-      persistCurrentEquipmentItems();
-    });
-    quickTextInput.addEventListener('keydown', (e)=>{
-      if(e.key !== 'Enter') return;
-      e.preventDefault();
-      const inputs = Array.from(document.querySelectorAll('#icEquipmentList .equip-quick-text'));
-      const idx = inputs.indexOf(quickTextInput);
-      quickTextInput.blur();
-      const next = inputs[idx + 1];
-      if(next) next.focus();
-    });
-    row.appendChild(quickTextInput);
 
     const notesBtn = document.createElement('button');
     notesBtn.type = 'button';

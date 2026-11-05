@@ -6166,6 +6166,8 @@ function photoStepState(step){
 function photoEveryoneOn(step, key){
   const saved = lsGet('photoEveryone');
   const all = saved && typeof saved === 'object' ? saved : {after: {pool: true}};
+  // Skipping a service or job needs a photo and note unless the office turned it off
+  if(step === 'skipjob') return !(all.skipjob && all.skipjob.skipjob === false);
   return !!(all[step] && all[step][key] === true);
 }
 
@@ -11547,6 +11549,7 @@ function jobSkipButton(customer, job, dayISO){
 }
 // Why a job is skipped (Oct 25): a reason is needed, like Skip Service
 function askJobSkipReason(customer, job){
+  const needPhoto = techRequires('requireSkipJobProof') || photoEveryoneOn('skipjob', 'skipjob');
   return new Promise(resolve=>{
     const overlay = document.createElement('div');
     overlay.className = 'confirm-overlay';
@@ -11556,6 +11559,9 @@ function askJobSkipReason(customer, job){
     box.innerHTML = '<h3 style="font-size:15px;margin:0 0 4px;"></h3>'
       + '<p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">This goes to the office with the job so they know what happened.</p>'
       + '<div class="field"><label>Reason</label><textarea rows="4" placeholder="Gate was locked, part not in yet, customer asked to move it..." style="min-height:96px;"></textarea></div>'
+      + (needPhoto ? '<div class="field"><label>Photo (required)</label><button type="button" class="btn btn-ghost" data-k="photo" style="width:auto;">Take photo</button>'
+        + '<input type="file" accept="image/*" capture="environment" data-k="file" style="display:none;">'
+        + '<div data-k="wrap" style="display:none;margin-top:10px;"><img data-k="img" style="max-width:50%;border-radius:10px;border:1px solid var(--line);display:block;" alt="Skip photo"></div></div>' : '')
       + '<div class="btn-row"><button class="btn btn-primary" data-k="ok" style="flex:1;">Skip job</button><button class="btn btn-ghost" data-k="no" style="width:auto;">Cancel</button></div>';
     box.querySelector('h3').textContent = 'Why is ' + (customer ? customer.name + ' – ' : '') + (job.title || jobKindLabel(job.kind)) + ' being skipped?';
     overlay.appendChild(box);
@@ -11563,12 +11569,28 @@ function askJobSkipReason(customer, job){
     const text = box.querySelector('textarea');
     setTimeout(()=> text.focus(), 60);
     const done = r => { overlay.remove(); resolve(r); };
+    let photoData = null;
+    if(needPhoto){
+      const fileEl = box.querySelector('[data-k="file"]');
+      box.querySelector('[data-k="photo"]').addEventListener('click', ()=> fileEl.click());
+      fileEl.addEventListener('change', async ev=>{
+        const f = ev.target.files[0];
+        if(!f) return;
+        try{
+          photoData = await resizeImageFile(f, 900, 0.5);
+          box.querySelector('[data-k="img"]').src = photoData;
+          box.querySelector('[data-k="wrap"]').style.display = 'block';
+          box.querySelector('[data-k="photo"]').textContent = 'Retake photo';
+        }catch(err){ showToast('Could not read that photo'); }
+      });
+    }
     box.querySelector('[data-k="no"]').addEventListener('click', ()=> done(null));
     overlay.addEventListener('click', ev => { if(ev.target === overlay) done(null); });
     box.querySelector('[data-k="ok"]').addEventListener('click', ()=>{
       const reason = text.value.trim();
       if(!reason){ showToast('Add a reason first'); text.focus(); return; }
-      done(reason);
+      if(needPhoto && !photoData){ showToast('A photo is required to skip a job'); return; }
+      done({reason, photo: photoData});
     });
   });
 }
@@ -11576,8 +11598,9 @@ function askJobSkipReason(customer, job){
 // marked skipped with the reason in its notes. No customer email goes out.
 // The office can put it back on a day with Reschedule on Serviced today.
 async function skipRouteJob(customer, job, dayISO){
-  const reason = await askJobSkipReason(customer, job);
-  if(!reason) return;
+  const skipAns = await askJobSkipReason(customer, job);
+  if(!skipAns) return;
+  const reason = skipAns.reason;
   const stamp = new Date().toISOString();
   const noteText = 'Skipped — ' + reason;
   const me = currentUser ? currentUser.id : '';
@@ -11587,7 +11610,7 @@ async function skipRouteJob(customer, job, dayISO){
     durationMs: 0, skipped: true,
     key: job.key, kind: job.kind, sourceId: job.id,
     customerId: customer ? customer.id : null, customerName: customer ? customer.name : '', title: job.title,
-    notes: noteText, photo: null, photoMore: [], video: null, videoMore: [], date: dayISO || job.dayISO || todayDateStr(),
+    notes: noteText, photo: skipAns.photo || null, photoMore: [], video: null, videoMore: [], date: dayISO || job.dayISO || todayDateStr(),
     technicianId: me, submittedAt: stamp
   });
   lsSet('jobSubmissions', list);
@@ -11700,6 +11723,19 @@ function openJobPage(customer, job){
   // A filter clean starts straight at its photos: no customer name or address
   // under "Filter clean" (Oct 3)
   if(job.kind === 'filter clean' || job.kind === 'pool drain'){ who.style.display = 'none'; where.style.display = 'none'; }
+  // Customer notes written in the office's Drains window, on the pool drain and the clean & refill
+  if(customer && customer.drainNotes && (job.kind === 'pool drain' || (job.kind === 'task' && isRefillJob(job)))){
+    const nb = document.createElement('div');
+    nb.style.cssText = 'background:#FFF6DC;border:1.5px solid #E8C766;border-radius:12px;padding:10px 12px;margin:0 0 14px;';
+    const nh = document.createElement('div');
+    nh.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8A6A00;margin-bottom:4px;';
+    nh.textContent = 'Customer notes';
+    const nt = document.createElement('div');
+    nt.style.cssText = 'font-size:13.5px;line-height:1.45;white-space:pre-wrap;color:var(--ink);';
+    nt.textContent = customer.drainNotes;
+    nb.appendChild(nh); nb.appendChild(nt);
+    card.appendChild(nb);
+  }
   // A work order shows its line items and a task its name, in black, with no
   // customer name or address (Oct 3)
   const lineChecks = [];       // a work order's line items, all ticked before Submit
@@ -13531,7 +13567,8 @@ async function reserviceCustomer(customer, forDay){
 
 
 // Asks why a service was skipped, with an optional photo
-function openSkipReasonModal(customer){
+function openSkipReasonModal(customer, forcePhoto){
+  const photoNeeded = forcePhoto === true || appSettings.requireSkipPhoto === true;
   return new Promise((resolve)=>{
     const overlay = document.createElement('div');
     overlay.className = 'confirm-overlay';
@@ -13544,8 +13581,8 @@ function openSkipReasonModal(customer){
           <textarea id="skipReasonText" rows="4" placeholder="Gate was locked, dog in the yard, customer asked to reschedule..." style="min-height:96px;"></textarea>
         </div>
         <div class="field">
-          <label>Photo (optional)</label>
-          <button type="button" class="btn btn-ghost" id="skipPhotoBtn" style="width:auto;">${appSettings.requireSkipPhoto === true ? 'Take photo (required)' : 'Take photo'}</button>
+          <label>Photo${photoNeeded ? ' (required)' : ' (optional)'}</label>
+          <button type="button" class="btn btn-ghost" id="skipPhotoBtn" style="width:auto;">${photoNeeded ? 'Take photo (required)' : 'Take photo'}</button>
           <input type="file" accept="image/*" capture="environment" id="skipPhotoInput" style="display:none;">
           <div id="skipPhotoWrap" style="display:none;margin-top:10px;">
             <img id="skipPhotoPreview" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="Skip photo">
@@ -13589,7 +13626,7 @@ function openSkipReasonModal(customer){
     overlay.querySelector('#skipReasonSave').addEventListener('click', ()=>{
       const reason = textEl.value.trim();
       if(!reason){ showToast('Add a reason first'); textEl.focus(); return; }
-      if(appSettings.requireSkipPhoto === true && !photoData){
+      if(photoNeeded && !photoData){
         showToast('A photo is required to skip a service');
         return;
       }
@@ -13611,8 +13648,9 @@ function skipService(...args){
 }
 async function adminVersion_skipService(customer){
   let skipInfo = null;
-  if(appSettings.requireSkipReason === true || appSettings.requireSkipPhoto === true){
-    skipInfo = await openSkipReasonModal(customer);
+  const mustProve = techRequires('requireSkipJobProof') || photoEveryoneOn('skipjob', 'skipjob');
+  if(mustProve || appSettings.requireSkipReason === true || appSettings.requireSkipPhoto === true){
+    skipInfo = await openSkipReasonModal(customer, mustProve);
     if(!skipInfo) return;
   } else {
     const confirmed = await confirmDialog('Are you sure you want to skip service for ' + customer.name + ' today?', 'Yes');
@@ -13657,8 +13695,9 @@ async function adminVersion_skipService(customer){
 }
 async function techVersion_skipService(customer){
   let skipInfo = null;
-  if(appSettings.requireSkipReason === true || appSettings.requireSkipPhoto === true){
-    skipInfo = await openSkipReasonModal(customer);
+  const mustProve = techRequires('requireSkipJobProof') || photoEveryoneOn('skipjob', 'skipjob');
+  if(mustProve || appSettings.requireSkipReason === true || appSettings.requireSkipPhoto === true){
+    skipInfo = await openSkipReasonModal(customer, mustProve);
     if(!skipInfo) return;
   } else {
     const confirmed = await confirmDialog('Are you sure you want to skip service for ' + customer.name + ' today?', 'Yes');
@@ -25458,7 +25497,7 @@ function reloadAppChemConfig(){ chemConfig = loadChemConfig(); }
   function sortKeyName(name){ return displayName(name).toLowerCase(); }
 
   // ---- Sending to the office ----
-  const TECH_FIELDS = ['photoOptional', 'photoRules', 'requireGatePhoto', 'requireSaltCellPhoto', 'requireSkipProof', 'allowVideo'];
+  const TECH_FIELDS = ['photoOptional', 'photoRules', 'requireGatePhoto', 'requireSaltCellPhoto', 'requireSkipProof', 'requireSkipJobProof', 'allowVideo'];
   const SETUP_KEYS = ['photoEveryone', 'photoDefaults', 'chemConfig'];
   let seen = null;                       // what was last agreed with the office
   const snapshot = ()=>{
@@ -25555,7 +25594,8 @@ function photoEveryoneOn(step, key){
 var setPhotoEveryone = function(step, key, on){
   const all = photoEveryone();
   all[step] = all[step] || {};
-  if(on) all[step][key] = true; else delete all[step][key];
+  if(step === 'skipjob') all[step][key] = !!on;      // on by default, so "off" is written down
+  else if(on) all[step][key] = true; else delete all[step][key];
   lsSet('photoEveryone', all);
 };
 
@@ -25701,7 +25741,7 @@ function photoTechnicianList(step, bodies){
     return box;
   }
   // The gate and the skip rule are one each per person; the rest are per body
-  const single = step === 'gate' || step === 'skip' || step === 'video' || step === 'saltcell';
+  const single = step === 'gate' || step === 'skip' || step === 'skipjob' || step === 'video' || step === 'saltcell';
   const columns = single
     ? [[step, '']]
     : PHOTO_BODIES.filter(([key]) => bodies[key]);
@@ -25709,7 +25749,7 @@ function photoTechnicianList(step, bodies){
   // is only ever optional, so its tick is all there is
   // After photo is always shown now, so it has no Optional button (Oct 3)
   // Skip has Optional too (Oct 3): the photo-and-note window, nothing in it needed
-  const offersOptional = step !== 'video' && step !== 'after' && step !== 'saltcell';   // it's the button or nothing
+  const offersOptional = step !== 'video' && step !== 'after' && step !== 'saltcell' && step !== 'skipjob';   // it's the button or nothing
 
   // Always the technician as they are in the list right now. A sync replaces
   // the whole list with fresh objects, so the one captured when this was drawn
@@ -25722,6 +25762,7 @@ function photoTechnicianList(step, bodies){
     return step === 'gate' ? cur.requireGatePhoto === true
       : step === 'saltcell' ? cur.requireSaltCellPhoto === true
       : step === 'skip' ? cur.requireSkipProof === true
+      : step === 'skipjob' ? cur.requireSkipJobProof === true
       : step === 'video' ? cur.allowVideo === true
       : photoRuleFor(cur, step, key) === true;
   };
@@ -25730,6 +25771,7 @@ function photoTechnicianList(step, bodies){
     if(step === 'gate') cur.requireGatePhoto = on;
     else if(step === 'saltcell') cur.requireSaltCellPhoto = on;
     else if(step === 'skip') cur.requireSkipProof = on;
+    else if(step === 'skipjob') cur.requireSkipJobProof = on;
     else if(step === 'video') cur.allowVideo = on;
     else setPhotoRule(cur, step, key, on);
   };
@@ -25895,6 +25937,7 @@ function photoRowCountText(step, bodies){
     step === 'gate' ? (t.requireGatePhoto === true || photoEveryoneOn('gate', 'gate'))
     : step === 'saltcell' ? (t.requireSaltCellPhoto === true || photoEveryoneOn('saltcell', 'saltcell'))
     : step === 'skip' ? (t.requireSkipProof === true || photoEveryoneOn('skip', 'skip'))
+    : step === 'skipjob' ? (t.requireSkipJobProof === true || photoEveryoneOn('skipjob', 'skipjob'))
     : PHOTO_BODIES.some(([k]) => bodies[k] && (photoRuleFor(t, step, k) || photoEveryoneOn(step, k)))
   );
   const optional = technicians.filter(t => must.indexOf(t) === -1
@@ -25944,6 +25987,10 @@ function renderPhotoRequirements(){
      bodies: {}, oneTick: true},
     // Not a photo step of its own: what a technician must do before skipping
     {step: 'skip', label: 'Skip body of water photo and note', off: false,
+     why: '', bodies: {}, oneTick: true},
+    // Skip service / Skip job on the Today list. On for everyone to start with.
+    {step: 'skipjob', label: 'Skip service / job photo and note', off: false,
+     note: 'When Skip service or Skip job is pressed on the Today list, the technician has to take a photo and write a note before it can be skipped.',
      why: '', bodies: {}, oneTick: true}
   ];
   const own = photoTasks().map(task => ({
