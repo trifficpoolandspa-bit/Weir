@@ -2129,6 +2129,27 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
       <h2>How your reports look</h2>
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">The service report your customers receive. Your company name, phone and license come from the other tabs.</p>
 
+      <!-- Your logo (Nov 5): shown in the header of every email -->
+      <div class="field">
+        <label>Your logo</label>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+          <div id="acctLogoThumb" style="width:84px;height:84px;border:1px solid var(--line);border-radius:12px;display:flex;align-items:center;justify-content:center;background:#fff;"></div>
+          <div style="flex:1;min-width:200px;">
+            <div class="btn-row" style="margin:0 0 6px;">
+              <button type="button" class="btn btn-ghost" id="acctLogoPick" style="width:auto;">Upload logo</button>
+              <button type="button" class="btn btn-ghost" id="acctLogoRemove" style="width:auto;" aria-label="Remove logo" title="Remove logo">Remove</button>
+            </div>
+            <div style="font-size:11.5px;color:var(--muted);">PNG or JPG, square or wide. It is shrunk to fit the email.</div>
+          </div>
+        </div>
+        <input type="file" accept="image/png,image/jpeg,image/webp" id="acctLogoFile" style="display:none;">
+        <div id="acctLogoWhere" style="display:none;gap:8px;margin-top:12px;flex-wrap:wrap;">
+          <label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:13px;font-weight:600;border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin:0;cursor:pointer;"><input type="radio" name="acctLogoPos" value="beside" style="width:auto;margin:0;"> Beside the name</label>
+          <label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:13px;font-weight:600;border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin:0;cursor:pointer;"><input type="radio" name="acctLogoPos" value="above" style="width:auto;margin:0;"> Above the header</label>
+          <label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:13px;font-weight:600;border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin:0;cursor:pointer;"><input type="radio" name="acctLogoPos" value="badge" style="width:auto;margin:0;"> Badge on the right</label>
+        </div>
+      </div>
+
       <div class="field">
         <label>Opening line</label>
         <input id="acctEmailGreeting" placeholder="Here's the report from today's visit.">
@@ -6678,6 +6699,8 @@ function fcPickCustomersForDay(iso, after){
     listEl.innerHTML = '';
     const shown = all.filter(c => !term || [c.name, c.address, c.phone, c.email].some(v => String(v || '').toLowerCase().indexOf(term) !== -1));
     if(!shown.length) listEl.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:8px 2px;">Nobody matches.</div>';
+    const addR = jobNameOnlyRow(search.value, name=>{ const c = addNameOnlyCustomer(name); all.push(c); picked.add(c.id); search.value = ''; drawList(); rp.refresh(); }, 'padding:8px 2px;cursor:pointer;border-top:1px solid var(--line);font-size:13px;');
+    if(addR) listEl.insertBefore(addR, listEl.firstChild);
     shown.slice(0, 200).forEach(c=>{
       const row = document.createElement('label');
       row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid var(--line);font-size:13px;cursor:pointer;margin:0;text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink);';
@@ -6820,7 +6843,11 @@ function openSingleFilterClean(){
     if(!term){ sug.style.display = 'none'; return; }
     const list = customers.filter(c => c && !c.deleted && c.active !== false && picked.indexOf(c.id) === -1
       && [c.name, c.address, c.phone, c.email].some(v => String(v || '').toLowerCase().indexOf(term) !== -1)).slice(0, 12);
-    if(!list.length){ sug.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:9px 12px;">Nobody matches.</div>'; sug.style.display = 'block'; return; }
+    const addRow = ()=>{
+      const r = jobNameOnlyRow(search.value, name=>{ const c = addNameOnlyCustomer(name); picked.push(c.id); search.value = ''; drawSug(); drawChips(); });
+      if(r) sug.appendChild(r);
+    };
+    if(!list.length){ sug.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:9px 12px;">Nobody matches.</div>'; addRow(); sug.style.display = 'block'; return; }
     list.forEach(c=>{
       const row = document.createElement('div');
       row.className = 'press-row';
@@ -6831,6 +6858,7 @@ function openSingleFilterClean(){
       row.addEventListener('mousedown', e=>{ e.preventDefault(); picked.push(c.id); search.value = ''; drawSug(); drawChips(); });
       sug.appendChild(row);
     });
+    addRow();
     sug.style.display = 'block';
   }
   search.addEventListener('input', drawSug);
@@ -6847,6 +6875,8 @@ function openSingleFilterClean(){
       [!iso, dateEl, 'Set a date first.'],
       [!!noTech.length, techSel, (noTech.length === 1 ? displayName((customers.find(x => x.id === noTech[0]) || {}).name || '') + ' has' : 'Some have') + ' no technician of their own. Choose one.']
     ])) return;
+    // Someone typed in by name goes to the technician chosen, so their phone has them
+    { let ch = false; picked.forEach(id=>{ const c = customers.find(x => x && x.id === id); if(c && c.nameOnly && !c.technicianId && tech){ c.technicianId = String(tech); ch = true; } }); if(ch) saveCustomers(); }
     const g = fgSoloFor(iso);
     const wasSent = !!g.finalized;
     g.custTech = g.custTech || {}; g.custPhoto = g.custPhoto || {}; g.custEmail = g.custEmail || {};
@@ -9502,6 +9532,22 @@ function openGroupCustomerPicker(g, opts){
       msg.textContent = 'No customers match that search.';
       listEl.appendChild(msg);
     }
+    // Someone not on the list, by name (Nov 5)
+    const oldAdd = listEl.querySelector('[data-add-name]');
+    if(oldAdd) oldAdd.remove();
+    const addR = jobNameOnlyRow(searchEl.value, name=>{
+      const c = addNameOnlyCustomer(name);
+      if(g.technicianId && !c.technicianId){ c.technicianId = String(g.technicianId); try{ saveCustomers(); }catch(e){} }
+      g.customerIds = g.customerIds || [];
+      if(g.customerIds.indexOf(c.id) === -1) g.customerIds.push(c.id);
+      activeIds.add(c.id);
+      searchEl.value = '';
+      saveGroup();
+      drawCount();
+      addRowFor(c);
+      applyGcpSearch();
+    }, 'padding:8px 4px;cursor:pointer;border-bottom:1px solid var(--line);font-size:13px;');
+    if(addR){ addR.setAttribute('data-add-name', '1'); listEl.insertBefore(addR, listEl.firstChild); }
   }
 
   searchEl.addEventListener('input', applyGcpSearch);
@@ -9532,10 +9578,7 @@ function openGroupCustomerPicker(g, opts){
   // has finished, so nothing takes the cursor back)
   setTimeout(()=>{ try{ searchEl.focus(); }catch(e){} }, 60);
 
-  active
-    .slice()
-    .sort((a,b)=> sortKeyName(a.name).localeCompare(sortKeyName(b.name)))
-    .forEach(cust=>{
+  const addRowFor = (cust)=>{
       const lbl = document.createElement('label');
       lbl.dataset.search = [cust.name, cust.address, cust.phone, cust.email]
         .filter(Boolean).join(' ').toLowerCase();
@@ -9560,7 +9603,8 @@ function openGroupCustomerPicker(g, opts){
       nameWithAddress(txt, cust);
       lbl.appendChild(txt);
       listEl.appendChild(lbl);
-    });
+  };
+  active.slice().sort((a,b)=> sortKeyName(a.name).localeCompare(sortKeyName(b.name))).forEach(addRowFor);
 
   drawCount();
   const cleanup = ()=>{ document.body.removeChild(overlay); afterClose(); };
@@ -12108,6 +12152,12 @@ function pdOpenDayPicker(iso, currentIds, onSave){
       });
     });
     if(t && !any) listEl.innerHTML = '<div style="padding:12px 4px;font-size:12.5px;color:var(--muted);">No customers match that search.</div>';
+    const addR = jobNameOnlyRow(search.value, name=>{
+      const c = addNameOnlyCustomer(name);
+      active.push(c); byBucket.never.push(c); byBucket.never.sort(byName);
+      picked.add(c.id); search.value = ''; draw(); drawCount(); rp.refresh();
+    }, 'padding:10px 6px;cursor:pointer;border-bottom:1px solid var(--line);font-size:13px;');
+    if(addR) listEl.insertBefore(addR, listEl.firstChild);
     listEl.scrollTop = keepScroll;
   }
   search.addEventListener('input', draw);
@@ -21374,6 +21424,23 @@ function renderWcSuggest(term){
 // that name, so the job shows it on Today, the calendar and the app like
 // anyone else's. No service day and no pool, so they're never on a service
 // route or a drain list; the details can be filled in later.
+// "+ Use <name>" row for a customer search (Nov 5): someone not on the list,
+// by name, for a job. Not shown when that exact name is already a customer.
+function jobNameOnlyRow(typed, onAdd, css){
+  const t = String(typed || '').trim();
+  if(!t || (customers || []).some(c => c && !c.deleted && String(c.name || '').trim().toLowerCase() === t.toLowerCase())) return null;
+  const row = document.createElement('div');
+  row.className = 'press-row';
+  row.dataset.addName = '1';
+  row.style.cssText = css || 'padding:9px 12px;cursor:pointer;border-top:1px solid var(--line);font-size:13px;';
+  row.innerHTML = '<div style="font-weight:600;"></div><div style="font-size:11.5px;color:var(--muted);">Not a customer yet — just the name for now</div>';
+  row.firstChild.textContent = '+ Use “' + t + '”';
+  const go = e=>{ e.preventDefault(); onAdd(t); };
+  row.addEventListener('mousedown', go);
+  row.addEventListener('touchstart', go, {passive: false});
+  return row;
+}
+
 function addNameOnlyCustomer(name){
   const c = {id: 'cust_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), name: String(name || '').trim(),
              active: true, hasPool: false, hasSpa: false, technicianId: '', nameOnly: true, createdAt: new Date().toISOString()};
@@ -31272,6 +31339,136 @@ function openEquipmentOptionsModal(type, onDone){
   draw();
 }
 
+// ---- Filter sizes (Nov 5) ----
+// The sizes are kept once for the whole company (with the equipment buttons),
+// so every customer with a filter picks from the same list. A customer's own
+// choice is kept on their filter as filterSize.
+function filterSizeList(){
+  const store = lsGet('equipmentChoices') || {};
+  return Array.isArray(store.__filterSizes) ? store.__filterSizes.slice() : [];
+}
+function saveFilterSizeList(list){
+  const store = lsGet('equipmentChoices') || {};
+  store.__filterSizes = list;
+  lsSet('equipmentChoices', store);
+}
+// Right of a Cartridge, DE or Other filter: a Size button, or the size chosen
+function addFilterSizeControl(container, type){
+  const item = currentEquipmentItems.find(i => i.type === type);
+  if(!item || ['Cartridge', 'DE', 'Other'].indexOf(item.filterTypeChoice) === -1) return;
+  if(item.filterSize){
+    const pill = document.createElement('div');
+    pill.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:140px;flex:0 0 auto;margin-left:8px;'
+      + 'padding:6px 11px;border-radius:9px;background:var(--teal-deep);color:#fff;font-size:14.4px;font-weight:600;'
+      + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;position:relative;cursor:pointer;';
+    const text = document.createElement('span');
+    text.style.cssText = 'display:block;width:100%;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:opacity .12s ease;';
+    text.textContent = item.filterSize;
+    const x = document.createElement('span');
+    x.textContent = '×';
+    x.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:19px;line-height:1;opacity:0;transition:opacity .12s ease;pointer-events:none;';
+    pill.appendChild(text); pill.appendChild(x);
+    pill.addEventListener('mouseenter', ()=>{ text.style.opacity = '0'; x.style.opacity = '1'; });
+    pill.addEventListener('mouseleave', ()=>{ text.style.opacity = '1'; x.style.opacity = '0'; });
+    pill.title = 'Press again to clear';
+    pill.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      item.filterSize = '';
+      persistCurrentEquipmentItems();
+      renderEquipmentTypeList();
+    });
+    container.appendChild(pill);
+    return;
+  }
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-ghost';
+  btn.style.cssText = 'width:auto;flex:0 0 auto;margin-left:8px;padding:6px 12px;font-size:13px;';
+  btn.textContent = 'Size';
+  btn.addEventListener('click', (e)=>{ e.stopPropagation(); openFilterSizeWindow(type); });
+  container.appendChild(btn);
+}
+function openFilterSizeWindow(type){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:420px;">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 4px;"><h3 style="font-size:15px;margin:0;">Filter sizes</h3>'
+    + '<button type="button" id="fsClose" aria-label="Close" title="Close" style="flex:0 0 auto;width:28px;height:28px;padding:0;border-radius:50%;border:1.5px solid var(--line);background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;">'
+    + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--teal-deep)" stroke-width="2.6" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg></button></div>'
+    + '<p style="font-size:11.5px;color:var(--muted);margin:0 0 12px;">Add the sizes you work with. They are kept for every customer with a filter, so you only add each one once. Press a size to choose it.</p>'
+    + '<div style="display:flex;gap:8px;margin-bottom:14px;"><input id="fsNew" placeholder="e.g. 100 sq ft" maxlength="24" autocomplete="off" style="flex:1;min-width:0;">'
+    + '<button type="button" class="btn btn-primary" id="fsAdd" style="width:auto;padding:0 16px;">Add</button></div>'
+    + '<div id="fsGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;min-height:44px;max-height:50vh;overflow-y:auto;"></div></div>';
+  document.body.appendChild(overlay);
+  const grid = overlay.querySelector('#fsGrid'), input = overlay.querySelector('#fsNew');
+  const shut = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) shut(); });
+  const current = ()=>{ const it = currentEquipmentItems.find(i => i.type === type); return it ? it.filterSize || '' : ''; };
+  function draw(){
+    const list = filterSizeList(), mine = current();
+    grid.innerHTML = '';
+    if(!list.length){
+      const none = document.createElement('div');
+      none.style.cssText = 'grid-column:1/-1;font-size:12.5px;color:var(--muted);padding:6px 0;';
+      none.textContent = 'No sizes yet. Type one above and press Add.';
+      grid.appendChild(none);
+      return;
+    }
+    list.forEach(size=>{
+      const b = document.createElement('div');
+      b.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 6px;border-radius:9px;background:var(--teal-deep);'
+        + 'color:#fff;font-size:14.4px;font-weight:600;white-space:nowrap;cursor:pointer;min-width:0;'
+        + (size === mine ? 'box-shadow:0 0 0 2px #fff,0 0 0 4px var(--teal-mid);' : '');
+      const t = document.createElement('span');
+      t.style.cssText = 'overflow:hidden;text-overflow:ellipsis;min-width:0;';
+      t.textContent = (size === mine ? '✓ ' : '') + size;
+      const x = document.createElement('span');
+      x.textContent = '×';
+      x.title = 'Delete this size';
+      x.style.cssText = 'opacity:.75;font-size:17px;line-height:1;flex:0 0 auto;padding:0 2px;';
+      b.appendChild(t); b.appendChild(x);
+      // Pressing a size chooses it and closes the window
+      b.addEventListener('click', ()=>{
+        const it = ensureEquipmentItem(type);
+        it.filterSize = size;
+        persistCurrentEquipmentItems();
+        shut();
+        renderEquipmentTypeList();
+      });
+      // The x deletes it, for every customer, after asking
+      x.addEventListener('click', async (e)=>{
+        e.stopPropagation();
+        const ok = await confirmDialog('Delete the size "' + size + '"? It will be taken off every one of your customers who has it.', 'Delete');
+        if(!ok) return;
+        saveFilterSizeList(filterSizeList().filter(v => v !== size));
+        let changed = false;
+        customers.forEach(c => (c.equipment || []).forEach(it => { if(it && it.filterSize === size){ it.filterSize = ''; changed = true; } }));
+        currentEquipmentItems.forEach(it => { if(it && it.filterSize === size) it.filterSize = ''; });
+        if(changed) saveCustomers();
+        draw();
+        renderEquipmentTypeList();
+      });
+      grid.appendChild(b);
+    });
+  }
+  function add(){
+    const v = input.value.trim();
+    if(!v){ input.focus(); return; }
+    const list = filterSizeList();
+    if(list.some(x => x.toLowerCase() === v.toLowerCase())){ showToast('That size is already there'); input.select(); return; }
+    list.push(v);
+    saveFilterSizeList(list);
+    input.value = '';
+    draw();
+    input.focus();
+  }
+  overlay.querySelector('#fsAdd').addEventListener('click', add);
+  overlay.querySelector('#fsClose').addEventListener('click', shut);
+  input.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); add(); } if(e.key === 'Escape') shut(); });
+  draw();
+  setTimeout(()=>{ try{ input.focus(); }catch(e){} }, 50);
+}
+
 function renderChoicePicker(container, type, options, choiceField, customField, onChange){
   container.innerHTML = '';
 
@@ -31835,6 +32032,7 @@ function renderEquipmentTypeList(){
 
     if(baseEquipmentType(type) === 'Filter'){
       renderChoicePicker(middleArea, type, ['Cartridge', 'Sand', 'DE', 'Other'], 'filterTypeChoice', 'filterTypeCustom', ()=> renderEquipmentTypeList());
+      addFilterSizeControl(middleArea, type);
     } else if(baseEquipmentType(type) === 'Pump'){
       renderChoicePicker(middleArea, type, ['Variable Speed', 'Single Speed', 'Other'], 'pumpSpeedChoice', 'pumpSpeedCustom', ()=> renderEquipmentTypeList());
     } else if(baseEquipmentType(type) === 'Cleaning System'){
@@ -36695,6 +36893,139 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
       if(orig) return orig.apply(this, arguments);
     };
   }catch(e){}
+})();
+</script>
+<script>
+const EMAIL_LOGO_BUILDERS = ["previewReportEmail", "buildServiceReportEmailHtml", "quoteEmailHtml", "qoJobEmailHtml"];
+// ---- Your logo in the emails (Nov 5) ----
+// The logo and where it sits are kept with the report email style, so both
+// the website and the phones read the same. Every emailed header is passed
+// through emailApplyLogo; on the way out, the picture becomes an attachment
+// the email refers to by id (mail apps block pictures embedded as text).
+function emailLogoSettings(){
+  const s = lsGet('reportEmailStyle') || {};
+  return {logo: typeof s.logo === 'string' && s.logo.indexOf('data:image/') === 0 ? s.logo : '',
+          pos: ['beside', 'above', 'badge'].indexOf(s.logoPos) !== -1 ? s.logoPos : 'beside'};
+}
+function emailApplyLogo(html){
+  html = String(html || '');
+  const L = emailLogoSettings();
+  if(!L.logo || html.indexOf('data-weir-logo') !== -1) return html;
+  const re = /<tr><td style="background:(#[0-9A-Fa-f]{3,6});padding:22px 26px;">([\s\S]*?)<\/td><\/tr>/;
+  const m = html.match(re);
+  if(!m) return html;
+  const colour = m[1], inner = m[2];
+  const img = (h, extra)=> '<img data-weir-logo="1" src="' + L.logo + '" height="' + h + '" alt="" '
+    + 'style="display:block;border:0;height:' + h + 'px;width:auto;max-width:240px;' + extra + '">';
+  let out;
+  if(L.pos === 'above'){
+    out = '<tr><td style="background:#FFFFFF;padding:22px 26px 16px;text-align:center;border-bottom:1px solid #E6E9E8;">'
+      + '<img data-weir-logo="1" src="' + L.logo + '" height="96" alt="" style="display:inline-block;border:0;height:96px;width:auto;max-width:240px;"></td></tr>'
+      + '<tr><td style="background:' + colour + ';padding:16px 26px;text-align:center;">' + inner + '</td></tr>';
+  } else if(L.pos === 'badge'){
+    out = '<tr><td style="background:' + colour + ';padding:20px 26px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+      + '<td style="vertical-align:middle;">' + inner + '</td>'
+      + '<td align="right" style="vertical-align:middle;padding-left:14px;">'
+      + '<table role="presentation" align="right" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:#FFFFFF;border-radius:12px;padding:5px;">' + img(54, 'border-radius:8px;') + '</td></tr></table></td></tr></table></td></tr>';
+  } else {
+    out = '<tr><td style="background:' + colour + ';padding:18px 26px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+      + '<td style="padding-right:14px;vertical-align:middle;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:#FFFFFF;border-radius:10px;padding:4px;">' + img(48, 'border-radius:7px;') + '</td></tr></table></td>'
+      + '<td style="vertical-align:middle;">' + inner + '</td></tr></table></td></tr>';
+  }
+  return html.replace(re, function(){ return out; });
+}
+(function emailLogoHooks(){
+  try{
+    // Every email builder that has the coloured header
+    EMAIL_LOGO_BUILDERS.forEach(function(name){
+      const f = window[name];
+      if(typeof f !== 'function') return;
+      window[name] = function(){ return emailApplyLogo(f.apply(this, arguments)); };
+    });
+    // On its way to the sender: the picture goes along as an attachment
+    const realFetch = window.fetch;
+    window.fetch = function(url, opts){
+      try{
+        if(typeof url === 'string' && url.indexOf('/functions/v1/send-report') !== -1
+           && opts && typeof opts.body === 'string' && opts.body.indexOf('data-weir-logo') !== -1){
+          const b = JSON.parse(opts.body);
+          const m = typeof b.html === 'string'
+            ? b.html.match(/<img data-weir-logo="1" src="data:(image\/[a-z]+);base64,([^"]+)"/) : null;
+          if(m){
+            b.logo = m[2]; b.logoType = m[1];
+            b.html = b.html.replace(/(<img data-weir-logo="1" src=")data:[^"]*"/g, '$1cid:logo"');
+            opts = Object.assign({}, opts, {body: JSON.stringify(b)});
+          }
+        }
+      }catch(e){}
+      return realFetch.call(this, url, opts);
+    };
+  }catch(e){}
+})();
+// ---- Logo upload on the Account page's Email tab (Nov 5) ----
+(function logoSetting(){
+  const file = document.getElementById('acctLogoFile');
+  if(!file) return;
+  const thumb = document.getElementById('acctLogoThumb');
+  const pick = document.getElementById('acctLogoPick');
+  const drop = document.getElementById('acctLogoRemove');
+  const where = document.getElementById('acctLogoWhere');
+  const refresh = ()=>{
+    const L = emailLogoSettings();
+    thumb.innerHTML = L.logo ? '<img src="' + L.logo + '" style="max-width:72px;max-height:72px;">'
+      : '<span style="font-size:11.5px;color:var(--muted);text-align:center;">No logo</span>';
+    drop.style.display = L.logo ? '' : 'none';
+    pick.textContent = L.logo ? 'Change logo' : 'Upload logo';
+    where.style.display = L.logo ? 'flex' : 'none';
+    where.querySelectorAll('input[name="acctLogoPos"]').forEach(r=>{
+      r.checked = r.value === L.pos;
+      r.parentNode.style.borderColor = r.checked ? 'var(--teal-deep)' : 'var(--line)';
+    });
+  };
+  const save = (patch)=>{ const s = loadEmailStyle(); Object.assign(s, patch); saveEmailStyle(s); refresh(); };
+  pick.addEventListener('click', ()=> file.click());
+  drop.addEventListener('click', ()=>{ save({logo: ''}); showToast('Logo removed'); });
+  where.querySelectorAll('input[name="acctLogoPos"]').forEach(r=>{
+    r.addEventListener('change', ()=>{ if(r.checked){ save({logoPos: r.value}); showToast('Saved'); } });
+  });
+  file.addEventListener('change', ()=>{
+    const f = file.files && file.files[0];
+    file.value = '';
+    if(!f) return;
+    if(!/^image\//.test(f.type) || /svg/.test(f.type)){ showToast('Use a PNG or JPG picture'); return; }
+    if(f.size > 8 * 1024 * 1024){ showToast('That picture is too big. Try one under 8 MB'); return; }
+    const rd = new FileReader();
+    rd.onload = ()=>{
+      const im = new Image();
+      im.onload = ()=>{
+        // Shrunk so it travels light: no bigger than 240 across or 240 tall
+        const k = Math.min(1, 240 / Math.max(im.width, im.height));
+        const w = Math.max(1, Math.round(im.width * k)), h = Math.max(1, Math.round(im.height * k));
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const x = c.getContext('2d');
+        let out = '';
+        try{
+          x.drawImage(im, 0, 0, w, h);
+          out = c.toDataURL('image/png');
+          if(out.length > 120000){          // a photo rather than a graphic: JPEG on white
+            x.globalCompositeOperation = 'destination-over';
+            x.fillStyle = '#FFFFFF'; x.fillRect(0, 0, w, h);
+            out = c.toDataURL('image/jpeg', 0.85);
+          }
+        }catch(e){ out = ''; }
+        if(!out || out.length > 250000){ showToast('Could not use that picture. Try a smaller one'); return; }
+        save({logo: out});
+        showToast('Logo saved');
+      };
+      im.onerror = ()=> showToast('Could not read that picture');
+      im.src = rd.result;
+    };
+    rd.readAsDataURL(f);
+  });
+  const baseRender = window.renderAccountEmail;
+  window.renderAccountEmail = function(){ const r = baseRender.apply(this, arguments); refresh(); return r; };
+  refresh();
 })();
 </script>
 

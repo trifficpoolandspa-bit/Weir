@@ -10155,7 +10155,7 @@ function saveMoveJustOnce(customerId, fromISO, toISO, techId){
     && (r.fromDate === fromISO || r.toDate === fromISO || r.fromDate === origin)));
   const home = toISO === origin && !techId;
   if(!home){
-    const move = {id: 'resched_' + Date.now(), customerId: customerId, fromDate: origin, toDate: toISO,
+    const move = {id: 'resched_' + Date.now() + '_' + String(customerId).slice(-6), customerId: customerId, fromDate: origin, toDate: toISO,
       createdAt: new Date().toISOString()};
     if(techId) move.technicianId = techId;
     list.push(move);
@@ -17188,6 +17188,22 @@ function awcApplyRepeats(){
 // that name, so the job shows it on Today, the calendar and the website like
 // anyone else's. No service day and no pool, so they're never on a service
 // route or a drain list; the details can be filled in later.
+// "+ Use <name>" row for a customer search (Nov 5): someone not on the list,
+// by name, for a job. Not shown when that exact name is already a customer.
+function jobNameOnlyRow(typed, onAdd, css){
+  const t = String(typed || '').trim();
+  if(!t || (customers || []).some(c => c && !c.deleted && String(c.name || '').trim().toLowerCase() === t.toLowerCase())) return null;
+  const row = document.createElement('div');
+  row.className = 'press-row';
+  row.dataset.addName = '1';
+  row.style.cssText = css || 'padding:10px 12px;cursor:pointer;border-top:1px solid var(--line);font-size:14px;';
+  row.innerHTML = '<div style="font-weight:600;"></div><div style="font-size:12px;color:var(--muted);">Not a customer yet — just the name for now</div>';
+  row.firstChild.textContent = '+ Use “' + t + '”';
+  const go = e=>{ e.preventDefault(); onAdd(t); };
+  row.addEventListener('mousedown', go);
+  row.addEventListener('touchstart', go, {passive: false});
+  return row;
+}
 function addNameOnlyCustomer(name){
   const c = {id: 'cust_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), name: String(name || '').trim(),
              active: true, hasPool: false, hasSpa: false, technicianId: '', nameOnly: true, createdAt: new Date().toISOString()};
@@ -19889,7 +19905,11 @@ function acalAddFcPd(kind, iso){
     if(!term){ sug.style.display = 'none'; return; }
     const list = (customers || []).filter(c => c && !c.deleted && c.active !== false && picked.indexOf(c.id) === -1
       && [c.name, c.address, c.phone].some(v => String(v || '').toLowerCase().indexOf(term) !== -1)).slice(0, 12);
-    if(!list.length){ sug.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:10px 12px;">Nobody matches.</div>'; sug.style.display = 'block'; return; }
+    const addRow = ()=>{
+      const r = jobNameOnlyRow(search.value, name=>{ const c = addNameOnlyCustomer(name); picked.push(c.id); search.value = ''; drawSug(); drawChips(); });
+      if(r) sug.appendChild(r);
+    };
+    if(!list.length){ sug.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:10px 12px;">Nobody matches.</div>'; addRow(); sug.style.display = 'block'; return; }
     list.forEach(c=>{
       const row = document.createElement('div');
       row.className = 'press-row';
@@ -19902,6 +19922,7 @@ function acalAddFcPd(kind, iso){
       row.addEventListener('touchstart', pick, {passive: false});
       sug.appendChild(row);
     });
+    addRow();
     sug.style.display = 'block';
   }
   search.addEventListener('input', drawSug);
@@ -19913,6 +19934,8 @@ function acalAddFcPd(kind, iso){
     if(!picked.length){ showToast('Add a customer first'); search.focus(); return; }
     const noTech = !tech ? picked.filter(id => !((acalCust(id) || {}).technicianId)) : [];
     if(noTech.length){ showToast((noTech.length === 1 ? nameOf(acalCust(noTech[0])) + ' has' : 'Some have') + ' no technician of their own. Choose one.'); techSel.focus(); return; }
+    // Someone typed in by name goes to the technician chosen, so their phone has them
+    if(tech) giveNameOnlyTech(picked.map(id => acalCust(id)), tech);
     go.disabled = true; go.textContent = 'Adding\u2026';
     // The office's latest first, so nothing it just changed is lost
     const fresh = await acalFetchOffice(true);
@@ -26638,6 +26661,285 @@ function marqueeIfCut(el){
       try{ s.el.click(); }catch(err){}
     }, 260);
   }, {capture: true, passive: true});
+})();
+</script>
+<script>
+const EMAIL_LOGO_BUILDERS = ["buildReportEmailHtml","buildJobEmailHtml","awcQuoteEmailHtml"];
+// ---- Your logo in the emails (Nov 5) ----
+// The logo and where it sits are kept with the report email style, so both
+// the website and the phones read the same. Every emailed header is passed
+// through emailApplyLogo; on the way out, the picture becomes an attachment
+// the email refers to by id (mail apps block pictures embedded as text).
+function emailLogoSettings(){
+  const s = lsGet('reportEmailStyle') || {};
+  return {logo: typeof s.logo === 'string' && s.logo.indexOf('data:image/') === 0 ? s.logo : '',
+          pos: ['beside', 'above', 'badge'].indexOf(s.logoPos) !== -1 ? s.logoPos : 'beside'};
+}
+function emailApplyLogo(html){
+  html = String(html || '');
+  const L = emailLogoSettings();
+  if(!L.logo || html.indexOf('data-weir-logo') !== -1) return html;
+  const re = /<tr><td style="background:(#[0-9A-Fa-f]{3,6});padding:22px 26px;">([\s\S]*?)<\/td><\/tr>/;
+  const m = html.match(re);
+  if(!m) return html;
+  const colour = m[1], inner = m[2];
+  const img = (h, extra)=> '<img data-weir-logo="1" src="' + L.logo + '" height="' + h + '" alt="" '
+    + 'style="display:block;border:0;height:' + h + 'px;width:auto;max-width:240px;' + extra + '">';
+  let out;
+  if(L.pos === 'above'){
+    out = '<tr><td style="background:#FFFFFF;padding:22px 26px 16px;text-align:center;border-bottom:1px solid #E6E9E8;">'
+      + '<img data-weir-logo="1" src="' + L.logo + '" height="96" alt="" style="display:inline-block;border:0;height:96px;width:auto;max-width:240px;"></td></tr>'
+      + '<tr><td style="background:' + colour + ';padding:16px 26px;text-align:center;">' + inner + '</td></tr>';
+  } else if(L.pos === 'badge'){
+    out = '<tr><td style="background:' + colour + ';padding:20px 26px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+      + '<td style="vertical-align:middle;">' + inner + '</td>'
+      + '<td align="right" style="vertical-align:middle;padding-left:14px;">'
+      + '<table role="presentation" align="right" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:#FFFFFF;border-radius:12px;padding:5px;">' + img(54, 'border-radius:8px;') + '</td></tr></table></td></tr></table></td></tr>';
+  } else {
+    out = '<tr><td style="background:' + colour + ';padding:18px 26px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+      + '<td style="padding-right:14px;vertical-align:middle;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:#FFFFFF;border-radius:10px;padding:4px;">' + img(48, 'border-radius:7px;') + '</td></tr></table></td>'
+      + '<td style="vertical-align:middle;">' + inner + '</td></tr></table></td></tr>';
+  }
+  return html.replace(re, function(){ return out; });
+}
+(function emailLogoHooks(){
+  try{
+    // Every email builder that has the coloured header
+    EMAIL_LOGO_BUILDERS.forEach(function(name){
+      const f = window[name];
+      if(typeof f !== 'function') return;
+      window[name] = function(){ return emailApplyLogo(f.apply(this, arguments)); };
+    });
+    // On its way to the sender: the picture goes along as an attachment
+    const realFetch = window.fetch;
+    window.fetch = function(url, opts){
+      try{
+        if(typeof url === 'string' && url.indexOf('/functions/v1/send-report') !== -1
+           && opts && typeof opts.body === 'string' && opts.body.indexOf('data-weir-logo') !== -1){
+          const b = JSON.parse(opts.body);
+          const m = typeof b.html === 'string'
+            ? b.html.match(/<img data-weir-logo="1" src="data:(image\/[a-z]+);base64,([^"]+)"/) : null;
+          if(m){
+            b.logo = m[2]; b.logoType = m[1];
+            b.html = b.html.replace(/(<img data-weir-logo="1" src=")data:[^"]*"/g, '$1cid:logo"');
+            opts = Object.assign({}, opts, {body: JSON.stringify(b)});
+          }
+        }
+      }catch(e){}
+      return realFetch.call(this, url, opts);
+    };
+  }catch(e){}
+})();
+</script>
+<script>
+// Photos on the service report screen open full size when pressed (Nov 5).
+// One listener on the report area covers every report layout; photos that
+// already open themselves (the work order ones) are left to do so.
+(function reportPhotoZoom(){
+  const out = document.getElementById('reportOutput');
+  if(!out) return;
+  const st = document.createElement('style');
+  st.textContent = '#reportOutput .report-doc img{cursor:zoom-in;}';
+  document.head.appendChild(st);
+  out.addEventListener('click', (e)=>{
+    const img = e.target && e.target.closest ? e.target.closest('img') : null;
+    if(!img || !out.contains(img)) return;
+    if(img.style.cursor === 'zoom-in') return;       // opens itself already
+    const src = img.currentSrc || img.src;
+    if(!src || typeof openPhotoFullSize !== 'function') return;
+    e.preventDefault();
+    openPhotoFullSize(src);
+  });
+})();
+</script>
+<script>
+// Pick several customers on the Today list, then move them together (Nov 5).
+// A long press picks the first; then a press picks or unpicks any other.
+// Pressing anywhere that is not a customer, or the X, puts the list back.
+(function multiSelect(){
+  const list = document.getElementById('homeCustomerList');
+  const head = document.getElementById('homeHeaderCard');
+  if(!list || !head) return;
+  let on = false, ctx = '', swallowUntil = 0, swallowRow = null, timer = null, sx = 0, sy = 0;
+  const picked = new Set();
+
+  const st = document.createElement('style');
+  st.textContent = '#homeHeaderCard.msel-on > :not(#homeHeadRow):not(#mselBar){display:none !important;}'
+    + '.cust-row.msel-picked{background:var(--teal-pale) !important;box-shadow:inset 3px 0 0 var(--teal-mid);}'
+    + '.msel-dot{flex:0 0 auto;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;'
+    + 'border:2px solid #B7C7C4;background:#fff;color:#fff;font-size:14px;font-weight:700;margin-right:10px;box-sizing:border-box;}'
+    + '.cust-row.msel-picked .msel-dot{border-color:var(--teal-mid);background:var(--teal-mid);}';
+  document.head.appendChild(st);
+
+  const rowOf = (el)=> el && el.closest ? el.closest('#homeCustomerList > .cust-row[data-customer-row]') : null;
+  const rows = ()=> Array.prototype.slice.call(list.querySelectorAll(':scope > .cust-row[data-customer-row]'));
+  const ctxNow = ()=> [selectedHomeDay, weekOffset, adminViewTechId || ''].join('|');
+
+  function bar(){
+    let b = document.getElementById('mselBar');
+    if(b) return b;
+    b = document.createElement('div');
+    b.id = 'mselBar';
+    b.style.cssText = 'margin-top:14px;padding-top:12px;border-top:1px solid var(--line);';
+    b.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
+      + '<div id="mselCount" style="font-size:14px;font-weight:700;color:var(--teal-deep);"></div>'
+      + '<button type="button" id="mselX" aria-label="Done" style="width:30px;height:30px;padding:0;border-radius:50%;border:1.5px solid var(--line);background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;">'
+      + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--teal-deep)" stroke-width="2.6" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg></button></div>'
+      + '<div style="display:flex;gap:6px;">'
+      + '<button type="button" class="btn btn-primary" id="mselMove" style="width:auto;flex:1 1 0;min-width:0;padding:9px 6px;font-size:13px;white-space:nowrap;">Reschedule</button>'
+      + '<button type="button" class="btn btn-ghost" id="mselAll" style="width:auto;flex:1 1 0;min-width:0;padding:9px 6px;font-size:13px;white-space:nowrap;">Select all</button>'
+      + '<button type="button" class="btn btn-ghost" id="mselNone" style="width:auto;flex:1 1 0;min-width:0;padding:9px 6px;font-size:13px;white-space:nowrap;">Unselect all</button></div>';
+    head.appendChild(b);
+    b.querySelector('#mselX').addEventListener('click', exit);
+    b.querySelector('#mselAll').addEventListener('click', ()=>{ rows().forEach(r => picked.add(r.dataset.customerRow)); paint(); });
+    b.querySelector('#mselNone').addEventListener('click', ()=>{ picked.clear(); paint(); });
+    b.querySelector('#mselMove').addEventListener('click', openMove);
+    return b;
+  }
+
+  function paint(){
+    if(!on) return;
+    const b = bar();
+    const present = new Set();
+    rows().forEach(r=>{
+      const id = r.dataset.customerRow;
+      present.add(id);
+      const yes = picked.has(id);
+      r.classList.toggle('msel-picked', yes);
+      let dot = r.querySelector(':scope > .msel-dot');
+      if(!dot){ dot = document.createElement('div'); dot.className = 'msel-dot'; r.insertBefore(dot, r.firstChild); }
+      dot.textContent = yes ? '✓' : '';
+    });
+    Array.from(picked).forEach(id => { if(!present.has(id)) picked.delete(id); });
+    b.querySelector('#mselCount').textContent = picked.size + ' selected';
+    const mv = b.querySelector('#mselMove');
+    mv.disabled = !picked.size; mv.style.opacity = picked.size ? '' : '0.5';
+  }
+
+  function enter(){
+    on = true; ctx = ctxNow();
+    head.classList.add('msel-on');
+    bar();
+  }
+  function exit(){
+    on = false; picked.clear();
+    head.classList.remove('msel-on');
+    const b = document.getElementById('mselBar'); if(b) b.remove();
+    list.querySelectorAll('.msel-dot').forEach(d => d.remove());
+    list.querySelectorAll('.msel-picked').forEach(r => r.classList.remove('msel-picked'));
+  }
+
+  // Long press on a customer
+  const cancelTimer = ()=>{ if(timer){ clearTimeout(timer); timer = null; } };
+  list.addEventListener('pointerdown', (e)=>{
+    const row = rowOf(e.target);
+    if(!row || e.target.closest('button, a, input, select, .route-grip')) return;
+    if(e.pointerType === 'mouse' && e.button !== 0) return;
+    sx = e.clientX; sy = e.clientY;
+    cancelTimer();
+    timer = setTimeout(()=>{
+      timer = null;
+      if(!row.isConnected) return;
+      if(!on) enter();
+      picked.add(row.dataset.customerRow);
+      swallowUntil = Date.now() + 1500; swallowRow = row;
+      try{ if(navigator.vibrate) navigator.vibrate(15); }catch(err){}
+      paint();
+    }, 500);
+  }, true);
+  list.addEventListener('pointermove', (e)=>{
+    if(timer && (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10)) cancelTimer();
+  }, true);
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => list.addEventListener(t, cancelTimer, true));
+  list.addEventListener('contextmenu', (e)=>{ if(rowOf(e.target)) e.preventDefault(); }, true);
+
+  // A press on a customer while picking picks or unpicks it
+  list.addEventListener('click', (e)=>{
+    const row = rowOf(e.target);
+    if(!row) return;
+    // The click that ends the long press itself is not a pick
+    if(row === swallowRow && Date.now() < swallowUntil){ swallowRow = null; e.stopPropagation(); e.preventDefault(); return; }
+    if(!on) return;
+    e.stopPropagation(); e.preventDefault();
+    const id = row.dataset.customerRow;
+    if(picked.has(id)) picked.delete(id); else picked.add(id);
+    paint();
+  }, true);
+
+  // A press on anything that is not a customer puts everything back
+  document.addEventListener('click', (e)=>{
+    if(!on) return;
+    const t = e.target;
+    if(t.closest && (t.closest('#homeCustomerList > .cust-row[data-customer-row]') || t.closest('#mselBar') || t.closest('.confirm-overlay'))) return;
+    exit();
+  }, true);
+
+  // The list is drawn again after most things; keep the picks showing
+  const baseRender = window.renderHomeList;
+  window.renderHomeList = function(){
+    const r = baseRender.apply(this, arguments);
+    if(on){ if(ctx !== ctxNow()) exit(); else paint(); }
+    return r;
+  };
+
+  function openMove(){
+    if(!picked.size) return;
+    const ids = Array.from(picked);
+    const who = ids.map(id => (customers.find(c => c && c.id === id) || {}).name).filter(Boolean);
+    const fromISO = isoForDay(selectedHomeDay);
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    const box = document.createElement('div');
+    box.className = 'confirm-box';
+    box.style.cssText = 'max-width:400px;width:100%;text-align:left;';
+    box.innerHTML = '<h3 style="font-size:16px;margin:0 0 4px;"></h3>'
+      + '<p data-names style="font-size:12.5px;color:var(--muted);margin:0 0 12px;"></p>'
+      + '<div class="field"><label>Move to</label><select data-day></select></div>'
+      + '<div style="display:flex;flex-direction:column;gap:8px;margin:2px 0 14px;font-size:13.5px;font-weight:600;">'
+      + '<label style="display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;margin:0;"><input type="radio" name="mselWhen" value="once" checked style="width:auto;margin:0;"> Just this week</label>'
+      + '<label style="display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;margin:0;"><input type="radio" name="mselWhen" value="always" style="width:auto;margin:0;"> Every week</label></div>'
+      + '<div class="btn-row"><button type="button" class="btn btn-ghost" data-cancel>Cancel</button><button type="button" class="btn btn-primary" data-go>Move</button></div>';
+    box.querySelector('h3').textContent = 'Reschedule ' + ids.length + (ids.length === 1 ? ' customer' : ' customers');
+    box.querySelector('[data-names]').textContent = who.join(', ');
+    const sel = box.querySelector('[data-day]');
+    DAYS_OF_WEEK.forEach(d=>{
+      const iso = isoForDay(d);
+      const o = document.createElement('option');
+      o.value = d;
+      o.textContent = d + ' · ' + new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
+      if(d === selectedHomeDay) o.disabled = true;
+      sel.appendChild(o);
+    });
+    // Starts on the next day along
+    const nx = DAYS_OF_WEEK[(DAYS_OF_WEEK.indexOf(selectedHomeDay) + 1) % 7];
+    sel.value = nx;
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    const shut = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+    box.querySelector('[data-cancel]').addEventListener('click', shut);
+    overlay.addEventListener('click', (e)=>{ if(e.target === overlay) shut(); });
+    box.querySelector('[data-go]').addEventListener('click', async ()=>{
+      const day = sel.value;
+      if(!day || day === selectedHomeDay) return;
+      const always = box.querySelector('input[name="mselWhen"]:checked').value === 'always';
+      const n = ids.length;
+      if(always){
+        ids.forEach(id=>{
+          const c = customers.find(x => x && x.id === id);
+          if(c){ c.day = day; clearMovesFor(c.id); }
+        });
+        try{ await saveCustomers(); }catch(err){ console.warn('save failed', err); }
+      } else {
+        const toISO = isoForDay(day);
+        ids.forEach(id => saveMoveJustOnce(id, fromISO, toISO, null));
+      }
+      shut();
+      exit();
+      renderHomeList();
+      showToast(always ? n + (n === 1 ? ' customer' : ' customers') + ' now serviced on ' + day + 's'
+                       : n + (n === 1 ? ' customer' : ' customers') + ' moved to ' + day);
+    });
+  }
 })();
 </script>
 </body>
