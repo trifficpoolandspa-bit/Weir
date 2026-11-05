@@ -180,6 +180,21 @@ Deno.serve(async (req: Request)=>{
                 link: '', content: String(p.content)});
   });
 
+  // The company's logo (Nov 5): travels as an attachment the page refers to
+  // as cid:logo. With none, the picture is taken out so there is no broken box.
+  const logoB64 = String(body.logo || '').replace(/^data:[^,]*,/, '').trim();
+  const logoType = body.logoType === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+  const hasLogo = logoB64.length > 0 && logoB64.length < 400000;
+  if(hasLogo){
+    attachments.push({
+      filename: logoType === 'image/jpeg' ? 'logo.jpg' : 'logo.png',
+      content: logoB64,
+      content_type: logoType,
+      content_id: 'logo'
+    });
+  }
+  const dropLogo = (page: string)=> hasLogo ? page : page.replace(/<img data-weir-logo="1"[^>]*>/g, '');
+
   for(const p of shown){
     p.link = await keepFullSize(who.companyId, p.id + '-' + Date.now().toString(36), p.content);
   }
@@ -307,7 +322,7 @@ Deno.serve(async (req: Request)=>{
     from,
     to: toList,
     subject,
-    html: withPhotos(html),
+    html: dropLogo(withPhotos(html)),
     ...(who.replyTo ? {reply_to: who.replyTo} : {}),
     ...(attachments.length ? {attachments} : {}),
     // Labels Resend hands back if the email bounces, so the bounce can be
@@ -332,8 +347,9 @@ Deno.serve(async (req: Request)=>{
   if(result.id){
     let kept = String(payload.html || '');
     shown.forEach(p => { if(p.link) kept = kept.split('cid:' + p.id + '"').join(p.link + '"'); });
+    if(hasLogo) kept = kept.split('cid:logo"').join('data:' + logoType + ';base64,' + logoB64 + '"');
     await logSent(who.companyId, String(result.id), body, toList.join(', '), subject, kept);
   }
   return reply(200, {sent: true, id: result.id, from: from, replyTo: who.replyTo,
-                     photos: attachments.length, linked: linkOnly.length});
+                     photos: attachments.length - (hasLogo ? 1 : 0), linked: linkOnly.length});
 });
