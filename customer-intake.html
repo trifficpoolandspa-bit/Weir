@@ -14402,6 +14402,19 @@ function filterGroupDateText(g){
 const FILTER_EMAIL_PLACEHOLDER = '{dates}';
 
 const DEFAULT_FILTER_EMAIL = {
+  subject: 'Your filter clean is coming up',
+  body: 'Hi there,\n\n'
+    + 'Just a quick note to let you know your filter clean is scheduled for {dates}.\n\n'
+    + 'The cost for the clean is {price}.\n\n'
+    + 'A clean filter keeps your water clear and helps your pump run easily, '
+    + 'so we’re glad to be taking care of it for you.\n\n'
+    + 'There’s nothing you need to do, but if you can make sure the equipment pad is '
+    + 'easy to reach and any gates are unlocked, it helps the visit go smoothly.\n\n'
+    + 'Thanks so much,\n{company}'
+};
+// The wording shipped on Nov 6 before this one, kept so a copy saved
+// unchanged still takes the new default
+const OLD_FILTER_EMAIL_NOV6 = {
   subject: 'A friendly reminder: your filter clean is coming up',
   body: 'Hi there,\n\n'
     + 'Please note that your filter clean is scheduled for {dates}.\n\n'
@@ -14427,7 +14440,8 @@ const OLD_FILTER_EMAIL = {
 
 function loadFilterEmail(){
   const saved = lsGet('filterCleanEmail');
-  if(saved && saved.body && !(saved.body === OLD_FILTER_EMAIL.body && saved.subject === OLD_FILTER_EMAIL.subject)) return saved;
+  const isOld = o => saved && saved.body === o.body && saved.subject === o.subject;
+  if(saved && saved.body && !isOld(OLD_FILTER_EMAIL) && !isOld(OLD_FILTER_EMAIL_NOV6)) return saved;
   return Object.assign({}, DEFAULT_FILTER_EMAIL);
 }
 
@@ -14445,9 +14459,12 @@ function joinDates(dates){
 // that holds {price} is left out whole, so no sentence is left hanging.
 function fillFilterEmail(text, dates, price){
   let t = String(text);
+  // One price, or a list: a customer with two filters gets each filter's price
+  // ("$135.00 and $145.00")
+  const list = (Array.isArray(price) ? price : [price]).map(Number).filter(n => !isNaN(n) && n > 0);
   if(t.indexOf('{price}') !== -1){
-    if(price != null && price > 0){
-      t = t.split('{price}').join(formatFilterPrice(price));
+    if(list.length){
+      t = t.split('{price}').join(joinDates(list.map(formatFilterPrice)));
     } else {
       t = t.split(/\n[ \t]*\n/).filter(par => par.indexOf('{price}') === -1).join('\n\n');
     }
@@ -14488,17 +14505,18 @@ function filterCustomersByStyle(){
   });
   return map;
 }
-// The cost of this customer's filter clean: the price of each filter's style,
-// added up if they have more than one. null when nothing is priced for them.
+// The cost of this customer's filter clean: one price for each of their
+// filters, in the order they have them (a customer with two filters gets two).
+// A filter whose style has no price adds none. Empty when nothing is priced.
 function filterPriceFor(cust, prices){
   const tiers = (prices || loadFilterPrices()).tiers;
-  let total = 0, any = false;
+  const out = [];
   customerFilterStyles(cust).forEach(st=>{
     const tier = tiers.find(t => (t.styles || []).some(s => fpKey(s) === fpKey(st)));
     const n = tier ? Number(tier.price) : NaN;
-    if(!isNaN(n) && n > 0){ total += n; any = true; }
+    if(!isNaN(n) && n > 0) out.push(n);
   });
-  return any ? total : null;
+  return out;
 }
 
 function openFilterPrices(){
@@ -14608,11 +14626,25 @@ function openFilterPrices(){
     p.textContent = 'Set a price, then choose which filter styles it covers. Styles that cost the same go under one price. Each customer\u2019s email shows the price for their filter\u2019s style.';
     card.appendChild(p);
 
+    const list = document.createElement('div');
+    card.appendChild(list);
     tiers.forEach(tier=>{
       const box = document.createElement('div');
-      box.style.cssText = 'border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;';
+      box.dataset.reorderKey = tier.id;
+      box.style.cssText = 'border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:#fff;';
       const top = document.createElement('div');
       top.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:10px;';
+      // Drag by the grip to put the prices in any order
+      const grip = document.createElement('span');
+      grip.textContent = '\u2261'; grip.title = 'Drag to reorder';
+      grip.style.cssText = 'color:var(--muted);font-size:20px;flex-shrink:0;padding:0 2px;cursor:grab;touch-action:none;';
+      top.appendChild(grip);
+      attachTouchReorder(grip, box, list, ':scope > [data-reorder-key]', keys=>{
+        const byId = {}; tiers.forEach(t => { byId[t.id] = t; });
+        const next = keys.filter((k, i) => byId[k] && keys.indexOf(k) === i).map(k => byId[k]);
+        if(next.length === tiers.length){ tiers.splice(0, tiers.length, ...next); }
+        render();
+      });
       const dollar = document.createElement('span');
       dollar.style.cssText = 'color:var(--muted);font-weight:700;font-size:16px;'; dollar.textContent = '$';
       const inp = document.createElement('input');
@@ -14627,8 +14659,13 @@ function openFilterPrices(){
       total.textContent = people.size + (people.size === 1 ? ' customer' : ' customers');
       const rm = document.createElement('button');
       rm.type = 'button'; rm.className = 'btn btn-ghost';
-      rm.style.cssText = 'width:auto;padding:4px 9px;font-size:12px;color:var(--rust);'; rm.textContent = 'Remove';
-      rm.addEventListener('click', ()=>{ tiers.splice(tiers.indexOf(tier), 1); render(); });
+      rm.title = 'Delete this price'; rm.setAttribute('aria-label', 'Delete this price');
+      rm.style.cssText = 'width:auto;padding:6px 8px;color:var(--rust);display:inline-flex;align-items:center;';
+      rm.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>';
+      rm.addEventListener('click', async ()=>{
+        if(!(await confirmDialog('Are you sure you want to delete this?'))) return;
+        tiers.splice(tiers.indexOf(tier), 1); render();
+      });
       top.appendChild(dollar); top.appendChild(inp); top.appendChild(total); top.appendChild(rm);
       box.appendChild(top);
       const chips = document.createElement('div');
@@ -14640,7 +14677,7 @@ function openFilterPrices(){
       add.addEventListener('click', ()=> pickStyles(tier));
       chips.appendChild(add);
       box.appendChild(chips);
-      card.appendChild(box);
+      list.appendChild(box);
     });
 
     const nw = document.createElement('button');
@@ -14724,8 +14761,9 @@ async function openFilterEmailEditor(onSaved){
     + 'Write <strong>{dates}</strong> where the scheduled date should go, and '
     + '<strong>{company}</strong> for your company name. If a customer is in several groups, '
     + '{dates} becomes all of their dates listed in one sentence. '
-    + '<strong>{price}</strong> is what their filter clean costs, from Filter prices; if their filter '
-    + 'has no price set, the paragraph with {price} in it is left out.</p>';
+    + '<strong>{price}</strong> is what their filter clean costs, from Filter prices. A customer with '
+    + 'more than one filter gets each filter\u2019s price listed, like \u201c$135.00 and $145.00\u201d. '
+    + 'If none of their filters has a price set, the paragraph with {price} in it is left out.</p>';
 
   const subWrap = document.createElement('div');
   subWrap.className = 'field';
@@ -14744,6 +14782,20 @@ async function openFilterEmailEditor(onSaved){
   body.value = t.body;
   bodyWrap.appendChild(body);
   card.appendChild(bodyWrap);
+
+  // How it will read for a customer with two filters, so the layout is clear
+  const prevWrap = document.createElement('div');
+  prevWrap.className = 'field';
+  prevWrap.innerHTML = '<label>How it reads (a customer with two filters, $135.00 and $145.00)</label>';
+  const prev = document.createElement('div');
+  prev.style.cssText = 'white-space:pre-wrap;font-size:13px;line-height:1.5;background:#F4F8F7;border:1px solid var(--line);border-radius:8px;padding:10px 12px;max-height:220px;overflow-y:auto;';
+  prevWrap.appendChild(prev);
+  card.appendChild(prevWrap);
+  const drawPreview = ()=>{
+    prev.textContent = fillFilterEmail(body.value, ['Monday, Nov 9'], [135, 145]);
+  };
+  body.addEventListener('input', drawPreview);
+  drawPreview();
 
   const row = document.createElement('div');
   row.className = 'btn-row';
@@ -14777,7 +14829,7 @@ async function openFilterEmailEditor(onSaved){
   reset.addEventListener('click', ()=>{
     sub.value = DEFAULT_FILTER_EMAIL.subject;
     body.value = DEFAULT_FILTER_EMAIL.body;
-    refresh();
+    drawPreview();
   });
 
   save.addEventListener('click', ()=>{

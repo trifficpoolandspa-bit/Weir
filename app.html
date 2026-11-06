@@ -9649,7 +9649,7 @@ function techRouteJobsFor(techId, iso){
     out.push({kind: 'work order', id: j.id, key: 'work order:' + j.id, report: 'wo:' + j.id, title: j.title || 'Work order', customerId: j.customerId, lineItems: j.lineItems || [],
       done: j.status === 'done', doneAt: j.doneAt, date: j.date, technicianId: j.technicianId, placeAfter: j.placeAfter});
   });
-  (lsGet('scheduledFilterCleans') || []).filter(f => f && f.date === iso && mine(f) && !f.reopened).forEach(f=>{
+  (lsGet('scheduledFilterCleans') || []).filter(f => f && f.date === iso && mine(f) && !f.reopened && !fcPausedHere(f)).forEach(f=>{
     out.push({kind: 'filter clean', id: f.id, key: 'filter clean:' + f.id, report: 'fc:' + f.id, title: 'Filter clean', customerId: f.customerId,
       done: f.status === 'done', doneAt: f.doneAt, date: f.date, technicianId: f.technicianId, placeAfter: f.placeAfter});
   });
@@ -11058,7 +11058,7 @@ function routeJobsFor(customerId, dayISO, techId){
                 title: j.title || 'Work order', details: j.notes || '', extraWork: j.extraWork || [], photoRequired: !!j.photoRequired, videoRequired: !!j.videoRequired}));
   // Filter cleans are jobs too, done on the job screen (Oct 3)
   const cleans = (lsGet('scheduledFilterCleans') || [])
-    .filter(s => s && s.status === 'scheduled' && s.date === dayISO && s.customerId === customerId && mine(s))
+    .filter(s => s && s.status === 'scheduled' && s.date === dayISO && s.customerId === customerId && mine(s) && !fcPausedHere(s))
     .map(s => ({key: 'filter clean:' + s.id, kind: 'filter clean', id: s.id, placeAfter: s.placeAfter,
                 // Only when the group's Photo required was ticked (Oct 3)
                 title: 'Filter clean', details: '', photoRequired: s.photoRequired === true, videoRequired: false,
@@ -11204,6 +11204,14 @@ function routeLooseTasks(dayISO, techId){
     .filter(j => !jobSubmitted(j.key));
 }
 
+// A filter clean whose customer was paused in its group (Nov 6) is off the
+// route, even if the phone still holds its record until the next sync
+function fcPausedHere(f){
+  if(!f || !f.groupId) return false;
+  const groups = (typeof acalOffice !== 'undefined' && acalOffice && Array.isArray(acalOffice.filterGroups)) ? acalOffice.filterGroups : (lsGet('filterGroups') || []);
+  const g = Array.isArray(groups) ? groups.find(x => x && x.id === f.groupId) : null;
+  return !!(g && Array.isArray(g.pausedIds) && g.pausedIds.indexOf(f.customerId) !== -1 && f.status !== 'done');
+}
 // Customers with a task or work order still to do that day, so it has somewhere to sit
 function routeJobCustomerIds(dayISO, techId){
   const ids = new Set();
@@ -11217,7 +11225,7 @@ function routeJobCustomerIds(dayISO, techId){
     .forEach(j => { if(!jobSubmitted('work order:' + j.id)) ids.add(j.customerId); });
   // Filter cleans in the order their group was put in (Oct 3: since they
   // became jobs they'd lost it and came in the order they were stored)
-  (lsGet('scheduledFilterCleans') || []).filter(s => s && s.status === 'scheduled' && s.date === dayISO && mine(s))
+  (lsGet('scheduledFilterCleans') || []).filter(s => s && s.status === 'scheduled' && s.date === dayISO && mine(s) && !fcPausedHere(s))
     .sort((a, b) => (typeof a.order === 'number' ? a.order : 9999) - (typeof b.order === 'number' ? b.order : 9999))
     .forEach(s => { if(!jobSubmitted('filter clean:' + s.id)) ids.add(s.customerId); });
   (lsGet('scheduledPoolDrains') || []).filter(s => s && s.status === 'scheduled' && s.date === dayISO && mine(s))
@@ -27224,6 +27232,39 @@ function emailApplyLogo(html){
       finish(total + (total === 1 ? ' item' : ' items') + ' moved' + (toISO ? ' to ' + whenText(toISO) : '') + (tech ? ' with ' + techNameFor(tech) : ''));
     });
   }
+})();
+
+// ---------- Stop and job counts follow the list (Nov 6) ----------
+// The two numbers at the top of Today are read from what is actually on the
+// list, every few seconds, rather than worked out from the schedule: a clean
+// taken off by the office (a pause, a removal) can never leave the count
+// behind. What was finished stays as it was; only the "left" number is
+// counted again from the rows shown.
+(function liveHomeCounts(){
+  function recount(){
+    try{
+      const box = document.getElementById('homeCustomerList');
+      const stopEl = document.getElementById('homeStopCount');
+      const jobEl = document.getElementById('homeJobCount');
+      if(!box || !stopEl || !jobEl || box.offsetParent === null) return;
+      const set = (el, left, word)=>{
+        const m = /^(\d+)\/(\d+)$/.exec((el.textContent || '').trim());
+        if(!m) return;                                  // not drawn yet
+        const done = Math.max(0, Number(m[2]) - Number(m[1]));
+        const txt = left + '/' + (left + done);
+        if(el.textContent !== txt){ el.textContent = txt; }
+        el.title = left + ' of ' + (left + done) + ' ' + word + ' left today';
+      };
+      const stops = box.querySelectorAll('.cust-row[data-customer-row]').length;
+      const jobs = box.querySelectorAll('.route-job').length;
+      set(stopEl, stops, 'stops');
+      set(jobEl, jobs, 'jobs');
+    }catch(e){}
+  }
+  setInterval(recount, 3000);
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) recount(); });
+  window.addEventListener('focus', recount);
+  window.recountHome = recount;
 })();
 </script>
 </body>
