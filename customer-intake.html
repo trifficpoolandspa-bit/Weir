@@ -31388,19 +31388,23 @@ function saveStyleList(type, list){
   lsSet('equipmentChoices', store);
 }
 // Right of a Cartridge, DE or Other filter: a Size button, or the size chosen
-function addStyleControl(container, type){
+function addStyleControl(container, type, choiceField){
   const F = styleField(type);
   const item = currentEquipmentItems.find(i => i.type === type);
-  // A filter shows it once its kind is chosen (sand included); every other row always does
-  if(baseEquipmentType(type) === 'Filter' && !(item && item.filterTypeChoice)) return;
-  if(!item && baseEquipmentType(type) === 'Filter') return;
-  if(item && item[F]){
+  // Only once a button has been chosen for the row (sand included)
+  if(!(item && item[choiceField])) return;
+  // Held to the width of the chosen button above it, so it sits in the middle of it
+  const slot = document.createElement('div');
+  slot.style.cssText = 'width:140px;flex:0 0 auto;display:flex;justify-content:center;align-self:flex-start;';
+  container.appendChild(slot);
+  container = slot;
+  if(item[F]){
     const pill = document.createElement('div');
-    pill.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-width:140px;max-width:100%;flex:0 0 auto;'
+    pill.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:100%;box-sizing:border-box;flex:0 0 auto;'
       + 'padding:6px 11px;border-radius:9px;background:var(--teal-deep);color:#fff;font-size:14.4px;font-weight:600;'
       + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;position:relative;cursor:pointer;';
     const text = document.createElement('span');
-    text.style.cssText = 'display:block;width:100%;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:opacity .12s ease;';
+    text.style.cssText = 'display:block;width:100%;text-align:center;overflow:hidden;white-space:nowrap;transition:opacity .12s ease;';
     text.textContent = item[F];
     const x = document.createElement('span');
     x.textContent = '×';
@@ -31416,6 +31420,8 @@ function addStyleControl(container, type){
       renderEquipmentTypeList();
     });
     container.appendChild(pill);
+    // A style longer than the button slides across to show the rest
+    webMarqueeIfCut(text);
     return;
   }
   const btn = document.createElement('button');
@@ -31435,7 +31441,7 @@ function openStyleWindow(type){
     + '<button type="button" id="fsClose" aria-label="Close" title="Close" style="flex:0 0 auto;width:28px;height:28px;padding:0;border-radius:50%;border:1.5px solid var(--line);background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;">'
     + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--teal-deep)" stroke-width="2.6" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg></button></div>'
     + '<p style="font-size:11.5px;color:var(--muted);margin:0 0 12px;">Add the styles you use for ' + esc(baseName.toLowerCase()) + '. They are kept for every customer with one, so you only add each one once. Press a style to choose it.</p>'
-    + '<div style="display:flex;gap:8px;margin-bottom:14px;"><input id="fsNew" placeholder="' + (baseName === 'Filter' ? 'e.g. 100 sq ft' : 'Add a style') + '" maxlength="24" autocomplete="off" style="flex:1;min-width:0;">'
+    + '<div style="display:flex;gap:8px;margin-bottom:14px;"><input id="fsNew" placeholder="' + (baseName === 'Filter' ? 'e.g. 100 sq ft' : 'Add a style') + '" maxlength="40" autocomplete="off" style="flex:1;min-width:0;">'
     + '<button type="button" class="btn btn-primary" id="fsAdd" style="width:auto;padding:0 16px;">Add</button></div>'
     + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px;"><span id="fsArrangeNote" style="font-size:11.5px;color:var(--muted);"></span>'
     + '<button type="button" class="btn btn-ghost" id="fsArrange" style="width:auto;flex:0 0 auto;padding:5px 12px;font-size:12.5px;">Arrange order</button></div>'
@@ -31452,7 +31458,7 @@ function openStyleWindow(type){
     const arrBtn = overlay.querySelector('#fsArrange');
     arrBtn.style.display = list.length > 1 ? '' : 'none';
     if(list.length < 2) arranging = false;
-    arrBtn.textContent = arranging ? 'Done arranging' : 'Arrange order';
+    arrBtn.textContent = arranging ? 'Done' : 'Arrange order';
     arrBtn.className = 'btn ' + (arranging ? 'btn-primary' : 'btn-ghost');
     overlay.querySelector('#fsArrangeNote').textContent = arranging ? 'Drag a size to where you want it.' : '';
     if(!list.length){
@@ -32109,25 +32115,25 @@ function renderEquipmentTypeList(){
 
     if(baseEquipmentType(type) === 'Filter'){
       renderChoicePicker(pickArea, type, ['Cartridge', 'Sand', 'DE', 'Other'], 'filterTypeChoice', 'filterTypeCustom', ()=> renderEquipmentTypeList());
-      addStyleControl(middleArea, type);
+      addStyleControl(middleArea, type, 'filterTypeChoice');
     } else if(baseEquipmentType(type) === 'Pump'){
       renderChoicePicker(pickArea, type, ['Variable Speed', 'Single Speed', 'Other'], 'pumpSpeedChoice', 'pumpSpeedCustom', ()=> renderEquipmentTypeList());
-      addStyleControl(middleArea, type);
+      addStyleControl(middleArea, type, 'pumpSpeedChoice');
     } else if(baseEquipmentType(type) === 'Cleaning System'){
       renderChoicePicker(pickArea, type, ['Pop Ups', 'Vacuum', 'Other'], 'cleaningSystemChoice', 'cleaningSystemCustom', ()=> renderEquipmentTypeList());
-      addStyleControl(middleArea, type);
+      addStyleControl(middleArea, type, 'cleaningSystemChoice');
     } else if(baseEquipmentType(type) === 'Chlorination'){
       renderChoicePicker(pickArea, type, ['Tabs', 'Salt Cell', 'Liquid', 'Other'], 'chlorinationChoice', 'chlorinationCustom', ()=> renderEquipmentTypeList());
-      addStyleControl(middleArea, type);
+      addStyleControl(middleArea, type, 'chlorinationChoice');
     } else if(baseEquipmentType(type) === 'Heater'){
       renderChoicePicker(pickArea, type, ['Solar', 'Heat Pump', 'Gas', 'Other'], 'heaterChoice', 'heaterCustom', ()=> renderEquipmentTypeList());
-      addStyleControl(middleArea, type);
+      addStyleControl(middleArea, type, 'heaterChoice');
     } else {
       // An equipment type the user created — its buttons come from the saved
       // list, which renderChoicePicker merges in
       renderChoicePicker(pickArea, type, ['Other'],
         'customChoice', 'customChoiceOther', ()=> renderEquipmentTypeList());
-      addStyleControl(middleArea, type);
+      addStyleControl(middleArea, type, 'customChoice');
     }
 
     // Every type, built-in or not, can have buttons added. They are stored

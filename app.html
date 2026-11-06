@@ -5317,14 +5317,19 @@ async function syncPushPhotos(state){
   const ph = syncPhotoState(state);
   const company = deviceGet('company');
   if(!company) return {ok: true, pushed: 0};
-  const waiting = syncPhotosHere().filter(p => !ph.sent[p.id]);
+  // A photo marked "gone" (its picture not found here) or "refused" is tried
+  // again once a day instead of being given up on for good: the picture can turn
+  // up later, and the customer can reach the office after the photo was refused.
+  // Ones marked before this change have no time on them, so they get one more go now.
+  const retryable = rec => !!(rec && (rec.gone || rec.refused) && Date.now() - new Date(rec.at || 0).getTime() > 20 * 3600000);
+  const waiting = syncPhotosHere().filter(p => !ph.sent[p.id] || retryable(ph.sent[p.id]));
   let pushed = 0, refused = 0;
   for(const item of waiting.slice(0, SYNC_PHOTOS_PER_RUN)){
     const data = await loadPhotoData(item.id);
-    if(!data){ ph.sent[item.id] = {gone: true}; saveFieldSyncState(state); continue; }
+    if(!data){ ph.sent[item.id] = {gone: true, at: new Date().toISOString()}; saveFieldSyncState(state); continue; }
     const path = company.id + '/' + item.customerId + '/' + item.id;
     let file;
-    try{ file = syncDataUrlToBlob(data); }catch(e){ ph.sent[item.id] = {gone: true}; continue; }
+    try{ file = syncDataUrlToBlob(data); }catch(e){ ph.sent[item.id] = {gone: true, at: new Date().toISOString()}; continue; }
 
     const s = deviceGet('session');
     let res;
@@ -5376,7 +5381,7 @@ async function syncPushPhotos(state){
     if(noted.offline) return {ok: false, offline: true, pushed: pushed};
     if(noted.status === 400 || noted.status === 403){
       // The office will not have it — a customer it does not know, say
-      ph.sent[item.id] = {refused: true};
+      ph.sent[item.id] = {refused: true, at: new Date().toISOString()};
       refused++;
       saveFieldSyncState(state);
       continue;
