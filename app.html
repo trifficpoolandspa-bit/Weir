@@ -7,7 +7,11 @@
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#114B4F">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<!-- Nov 6: the fonts load without holding the page up. A stylesheet link blocks the
+     first paint until it answers, and on a weak signal that left a blank screen
+     for a very long time. The page shows at once and the fonts swap in. -->
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet"></noscript>
 <style>
 /* A drawn × for close and remove buttons, centred on the box whatever the font
    does (a typed × sits about a pixel high) */
@@ -3024,8 +3028,12 @@ var tabScrollAt = {};
 // coming back opens Today, and that moment used to count as leaving the tab,
 // so the 30 seconds started again
 var tabHiddenAt = 0, viewEnteredAt = Date.now();
+// Nov 6: a day picked on Today stays for 15 seconds after leaving it (another
+// tab, or out of the app), then Today goes back to the current day
+var HOME_DAY_HOLD_MS = 15000, homeLeftAt = 0;
+function homeDayHeld(){ return !!homeLeftAt && (Date.now() - homeLeftAt) < HOME_DAY_HOLD_MS; }
 document.addEventListener('visibilitychange', ()=>{
-  if(document.hidden){ tabHiddenAt = Date.now(); return; }
+  if(document.hidden){ tabHiddenAt = Date.now(); if(currentViewName === 'home') homeLeftAt = Date.now(); return; }
   // Oct 12: coming back to the app leaves every page exactly as it was (the
   // Customer tab used to go back to its list after 30 seconds away)
   // Oct 15: except the day on Today — coming back always shows today
@@ -3052,7 +3060,7 @@ window.addEventListener('pageshow', e=>{ if(e.persisted) backToTodayAfterAway();
 function todayOnReturn(){
   try{
     if(document.hidden) return;
-    if(currentViewName === 'home' && !busyForOpenOnToday()){
+    if(currentViewName === 'home' && !busyForOpenOnToday() && !homeDayHeld()){
       const today = DAYS_OF_WEEK[new Date().getDay()];
       if(selectedHomeDay !== today || weekOffset !== 0){
         selectedHomeDay = today; weekOffset = 0;
@@ -3070,6 +3078,7 @@ function switchView(view, opts){
   if(view !== 'customers') window.acalReturnTo = null;
   if(view !== 'technicians' && typeof techOrderPending !== 'undefined' && techOrderPending) endTechOrder();
   const cameFrom = currentViewName;
+  if(cameFrom === 'home' && view !== 'home') homeLeftAt = Date.now();      // Nov 6: see homeDayHeld
   if(cameFrom && cameFrom !== view && TAB_KEEPS.indexOf(cameFrom) !== -1){
     // Left when the app went to the background, if it did while on this tab
     tabLeftAt[cameFrom] = (tabHiddenAt > viewEnteredAt) ? tabHiddenAt : Date.now();
@@ -3166,7 +3175,7 @@ function switchView(view, opts){
     closeRouteBriefs();
     // From another tab, Today opens on today, whatever day was being looked
     // at before. Coming back from a visit keeps the day that visit was on.
-    if(cameFrom && cameFrom !== 'home' && cameFrom !== 'visit'){
+    if(cameFrom && cameFrom !== 'home' && cameFrom !== 'visit' && !homeDayHeld()){
       selectedHomeDay = DAYS_OF_WEEK[new Date().getDay()];
       weekOffset = 0;
     }
@@ -3627,14 +3636,29 @@ async function fieldFetch(path, opts, withSession){
   const headers = Object.assign({'apikey': FIELD_SUPABASE_KEY, 'Content-Type': 'application/json'}, o.headers || {});
   const s = deviceGet('session');
   if(withSession !== false && s && s.access_token) headers['Authorization'] = 'Bearer ' + s.access_token;
-  let res;
+  // Nov 6: a call that gets no answer in time counts as having no signal. On a
+  // weak connection a request can hang for a minute or more; the app then
+  // waited that long before signing in offline or carrying on.
+  const limit = o.timeoutMs || 25000;
+  const ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const timer = ctl ? setTimeout(()=>{ try{ ctl.abort(); }catch(e){} }, limit) : null;
+  const init = Object.assign({}, o, {headers});
+  delete init.timeoutMs;
+  if(ctl && !init.signal) init.signal = ctl.signal;
+  let res, body = null;
   try{
-    res = await fetch(FIELD_SUPABASE_URL + path, Object.assign({}, o, {headers}));
+    res = await fetch(FIELD_SUPABASE_URL + path, init);
+    try{ body = await res.json(); }catch(e){}
   }catch(e){
+    if(timer) clearTimeout(timer);
     return {ok: false, status: 0, body: null, offline: true};
   }
-  let body = null;
-  try{ body = await res.json(); }catch(e){}
+  if(timer) clearTimeout(timer);
+  // A struggling connection often answers with an error page or a server
+  // error instead of failing outright. That is not the office saying no.
+  if(!res.ok && (res.status === 408 || res.status === 429 || res.status >= 500)){
+    return {ok: false, status: res.status, body: body, offline: true};
+  }
   return {ok: res.ok, status: res.status, body};
 }
 
@@ -3739,21 +3763,41 @@ function fieldStoreSession(body){
     refresh_token: body.refresh_token,
     user_id: body.user && body.user.id
   });
+  deviceSet('needsSignIn', null);
   fieldRememberRefresh(body.refresh_token);
   return true;
 }
 
 // true when refreshed, 'offline' without signal, 'revoked' when the server
 // refuses — the password was reset or the account is gone
-async function fieldRefresh(){
+// One refresh at a time (Nov 6). The server gives out a new refresh token each
+// time and the old one stops working, so two refreshes at once (the sync and
+// the account check both run the moment signal comes back) made the second
+// fail, and the phone signed itself out.
+let fieldRefreshInFlight = null;
+function fieldRefresh(){
+  if(!fieldRefreshInFlight){
+    fieldRefreshInFlight = fieldRefreshOnce().then(r => { fieldRefreshInFlight = null; return r; },
+                                                    e => { fieldRefreshInFlight = null; throw e; });
+  }
+  return fieldRefreshInFlight;
+}
+async function fieldRefreshOnce(){
   const s = deviceGet('session');
   if(!s || !s.refresh_token) return 'revoked';
+  const sent = s.refresh_token;
   const res = await fieldFetch('/auth/v1/token?grant_type=refresh_token', {
-    method: 'POST', body: JSON.stringify({refresh_token: s.refresh_token})
+    method: 'POST', body: JSON.stringify({refresh_token: sent}), timeoutMs: 10000
   }, false);
   if(res.offline) return 'offline';
   if(res.ok && fieldStoreSession(res.body)) return true;
-  return 'revoked';
+  // Refused. If another refresh got in first and already stored a newer token,
+  // that is not a refusal at all.
+  const now = deviceGet('session');
+  if(now && now.access_token && now.refresh_token && now.refresh_token !== sent) return true;
+  // Only a clear "no" from the server counts; anything else is a bad signal
+  if(res.status === 400 || res.status === 401 || res.status === 403) return 'revoked';
+  return 'offline';
 }
 
 async function fieldAuthed(path, opts){
@@ -3791,13 +3835,13 @@ async function fieldSignIn(username, password, needAdmin){
   if(!u || !password) return {ok: false, message: 'Enter your username and password.'};
 
   const addr = await fieldFetch('/rest/v1/rpc/sign_in_address', {
-    method: 'POST', body: JSON.stringify({p_company_id: company.id, p_username: u})
+    method: 'POST', body: JSON.stringify({p_company_id: company.id, p_username: u}), timeoutMs: 6000
   }, false);
   if(addr.offline) return fieldSignInOffline(company, u, password, needAdmin);
   if(!addr.ok || typeof addr.body !== 'string' || !addr.body) return {ok: false, message: FIELD_NO_MATCH};
 
   const tok = await fieldFetch('/auth/v1/token?grant_type=password', {
-    method: 'POST', body: JSON.stringify({email: addr.body, password: password})
+    method: 'POST', body: JSON.stringify({email: addr.body, password: password}), timeoutMs: 8000
   }, false);
   if(tok.offline) return fieldSignInOffline(company, u, password, needAdmin);
   if(!tok.ok || !fieldStoreSession(tok.body)) return {ok: false, message: FIELD_NO_MATCH};
@@ -3860,7 +3904,14 @@ async function fieldCheckAccount(needAdmin, onGone){
   if(res.offline) return;
   const company = deviceGet('company');
   let reason = null;
-  if(res.revoked) reason = 'signed-out';
+  if(res.revoked){
+    // Nov 6: the phone could not renew its way back to the office. That is not
+    // proof the account is gone (a refresh lost on a dropped signal looks the
+    // same), so it does not sign anyone out in the middle of their work. The
+    // app keeps working; the sign-in is renewed the next time it opens.
+    deviceSet('needsSignIn', true);
+    return;
+  }
   else if(res.ok){
     const m = res.body;
     if(!m || !m.technician_id || (company && m.company_id !== company.id)) reason = 'signed-out';
@@ -4083,7 +4134,7 @@ const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'r
                          'technicianOrder',
                          'reportEmailStyle', 'customerGroups', 'photoDefaults', 'photoEveryone',
                          'photoDefaultsSeeded'];
-const OFFICE_ONLY_SETUP = ['filterGroups', 'drainCalendar', 'workOrders', 'serviceCalls', 'filterCleanEmail',
+const OFFICE_ONLY_SETUP = ['filterGroups', 'drainCalendar', 'workOrders', 'serviceCalls', 'filterCleanEmail', 'filterPrices',
   'drainEmailSoon', 'drainEmailScheduled', 'broadcastTemplates', 'broadcastCategories'];
 const SYNC_COMPANY_DETAIL_KEYS = ['companyName', 'ownerName', 'licenseNumber', 'serviceArea',
   'accountEmail', 'accountPhone', 'businessAddress', 'businessCity', 'businessState',
@@ -5259,8 +5310,11 @@ function syncPhotosHere(){
     (c.equipment || []).forEach(item=>{
       (item && item.photos || []).forEach(ph=>{
         if(!ph) return;
-        const ref = ph.ref || (ph.stored && ph.id ? PHOTO_REF + ph.id : null);
+        // A photo kept inline (the photo database was unavailable when it was
+        // taken) has no stored flag; it still goes up, from the picture it carries.
+        const ref = ph.ref || (ph.id && (ph.stored || ph.dataUrl) ? PHOTO_REF + ph.id : null);
         if(ref) add(ref, {customerId, kind: 'equipment', equipmentId: item.id,
+                          inline: (!ph.stored && !ph.ref && ph.dataUrl) ? ph.dataUrl : null,
                           takenAt: ph.takenAt || c.updatedAt || new Date().toISOString()});
       });
     });
@@ -5325,7 +5379,7 @@ async function syncPushPhotos(state){
   const waiting = syncPhotosHere().filter(p => !ph.sent[p.id] || retryable(ph.sent[p.id]));
   let pushed = 0, refused = 0;
   for(const item of waiting.slice(0, SYNC_PHOTOS_PER_RUN)){
-    const data = await loadPhotoData(item.id);
+    const data = (await loadPhotoData(item.id)) || item.inline;
     if(!data){ ph.sent[item.id] = {gone: true, at: new Date().toISOString()}; saveFieldSyncState(state); continue; }
     const path = company.id + '/' + item.customerId + '/' + item.id;
     let file;
@@ -6953,6 +7007,34 @@ function ensureEquipmentItem(type){
 function renderEquipmentTypeList(){
   const container = document.getElementById('icEquipmentList');
   container.innerHTML = '';
+  // The whole equipment pad: a pinned first row (Nov 6), kept as an item of its
+  // own named System, so its photos and notes sync like any other's
+  {
+    const sys = currentEquipmentItems.find(i => i.type === 'System');
+    const row = document.createElement('div');
+    row.className = 'cust-row';
+    row.style.gap = '12px';
+    row.style.background = 'var(--teal-pale)';
+    const lab = document.createElement('div');
+    lab.style.cssText = 'flex:1;min-width:0;font-size:16px;font-weight:700;';
+    lab.innerHTML = 'System <span style="font-weight:500;font-size:12px;color:var(--muted);">whole equipment pad</span>';
+    row.appendChild(lab);
+    const nb = document.createElement('button');
+    nb.type = 'button'; nb.className = 'btn btn-ghost';
+    nb.style.cssText = 'width:68px;box-sizing:border-box;padding:6px 0;font-size:12px;flex-shrink:0;';
+    nb.textContent = 'Notes' + (sys && sys.notes ? ' •' : '');
+    nb.addEventListener('click', (e)=>{ e.stopPropagation(); openEquipmentNotesModal(ensureEquipmentItem('System')); });
+    row.appendChild(nb);
+    const pb = document.createElement('button');
+    pb.type = 'button';
+    pb.style.cssText = 'background:none;border:none;cursor:pointer;font-size:17px;flex-shrink:0;display:flex;align-items:center;justify-content:flex-start;width:50px;padding:0;gap:4px;';
+    const n = sys && sys.photos ? sys.photos.length : 0;
+    pb.title = 'View or add photos';
+    pb.innerHTML = '📷' + (n ? `<span style="font-size:11px;color:var(--muted);font-weight:600;">${n}</span>` : '');
+    pb.addEventListener('click', (e)=>{ e.stopPropagation(); openEquipmentPhotoModal(ensureEquipmentItem('System')); });
+    row.appendChild(pb);
+    container.appendChild(row);
+  }
   currentEquipmentTypeOptions.forEach(type=>{
     const row = document.createElement('div');
     row.className = 'cust-row';
@@ -6971,8 +7053,11 @@ function renderEquipmentTypeList(){
     const notesBtn = document.createElement('button');
     notesBtn.type = 'button';
     notesBtn.className = 'btn btn-ghost';
-    notesBtn.style.width = 'auto';
-    notesBtn.style.padding = '6px 10px';
+    // Fixed widths so the Notes buttons and cameras line up in one column on
+    // every row, whatever the row holds (a photo count, a note dot)
+    notesBtn.style.width = '68px';
+    notesBtn.style.boxSizing = 'border-box';
+    notesBtn.style.padding = '6px 0';
     notesBtn.style.fontSize = '12px';
     notesBtn.style.flexShrink = '0';
     notesBtn.textContent = 'Notes' + (existingItem && existingItem.notes ? ' •' : '');
@@ -6991,6 +7076,9 @@ function renderEquipmentTypeList(){
     photoBtn.style.flexShrink = '0';
     photoBtn.style.display = 'flex';
     photoBtn.style.alignItems = 'center';
+    photoBtn.style.justifyContent = 'flex-start';
+    photoBtn.style.width = '50px';
+    photoBtn.style.padding = '0';
     photoBtn.style.gap = '4px';
     const photoCount = existingItem ? existingItem.photos.length : 0;
     photoBtn.title = 'View or add photos';
@@ -7588,7 +7676,7 @@ function openEquipmentPhotoModal(item){
     addPhotoBtn.style.width = 'auto';
     addPhotoBtn.textContent = '+ Add photo';
     addPhotoBtn.addEventListener('click', ()=>{
-      document.getElementById('icEquipmentPhotoInput').click();
+      openCameraFor(document.getElementById('icEquipmentPhotoInput'));
     });
     body.appendChild(addPhotoBtn);
   }
@@ -8132,6 +8220,24 @@ async function recordAndShareClip(){
 // confirm with "Use Photo". Showing the preview in-app means one tap: shutter
 // captures the frame and closes. Falls back to the file input if the camera
 // can't be opened.
+// Every photo button uses the same in-app camera as the Before and After photos
+// (Nov 6). The picture goes to the button's own file box as if it had been chosen
+// there, so each place keeps handling it the way it always has. Where the camera
+// can't open (no camera, permission refused), the phone's own camera app is used.
+async function openCameraFor(fileInput){
+  try{
+    const data = await captureFromCamera(900, 0.5);
+    if(!data) return;                 // cancelled
+    const blob = await (await fetch(data)).blob();
+    const file = new File([blob], 'photo.jpg', {type: blob.type || 'image/jpeg'});
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    fileInput.files = dt.files;
+    fileInput.dispatchEvent(new Event('change', {bubbles: true}));
+  }catch(err){
+    fileInput.click();
+  }
+}
 function captureFromCamera(maxDim, quality){
   return new Promise((resolve, reject)=>{
     if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
@@ -8554,12 +8660,15 @@ function makePhotoController(ids){
     shots.push(data);
     draw();
     if(ids.onChange) ids.onChange();
+    // Kept the moment it is taken, not on the next two-second tick (Nov 6)
+    try{ if(typeof saveVisitInProgress === 'function') setTimeout(saveVisitInProgress, 0); }catch(e){}
   }
   function clear(){
     shots = [];
     fileInput.value = '';
     draw();
     if(ids.onChange) ids.onChange();
+    try{ if(typeof saveVisitInProgress === 'function') setTimeout(saveVisitInProgress, 0); }catch(e){}
   }
 
   takeBtn.addEventListener('click', async ()=>{
@@ -8591,7 +8700,8 @@ function makePhotoController(ids){
     getData: ()=> shots[0] || null,
     getAll: ()=> shots.slice(),
     setData: (dataUrl)=>{ shots = dataUrl ? [dataUrl] : []; draw(); if(ids.onChange) ids.onChange(); },
-    setAll: (list)=>{ shots = (list || []).filter(Boolean).slice(0, MAX_SHOTS); draw(); if(ids.onChange) ids.onChange(); },
+    setAll: (list)=>{ shots = (list || []).filter(Boolean).slice(0, MAX_SHOTS); draw(); if(ids.onChange) ids.onChange();
+      try{ if(typeof saveVisitInProgress === 'function') setTimeout(saveVisitInProgress, 0); }catch(e){} },
     clear
   };
 }
@@ -9552,7 +9662,7 @@ function techRouteJobsFor(techId, iso){
     ids.forEach(cid => out.push({kind: 'task', id: t.id, key: 'task:' + t.id + ':' + cid, report: '', title: t.title || 'Task', customerId: cid,
       done: !!t.done, doneAt: t.doneAt, date: t.date, technicianId: t.technicianId, placeAfter: t.placeAfter}));
   });
-  return out;
+  return out.filter(j => jobCustomerLive(j.customerId));
 }
 // A job's row: gold, "Customer – title" as on Today, a DONE tag once finished.
 // A finished work order or filter clean opens its report, as a finished stop does.
@@ -11118,10 +11228,17 @@ function routeJobCustomerIds(dayISO, techId){
 // How many jobs a day holds: every work order and every task counts as one,
 // however many a customer has. Still to do is what's on the route; done is
 // what was submitted for that day.
+// A job whose customer was deleted or made inactive is not on the list, so it
+// must not be in the count either. A job with no customer (a loose task) stays.
+function jobCustomerLive(customerId){
+  if(customerId === '' || customerId == null) return true;
+  const c = (customers || []).find(x => x && String(x.id) === String(customerId));
+  return !!(c && !c.deleted && c.active !== false);
+}
 function routeJobCounts(dayISO, techId){
   // Every open job that day, including ones whose customer has already been
   // serviced: a job is its own piece of work, finished only when submitted
-  const open = Array.from(routeJobCustomerIds(dayISO, techId))
+  const open = Array.from(routeJobCustomerIds(dayISO, techId)).filter(jobCustomerLive)
     .reduce((n, id)=> n + routeJobsFor(id, dayISO, techId).length, 0)
     + routeLooseTasks(dayISO, techId).length;
   const localDay = iso => { const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
@@ -11193,6 +11310,8 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
     row.className = 'route-job';
     // A job has its own place in the route, saved with the customers' order
     row.dataset.reorderKey = 'job:' + job.key;
+    row.dataset.jobKey = job.key;
+    (window.__mselJobs = window.__mselJobs || {})[job.key] = job;     // for picking jobs on Today (Nov 6)
     markJobPlace(row, job, customer ? customer.id : '');
     // No gap between the parts, the same as a customer row, so the names start
     // at the same place whether or not there's a grip
@@ -11358,6 +11477,8 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
     row.className = 'route-job';
     // A job has its own place in the route, saved with the customers' order
     row.dataset.reorderKey = 'job:' + job.key;
+    row.dataset.jobKey = job.key;
+    (window.__mselJobs = window.__mselJobs || {})[job.key] = job;     // for picking jobs on Today (Nov 6)
     markJobPlace(row, job, customer ? customer.id : '');
     // No gap between the parts, the same as a customer row, so the names start
     // at the same place whether or not there's a grip
@@ -11577,7 +11698,7 @@ function askJobSkipReason(customer, job){
     let photoData = null;
     if(needPhoto){
       const fileEl = box.querySelector('[data-k="file"]');
-      box.querySelector('[data-k="photo"]').addEventListener('click', ()=> fileEl.click());
+      box.querySelector('[data-k="photo"]').addEventListener('click', ()=> openCameraFor(fileEl));
       fileEl.addEventListener('change', async ev=>{
         const f = ev.target.files[0];
         if(!f) return;
@@ -12507,7 +12628,7 @@ function adminVersion_renderHomeList(){
   // they were dragged), and gone only when the job itself is submitted
   const jobsOnTheirOwn = Array.from(routeJobCustomerIds(selectedDayISO, adminViewTechId))
     .map(id => customers.find(c => c.id === id))
-    .filter(c => c && c.active !== false);
+    .filter(c => c && !c.deleted && c.active !== false);
 
   const looseTasks = routeLooseTasks(selectedDayISO, adminViewTechId);
   if(todaysCustomers.length === 0 && !jobsOnTheirOwn.length && !looseTasks.length){
@@ -12884,7 +13005,7 @@ function techVersion_renderHomeList(){
   // they were dragged), and gone only when the job itself is submitted
   const jobsOnTheirOwn = Array.from(routeJobCustomerIds(selectedDayISO, currentUser ? currentUser.id : '__none__'))
     .map(id => customers.find(c => c.id === id))
-    .filter(c => c && c.active !== false);
+    .filter(c => c && !c.deleted && c.active !== false);
 
   const looseTasks = routeLooseTasks(selectedDayISO, currentUser ? currentUser.id : '__none__');
   if(todaysCustomers.length === 0 && !jobsOnTheirOwn.length && !looseTasks.length){
@@ -13609,7 +13730,7 @@ function openSkipReasonModal(customer, forcePhoto){
 
     setTimeout(()=> textEl.focus(), 60);
 
-    overlay.querySelector('#skipPhotoBtn').addEventListener('click', ()=> input.click());
+    overlay.querySelector('#skipPhotoBtn').addEventListener('click', ()=> openCameraFor(input));
     input.addEventListener('change', async (e)=>{
       const file = e.target.files[0];
       if(!file) return;
@@ -20253,7 +20374,13 @@ function acalDraw(){
   grid.style.cssText = 'display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin-top:10px;';
   ['S', 'M', 'T', 'W', 'T', 'F', 'S'].forEach(d => grid.insertAdjacentHTML('beforeend', '<div style="font-size:10.5px;font-weight:700;color:var(--muted);text-align:center;padding:2px 0;">' + d + '</div>'));
   const first = new Date(yy, mm - 1, 1).getDay(), daysIn = new Date(yy, mm, 0).getDate();
-  for(let i = 0; i < first; i++) grid.appendChild(document.createElement('div'));
+  // The days of the month before and after fill the empty spaces, faded so it
+  // is plain they are not this month's (Nov 6)
+  const fadeCell = (n)=>{ const c = document.createElement('div');
+    c.style.cssText = 'height:66px;overflow:hidden;border:1px solid var(--line);border-radius:7px;padding:3px;background:#f6f8f8;min-width:0;opacity:.5;';
+    c.innerHTML = '<div style="font-size:11px;font-weight:700;color:var(--muted);">' + n + '</div>'; return c; };
+  const prevDays = new Date(yy, mm - 1, 0).getDate();
+  for(let i = 0; i < first; i++) grid.appendChild(fadeCell(prevDays - first + 1 + i));
   for(let d = 1; d <= daysIn; d++){
     const iso = acalMonth + '-' + String(d).padStart(2, '0');
     const on = byDay[iso] || {fc: [], pd: [], wo: [], tk: []};
@@ -20295,6 +20422,8 @@ function acalDraw(){
     });
     grid.appendChild(cell);
   }
+  const used = first + daysIn, tail = (7 - used % 7) % 7;
+  for(let i = 1; i <= tail; i++) grid.appendChild(fadeCell(i));
   // Swipe the month (Oct 25): left for the next month, right for the one
   // before. A sideways swipe only, so scrolling up and down still works, and
   // the day under the finger isn't opened by it.
@@ -21640,6 +21769,32 @@ async function restoreVisitInProgress(){
   }
 }
 
+// Bringing the report back, with a second and third try if the first one finds
+// the app not ready, and again whenever the app comes back to the front while
+// a kept report is waiting (Nov 6). A report finished, cancelled or deliberately
+// left is forgotten, so one still kept was lost by accident.
+async function restoreKeptReport(tries){
+  tries = tries || 0;
+  let ok = false;
+  try{ ok = await restoreVisitInProgress(); }catch(e){}
+  if(ok) return true;
+  if(tries >= 2) return false;
+  let rec = null;
+  try{ rec = await vipDo('readonly', st => st.get(VIP_KEY)); }catch(e){}
+  if(!rec || !rec.customerId) return false;
+  await new Promise(r => setTimeout(r, tries ? 2500 : 1200));
+  if(currentViewName === 'visit' || vipRestoring) return true;
+  return restoreKeptReport(tries + 1);
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden) return;
+  setTimeout(()=>{
+    try{
+      if(currentViewName === 'home' && !vipRestoring && !busyForOpenOnToday()) restoreKeptReport(2);
+    }catch(e){}
+  }, 700);
+});
+
 // Was a report still open when the technician switched tabs? If so, coming
 // back to Today reopens it. If they had already returned to the route, Today
 // shows the route — which is what it should have done all along.
@@ -21948,6 +22103,9 @@ window.addEventListener('popstate', async ()=>{
     closePhotoViewer();
     return;
   }
+
+  // Picking several customers on Today: Back puts the list back to normal (Nov 6)
+  if(typeof window.mselBack === 'function' && window.mselBack()) return;
 
   if(currentViewName === 'visit'){
     if(currentVisitStep > 1){
@@ -24927,7 +25085,7 @@ function attachAdminLoginHandlers(){
     if(isAdminUser()) adminStartOnOwnRoute();
     // Whoever signs in lands on Today, on today's list
     try{ openOnToday(); }catch(e){}
-    setTimeout(()=>{ try{ restoreVisitInProgress(); }catch(e){} }, 300);
+    setTimeout(()=>{ try{ restoreKeptReport(); }catch(e){} }, 300);
     watchAdminAccount();
     startFieldSync();
   }
@@ -24939,6 +25097,15 @@ function attachAdminLoginHandlers(){
 function guardAdminSession(){
   attachAdminLoginHandlers();
   fieldRenderLogin();
+  // A sign-in that could not be renewed last time: open on the sign-in screen
+  // now, where signing in again renews it. The saved offline sign-in is kept,
+  // so this works with no signal too, and a report kept on the phone comes
+  // back once they are signed in.
+  if(deviceGet('needsSignIn')){
+    deviceSet('needsSignIn', null);
+    deviceSet('session', null);
+    deviceSet('membership', null);
+  }
   const user = fieldCurrentUser();
   // Everyone signs in here; admin access adds the admin extras
   if(user){
@@ -24949,7 +25116,7 @@ function guardAdminSession(){
     // Already signed in: the page it was on before the phone closed it (Oct 12)
     try{ openWhereLeft(); }catch(e){ try{ openOnToday(); }catch(e2){} }
     // A report the phone closed the app on, brought back (Oct 14)
-    setTimeout(()=>{ try{ restoreVisitInProgress(); }catch(e){} }, 300);
+    setTimeout(()=>{ try{ restoreKeptReport(); }catch(e){} }, 300);
     watchAdminAccount();
     startFieldSync();
   } else {
@@ -26817,14 +26984,21 @@ function emailApplyLogo(html){
 
   const st = document.createElement('style');
   st.textContent = '#homeHeaderCard.msel-on > :not(#homeHeadRow):not(#mselBar){display:none !important;}'
-    + '.cust-row.msel-picked{background:var(--teal-pale) !important;box-shadow:inset 3px 0 0 var(--teal-mid);}'
+    + '.cust-row.msel-picked, .route-job.msel-picked{background:var(--teal-pale) !important;box-shadow:inset 3px 0 0 var(--teal-mid);}'
     + '.msel-dot{flex:0 0 auto;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;'
     + 'border:2px solid #B7C7C4;background:#fff;color:#fff;font-size:14px;font-weight:700;margin-right:10px;box-sizing:border-box;}'
-    + '.cust-row.msel-picked .msel-dot{border-color:var(--teal-mid);background:var(--teal-mid);}';
+    + '.msel-picked .msel-dot{border-color:var(--teal-mid);background:var(--teal-mid);}';
   document.head.appendChild(st);
 
-  const rowOf = (el)=> el && el.closest ? el.closest('#homeCustomerList > .cust-row[data-customer-row]') : null;
-  const rows = ()=> Array.prototype.slice.call(list.querySelectorAll(':scope > .cust-row[data-customer-row]'));
+  // Customers, and (office app) the jobs under them or on their own (Nov 6)
+  const ROW_SEL = '#homeCustomerList > .cust-row[data-customer-row], #homeCustomerList > .route-job[data-job-key]';
+  const keyOf = (r)=> r.dataset.customerRow || ('job:' + r.dataset.jobKey);
+  const rowOf = (el)=>{
+    const r = el && el.closest ? el.closest(ROW_SEL) : null;
+    if(r && r.dataset.jobKey && !(typeof isAdminUser === 'function' && isAdminUser())) return null;
+    return r;
+  };
+  const rows = ()=> Array.prototype.slice.call(list.querySelectorAll(':scope > .cust-row[data-customer-row], :scope > .route-job[data-job-key]'));
   const ctxNow = ()=> [selectedHomeDay, weekOffset, adminViewTechId || ''].join('|');
 
   function bar(){
@@ -26843,7 +27017,7 @@ function emailApplyLogo(html){
       + '<button type="button" class="btn btn-ghost" id="mselNone" style="width:auto;flex:1 1 0;min-width:0;padding:9px 6px;font-size:13px;white-space:nowrap;">Unselect all</button></div>';
     head.appendChild(b);
     b.querySelector('#mselX').addEventListener('click', exit);
-    b.querySelector('#mselAll').addEventListener('click', ()=>{ rows().forEach(r => picked.add(r.dataset.customerRow)); paint(); });
+    b.querySelector('#mselAll').addEventListener('click', ()=>{ rows().forEach(r => picked.add(keyOf(r))); paint(); });
     b.querySelector('#mselNone').addEventListener('click', ()=>{ picked.clear(); paint(); });
     b.querySelector('#mselMove').addEventListener('click', openMove);
     return b;
@@ -26854,7 +27028,7 @@ function emailApplyLogo(html){
     const b = bar();
     const present = new Set();
     rows().forEach(r=>{
-      const id = r.dataset.customerRow;
+      const id = keyOf(r);
       present.add(id);
       const yes = picked.has(id);
       r.classList.toggle('msel-picked', yes);
@@ -26893,7 +27067,7 @@ function emailApplyLogo(html){
       timer = null;
       if(!row.isConnected) return;
       if(!on) enter();
-      picked.add(row.dataset.customerRow);
+      picked.add(keyOf(row));
       swallowUntil = Date.now() + 1500; swallowRow = row;
       try{ if(navigator.vibrate) navigator.vibrate(15); }catch(err){}
       paint();
@@ -26913,7 +27087,7 @@ function emailApplyLogo(html){
     if(row === swallowRow && Date.now() < swallowUntil){ swallowRow = null; e.stopPropagation(); e.preventDefault(); return; }
     if(!on) return;
     e.stopPropagation(); e.preventDefault();
-    const id = row.dataset.customerRow;
+    const id = keyOf(row);
     if(picked.has(id)) picked.delete(id); else picked.add(id);
     paint();
   }, true);
@@ -26922,7 +27096,7 @@ function emailApplyLogo(html){
   document.addEventListener('click', (e)=>{
     if(!on) return;
     const t = e.target;
-    if(t.closest && (t.closest('#homeCustomerList > .cust-row[data-customer-row]') || t.closest('#mselBar') || t.closest('.confirm-overlay'))) return;
+    if(t.closest && (t.closest(ROW_SEL) || t.closest('#mselBar') || t.closest('.confirm-overlay'))) return;
     exit();
   }, true);
 
@@ -26934,62 +27108,120 @@ function emailApplyLogo(html){
     return r;
   };
 
+  // The phone's Back button: close the Reschedule window if it is open,
+  // otherwise leave picking. Returns true when it used the press.
+  window.mselBack = function(){
+    if(!on) return false;
+    const ov = document.getElementById('mselMoveOverlay');
+    if(ov){ ov.remove(); return true; }
+    exit();
+    return true;
+  };
+
   function openMove(){
     if(!picked.size) return;
-    const ids = Array.from(picked);
-    const who = ids.map(id => (customers.find(c => c && c.id === id) || {}).name).filter(Boolean);
+    const admin = typeof isAdminUser === 'function' && isAdminUser();
+    const keys = Array.from(picked);
+    const custIds = keys.filter(k => k.indexOf('job:') !== 0);
+    const jobList = keys.filter(k => k.indexOf('job:') === 0).map(k => (window.__mselJobs || {})[k.slice(4)]).filter(Boolean);
+    const total = custIds.length + jobList.length;
+    const nameOf = id => (customers.find(c => c && c.id === id) || {}).name;
+    const who = custIds.map(nameOf).filter(Boolean).concat(jobList.map(j => {
+      const c = j.customerId ? customers.find(x => x && String(x.id) === String(j.customerId)) : null;
+      return (c ? c.name + ' – ' : '') + (j.title || jobKindLabel(j.kind));
+    }));
     const fromISO = isoForDay(selectedHomeDay);
     const overlay = document.createElement('div');
     overlay.className = 'confirm-overlay';
+    overlay.id = 'mselMoveOverlay';
     const box = document.createElement('div');
     box.className = 'confirm-box';
-    box.style.cssText = 'max-width:400px;width:100%;text-align:left;';
-    box.innerHTML = '<h3 style="font-size:16px;margin:0 0 4px;"></h3>'
-      + '<p data-names style="font-size:12.5px;color:var(--muted);margin:0 0 12px;"></p>'
-      + '<div class="field"><label>Move to</label><select data-day></select></div>'
-      + '<div style="display:flex;flex-direction:column;gap:8px;margin:2px 0 14px;font-size:13.5px;font-weight:600;">'
-      + '<label style="display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;margin:0;"><input type="radio" name="mselWhen" value="once" checked style="width:auto;margin:0;"> Just this week</label>'
-      + '<label style="display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;margin:0;"><input type="radio" name="mselWhen" value="always" style="width:auto;margin:0;"> Every week</label></div>'
-      + '<div class="btn-row"><button type="button" class="btn btn-ghost" data-cancel>Cancel</button><button type="button" class="btn btn-primary" data-go>Move</button></div>';
-    box.querySelector('h3').textContent = 'Reschedule ' + ids.length + (ids.length === 1 ? ' customer' : ' customers');
-    box.querySelector('[data-names]').textContent = who.join(', ');
-    const sel = box.querySelector('[data-day]');
-    DAYS_OF_WEEK.forEach(d=>{
-      const iso = isoForDay(d);
-      const o = document.createElement('option');
-      o.value = d;
-      o.textContent = d + ' · ' + new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
-      if(d === selectedHomeDay) o.disabled = true;
-      sel.appendChild(o);
-    });
-    // Starts on the next day along
-    const nx = DAYS_OF_WEEK[(DAYS_OF_WEEK.indexOf(selectedHomeDay) + 1) % 7];
-    sel.value = nx;
+    box.style.cssText = 'max-width:420px;';
+    box.innerHTML = '<h3 style="font-size:15px;margin:0 0 4px;"></h3>'
+      + '<p data-names style="font-size:11.5px;color:var(--muted);margin:0 0 14px;"></p>'
+      + '<div class="field"><label>New date</label><input type="date" data-date></div>'
+      + (admin ? '<div class="field"><label>Technician</label><select data-tech></select></div>' : '')
+      + '<div class="btn-row" style="flex-direction:column;gap:8px;">'
+      + '<button type="button" class="btn btn-primary" data-once style="width:100%;">Just this once</button>'
+      + '<button type="button" class="btn btn-ghost" data-always style="width:100%;">Change their regular day</button>'
+      + '<button type="button" class="btn btn-ghost" data-cancel style="width:100%;">Cancel</button></div>';
+    box.querySelector('h3').textContent = 'Reschedule ' + total + (total === 1 ? ' item' : (jobList.length ? ' items' : ' customers'));
+    box.querySelector('[data-names]').textContent = who.join(', ') + '. Pick a new date'
+      + (admin ? ', another technician, or both' : '') + ', then choose whether this is a one-off or for good.'
+      + (jobList.length ? ' Jobs always move just once.' : '');
+    const dateEl = box.querySelector('[data-date]');
+    const techEl = box.querySelector('[data-tech]');
+    if(techEl){
+      const o0 = document.createElement('option'); o0.value = ''; o0.textContent = 'Each keeps their technician'; techEl.appendChild(o0);
+      (adminTechnicians && adminTechnicians.length ? adminTechnicians : techniciansInOrder()).filter(t => t && t.id)
+        .forEach(t => { const o = document.createElement('option'); o.value = String(t.id); o.textContent = t.name || 'Technician'; techEl.appendChild(o); });
+    }
+    dateEl.value = '';
     overlay.appendChild(box);
     document.body.appendChild(overlay);
     const shut = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
     box.querySelector('[data-cancel]').addEventListener('click', shut);
     overlay.addEventListener('click', (e)=>{ if(e.target === overlay) shut(); });
-    box.querySelector('[data-go]').addEventListener('click', async ()=>{
-      const day = sel.value;
-      if(!day || day === selectedHomeDay) return;
-      const always = box.querySelector('input[name="mselWhen"]:checked').value === 'always';
-      const n = ids.length;
-      if(always){
-        ids.forEach(id=>{
+    const newTech = ()=> (techEl && techEl.value) ? techEl.value : null;
+
+    // A job is its own record with one date and one technician
+    const moveJobs = (toISO, tech)=>{
+      const KINDS = {'task': ['tasks', 'task'], 'filter clean': ['scheduledFilterCleans', 'filter_clean'],
+        'pool drain': ['scheduledPoolDrains', 'pool_drain'], 'work order': ['scheduledWorkOrders', 'work_order']};
+      let moved = 0;
+      const byList = {};
+      jobList.forEach(j => { const k = KINDS[j.kind]; if(k) (byList[k[0]] = byList[k[0]] || {sync: k[1], ids: []}).ids.push(j.id); });
+      Object.keys(byList).forEach(listKey=>{
+        const all = lsGet(listKey) || [];
+        let changed = false;
+        byList[listKey].ids.forEach(id=>{
+          const rec = all.find(x => x && String(x.id) === String(id));
+          if(!rec) return;
+          if(toISO) rec.date = toISO;
+          if(tech){ rec.technicianId = tech; if(Array.isArray(rec.technicianIds)) rec.technicianIds = [tech]; }
+          changed = true; moved++;
+        });
+        if(changed && lsSet(listKey, all)){
+          byList[listKey].ids.forEach(id => { try{ queueOfficeWork(byList[listKey].sync, id, false); }catch(err){} });
+        }
+      });
+      if(moved){ try{ fieldNoteLocalChange(); }catch(err){} }
+      return moved;
+    };
+    const finish = (text)=>{ shut(); exit(); renderHomeList(); showToast(text); };
+    const whenText = (iso)=> new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'long', month: 'short', day: 'numeric'});
+
+    box.querySelector('[data-once]').addEventListener('click', ()=>{
+      const toISO = dateEl.value, tech = newTech();
+      if(!toISO && !tech){ showToast('Pick a date or another technician first'); return; }
+      const to = toISO || fromISO;
+      if(to === fromISO && !tech && !jobList.length){ showToast('That’s the day they’re already on'); return; }
+      if(!(to === fromISO && !tech)) custIds.forEach(id => saveMoveJustOnce(id, fromISO, to, tech));
+      moveJobs(toISO, tech);
+      finish(total + (total === 1 ? ' item' : ' items') + ' moved' + (toISO ? ' to ' + whenText(toISO) : '') + (tech ? ' with ' + techNameFor(tech) : ''));
+    });
+    box.querySelector('[data-always]').addEventListener('click', async ()=>{
+      const toISO = dateEl.value, tech = newTech();
+      if(!toISO && !tech){ showToast('Pick a date or another technician first'); return; }
+      if(custIds.length){
+        const newDay = toISO ? DAYS_OF_WEEK[new Date(toISO + 'T12:00:00').getDay()] : null;
+        const parts = [];
+        if(newDay) parts.push('to ' + newDay + ' every week');
+        if(tech) parts.push('to ' + techNameFor(tech) + '’s route');
+        const ok = await confirmDialog('Move ' + custIds.length + (custIds.length === 1 ? ' customer ' : ' customers ') + parts.join(' and ') + ' from now on?',
+          tech && !newDay ? 'Change technician' : (tech ? 'Change day and technician' : 'Change day'));
+        if(!ok) return;
+        custIds.forEach(id=>{
           const c = customers.find(x => x && x.id === id);
-          if(c){ c.day = day; clearMovesFor(c.id); }
+          if(!c) return;
+          if(newDay) c.day = newDay;
+          if(tech) c.technicianId = tech;
+          clearMovesFor(c.id);
         });
         try{ await saveCustomers(); }catch(err){ console.warn('save failed', err); }
-      } else {
-        const toISO = isoForDay(day);
-        ids.forEach(id => saveMoveJustOnce(id, fromISO, toISO, null));
       }
-      shut();
-      exit();
-      renderHomeList();
-      showToast(always ? n + (n === 1 ? ' customer' : ' customers') + ' now serviced on ' + day + 's'
-                       : n + (n === 1 ? ' customer' : ' customers') + ' moved to ' + day);
+      moveJobs(toISO, tech);
+      finish(total + (total === 1 ? ' item' : ' items') + ' moved' + (toISO ? ' to ' + whenText(toISO) : '') + (tech ? ' with ' + techNameFor(tech) : ''));
     });
   }
 })();

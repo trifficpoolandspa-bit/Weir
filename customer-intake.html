@@ -14405,6 +14405,7 @@ const DEFAULT_FILTER_EMAIL = {
   subject: 'A friendly reminder: your filter clean is coming up',
   body: 'Hi there,\n\n'
     + 'Please note that your filter clean is scheduled for {dates}.\n\n'
+    + 'The cost for your filter clean is {price}.\n\n'
     + 'A clean filter keeps your water clear and helps your pump run easily, '
     + 'so it’s well worth having done on time.\n\n'
     + 'Nothing is needed from you, but if you could please make sure the equipment pad is '
@@ -14439,10 +14440,252 @@ function joinDates(dates){
   return dates.slice(0, -1).join(', ') + ', and ' + dates[dates.length - 1];
 }
 
-function fillFilterEmail(text, dates){
-  return text
+// {price} is the cost of the customer's filter clean (Nov 6). Someone whose
+// filter has no style, or a style with no price, gets no price: the paragraph
+// that holds {price} is left out whole, so no sentence is left hanging.
+function fillFilterEmail(text, dates, price){
+  let t = String(text);
+  if(t.indexOf('{price}') !== -1){
+    if(price != null && price > 0){
+      t = t.split('{price}').join(formatFilterPrice(price));
+    } else {
+      t = t.split(/\n[ \t]*\n/).filter(par => par.indexOf('{price}') === -1).join('\n\n');
+    }
+  }
+  return t
     .split(FILTER_EMAIL_PLACEHOLDER).join(joinDates(dates))
     .split('{company}').join(companyName());
+}
+
+// ---------- Filter prices (Nov 6) ----------
+// A price, and the filter styles it covers: styles that cost the same share one.
+// Kept as {tiers: [{id, price, styles: [style names]}]}, company-wide.
+function loadFilterPrices(){
+  const saved = lsGet('filterPrices');
+  const tiers = saved && Array.isArray(saved.tiers) ? saved.tiers : [];
+  return {tiers: tiers.map(t => ({id: t.id, price: t.price, styles: Array.isArray(t.styles) ? t.styles.slice() : []}))};
+}
+function saveFilterPrices(obj){ lsSet('filterPrices', obj); }
+function formatFilterPrice(n){ return '$' + Number(n).toFixed(2).replace(/\B(?=(\d{3})+\.)/g, ','); }
+const fpKey = s => String(s || '').trim().toLowerCase();
+// Every filter on a customer, by the style chosen on it
+function customerFilterStyles(cust){
+  return (cust.equipment || [])
+    .filter(i => i && baseEquipmentType(i.type) === 'Filter')
+    .map(i => String(i.filterSize || '').trim())
+    .filter(Boolean);
+}
+// style name -> the customers who have a filter of that style
+function filterCustomersByStyle(){
+  const map = new Map();
+  (customers || []).forEach(c=>{
+    if(!c || c.deleted) return;
+    customerFilterStyles(c).forEach(st=>{
+      const k = fpKey(st);
+      if(!map.has(k)) map.set(k, {name: st, ids: new Set()});
+      map.get(k).ids.add(c.id);
+    });
+  });
+  return map;
+}
+// The cost of this customer's filter clean: the price of each filter's style,
+// added up if they have more than one. null when nothing is priced for them.
+function filterPriceFor(cust, prices){
+  const tiers = (prices || loadFilterPrices()).tiers;
+  let total = 0, any = false;
+  customerFilterStyles(cust).forEach(st=>{
+    const tier = tiers.find(t => (t.styles || []).some(s => fpKey(s) === fpKey(st)));
+    const n = tier ? Number(tier.price) : NaN;
+    if(!isNaN(n) && n > 0){ total += n; any = true; }
+  });
+  return any ? total : null;
+}
+
+function openFilterPrices(){
+  const byStyle = filterCustomersByStyle();
+  // Every style made on the Style button, plus any a customer has that was since removed from it
+  const all = [];
+  styleList('Filter').forEach(n => { if(!all.some(a => fpKey(a) === fpKey(n))) all.push(n); });
+  byStyle.forEach(v => { if(!all.some(a => fpKey(a) === fpKey(v.name))) all.push(v.name); });
+  const tiers = loadFilterPrices().tiers;
+  const countOf = n => (byStyle.get(fpKey(n)) || {ids: new Set()}).ids.size;
+  const tierOf = n => tiers.find(t => t.styles.some(s => fpKey(s) === fpKey(n)));
+
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,46,46,0.45);display:flex;align-items:center;justify-content:center;z-index:215;padding:18px;';
+  const card = document.createElement('div');
+  card.style.cssText = 'background:#fff;border-radius:14px;padding:20px;max-width:520px;width:100%;max-height:92vh;overflow-y:auto;';
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+
+  const chip = (name, grey, onRemove)=>{
+    const c = document.createElement('span');
+    c.style.cssText = 'display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:13px;font-weight:600;background:' + (grey ? '#EEF3F2' : 'var(--teal-pale)') + ';';
+    c.appendChild(document.createTextNode(name));
+    const n = document.createElement('span');
+    n.style.cssText = 'font-weight:500;font-size:11.5px;color:var(--muted);';
+    n.textContent = String(countOf(name));
+    c.appendChild(n);
+    if(onRemove){
+      c.style.paddingRight = '6px';
+      const x = document.createElement('button');
+      x.type = 'button'; x.textContent = '\u00d7'; x.setAttribute('aria-label', 'Take ' + name + ' off this price');
+      x.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#fff;border:none;display:inline-flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted);cursor:pointer;padding:0;';
+      x.addEventListener('click', onRemove);
+      c.appendChild(x);
+    }
+    return c;
+  };
+
+  function pickStyles(tier){
+    const pick = new Set(tier.styles.map(fpKey));
+    const ov = document.createElement('div');
+    ov.className = 'confirm-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,46,46,0.45);display:flex;align-items:center;justify-content:center;z-index:225;padding:18px;';
+    const bx = document.createElement('div');
+    bx.style.cssText = 'background:#fff;border-radius:14px;padding:20px;max-width:420px;width:100%;max-height:86vh;overflow-y:auto;';
+    const priceNow = Number(tier.price);
+    const h = document.createElement('h2'); h.style.margin = '0 0 4px';
+    h.textContent = 'Styles for ' + (priceNow > 0 ? formatFilterPrice(priceNow) : 'this price');
+    bx.appendChild(h);
+    const p = document.createElement('p');
+    p.style.cssText = 'font-size:12.5px;color:var(--muted);margin:0 0 8px;';
+    p.textContent = 'Tick the filter styles this price covers. A style can only be under one price.';
+    bx.appendChild(p);
+    if(!all.length){
+      const none = document.createElement('p');
+      none.style.cssText = 'font-size:13px;color:var(--muted);';
+      none.textContent = 'No filter styles yet. Make them with the Style button on a customer\u2019s Filter.';
+      bx.appendChild(none);
+    }
+    all.forEach(name=>{
+      const other = tierOf(name);
+      const taken = other && other !== tier;
+      const row = document.createElement('label');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);' + (taken ? 'opacity:.5;' : 'cursor:pointer;');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.style.margin = '0';
+      cb.checked = pick.has(fpKey(name)); cb.disabled = !!taken;
+      cb.addEventListener('change', ()=>{ if(cb.checked) pick.add(fpKey(name)); else pick.delete(fpKey(name)); });
+      row.appendChild(cb);
+      const t = document.createElement('span');
+      t.style.cssText = 'flex:1;font-size:14px;font-weight:600;';
+      const n = countOf(name);
+      t.innerHTML = '';
+      t.appendChild(document.createTextNode(name));
+      const sub = document.createElement('div');
+      sub.style.cssText = 'font-size:11.5px;font-weight:400;color:var(--muted);';
+      sub.textContent = n + (n === 1 ? ' customer' : ' customers')
+        + (taken ? ' \u00b7 already under ' + (Number(other.price) > 0 ? formatFilterPrice(other.price) : 'another price') : '');
+      t.appendChild(sub);
+      row.appendChild(t);
+      bx.appendChild(row);
+    });
+    const br = document.createElement('div');
+    br.className = 'btn-row'; br.style.marginTop = '14px';
+    const done = document.createElement('button');
+    done.className = 'btn btn-primary'; done.style.width = 'auto'; done.textContent = 'Done';
+    const cancel = document.createElement('button');
+    cancel.className = 'btn btn-ghost'; cancel.style.width = 'auto'; cancel.textContent = 'Cancel';
+    br.appendChild(done); br.appendChild(cancel); bx.appendChild(br);
+    ov.appendChild(bx); document.body.appendChild(ov);
+    const shut = ()=>{ if(ov.parentNode) ov.parentNode.removeChild(ov); };
+    cancel.addEventListener('click', shut);
+    ov.addEventListener('click', e=>{ if(e.target === ov) shut(); });
+    done.addEventListener('click', ()=>{
+      tier.styles = all.filter(n => pick.has(fpKey(n)));
+      shut(); render();
+    });
+  }
+
+  function render(){
+    card.innerHTML = '';
+    const h = document.createElement('h2'); h.style.margin = '0 0 6px'; h.textContent = 'Filter prices'; card.appendChild(h);
+    const p = document.createElement('p');
+    p.style.cssText = 'font-size:12.5px;color:var(--muted);margin:0 0 12px;';
+    p.textContent = 'Set a price, then choose which filter styles it covers. Styles that cost the same go under one price. Each customer\u2019s email shows the price for their filter\u2019s style.';
+    card.appendChild(p);
+
+    tiers.forEach(tier=>{
+      const box = document.createElement('div');
+      box.style.cssText = 'border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;';
+      const top = document.createElement('div');
+      top.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:10px;';
+      const dollar = document.createElement('span');
+      dollar.style.cssText = 'color:var(--muted);font-weight:700;font-size:16px;'; dollar.textContent = '$';
+      const inp = document.createElement('input');
+      inp.setAttribute('inputmode', 'decimal'); inp.placeholder = '0.00';
+      inp.style.cssText = 'width:96px;font-size:16px;font-weight:700;';
+      inp.value = tier.price === '' || tier.price == null ? '' : String(tier.price);
+      inp.addEventListener('input', ()=>{ tier.price = inp.value.trim(); });
+      const total = document.createElement('div');
+      total.style.cssText = 'flex:1;font-size:12px;color:var(--muted);text-align:right;';
+      const people = new Set();
+      tier.styles.forEach(s => ((byStyle.get(fpKey(s)) || {ids: []}).ids).forEach(id => people.add(id)));
+      total.textContent = people.size + (people.size === 1 ? ' customer' : ' customers');
+      const rm = document.createElement('button');
+      rm.type = 'button'; rm.className = 'btn btn-ghost';
+      rm.style.cssText = 'width:auto;padding:4px 9px;font-size:12px;color:var(--rust);'; rm.textContent = 'Remove';
+      rm.addEventListener('click', ()=>{ tiers.splice(tiers.indexOf(tier), 1); render(); });
+      top.appendChild(dollar); top.appendChild(inp); top.appendChild(total); top.appendChild(rm);
+      box.appendChild(top);
+      const chips = document.createElement('div');
+      chips.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
+      tier.styles.forEach(s => chips.appendChild(chip(s, false, ()=>{ tier.styles = tier.styles.filter(x => fpKey(x) !== fpKey(s)); render(); })));
+      const add = document.createElement('button');
+      add.type = 'button'; add.className = 'btn btn-ghost';
+      add.style.cssText = 'width:auto;padding:5px 11px;font-size:12.5px;border-radius:999px;'; add.textContent = '+ Add styles';
+      add.addEventListener('click', ()=> pickStyles(tier));
+      chips.appendChild(add);
+      box.appendChild(chips);
+      card.appendChild(box);
+    });
+
+    const nw = document.createElement('button');
+    nw.type = 'button'; nw.className = 'btn btn-ghost'; nw.style.cssText = 'width:auto;margin-bottom:12px;'; nw.textContent = '+ New price';
+    nw.addEventListener('click', ()=>{ tiers.push({id: 'fp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), price: '', styles: []}); render(); });
+    card.appendChild(nw);
+
+    const unpriced = all.filter(n => !tierOf(n));
+    const none = document.createElement('div');
+    none.style.cssText = 'border-top:1px solid var(--line);padding-top:10px;';
+    const lab = document.createElement('div');
+    lab.style.cssText = 'font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;';
+    lab.textContent = 'No price yet'; none.appendChild(lab);
+    const wrap = document.createElement('div'); wrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
+    if(unpriced.length) unpriced.forEach(n => wrap.appendChild(chip(n, true)));
+    else { const e = document.createElement('span'); e.style.cssText = 'font-size:12.5px;color:var(--muted);'; e.textContent = all.length ? 'Every style has a price.' : 'No filter styles have been made yet.'; wrap.appendChild(e); }
+    none.appendChild(wrap);
+    const note = document.createElement('div');
+    note.style.cssText = 'font-size:11.5px;color:var(--muted);margin-top:6px;';
+    note.textContent = 'Customers on these styles get no price in their email. Styles come from the Style button on a customer\u2019s Filter.';
+    none.appendChild(note);
+    card.appendChild(none);
+
+    const br = document.createElement('div'); br.className = 'btn-row'; br.style.marginTop = '16px';
+    const save = document.createElement('button'); save.className = 'btn btn-primary'; save.style.width = 'auto'; save.textContent = 'Save';
+    const cancel = document.createElement('button'); cancel.className = 'btn btn-ghost'; cancel.style.width = 'auto'; cancel.textContent = 'Cancel';
+    br.appendChild(save); br.appendChild(cancel); card.appendChild(br);
+    cancel.addEventListener('click', close);
+    save.addEventListener('click', ()=>{
+      const out = [];
+      for(const t of tiers){
+        const has = t.styles.length > 0;
+        const raw = String(t.price == null ? '' : t.price).replace(/[$,\s]/g, '');
+        if(!has && raw === '') continue;                 // an empty one is just dropped
+        const n = Number(raw);
+        if(raw === '' || isNaN(n) || n < 0){ showToast('Give each price an amount, like 45.00'); return; }
+        out.push({id: t.id, price: Math.round(n * 100) / 100, styles: t.styles.slice()});
+      }
+      saveFilterPrices({tiers: out});
+      close();
+      showToast('Filter prices saved');
+    });
+  }
+  overlay.addEventListener('click', e=>{ if(e.target === overlay) close(); });
+  render();
 }
 
 // Everyone in the chosen groups, each with every date that applies to them.
@@ -14480,7 +14723,9 @@ async function openFilterEmailEditor(onSaved){
     + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">'
     + 'Write <strong>{dates}</strong> where the scheduled date should go, and '
     + '<strong>{company}</strong> for your company name. If a customer is in several groups, '
-    + '{dates} becomes all of their dates listed in one sentence.</p>';
+    + '{dates} becomes all of their dates listed in one sentence. '
+    + '<strong>{price}</strong> is what their filter clean costs, from Filter prices; if their filter '
+    + 'has no price set, the paragraph with {price} in it is left out.</p>';
 
   const subWrap = document.createElement('div');
   subWrap.className = 'field';
@@ -15841,6 +16086,9 @@ async function syncCustomers(){
     const fieldPhotos = await syncPullPhotos(state, companyId);
     result.photos = fieldPhotos.count || 0;
     if(!fieldPhotos.ok && !fieldPhotos.offline) result.failed++;
+    // Equipment photos are brought in behind the scenes so they are already
+    // here when a window is opened (Nov 6)
+    try{ setTimeout(()=>{ prefetchEquipmentPhotos(companyId, state); }, 0); }catch(e){}
 
     try{
       const purged = await syncPurgeOldPhotos(companyId);
@@ -16236,6 +16484,8 @@ const SYNC_SETUP_KEYS = ['chemConfig', 'customChemConfig', 'customBodyOrder', 'r
                          // Oct 14: kept only in the browser they were typed into until
                          // now: the filter clean, drain and mass email wording
                          'filterCleanEmail', 'drainEmailSoon', 'drainEmailScheduled',
+                         // What a filter clean costs by filter style (Nov 6)
+                         'filterPrices',
                          'broadcastTemplates', 'broadcastCategories',
                          // The WorkCenter ticks last chosen, shared with the app (Oct 20)
                          'workCenterTicks'];
@@ -18779,6 +19029,14 @@ async function openFilterGroupEmail(){
   edit.style.width = 'auto';
   edit.textContent = 'Edit email';
 
+  // What a filter clean costs, by filter style (Nov 6)
+  const prices = document.createElement('button');
+  prices.className = 'btn btn-ghost';
+  prices.style.width = 'auto';
+  prices.textContent = 'Filter prices';
+  prices.title = 'Set what a filter clean costs. Choose a price, then pick the filter styles it covers. '
+    + 'The price goes in each customer\u2019s filter clean email.';
+
   const cancel = document.createElement('button');
   cancel.className = 'btn btn-ghost';
   cancel.style.width = 'auto';
@@ -18786,6 +19044,7 @@ async function openFilterGroupEmail(){
 
   btnRow.appendChild(go);
   btnRow.appendChild(edit);
+  btnRow.appendChild(prices);
   btnRow.appendChild(cancel);
   card.appendChild(btnRow);
   overlay.appendChild(card);
@@ -18794,6 +19053,7 @@ async function openFilterGroupEmail(){
   const close = ()=>{ if(overlay.parentNode) document.body.removeChild(overlay); };
   cancel.addEventListener('click', close);
   edit.addEventListener('click', ()=> openFilterEmailEditor());
+  prices.addEventListener('click', ()=> openFilterPrices());
 
   go.addEventListener('click', async ()=>{
     const chosen = usable.filter(g => picked.has(g.id));
@@ -18806,11 +19066,13 @@ async function openFilterGroupEmail(){
     go.textContent = 'Sending\u2026';
 
     const t = loadFilterEmail();
+    const prices = loadFilterPrices();
     let sent = 0, failed = 0;
 
     for(const p of people){
-      const subject = fillFilterEmail(t.subject, p.dates);
-      const body = fillFilterEmail(t.body, p.dates);
+      const price = filterPriceFor(p.customer, prices);
+      const subject = fillFilterEmail(t.subject, p.dates, price);
+      const body = fillFilterEmail(t.body, p.dates, price);
       const ok = await sendCustomerEmail(customerEmailTo(p.customer), subject, body, p.customer, 'Filter clean email');
       if(ok) sent++; else failed++;
     }
@@ -31834,7 +32096,7 @@ document.getElementById('btnResetEquipment').addEventListener('click', async ()=
   currentEquipmentTypeOptions = [...DEFAULT_EQUIPMENT_TYPES];
   // Keep the records for the default items so their photos and notes survive
   currentEquipmentItems = currentEquipmentItems.filter(i =>
-    DEFAULT_EQUIPMENT_TYPES.includes(i.type));
+    DEFAULT_EQUIPMENT_TYPES.includes(i.type) || i.type === 'System');
 
   persistCurrentEquipmentTypeOptions();
   persistCurrentEquipmentItems();
@@ -31926,15 +32188,41 @@ async function deletePhotoData(id){
 
 // A photo record may hold its image inline (the old way) or point at the
 // database. Reading goes through here so both keep working.
+// Pictures already read this visit, so opening a window again shows them at once
+const photoMemory = new Map();
+let photoPrefetching = false;
+// Every equipment photo the phones have sent up, fetched once and kept here,
+// a few at a time, without holding anything else up
+async function prefetchEquipmentPhotos(companyId, state){
+  if(photoPrefetching) return;
+  photoPrefetching = true;
+  try{
+    const known = syncPhotoIndex(state || loadSyncState(companyId)).known || {};
+    const ids = Object.keys(known).filter(id => known[id] && known[id].kind === 'equipment' && !known[id].deleted && known[id].path);
+    for(const id of ids){
+      if(photoMemory.has(id)) continue;
+      let data = await loadPhotoData(id);
+      if(!data && typeof syncFetchPhoto === 'function') data = await syncFetchPhoto(id);
+      if(data) photoMemory.set(id, data);
+      await new Promise(r => setTimeout(r, 30));      // give the page room to breathe
+    }
+  }catch(e){}
+  photoPrefetching = false;
+}
 async function photoDataUrl(photo){
   if(!photo) return null;
   if(photo.dataUrl) return photo.dataUrl;          // not migrated yet
   if(photo.stored){
+    if(photoMemory.has(photo.id)) return photoMemory.get(photo.id);
     const here = await loadPhotoData(photo.id);
-    if(here) return here;
+    if(here){ photoMemory.set(photo.id, here); return here; }
     // Taken on a phone (Oct 27): the image is in the office's storage, so it's
     // fetched from there once and kept here
-    if(typeof syncFetchPhoto === 'function') return await syncFetchPhoto(photo.id);
+    if(typeof syncFetchPhoto === 'function'){
+      const got = await syncFetchPhoto(photo.id);
+      if(got) photoMemory.set(photo.id, got);
+      return got;
+    }
   }
   return null;
 }
@@ -31997,6 +32285,38 @@ function renderEquipmentTypeList(){
   // A row with a Backwashed / Cleaned button keeps it in a slot every row
   // has, so the Type boxes, Notes and cameras line up down the list (Oct 27)
   const anyService = currentEquipmentTypeOptions.some(t=>{ try{ return !!equipmentServiceFor(t, currentEquipmentItems.find(i => i.type === t)); }catch(e){ return false; } });
+  // The whole equipment pad: a pinned first row (Nov 6), kept as an item of its
+  // own named System, so its photos and notes sync like any other's. It cannot
+  // be moved or deleted.
+  {
+    const sys = currentEquipmentItems.find(i => i.type === 'System');
+    const row = document.createElement('div');
+    row.className = 'cust-row';
+    row.style.gap = '12px';
+    row.style.background = 'var(--teal-pale)';
+    row.dataset.systemRow = '1';
+    const lab = document.createElement('div');
+    lab.style.cssText = 'flex:1;min-width:0;font-size:16px;font-weight:700;padding-left:8px;';
+    lab.innerHTML = 'System <span style="font-weight:500;font-size:12px;color:var(--muted);">whole equipment pad</span>';
+    row.appendChild(lab);
+    if(anyService){ const gap = document.createElement('div'); gap.style.cssText = 'flex:0 0 140px;width:140px;'; row.appendChild(gap); }
+    const nb = document.createElement('button');
+    nb.type = 'button'; nb.className = 'btn btn-ghost';
+    nb.style.cssText = 'width:72px;padding:6px 10px;font-size:12px;flex-shrink:0;';
+    nb.textContent = 'Notes' + (sys && sys.notes ? ' •' : '');
+    nb.addEventListener('click', (e)=>{ e.stopPropagation(); openEquipmentNotesModal(ensureEquipmentItem('System')); });
+    row.appendChild(nb);
+    const pb = document.createElement('button');
+    pb.type = 'button';
+    pb.style.cssText = 'background:none;border:none;cursor:pointer;font-size:17px;flex-shrink:0;display:flex;align-items:center;gap:4px;width:52px;padding:0;justify-content:flex-start;';
+    const n = sys && sys.photos ? sys.photos.length : 0;
+    pb.title = 'View or add photos';
+    pb.innerHTML = '📷' + (n ? `<span style="font-size:11px;color:var(--muted);font-weight:600;">${n}</span>` : '');
+    pb.addEventListener('click', (e)=>{ e.stopPropagation(); openEquipmentPhotoModal(ensureEquipmentItem('System')); });
+    row.appendChild(pb);
+    const end = document.createElement('div'); end.style.cssText = 'flex:0 0 27.2px;width:27.2px;'; row.appendChild(end);
+    container.appendChild(row);
+  }
   currentEquipmentTypeOptions.forEach(type=>{
     const row = document.createElement('div');
     row.className = 'cust-row';

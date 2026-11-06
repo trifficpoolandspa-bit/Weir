@@ -8,7 +8,7 @@
 // Bump the version to force every device to take a fresh copy.
 // Renamed with the app. The new name means every device builds a fresh
 // cache and drops the old one, which is what the line below already does.
-const CACHE_NAME = 'weir-cache-v545';
+const CACHE_NAME = 'weir-cache-v556';
 
 const PRECACHE_URLS = [
   './',
@@ -79,14 +79,29 @@ self.addEventListener('fetch', (event)=>{
   // the cached copy, and then to the app itself, rather than a browser error.
   if(request.mode === 'navigate'){
     event.respondWith((async ()=>{
-      try{
-        const fresh = await fetch(request);
+      // Nov 6: the network gets three seconds. On a weak signal a request can
+      // hang for a minute or more, and the app would not open until it gave
+      // up. Past three seconds the copy on the phone opens at once; the
+      // request carries on behind it and refreshes the stored copy.
+      const net = fetch(request).then(async (fresh)=>{
         if(fresh && fresh.ok){
           const cache = await caches.open(CACHE_NAME);
           cache.put(request, fresh.clone());
           return fresh;
         }
-        throw new Error('bad response');
+        return null;
+      }).catch(()=> null);
+      event.waitUntil(net);
+      const first = await Promise.race([net, new Promise(r => setTimeout(()=> r('slow'), 3000))]);
+      if(first && first !== 'slow') return first;
+      try{
+        const cachedNow = await findCached(request);
+        if(cachedNow) return cachedNow;
+        if(first === 'slow'){
+          const late = await net;          // nothing stored yet: wait for it
+          if(late) return late;
+        }
+        throw new Error('no copy');
       }catch(e){
         return (await findCached(request))
             || (await caches.match('./app.html', {ignoreSearch: true}))
