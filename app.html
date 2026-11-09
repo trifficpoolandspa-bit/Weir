@@ -714,6 +714,7 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
 
   <!-- VISIT VIEW -->
   <div class="view" id="view-visit">
+    <div id="correctionBanner" style="display:none;background:#FFF8E8;border:1px solid #E8CF9A;color:#7A5A12;border-radius:10px;padding:9px 14px;margin:0 0 10px;font-size:13px;font-weight:700;"></div>
     <div class="sticky-head" id="visitTabsWrap">
     <div class="card" id="visitSectionCard">
       <h2 id="visitCustomerName" style="display:none;">Customer</h2>
@@ -2724,7 +2725,7 @@ async function renderRecentReadings(type, chemList, doseList){
   try{
     list = type === 'fountain'
       ? (currentVisitFountainId ? await loadFountainReadings(cid, currentVisitFountainId) : [])
-      : await loadReadings(cid, type);
+      : (await loadReadings(cid, type)).filter(r => !(r && r.superseded));
   }catch(e){ list = []; }
   // Another visit may have opened while these were loading
   if(currentVisitCustomerId !== cid) return;
@@ -3021,6 +3022,13 @@ function closeRouteBriefs(){
 // Leaving Today for any reason — another tab, a visit or report, the app put in
 // the background — closes any open row, so Today always comes back tidy
 document.addEventListener('visibilitychange', ()=>{ if(document.hidden) closeRouteBriefs(); });
+// The calendar comes back on the current month after the app was away (Nov 9)
+document.addEventListener('visibilitychange', ()=>{
+  try{
+    if(document.hidden){ acalMonth = ''; acalSel = ''; acalJobMenu = false; }
+    else if(acalMode === 'calendar' && currentViewName === 'home') acalDraw();
+  }catch(e){}
+});
 
 // The tabs that come back as they were left, and for how long
 var TAB_KEEPS = ['serviced', 'technicians', 'customers', 'report', 'options'];
@@ -3084,6 +3092,12 @@ function switchView(view, opts){
   if(view !== 'technicians' && typeof techOrderPending !== 'undefined' && techOrderPending) endTechOrder();
   const cameFrom = currentViewName;
   if(cameFrom === 'home' && view !== 'home') homeLeftAt = Date.now();      // Nov 6: see homeDayHeld
+  // Leaving the calendar: it comes back on the current month, nothing selected (Nov 9)
+  if(cameFrom === 'home' && view !== 'home' && typeof acalMonth !== 'undefined'){ acalMonth = ''; acalSel = ''; acalJobMenu = false; }
+  if(view === 'home' && cameFrom !== 'home' && typeof acalMode !== 'undefined' && acalMode === 'calendar'){
+    acalMonth = ''; acalSel = ''; acalJobMenu = false;
+    setTimeout(()=>{ try{ acalDraw(); }catch(e){} }, 0);
+  }
   if(cameFrom && cameFrom !== view && TAB_KEEPS.indexOf(cameFrom) !== -1){
     // Left when the app went to the background, if it did while on this tab
     tabLeftAt[cameFrom] = (tabHiddenAt > viewEnteredAt) ? tabHiddenAt : Date.now();
@@ -8852,6 +8866,7 @@ document.getElementById('btnSaveCustomer').addEventListener('click', async ()=>{
 });
 
 document.getElementById('btnSaveReading').addEventListener('click', async ()=>{
+  if(correctionGate('btnSaveReading')) return;
   const customerId = currentVisitCustomerId;
   if(!customerId){ showToast('Open a customer from Today first'); return; }
   const reading = {
@@ -8926,6 +8941,7 @@ document.getElementById('btnSaveReading').addEventListener('click', async ()=>{
 });
 
 document.getElementById('btnSaveSpaReading').addEventListener('click', async ()=>{
+  if(correctionGate('btnSaveSpaReading')) return;
   const customerId = currentVisitCustomerId;
   if(!customerId){ showToast('Open a customer from Today first'); return; }
   const reading = {
@@ -9115,7 +9131,7 @@ async function renderVisitHistory(){
     const f = getValidFountains(customer).find(x => x.id === visitHistoryFountainId);
     label = f ? f.name : 'Fountain';
   } else {
-    list = await loadReadings(customer.id, visitHistoryType);
+    list = (await loadReadings(customer.id, visitHistoryType)).filter(r => !(r && r.superseded));
     label = visitHistoryType === 'spa' ? 'Spa' : 'Pool';
   }
 
@@ -11371,7 +11387,7 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
       + 'margin-left:10px;font-size:11.5px;line-height:1.25;text-align:center;'
       + 'display:flex;align-items:center;justify-content:center;';
     onWay.textContent = 'On my way';
-    onWay.addEventListener('click', e => { e.stopPropagation(); dispatchHeadsUp(customer); });
+    onWay.addEventListener('click', e => { e.stopPropagation(); dispatchHeadsUp(customer, {what: headsUpWhat(job)}); });
     // No customer, nobody to tell; the space is kept so the arrows line up
     if(!customer) onWay.style.visibility = 'hidden';
     right.appendChild(onWay);
@@ -11472,7 +11488,7 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
       start.style.cssText = 'flex:1;padding:10px 14px;font-size:14px;';
       // The admin app can do a job on any day, not only today's; it's filed
       // under the job's own date
-      start.textContent = 'Start job \u2192';
+      start.textContent = jobInProgress(job) ? 'Continue job \u2192' : 'Start job \u2192';
       start.addEventListener('click', e => { e.stopPropagation(); openJobPage(customer, Object.assign({}, job, {dayISO: dayISO})); });
       btnRow2.appendChild(start);
       panel.appendChild(btnRow2);
@@ -11538,7 +11554,7 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
       + 'margin-left:10px;font-size:11.5px;line-height:1.25;text-align:center;'
       + 'display:flex;align-items:center;justify-content:center;';
     onWay.textContent = 'On my way';
-    onWay.addEventListener('click', e => { e.stopPropagation(); dispatchHeadsUp(customer); });
+    onWay.addEventListener('click', e => { e.stopPropagation(); dispatchHeadsUp(customer, {what: headsUpWhat(job)}); });
     // No customer, nobody to tell; the space is kept so the arrows line up
     if(!customer) onWay.style.visibility = 'hidden';
     right.appendChild(onWay);
@@ -11631,7 +11647,7 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
       start.style.cssText = 'flex:1;padding:10px 14px;font-size:14px;';
       // Like a service, a job is done on its own day
       const isToday = dayISO === todayDateStr();
-      start.textContent = isToday ? 'Start job \u2192' : 'Not today\u2019s job';
+      start.textContent = isToday ? (jobInProgress(job) ? 'Continue job \u2192' : 'Start job \u2192') : 'Not today\u2019s job';
       if(!isToday){ start.disabled = true; start.style.opacity = '0.45'; start.style.cursor = 'not-allowed'; }
       start.addEventListener('click', e => { e.stopPropagation(); if(isToday) openJobPage(customer, Object.assign({}, job, {dayISO: dayISO})); });
       btnRow2.appendChild(start);
@@ -11816,8 +11832,27 @@ function jobTickTile(line, cb){
   cb.addEventListener('change', paint);
   paint();
 }
+// Is a job under way on this phone: its page is kept, or a draft was saved (Nov 9)
+function jobInProgress(job){
+  try{
+    const k = openJobPage.kept && openJobPage.kept[job.key];
+    if(k && k.isConnected) return true;
+    return !!(deviceGet('jobDrafts') || {})[job.key];
+  }catch(e){ return false; }
+}
 function openJobPage(customer, job){
-  if(openJobPage.open) openJobPage.open.remove();
+  // Leaving a job for the route (or another job) only puts it away. Everything
+  // entered stays, so a tap on the same job brings it back as it was (Nov 9)
+  openJobPage.kept = openJobPage.kept || {};
+  if(openJobPage.open && openJobPage.open.isConnected) openJobPage.open.style.display = 'none';
+  openJobPage.open = null;
+  const keptPage = openJobPage.kept[job.key];
+  if(keptPage && keptPage.isConnected){
+    keptPage.style.display = '';
+    openJobPage.open = keptPage;
+    return;
+  }
+  const savedDraft = (deviceGet('jobDrafts') || {})[job.key] || null;
 
   const page = document.createElement('div');
   page.id = 'jobPage';
@@ -12125,6 +12160,7 @@ function openJobPage(customer, job){
     };
     repBtn.addEventListener('click', ()=> openReplacementsPicker(replacements, chosen=>{ replacements = chosen; showReps(); }));
     repRow.appendChild(repBtn); repRow.appendChild(repSaid);
+    repRow.__show = showReps;
   }
 
   // Notes
@@ -12146,13 +12182,52 @@ function openJobPage(customer, job){
   submit.textContent = job.kind === 'pool drain' ? 'Submit' : 'Submit ' + job.kind;
   card.appendChild(submit);
 
-  const close = ()=> page.remove();
+  // What is entered is kept on this phone while the job is open, so leaving the
+  // page (to the route, the calendar, another app) never loses it (Nov 9)
+  const allChecks = Array.from(card.querySelectorAll('input[type=checkbox]'));
+  const photoRefCache = new Map();
+  let draftSaving = false;
+  const saveDraft = async ()=>{
+    if(draftSaving || !page.isConnected) return;
+    draftSaving = true;
+    try{
+      const refs = [];
+      for(const shot of (photos ? photos.getAll() : [])){
+        let r = isPhotoRef(shot) ? shot : photoRefCache.get(shot);
+        if(!r){ r = await storePhoto(shot, 'job'); if(r) photoRefCache.set(shot, r); }
+        if(r) refs.push(r);
+      }
+      const all = deviceGet('jobDrafts') || {};
+      const empty = !refs.length && !videoRefs.length && !notes.value.trim() && !replacements.length && !allChecks.some(c => c.checked);
+      if(empty) delete all[job.key];
+      else all[job.key] = {notes: notes.value, checks: allChecks.map(c => c.checked), replacements: replacements.slice(),
+                           videos: videoRefs.slice(), photos: refs, at: Date.now()};
+      deviceSet('jobDrafts', all);
+    }catch(e){}
+    draftSaving = false;
+  };
+  const draftIv = setInterval(()=>{
+    if(!page.isConnected){ clearInterval(draftIv); return; }
+    if(page.style.display !== 'none') saveDraft();
+  }, 4000);
+  document.addEventListener('visibilitychange', ()=>{ if(document.hidden) saveDraft(); });
+  const close = ()=>{
+    page.remove();
+    delete openJobPage.kept[job.key];
+    if(openJobPage.open === page) openJobPage.open = null;
+    clearInterval(draftIv);
+    try{
+      const all = deviceGet('jobDrafts') || {};
+      const d = all[job.key];
+      if(d){ delete all[job.key]; deviceSet('jobDrafts', all);
+             (d.photos || []).forEach(r => { if(isPhotoRef(r) && !stored_isUsed(r)) try{ deletePhotoData(r.slice(PHOTO_REF.length)); }catch(e){} }); }
+    }catch(e){}
+  };
+  const stored_isUsed = r => false;
   back.addEventListener('click', async ()=>{
-    if(((photos && photos.getAll().length) || videoRefs.length || notes.value.trim())){
-      const ok = await confirmDialog('Leave this ' + job.kind + '? The photo, video and notes will be lost.', 'Leave');
-      if(!ok) return;
-    }
-    close();
+    await saveDraft();
+    page.style.display = 'none';
+    if(openJobPage.open === page) openJobPage.open = null;
   });
   submit.addEventListener('click', async ()=>{
     // A task marked "Photo required" can't go without one
@@ -12322,6 +12397,28 @@ function openJobPage(customer, job){
   photos = makePhotoController({takeBtn: pid('Take'), fileInput: pid('File'),
     previewWrap: pid('Wrap'), previewImg: pid('Img'), removeBtn: pid('Remove'), max: maxPhotos});
   page.scrollTop = 0;
+  openJobPage.kept[job.key] = page;
+  // Back as it was left, if this phone was closed on it
+  if(savedDraft){
+    (async ()=>{
+      try{
+        notes.value = savedDraft.notes || '';
+        (savedDraft.checks || []).forEach((on, i)=>{ if(on && allChecks[i]){ allChecks[i].checked = true; allChecks[i].dispatchEvent(new Event('change')); } });
+        if(Array.isArray(savedDraft.replacements) && savedDraft.replacements.length){
+          replacements = savedDraft.replacements.slice();
+          if(repRow && repRow.__show) repRow.__show();
+        }
+        videoRefs = (savedDraft.videos || []).slice();
+        drawJobVideos();
+        const back2 = [];
+        for(const r of (savedDraft.photos || [])){
+          const data = await resolvePhoto(r);
+          if(data){ back2.push(data); photoRefCache.set(data, r); }
+        }
+        if(back2.length && photos) photos.setAll(back2);
+      }catch(e){}
+    })();
+  }
 }
 
 // Tasks attached to one customer, shown on that stop
@@ -13347,7 +13444,7 @@ function renderServicedList(){
     const row = document.createElement('div');
     row.className = 'cust-row';
     const durationBadge = c.lastServiceDurationMs
-      ? `<span class="mono" style="background:var(--teal-pale);color:var(--teal-deep);font-weight:700;font-size:11px;padding:3px 8px;border-radius:20px;margin-left:8px;">${formatDuration(c.lastServiceDurationMs)}</span>`
+      ? `<span class="mono" style="background:var(--teal-pale);color:var(--teal-deep);font-weight:700;font-size:11px;padding:3px 8px;border-radius:20px;margin-left:8px;white-space:nowrap;display:inline-block;">${formatDuration(c.lastServiceDurationMs)}</span>`
       : '';
     row.innerHTML = `<div style="min-width:0;"><div class="cust-name">${c.name}${durationBadge}</div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${showsDay ? forDay : ''}${c.address || 'No address on file'}</div></div>`;
     const reserviceBtn = document.createElement('button');
@@ -13360,6 +13457,21 @@ function renderServicedList(){
       e.stopPropagation();
       reserviceCustomer(c, entry.day);
     });
+    // Corrections: fix the saved report (admins), just left of Reservice
+    if(isAdminUser()){
+      const corrBtn = document.createElement('button');
+      corrBtn.className = 'btn btn-secondary';
+      corrBtn.style.width = 'auto';
+      corrBtn.style.padding = '7px 12px';
+      corrBtn.style.fontSize = '12px';
+      corrBtn.style.marginRight = '6px';
+      corrBtn.textContent = 'Corrections';
+      corrBtn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        startCorrection(c);
+      });
+      row.appendChild(corrBtn);
+    }
     row.appendChild(reserviceBtn);
     row.dataset.doneAt = c.lastServicedAt || '';
 
@@ -13638,6 +13750,314 @@ function pickReserviceTech(customer){
     new MutationObserver((m, obs)=>{ if(!overlay.isConnected){ obs.disconnect(); finish(null); } })
       .observe(document.body, {childList: true});
   });
+}
+
+// ---- Corrections (Nov 8) ----
+// Fixes a saved report: opens it in the normal visit pages, filled in, and saves
+// the result as an EDITED entry beside the original. The visit itself (when it
+// was done, how long it took, Today, the Serviced list) is not touched.
+let correctionJob = null;
+
+function correctionTimeText(stamp){
+  const d = new Date(stamp);
+  return isNaN(d) ? '' : d.toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'});
+}
+// How an edited or replaced report is named in the history
+function correctionLabel(meta, forRow){
+  if(!meta) return '';
+  if(meta.edited) return (forRow ? '' : '  — ') + 'EDITED ' + correctionTimeText(meta.at);
+  if(meta.sup) return (forRow ? '' : '  — ') + (meta.gen ? 'earlier edit, ' : 'original, ') + correctionTimeText(meta.at);
+  return '';
+}
+
+function correctionDialog(html, buttons){
+  return new Promise(resolve=>{
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = '<div class="confirm-box">' + html + '<div class="btn-row" style="flex-direction:column;gap:8px;"></div></div>';
+    const row = overlay.querySelector('.btn-row');
+    const done = v => { overlay.remove(); resolve(v); };
+    buttons.forEach(b=>{
+      const el = document.createElement('button');
+      el.className = 'btn ' + (b.cls || 'btn-ghost');
+      el.style.width = '100%';
+      if(b.style) el.style.cssText += ';' + b.style;
+      el.textContent = b.label;
+      el.addEventListener('click', ()=> done(b.value));
+      row.appendChild(el);
+    });
+    document.body.appendChild(overlay);
+  });
+}
+
+function correctionBannerText(){
+  if(!correctionJob) return '';
+  const day = correctionJob.day === todayDateStr() ? 'today’s'
+    : new Date(correctionJob.day + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'long'}) + '’s';
+  return 'Correcting ' + day + ' report · ' + correctionJob.name;
+}
+function syncCorrectionBanner(){
+  const el = document.getElementById('correctionBanner');
+  if(!el) return;
+  el.textContent = correctionBannerText();
+  el.style.display = correctionJob ? 'block' : 'none';
+}
+
+async function startCorrection(customerIn){
+  const customer = customers.find(x => x && x.id === customerIn.id) || customerIn;
+  const cid = customer.id;
+  if(correctionJob){
+    if(correctionJob.customerId === cid){ switchView('visit'); return; }
+    showToast('Finish or cancel the correction for ' + correctionJob.name + ' first');
+    return;
+  }
+  if(pendingVisit || otherOpenPackage('') || (currentVisitCustomerId && hasUnsavedSectionData())){
+    await alertDialog('A service report is still open. Send or cancel it before making a correction.', 'Report in progress');
+    return;
+  }
+  const day = servicedDateStr();
+  const live = r => r && !r.skipped && !r.superseded;
+  const onDay = r => live(r) && localDateOfStamp(r.date) === day;
+  const poolAll = await loadReadings(cid, 'pool');
+  const spaAll = await loadReadings(cid, 'spa');
+  const head = poolAll.concat(spaAll).filter(onDay).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+  if(!head){
+    showToast('Corrections cover pool and spa reports — nothing to correct here');
+    return;
+  }
+  const same = r => live(r) && r.date.slice(0, 10) === head.date.slice(0, 10) && !!r.isRedo === !!head.isRedo;
+  const originals = {};
+  const pool = poolAll.find(same); if(pool) originals.pool = pool;
+  const spa = spaAll.find(same); if(spa) originals.spa = spa;
+  const needed = ['pool', 'spa'].filter(k => originals[k]);
+
+  // The saved values, with photos turned back into the images themselves
+  const sections = {};
+  for(const k of needed){
+    const o = JSON.parse(JSON.stringify(originals[k]));
+    for(const f of ['photo', 'beforePhoto', 'gatePhoto']) if(o[f]) o[f] = await resolvePhoto(o[f]);
+    for(const f of ['photoMore', 'beforePhotoMore', 'gatePhotoMore'])
+      if(Array.isArray(o[f])) o[f] = (await Promise.all(o[f].map(x => resolvePhoto(x)))).filter(Boolean);
+    if(o.customPhotos){
+      for(const id of Object.keys(o.customPhotos)) o.customPhotos[id] = await resolvePhoto(o.customPhotos[id]);
+    }
+    sections[k] = o;
+  }
+
+  correctionJob = {customerId: cid, name: customer.name, day, originals, prefilled: {}, sendEmail: null,
+                   confirmed: false, returnView: currentViewName};
+
+  visitDraft = {customerId: null, values: {}, section: null, step: 1};
+  currentVisitCustomerId = cid;
+  currentVisitFountainId = null;
+  chemConfig = loadChemConfig();
+  renderAllConfigFields();
+  refreshDynamicFieldLabels();
+  pendingVisit = {customerId: cid, neededSections: needed, doneSections: {}};
+  saveVisitPackage(cid, {customerId: cid, day: todayDateStr(), startedAt: new Date().toISOString(), correction: true, sections});
+  visitLocation = {customerId: null, start: null, end: null};
+  visitStepBySection = {};
+  fountainDraftValues = {};
+  currentVisibleSection = null;
+  currentVisitStep = 1;
+  visitSavedReadings = [];
+  document.getElementById('visitCustomerName').textContent = customer.name;
+  isFilterCleanVisit = !!(originals.pool && originals.pool.isFilterClean);
+  gatePhotoController.clear();
+  clearVisitVideo();
+  resetDoseRuleTracking();
+  clearCustomPhotoData();
+  needed.forEach(k => { if(sections[k].customPhotos) customPhotoData[k] = Object.assign({}, sections[k].customPhotos); });
+  syncGatePhotoBlock();
+  if(isFilterCleanVisit){
+    const box = document.getElementById('poolServiceChecks');
+    if(box){ box.style.display = 'none'; box.innerHTML = ''; }
+  } else {
+    renderPoolServiceChecks(customer);
+  }
+  renderVisitSectionButtons();
+  hideAllVisitSections();
+  syncCorrectionBanner();
+  switchView('visit');
+  showVisitSection(needed[0]);
+  restoreFinishedSection(needed[0]);
+  renderStripPreview();
+  refreshSaveButtons();
+  syncCorrectionBanner();
+}
+
+// Fields a correction carries over from what was saved, and what marks it as an edit
+function correctionDecorate(sectionId, reading){
+  const o = correctionJob && correctionJob.originals[sectionId];
+  if(!o) return;
+  const skip = {id: 1, superseded: 1, supersededBy: 1, editedAt: 1, editedFrom: 1, editedChanges: 1, gen: 1};
+  Object.keys(o).forEach(k => { if(!skip[k] && !(k in reading)) reading[k] = o[k]; });
+  reading.date = o.date;
+  reading.isRedo = !!o.isRedo;
+  reading.editedAt = new Date().toISOString();
+  reading.editedFrom = o.id;
+  reading.gen = (o.gen || 0) + 1;
+  reading.editedChanges = correctionChanges(sectionId, o, reading);
+}
+
+function correctionChanges(sectionId, before, after){
+  const out = [];
+  try{
+    const lists = listsForBody(correctionJob.customerId, sectionId, sectionId);
+    const same = (a, b) => String(a === undefined || a === null ? '' : a) === String(b === undefined || b === null ? '' : b);
+    (lists.chemicals || []).concat(lists.dosages || []).forEach(it=>{
+      if(!same(before[it.key], after[it.key])){
+        const nm = it.full || it.label || it.key;
+        out.push(nm + ' ' + (before[it.key] === '' || before[it.key] === undefined ? 'blank' : before[it.key])
+          + ' → ' + (after[it.key] === '' || after[it.key] === undefined ? 'blank' : after[it.key]));
+      }
+    });
+    if(!same(before.notes, after.notes)) out.push('Notes changed');
+    const cnt = r => [r.photo].concat(r.photoMore || []).filter(Boolean).length;
+    if(cnt(before) !== cnt(after)) out.push('After photos ' + cnt(before) + ' → ' + cnt(after));
+  }catch(e){}
+  return out;
+}
+
+// Cancel correction: asks, then leaves everything exactly as it was
+async function correctionAskCancel(){
+  if(!correctionJob) return;
+  const pick = await correctionDialog(
+    '<h3 style="font-size:16px;margin:0 0 6px;">Cancel this correction?</h3>'
+    + '<p style="font-size:13px;color:var(--muted);margin:0 0 14px;">Your changes are thrown away. '
+    + esc(correctionJob.name) + '’s saved report stays exactly as it was.</p>',
+    [{label: 'Cancel correction', value: 'cancel', cls: 'btn-primary', style: 'background:var(--rust);'},
+     {label: 'Keep correcting', value: 'keep', cls: 'btn-ghost'}]);
+  if(pick === 'cancel') await endCorrection(false);
+}
+
+// Puts the visit screen and its state back the way it was before a correction
+async function endCorrection(saved){
+  const job = correctionJob;
+  if(!job) return;
+  correctionJob = null;
+  clearVisitPackage(job.customerId);
+  poolServicePressed = {customerId: null, on: {}};
+  visitTasksDone = []; try{ drawServiceTasks(); }catch(e){}
+  const view = document.getElementById('view-visit');
+  if(view) view.querySelectorAll('input, textarea').forEach(el=>{
+    if(el.type === 'file') return;
+    if(el.type === 'checkbox') el.checked = false; else el.value = '';
+  });
+  [poolPhotoController, spaPhotoController, fountainPhotoController, gatePhotoController].forEach(c => { try{ c && c.clear(); }catch(e){} });
+  ['pool', 'spa', 'fountain'].forEach(t => { const b = beforeControllerFor(t); if(b) b.clear(); });
+  clearCustomPhotoData();
+  clearVisitVideo();
+  pendingVisit = null;
+  visitSavedReadings = [];
+  visitDraft = {customerId: null, values: {}, section: null, step: 1}; forgetVisitInProgress();
+  visitLeftOpenFor = null;
+  currentVisitCustomerId = null;
+  currentVisitFountainId = null;
+  currentVisibleSection = null;
+  currentVisitStep = 1;
+  visitStepBySection = {};
+  fountainDraftValues = {};
+  syncCorrectionBanner();
+  try{ hideStepBar(); }catch(e){}
+  switchView(job.returnView && job.returnView !== 'visit' ? job.returnView : 'home');
+  renderServicedList();
+  renderHomeList();
+}
+
+// Called by the Submit buttons: on the last page, ask about emailing first, while
+// everything typed is still on the page. Returns true when it took over the press.
+function correctionGate(btnId){
+  if(!correctionJob || correctionJob.confirmed) return false;
+  if(!isLastBodyOfWater()) return false;
+  (async ()=>{
+    const c = customers.find(x => x && x.id === correctionJob.customerId) || {};
+    const first = String(correctionJob.name || '').trim().split(/\s+/)[0] || 'them';
+    const to = customerEmailTo(c) || c.email || '';
+    const buttons = [];
+    if(to) buttons.push({label: 'Email it to ' + first, value: 'send', cls: 'btn-primary'});
+    buttons.push({label: 'Don’t email, just save', value: 'save', cls: 'btn-secondary'});
+    buttons.push({label: 'Back to the report', value: 'back', cls: 'btn-ghost'});
+    const pick = await correctionDialog(
+      '<h3 style="font-size:16px;margin:0 0 4px;">Email the updated report?</h3>'
+      + '<p style="font-size:13px;color:var(--muted);margin:0 0 14px;">' + esc(correctionJob.name)
+      + (to ? ' · ' + esc(to) : ' · no email on file') + '</p>', buttons);
+    if(!pick || pick === 'back' || !correctionJob) return;
+    correctionJob.sendEmail = pick === 'send';
+    correctionJob.confirmed = true;
+    const b = document.getElementById(btnId);
+    if(b) b.click();
+  })();
+  return true;
+}
+
+async function finalizeCorrection(){
+  const job = correctionJob;
+  const { customerId } = pendingVisit;
+  const pkg = loadVisitPackage(customerId);
+  const ids = {};
+  if(pkg){
+    for(const k of ['pool', 'spa']){
+      const reading = pkg.sections[k];
+      const orig = job.originals[k];
+      if(!reading || !orig) continue;
+      const list = await loadReadings(customerId, k);
+      const old = list.find(r => r.id === orig.id);
+      if(old){ old.superseded = true; old.supersededBy = reading.id; old.gen = old.gen || 0; }
+      list.unshift(reading);
+      await saveReadings(customerId, list, k);
+      ids[k] = reading.id;
+    }
+  }
+  const sendEmail = job.sendEmail === true;
+  const name = job.name;
+  const poolId = ids.pool || null, spaId = ids.spa || null;
+  await endCorrection(true);
+  populateCustomerSelect(document.getElementById('reportCustomerSelect'), 'Add a customer first');
+  document.getElementById('reportCustomerSelect').value = customerId;
+  syncReportCustomerSearchField();
+  await renderFullCombinedReport(customerId, poolId, spaId, []);
+  if(!sendEmail){ showToast(name + '’s corrected report saved — not emailed'); return; }
+  showToast(name + '’s corrected report saved — sending');
+  Promise.resolve()
+    .then(()=> attemptAutoSend(customerId, 'combined'))
+    .catch(()=> showToast('Couldn’t send ' + name + '’s report — it’s saved, try again from the report tab'));
+}
+
+// The small line on an edited (or replaced) report, and the note the customer's email carries
+let emailUpdateNote = '';
+async function correctionMarkerFor(customerId, poolId, spaId){
+  const found = [];
+  for(const [k, id] of [['pool', poolId], ['spa', spaId]]){
+    if(!id) continue;
+    const r = (await loadReadings(customerId, k)).find(x => x && x.id === id);
+    if(r) found.push(r);
+  }
+  const edited = found.find(r => r.editedAt);
+  const replaced = found.find(r => r.superseded);
+  return {edited, replaced, changes: found.reduce((a, r) => a.concat(r.editedChanges || []), [])};
+}
+async function renderFullCombinedReportWithMarker(args, run){
+  let m = {};
+  try{ m = await correctionMarkerFor(args[0], args[1], args[2]); }catch(e){}
+  emailUpdateNote = m.edited ? 'Updated report · corrected ' + correctionTimeText(m.edited.editedAt) : '';
+  const r = await run();
+  try{
+    const doc = document.querySelector('#reportOutput .report-doc');
+    const head = doc && doc.querySelector('.report-head');
+    if(doc && head && (m.edited || m.replaced)){
+      const line = document.createElement('div');
+      line.style.cssText = 'margin:12px 0 0;padding:8px 12px;border-radius:8px;background:#FFF8E8;border:1px solid #E8CF9A;color:#7A5A12;font-size:12.5px;font-weight:600;';
+      line.textContent = m.edited
+        ? 'Updated ' + correctionTimeText(m.edited.editedAt) + (m.changes.length ? ' · ' + m.changes.join(' · ') : '')
+        : 'Original report — replaced by a correction';
+      head.after(line);
+      const badge = head.querySelector('.report-badge');
+      if(badge && m.edited) badge.textContent = 'Edited';
+    }
+  }catch(e){}
+  emailUpdateNote = '';
+  return r;
 }
 
 async function reserviceCustomer(customer, forDay){
@@ -14013,6 +14433,20 @@ function headsUpRouteFor(customer){
   return 'text';
 }
 
+// What the visit is for, said in the heads-up (Nov 8): a stop is the weekly
+// service; a job is named by its kind, with its title for a task or work order.
+function headsUpWhat(job){
+  if(!job) return 'your weekly service';
+  const kind = shownJobKind(job);
+  const title = String(job.title || '').trim();
+  if(kind === 'filter clean') return 'your filter clean';
+  if(kind === 'clean refill') return 'your clean and refill';
+  if(kind === 'pool drain') return 'your pool drain';
+  if(kind === 'work order') return title ? 'your work order: ' + title : 'your work order';
+  if(kind === 'task') return title ? 'your task: ' + title : 'your task';
+  return title ? 'your ' + (kind || 'visit') + ': ' + title : 'your visit';
+}
+
 async function dispatchHeadsUp(customer, opts){
   opts = opts || {};
   const email = ((customer.notifyEmail || '').trim() || customer.email || '').trim();
@@ -14028,14 +14462,14 @@ async function dispatchHeadsUp(customer, opts){
   }
 
   if(how === 'email'){
-    const sent = await sendHeadsUpEmail(customer);
+    const sent = await sendHeadsUpEmail(customer, opts.what);
     if(sent){ if(opts.automatic) showToast('Automatic On my way emailed to ' + customer.name); return; }
     // The office could not send it: the technician still has a way to tell them
   }
   // Automatic: the phone only opens Messages straight after a tap, and the
   // tap on Submit is long gone by now, so one button opens it
   if(opts.automatic){ promptHeadsUpText(customer, opts.away); return; }
-  sendOnMyWay(customer);
+  sendOnMyWay(customer, opts.what);
 }
 function promptHeadsUpText(customer, away){
   const overlay = document.createElement('div');
@@ -14096,7 +14530,8 @@ function customerEmailList(c){
 }
 function customerEmailTo(c){ return customerEmailList(c).join(', '); }
 
-async function sendHeadsUpEmail(customer){
+async function sendHeadsUpEmail(customer, what){
+  what = what || headsUpWhat(null);
   const toName = (customer.notifyName || '').trim() || customer.name;
   const toEmail = (customerEmailTo({email: customer.notifyEmail}) || customerEmailTo(customer) || '').trim();
   if(!toEmail || toEmail.indexOf('@') === -1) return false;
@@ -14107,9 +14542,8 @@ async function sendHeadsUpEmail(customer){
     return false;
   }
 
-  const bodies = customer.hasSpa ? 'pool and spa' : 'pool';
-  const text = 'Hi ' + toName + ', just a heads up that I am on my way to service the '
-    + bodies + ' today. See you shortly.';
+  const text = 'Hi ' + toName + ', just a heads up that I am on my way for '
+    + what + ' today. See you shortly.';
   const html = '<!DOCTYPE html><html><body style="margin:0;background:#F4F7F6;">'
     + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
     + 'style="background:#F4F7F6;padding:24px 0;"><tr><td align="center">'
@@ -14132,7 +14566,7 @@ async function sendHeadsUpEmail(customer){
     });
     if(res.status === 401){
       const again = await fieldRefresh();
-      if(again === true) return sendHeadsUpEmail(customer);
+      if(again === true) return sendHeadsUpEmail(customer, what);
       noteLastHeadsUp('the old way', 'this phone needs signing in again');
       return false;
     }
@@ -14161,13 +14595,14 @@ function noteLastHeadsUp(by, why){
   }catch(e){}
 }
 
-function sendOnMyWay(customer){
+function sendOnMyWay(customer, what){
+  what = what || headsUpWhat(null);
   // Some customers want the heads-up going to someone else — a property
   // manager, a spouse, whoever is actually there to open the gate.
   const toName = (customer.notifyName || '').trim() || customer.name;
   const toPhone = (customer.notifyPhone || '').trim() || customer.phone;
 
-  const smsText = `Hi ${toName}, this is your pool tech — just a heads up that I'll be at the house soon to service the pool${customer.hasSpa ? ' and spa' : ''}. See you shortly!`;
+  const smsText = `Hi ${toName}, this is your pool tech — just a heads up that I'll be at the house soon for ${what}. See you shortly!`;
 
   if(toPhone){
     const digits = toPhone.replace(/[^\d+]/g, '');
@@ -14184,7 +14619,7 @@ function sendOnMyWay(customer){
   const toEmail = (customer.notifyEmail || '').trim() || customer.email;
   if(toEmail){
     const subject = encodeURIComponent('On my way!');
-    const bodyText = `Hi ${toName},\n\nJust letting you know I'm on my way to service the pool${customer.hasSpa ? ' and spa' : ''} today.\n\nSee you soon!`;
+    const bodyText = `Hi ${toName},\n\nJust letting you know I'm on my way for ${what} today.\n\nSee you soon!`;
     const encodedBody = encodeURIComponent(bodyText);
     const link = document.createElement('a');
     link.href = `mailto:${toEmail}?subject=${subject}&body=${encodedBody}`;
@@ -14488,7 +14923,13 @@ async function getCustomerServiceDates(customerId){
   // Keyed by date AND whether it was a redo, so an original and a redo on the
   // same day are two separate reports rather than one hiding the other.
   const dateMap = new Map();
-  const keyFor = r => r.date.slice(0,10) + (r.isRedo ? '|redo' : '');
+  // A corrected report's original stays under a key of its own ("|g0"), so the
+  // edit is the report shown for that day and the original is still there (Nov 8)
+  const keyFor = r => r.date.slice(0,10) + (r.isRedo ? '|redo' : '') + (r.superseded ? '|g' + (r.gen || 0) : '');
+  const keyMeta = new Map();
+  const noteMeta = r => { if(!r) return; const k = keyFor(r);
+    if(r.superseded) keyMeta.set(k, {sup: true, gen: r.gen || 0, at: r.date});
+    else if(r.editedAt) keyMeta.set(k, {edited: true, at: r.editedAt}); };
   // Keys with any body actually serviced; the rest were skipped (Oct 3)
   const servicedKeys = new Set();
   const note = r => { if(r && !r.skipped) servicedKeys.add(keyFor(r)); };
@@ -14497,14 +14938,14 @@ async function getCustomerServiceDates(customerId){
   poolList.forEach(r=>{
     const k = keyFor(r);
     if(!dateMap.has(k)) dateMap.set(k, r.date);
-    note(r);
+    note(r); noteMeta(r);
   });
 
   const spaList = await loadReadings(customerId, 'spa');
   spaList.forEach(r=>{
     const k = keyFor(r);
     if(!dateMap.has(k)) dateMap.set(k, r.date);
-    note(r);
+    note(r); noteMeta(r);
   });
 
   for(const f of getValidFountains(customer)){
@@ -14523,7 +14964,7 @@ async function getCustomerServiceDates(customerId){
 
   const out = Array.from(dateMap.entries())
     .map(([key, ts]) => ({dateStr: key, ts, isRedo: key.indexOf('|redo') !== -1, day: key.slice(0, 10),
-                          skipped: !servicedKeys.has(key)}));
+                          skipped: !servicedKeys.has(key), meta: keyMeta.get(key) || null}));
   // Work orders submitted for this customer, each a report of its own (Oct 3)
   workOrderVisitsFor(customerId).forEach(j=>{
     out.push({dateStr: 'wo:' + j.id, ts: j.doneAt || (j.date + 'T12:00:00'), isRedo: false,
@@ -14753,8 +15194,10 @@ async function renderDateReport(customerId, dateStr){
   if(dateStr.indexOf('pd:') === 0){ await renderWorkOrderReport(customerId, dateStr.slice(3), 'drain'); return; }
   if(dateStr.indexOf('tk:') === 0){ await renderTaskReport(customerId, dateStr.slice(3)); return; }
   const wantRedo = dateStr.indexOf('|redo') !== -1;
-  const plainDate = dateStr.replace('|redo', '');
-  const matches = r => r.date.slice(0,10) === plainDate && !!r.isRedo === wantRedo;
+  const genHit = /\|g(\d+)/.exec(dateStr);
+  const plainDate = dateStr.replace('|redo', '').replace(/\|g\d+/, '');
+  const matches = r => r.date.slice(0,10) === plainDate && !!r.isRedo === wantRedo
+    && (genHit ? (!!r.superseded && (r.gen || 0) === Number(genHit[1])) : !r.superseded);
 
   const skipList = await loadSkippedVisits(customerId);
   const skipRecord = skipList.find(r => r.date === plainDate);
@@ -14824,7 +15267,7 @@ async function refreshDateSelector(customerId){
       : d.fc ? mdy(d.ts) + '  \u2014 Filter clean'
       : d.pd ? mdy(d.ts) + '  \u2014 ' + drainTitle(d.pd)
       : d.task ? mdy(d.ts) + '  \u2014 Task'
-      : mdy(d.ts) + (d.isRedo ? '  \u2014 redone' : '');
+      : mdy(d.ts) + (d.isRedo ? '  \u2014 redone' : '') + correctionLabel(d.meta, false);
     sel.appendChild(opt);
   });
   document.getElementById('reportDateHint').style.display = 'none';
@@ -14920,7 +15363,7 @@ function drawReportRows(){
       + 'color:' + tc[1] + ';background:' + (isOpen && !d.wo && !d.fc && !d.pd && !d.task ? 'var(--card)' : tc[0]) + ';';
     tag.textContent = d.wo ? 'Work order ' + workOrderNumberText(d.wo.workOrderNumber) : d.fc ? 'Filter clean' : d.pd ? drainTitle(d.pd) : d.task ? 'Task' : 'Service report';
     when.appendChild(tag);
-    const extra = d.wo ? (d.wo.title || '') : d.task ? (d.task.title || '') : (d.isRedo ? 'Redone' : '');
+    const extra = d.wo ? (d.wo.title || '') : d.task ? (d.task.title || '') : [d.isRedo ? 'Redone' : '', correctionLabel(d.meta, true)].filter(Boolean).join(' \u00b7 ');
     if(extra){
       const what = document.createElement('span');
       what.style.cssText = 'font-weight:500;color:var(--muted);margin-left:6px;font-size:12.5px;';
@@ -15463,7 +15906,7 @@ async function renderPoolServiceChecks(customer){
 
   // Find when each was last done, from past pool readings
   let history = [];
-  try { history = await loadReadings(customer.id, 'pool'); } catch(e){ history = []; }
+  try { history = (await loadReadings(customer.id, 'pool')).filter(r => !(r && r.superseded)); } catch(e){ history = []; }
 
   function lastDoneText(field){
     const hit = history.find(r => r[field]);
@@ -16104,7 +16547,7 @@ function nextBodyLabel(){
 // The wording for the button that finishes a body of water
 function finishBodyLabel(){
   return isLastBodyOfWater()
-    ? 'Submit service report'
+    ? (correctionJob ? 'Submit corrected report' : 'Submit service report')
     : 'Continue to ' + capitaliseFirst(nextBodyLabel()) + ' \u2192';
 }
 
@@ -16222,9 +16665,16 @@ function syncStepChrome(){
     const lbl = cust ? sectionLabel(cust, prevKey) : '';
     prevName = (lbl === 'Pool' || lbl === 'Spa') ? lbl.toLowerCase() : (lbl || 'the last one');
   }
-  back.textContent = currentVisitStep !== 1 ? '\u2190 Back'
+  const cancelsCorrection = !!(correctionJob && correctionJob.customerId === currentVisitCustomerId
+    && currentVisitStep === 1 && !prevKey);
+  back.textContent = cancelsCorrection ? 'Cancel correction'
+    : currentVisitStep !== 1 ? '\u2190 Back'
     : (prevKey ? '\u2190 Return to ' + prevName : '\u2190 Return to route');
+  if(cancelsCorrection){
+    back.style.cssText = 'background:#FFF8E8;border:1px solid #E8CF9A;color:#7A5A12;';
+  }
   back.addEventListener('click', async ()=>{
+    if(cancelsCorrection){ correctionAskCancel(); return; }
     if(currentVisitStep !== 1){
       goToVisitStep(currentVisitStep - 1);
       return;
@@ -16318,7 +16768,7 @@ function syncStepChrome(){
   const SUBMIT_FOR = {pool: 'btnSaveReading', spa: 'btnSaveSpaReading', fountain: 'btnSaveFountainReading'};
   const kind = currentVisibleSection === 'pool' || currentVisibleSection === 'spa' ? currentVisibleSection : 'fountain';
   const submitId = currentVisitStep === steps.length ? SUBMIT_FOR[kind] : null;
-  if(isAdminUser() && submitId && headEl && pendingVisit && pendingVisit.customerId === currentVisitCustomerId){
+  if(isAdminUser() && !correctionJob && submitId && headEl && pendingVisit && pendingVisit.customerId === currentVisitCustomerId){
     const here = pendingVisit.neededSections.indexOf(currentVisibleSection) !== -1
       ? currentVisibleSection : currentVisitFountainId;
     const left = pendingVisit.neededSections.filter(id => pendingVisit.doneSections[id] === undefined);
@@ -20216,6 +20666,8 @@ async function acalAddDrains(iso, ids, tech, photo, placeAfter){
   return true;
 }
 function showHomeTab(which){
+  // The calendar always opens on the current month (Nov 9)
+  if(which === 'calendar' && acalMode !== 'calendar'){ acalMonth = ''; acalSel = ''; acalJobMenu = false; }
   acalMode = which === 'calendar' && isAdminUser() ? 'calendar' : 'today';
   const cal = acalMode === 'calendar';
   const a = document.getElementById('btnHomeTabToday'), b = document.getElementById('btnHomeTabCal');
@@ -21504,6 +21956,11 @@ function restoreFinishedSection(type){
   const sectionId = type === 'fountain' ? currentVisitFountainId : type;
   const reading = (pkg.sections || {})[sectionId];
   if(!reading) return false;
+  // A correction fills each page once; coming back to a tab must not wipe what was changed
+  if(correctionJob && correctionJob.customerId === cid){
+    if(correctionJob.prefilled[sectionId]) return false;
+    correctionJob.prefilled[sectionId] = true;
+  }
 
   const lists = listsForBody(cid, sectionId, type);
   (lists.chemicals || []).forEach(item=>{
@@ -21713,6 +22170,7 @@ function vipControllers(){
 }
 async function saveVisitInProgress(){
   if(vipRestoring) return;
+  if(typeof correctionJob !== 'undefined' && correctionJob) return;      // a correction is never kept as a new report
   if(!currentVisitCustomerId){ return; }
   // Only a report still open: on screen, or left open while on another tab.
   // One finished or cancelled is never kept again.
@@ -22972,6 +23430,11 @@ function loadVisitPackage(customerId){
   if(!customerId) return null;
   const p = lsGet(packageKey(customerId));
   if(!p || !p.sections) return null;
+  // A correction in progress is never kept across a restart
+  if(p.correction && !(typeof correctionJob !== 'undefined' && correctionJob && correctionJob.customerId === customerId)){
+    lsRemove(packageKey(customerId));
+    return null;
+  }
   // A package from a previous day is stale — the readings belong to that day,
   // not this one, and silently committing them later would be wrong.
   if(p.day && p.day !== todayDateStr()){
@@ -23008,6 +23471,7 @@ function otherOpenPackage(exceptCustomerId){
 
 // Holds one body of water's readings until the visit is submitted
 function stashSectionReading(customerId, sectionId, reading){
+  if(typeof correctionJob !== 'undefined' && correctionJob && correctionJob.customerId === customerId) correctionDecorate(sectionId, reading);
   const pkg = loadVisitPackage(customerId)
            || {customerId, day: todayDateStr(), startedAt: new Date().toISOString(), sections: {}};
   pkg.sections[sectionId] = reading;
@@ -23055,6 +23519,7 @@ let visitSaveOnly = false;
 
 async function finalizeVisitSend(){
   if(!pendingVisit) return;
+  if(correctionJob && correctionJob.customerId === pendingVisit.customerId){ await finalizeCorrection(); return; }
   const saveOnly = visitSaveOnly;
   visitSaveOnly = false;
   const { customerId, doneSections } = pendingVisit;
@@ -23571,7 +24036,9 @@ function grabVisitLocation(kind){
 }
 
 function renderFullCombinedReport(...args){
-  return isAdminUser() ? adminVersion_renderFullCombinedReport.apply(this, args) : techVersion_renderFullCombinedReport.apply(this, args);
+  return renderFullCombinedReportWithMarker(args, ()=> isAdminUser()
+    ? adminVersion_renderFullCombinedReport.apply(this, args)
+    : techVersion_renderFullCombinedReport.apply(this, args));
 }
 // The visit's video, for owners and admins: from this phone if it was taken
 // here, otherwise from the office (videos are kept 7 days)
@@ -24230,6 +24697,9 @@ function buildReportEmailHtml(customer, whenText, sections, opts){
   const o = opts || {};
 
   let body = '';
+  if(typeof emailUpdateNote === 'string' && emailUpdateNote){
+    body += '<tr><td style="padding:16px 0 0;font-size:13px;font-weight:600;color:#7A5A12;">' + esc(emailUpdateNote) + '</td></tr>';
+  }
   sections.forEach(s=>{
     body += '<tr><td style="padding:22px 0 0;">'
       + '<div style="font-size:16px;font-weight:700;color:#16302E;">' + esc(s.label) + '</div>'
