@@ -20483,7 +20483,11 @@ function acalAddFcPd(kind, iso){
     + '<div class="field"><label>Technician</label><select data-tech></select></div>'
     + '<div class="field" id="acalRpHost" style="display:none;"></div>'
     + '<label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;margin:2px 0 8px;cursor:pointer;"><input type="checkbox" data-photo checked style="width:auto;margin:0;"> Photo required</label>'
-    + (isFc ? '<label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;margin:0 0 16px;cursor:pointer;"><input type="checkbox" data-email checked style="width:auto;margin:0;"> Email the customer</label>' : '<div style="height:8px;"></div>')
+    + '<label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;margin:0 0 ' + (isFc ? '16px' : '8px') + ';cursor:pointer;"><input type="checkbox" data-email checked style="width:auto;margin:0;"> Email the customer</label>'
+    + (isFc ? '' : '<div data-ov style="margin:0 0 16px;"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'
+      + '<label style="display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:500;margin:0;cursor:pointer;"><input type="checkbox" data-ovbox style="width:auto;margin:0;"> Overnight drain</label>'
+      + '<label data-ovwrap style="display:inline-flex;align-items:center;gap:8px;margin:0 0 0 auto;font-size:13px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--ink);">Cleaning <select data-ovdays style="width:auto;margin:0;padding:6px 8px;"></select></label></div>'
+      + '<div data-ovnote style="font-size:11.5px;color:var(--muted);margin:4px 0 0 26px;"></div></div>')
     + '<div class="btn-row" style="flex-wrap:nowrap;"><button type="button" class="btn btn-primary" data-go style="flex:1 1 0;">Add to route</button>'
     + '<button type="button" class="btn btn-ghost" data-cancel style="flex:1 1 0;">Cancel</button></div>';
   box.querySelector('h3').textContent = (isFc ? 'Filter clean' : 'Pool drain') + ' \u2013 ' + nice;
@@ -20503,6 +20507,41 @@ function acalAddFcPd(kind, iso){
   const nameOf = c => (typeof displayName === 'function' ? displayName(c.name) : c.name) || 'Customer';
   // Where in the route (Nov 2): the same picker a work order or task has, for a
   // single customer; with more than one, each goes under its own customer
+  // Overnight drain (Nov 9), pool drains only: starts as the customers' own setting
+  // (next day unless they have set another); once changed it stays as chosen
+  const ovBox = box.querySelector('[data-ovbox]'), ovDays = box.querySelector('[data-ovdays]');
+  const ovWrap = box.querySelector('[data-ovwrap]'), ovNote = box.querySelector('[data-ovnote]');
+  let ovTouched = false;
+  const custOv = c => !!c && c.drainOvernight !== false;
+  const custDays = c => Math.max(1, Math.min(30, Math.round(Number(c && c.drainCleanDays) || 1)));
+  const dayWord = n => n === 1 ? 'Next day' : n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ({1: 'st', 2: 'nd', 3: 'rd'}[n % 10] || 'th')) + ' day';
+  const fillDays = n=>{
+    if(!ovDays) return;
+    ovDays.innerHTML = '';
+    const list = []; for(let i = 1; i <= 7; i++) list.push(i);
+    if(list.indexOf(n) === -1) list.push(n);
+    list.forEach(i=>{ const o = document.createElement('option'); o.value = String(i); o.textContent = dayWord(i); ovDays.appendChild(o); });
+    ovDays.value = String(n);
+  };
+  const ovShow = ()=>{
+    if(!ovBox) return;
+    ovWrap.style.display = ovBox.checked ? '' : 'none';
+    const n = Number(ovDays.value) || 1;
+    ovNote.textContent = ovBox.checked ? 'Drained one day; cleaned and refilled ' + (n === 1 ? 'the next' : n + ' days later') + '.' : 'Drained and finished the same day. No Clean & refill is added.';
+  };
+  const ovSync = ()=>{
+    if(!ovBox || ovTouched) return;
+    const cs = picked.map(id => acalCust(id)).filter(Boolean);
+    ovBox.checked = cs.length ? cs.every(custOv) : true;
+    const first = cs.find(custOv) || cs[0];
+    fillDays(first ? custDays(first) : 1);
+    ovShow();
+  };
+  if(ovBox){
+    ovBox.checked = true; fillDays(1); ovShow();
+    ovBox.addEventListener('change', ()=>{ ovTouched = true; ovShow(); });
+    ovDays.addEventListener('change', ()=>{ ovTouched = true; ovShow(); });
+  }
   const rp = makeRoutePlace({host: 'acalRpHost', active: ()=> true, date: ()=> iso,
     techIds: ()=> techSel.value ? [techSel.value] : Array.from(new Set(picked.map(id => String((acalCust(id) || {}).technicianId || '')).filter(Boolean))),
     customerIds: ()=> picked.slice(),
@@ -20526,6 +20565,7 @@ function acalAddFcPd(kind, iso){
       chips.appendChild(chip);
     });
     rp.refresh();
+    ovSync();
   }
   function drawSug(){
     const term = search.value.trim().toLowerCase();
@@ -20571,7 +20611,7 @@ function acalAddFcPd(kind, iso){
     const photo = box.querySelector('[data-photo]').checked;
     const place = rp.value();
     const ok = isFc ? await acalAddFilterCleans(iso, picked, tech, photo, box.querySelector('[data-email]').checked, place)
-                    : await acalAddDrains(iso, picked, tech, photo, place);
+                    : await acalAddDrains(iso, picked, tech, photo, place, box.querySelector('[data-email]').checked, ovTouched ? {overnight: ovBox.checked, cleanDays: Number(ovDays.value) || 1} : null);
     if(!ok){ go.disabled = false; go.textContent = 'Add to route'; showToast('That didn\u2019t reach the office \u2014 try again when you have signal'); return; }
     close();
     acalDraw();
@@ -20626,7 +20666,7 @@ async function acalAddFilterCleans(iso, ids, tech, photo, email, placeAfter){
   try{ fieldNoteLocalChange(); }catch(e){}
   return true;
 }
-async function acalAddDrains(iso, ids, tech, photo, placeAfter){
+async function acalAddDrains(iso, ids, tech, photo, placeAfter, email, ov){
   const cal = acalOffice.drainCalendar || [];
   const recs = lsGet('scheduledPoolDrains') || [];
   const entries = [];
@@ -20641,6 +20681,13 @@ async function acalAddDrains(iso, ids, tech, photo, placeAfter){
     const own = String((c && c.technicianId) || '');
     if(tech && tech !== own) e.technicianId = tech; else delete e.technicianId;
     if(!photo) e.photoRequired = false; else delete e.photoRequired;
+    if(email === false) e.emailCustomer = false; else delete e.emailCustomer;
+    // This drain's own Overnight tick and cleaning day, only where they differ from the customer's (Nov 9)
+    if(ov){
+      const cOv = !!c && c.drainOvernight !== false, cDays = Math.max(1, Math.min(30, Math.round(Number(c && c.drainCleanDays) || 1)));
+      if(ov.overnight !== cOv) e.overnight = ov.overnight; else delete e.overnight;
+      if(ov.overnight && ov.cleanDays !== cDays) e.cleanDays = ov.cleanDays; else delete e.cleanDays;
+    }
     if(typeof placeAfter === 'string') e.placeAfter = placeAfter; else delete e.placeAfter;   // where in the route (Nov 2)
     e.pushed = e.pushed || {};
     const order = Math.max(0, sameDay.findIndex(x => x.customerId === cid)) || sameDay.length;
@@ -20649,7 +20696,7 @@ async function acalAddDrains(iso, ids, tech, photo, placeAfter){
       if(!r || r.status === 'done'){ r = {id: 'pd_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), calendarId: e.id, customerId: cid, status: 'scheduled'}; recs.push(r); e.pushed[b.key] = r.id; }
       Object.assign(r, {date: iso, technicianId: tech || own, bodyKey: b.key, bodyName: b.label,
         bodyKind: b.key === 'pool' || b.key === 'spa' ? b.key : (/fountain/i.test(b.label) ? 'fountain' : 'extra'), order: order,
-        photoRequired: !(c && c.drainPhotoRequired === false) && photo, emailCustomer: !(c && c.drainEmailCustomer === false)});
+        photoRequired: !(c && c.drainPhotoRequired === false) && photo, emailCustomer: !(c && c.drainEmailCustomer === false) && email !== false});
       if(typeof placeAfter === 'string') r.placeAfter = placeAfter; else delete r.placeAfter;
     });
     entries.push(e);

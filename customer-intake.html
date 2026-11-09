@@ -9199,7 +9199,34 @@ function renderFilterGroups(){
       tally.textContent = left + '/' + live.length;
       badge.appendChild(tally);
       badge.title = left + ' of ' + live.length + (live.length === 1 ? ' customer' : ' customers') + ' still to be cleaned';
+      // An × shows on the right when the pointer is over it (Nov 9): asks, then takes the group off the schedule
+      const xOff = document.createElement('span');
+      xOff.textContent = '\u00d7';
+      xOff.setAttribute('role', 'button'); xOff.setAttribute('aria-label', 'Remove this group from the schedule');
+      xOff.style.cssText = 'display:inline-block;max-width:0;overflow:hidden;opacity:0;margin-left:0;font-size:14px;line-height:1;vertical-align:-1px;cursor:pointer;transition:max-width .12s,opacity .12s,margin-left .12s;';
+      badge.addEventListener('mouseenter', ()=>{ xOff.style.maxWidth = '14px'; xOff.style.opacity = '1'; xOff.style.marginLeft = '7px'; });
+      badge.addEventListener('mouseleave', ()=>{ xOff.style.maxWidth = '0'; xOff.style.opacity = '0'; xOff.style.marginLeft = '0'; });
+      xOff.addEventListener('click', async e=>{
+        e.stopPropagation();
+        const ok = await confirmDialog('Are you sure you would like to remove \u201c' + (g.name || 'this group') + '\u201d from the schedule? It comes off the calendar and the technician\u2019s route, except any filter cleans already done.', 'Remove');
+        if(!ok) return;
+        unscheduleFilterGroup(g);
+        g.date = '';
+        saveFilterGroups();
+        renderFilterGroups();
+        showToast((g.name || 'Group') + ' taken off the schedule');
+      });
+      badge.appendChild(xOff);
       headRight.appendChild(badge);
+    } else {
+      // Not scheduled yet (Nov 9): the button takes the badge's place
+      const schBtn = document.createElement('button');
+      schBtn.type = 'button';
+      schBtn.className = 'btn btn-ghost';
+      schBtn.style.cssText = 'width:auto;padding:5px 10px;font-size:11.5px;flex-shrink:0;';
+      schBtn.textContent = 'Schedule';
+      schBtn.addEventListener('click', e=>{ e.stopPropagation(); fgScheduleWindow(g); });
+      headRight.appendChild(schBtn);
     }
     // Photo required, per group, on unless unticked (Oct 3). Just left of Rename.
     const photoReq = document.createElement('label');
@@ -9437,6 +9464,147 @@ function renderFilterGroups(){
     container.appendChild(pager);
   }
   renderStrayFilterCleans();
+}
+
+// Schedule a group from the Filter cleans tab (Nov 9): a month calendar in a window,
+// each day showing what's already on it, one day picked, then the group goes on that
+// day and onto its technician's route.
+function fgScheduleWindow(g){
+  if(!(g.customerIds || []).length){ showToast('Add customers to this group first'); return; }
+  if(!fgLiveIds(g).length){ showToast('Everyone in this group is paused'); return; }
+  if(g.solo ? fgLiveIds(g).some(cid => !fgCustTech(g, cid)) : !g.technicianId){ showToast('Assign a technician first'); return; }
+  // Everything on each day: the counts for the cells, the lines for the list under them
+  const byDay = {};
+  const day = d => (byDay[d] = byDay[d] || {fc: 0, pd: 0, wo: 0, tk: 0, items: []});
+  const nameOf = id => { const c = customers.find(x => x && x.id === id); return c ? displayName(c.name) : 'Customer'; };
+  const techOf = id => technicianNameById(id) || 'No technician';
+  filterGroups.forEach(x=>{
+    if(!x || x.id === g.id || !x.date || !fgLiveIds(x).length) return;
+    const n = fgLiveIds(x).length, d = day(x.date);
+    d.fc += n;
+    d.items.push({k: 'fc', title: x.name || 'Filter clean group', sub: n + (n === 1 ? ' customer' : ' customers') + ' \u00b7 ' + (x.solo ? 'Each customer\u2019s own' : techOf(x.technicianId))});
+  });
+  pdCal().forEach(e=>{
+    if(!e || !e.date || !customers.some(c => c.id === e.customerId)) return;
+    const c = customers.find(x => x.id === e.customerId), d = day(e.date);
+    d.pd++;
+    d.items.push({k: 'pd', title: nameOf(e.customerId), sub: 'Pool drain \u00b7 ' + techOf(e.technicianId || (c && c.technicianId))});
+  });
+  (lsGet('scheduledWorkOrders') || []).forEach(j=>{
+    if(!j || j.reopened || !j.date || !customers.some(c => c.id === j.customerId)) return;
+    const d = day(j.date);
+    d.wo++;
+    d.items.push({k: 'wo', title: nameOf(j.customerId), sub: (j.title || 'Work order') + ' \u00b7 ' + techOf(j.technicianId)});
+  });
+  (tasks || []).forEach(t=>{
+    if(!t || t.reopened || !t.date) return;
+    const d = day(t.date), ids = t.customerIds || (t.customerId ? [t.customerId] : []);
+    d.tk++;
+    d.items.push({k: 'tk', title: t.title || 'Task', sub: (ids.length ? ids.map(nameOf).join(', ') + ' \u00b7 ' : '') + techOf(t.technicianId)});
+  });
+  const todayIso = pdToday();
+  let sel = g.date || '';
+  let month = (sel || todayIso).slice(0, 7);
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:620px;width:100%;max-height:90vh;overflow-y:auto;text-align:left;padding:20px;';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const close = ()=> overlay.remove();
+  overlay.addEventListener('click', e=>{ if(e.target === overlay) close(); });
+  const niceLong = iso => new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric'});
+  function draw(){
+    box.innerHTML = '';
+    const h = document.createElement('h3'); h.style.cssText = 'font-size:16px;margin:0 0 2px;'; h.textContent = 'Schedule ' + (g.name || 'this group');
+    const hint = document.createElement('p'); hint.style.cssText = 'font-size:12.5px;color:var(--muted);margin:0 0 12px;';
+    const n = fgLiveIds(g).length;
+    hint.textContent = 'Pick the day. ' + n + (n === 1 ? ' customer goes' : ' customers go') + ' on it. What\u2019s already on each day is shown.';
+    box.appendChild(h); box.appendChild(hint);
+    const [yy, mm] = month.split('-').map(Number);
+    const nav = document.createElement('div'); nav.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;';
+    const mk = (t, d)=>{ const b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-ghost'; b.style.cssText = 'width:36px;flex:0 0 36px;padding:4px 0;'; b.textContent = t;
+      b.addEventListener('click', ()=>{ const dd = new Date(yy, mm - 1 + d, 1); month = dd.getFullYear() + '-' + String(dd.getMonth() + 1).padStart(2, '0'); draw(); }); return b; };
+    const lab = document.createElement('b'); lab.style.cssText = "font-family:'DM Serif Display',Georgia,serif;font-size:22px;font-weight:400;";
+    lab.textContent = new Date(yy, mm - 1, 1).toLocaleDateString(undefined, {month: 'long', year: 'numeric'});
+    nav.appendChild(mk('\u2039', -1)); nav.appendChild(lab); nav.appendChild(mk('\u203A', 1));
+    box.appendChild(nav);
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;';
+    ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(d => grid.insertAdjacentHTML('beforeend', '<div style="font-size:11px;font-weight:700;color:var(--muted);text-align:center;padding:2px 0;">' + d + '</div>'));
+    const first = new Date(yy, mm - 1, 1).getDay(), daysIn = new Date(yy, mm, 0).getDate();
+    for(let i = 0; i < first; i++) grid.appendChild(document.createElement('div'));
+    for(let d = 1; d <= daysIn; d++){
+      const iso = month + '-' + String(d).padStart(2, '0');
+      const on = byDay[iso];
+      const cell = document.createElement('button'); cell.type = 'button';
+      const isSel = iso === sel;
+      cell.style.cssText = 'all:unset;box-sizing:border-box;cursor:pointer;height:74px;overflow:hidden;border:1px solid var(--line);border-radius:8px;padding:4px 5px;background:#fff;min-width:0;text-align:left;'
+        + (isSel ? 'background:var(--teal-pale);border-color:var(--teal-deep);box-shadow:inset 0 0 0 1px var(--teal-deep);' : '')
+        + (iso === todayIso ? 'outline:1.5px solid var(--teal-mid);outline-offset:-1px;' : '');
+      const num = document.createElement('div'); num.style.cssText = 'font-size:12px;font-weight:700;margin-bottom:2px;'; num.textContent = d;
+      cell.appendChild(num);
+      ['fc', 'pd', 'wo', 'tk'].forEach(k=>{
+        if(!on || !on[k]) return;
+        const t = WCAL_TAGS[k];
+        const chip = document.createElement('div');
+        chip.style.cssText = 'font-family:\'JetBrains Mono\',monospace;font-size:9.5px;font-weight:700;border-radius:4px;padding:1px 4px;margin-top:1px;white-space:nowrap;overflow:hidden;background:' + t[2] + ';color:' + t[3] + ';';
+        chip.textContent = t[0] + ' ' + on[k];
+        chip.title = on[k] + ' ' + t[1].toLowerCase();
+        cell.appendChild(chip);
+      });
+      cell.addEventListener('click', ()=>{ sel = iso; draw(); });
+      grid.appendChild(cell);
+    }
+    box.appendChild(grid);
+    const legend = document.createElement('div'); legend.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin:10px 0 0;';
+    ['fc', 'pd', 'wo', 'tk'].forEach(k => { const t = WCAL_TAGS[k]; legend.insertAdjacentHTML('beforeend', '<span><b style="font-family:\'JetBrains Mono\',monospace;">' + t[0] + '</b> ' + t[1] + '</span>'); });
+    box.appendChild(legend);
+    // The jobs on the day picked, as under the Calendar tab's month
+    if(sel){
+      const list = document.createElement('div');
+      list.style.cssText = 'margin-top:12px;border-top:1px solid var(--line);padding-top:10px;';
+      const lh = document.createElement('div'); lh.style.cssText = 'font-size:12.5px;font-weight:700;margin-bottom:6px;';
+      const items = (byDay[sel] || {}).items || [];
+      lh.textContent = niceLong(sel) + (items.length ? '' : ' \u2014 nothing on it yet');
+      list.appendChild(lh);
+      const scroll = document.createElement('div'); scroll.style.cssText = 'max-height:170px;overflow-y:auto;';
+      items.forEach(it=>{
+        const t = WCAL_TAGS[it.k];
+        const r = document.createElement('div');
+        r.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line);font-size:13px;';
+        const bd = document.createElement('span');
+        bd.style.cssText = 'flex:0 0 auto;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;font-weight:600;letter-spacing:.07em;padding:3px 7px;border-radius:6px;background:' + t[2] + ';color:' + t[3] + ';';
+        bd.textContent = t[0];
+        const tx = document.createElement('div'); tx.style.cssText = 'min-width:0;flex:1;';
+        const a1 = document.createElement('div'); a1.style.cssText = 'font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'; a1.textContent = it.title;
+        const a2 = document.createElement('div'); a2.style.cssText = 'font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'; a2.textContent = it.sub;
+        tx.appendChild(a1); tx.appendChild(a2); r.appendChild(bd); r.appendChild(tx); scroll.appendChild(r);
+      });
+      list.appendChild(scroll);
+      box.appendChild(list);
+    }
+    const row = document.createElement('div'); row.className = 'btn-row'; row.style.marginTop = '14px';
+    const go = document.createElement('button'); go.type = 'button'; go.className = 'btn btn-primary'; go.style.flex = '1';
+    go.textContent = sel ? 'Schedule on ' + niceLong(sel) : 'Pick a day';
+    if(!sel){ go.disabled = true; go.style.opacity = '0.5'; }
+    go.addEventListener('click', ()=>{
+      if(!sel) return;
+      g.date = sel;
+      g.custHold = {};
+      scheduleFilterGroup(g);
+      saveFilterGroups();
+      renderFilterGroups();
+      close();
+      showToast((g.name || 'Group') + ' scheduled for ' + niceLong(sel));
+    });
+    const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'btn btn-ghost'; cancel.style.width = 'auto'; cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', close);
+    row.appendChild(go); row.appendChild(cancel);
+    box.appendChild(row);
+  }
+  draw();
 }
 
 async function finalizeFilterGroup(g){
@@ -12111,6 +12279,10 @@ function pdOpenDayPicker(iso, currentIds, onSave){
       <input class="pdp-search" placeholder="Search by name, address, phone, or email" autocomplete="off" style="margin-bottom:10px;">
       <div class="pdp-list" style="flex:1;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:2px 8px;margin-bottom:14px;"></div>
       <div class="field" id="pdpRpHost" style="display:none;margin:-4px 0 14px;"></div>
+      <div class="pdp-opts" style="display:none;margin:0 0 12px;gap:18px;flex-wrap:wrap;">
+        <label class="pick-row" style="display:inline-flex;padding:0;border:none;font-weight:600;font-size:13px;"><input type="checkbox" data-pdphoto checked style="width:auto;margin:0;"> Photo required</label>
+        <label class="pick-row" style="display:inline-flex;padding:0;border:none;font-weight:600;font-size:13px;"><input type="checkbox" data-pdemail checked style="width:auto;margin:0;"> Email customer</label>
+      </div>
       <div class="pdp-ov" style="display:none;margin:0 0 14px;">
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <label class="pick-row" style="display:inline-flex;padding:0;border:none;font-weight:600;font-size:13px;"><input type="checkbox" data-pdov style="width:auto;margin:0;"> Overnight drain</label>
@@ -12146,6 +12318,9 @@ function pdOpenDayPicker(iso, currentIds, onSave){
   const ovCleanWrap = ovWrap.querySelector('[data-pdcleanwrap]');
   const ovNote = ovWrap.querySelector('[data-pdovnote]');
   let ovTouched = false;
+  // Photo required and Email customer (Nov 9), for the drains being put on this day
+  const optsWrap = overlay.querySelector('.pdp-opts');
+  const optPhoto = optsWrap.querySelector('[data-pdphoto]'), optEmail = optsWrap.querySelector('[data-pdemail]');
   const ovShow = ()=>{
     ovCleanWrap.style.display = ovBox.checked ? '' : 'none';
     ovNote.textContent = ovBox.checked
@@ -12155,6 +12330,7 @@ function pdOpenDayPicker(iso, currentIds, onSave){
   const ovSync = ()=>{
     const ids = newOnes();
     ovWrap.style.display = ids.length ? '' : 'none';
+    optsWrap.style.display = ids.length ? 'flex' : 'none';
     if(!ids.length || ovTouched) return;
     const cs = ids.map(id => customers.find(x => x && x.id === id)).filter(Boolean);
     ovBox.checked = cs.length > 0 && cs.every(c => pdIsOvernight(c));
@@ -12248,7 +12424,8 @@ function pdOpenDayPicker(iso, currentIds, onSave){
     const place = rp.value();
     // Only what was chosen here goes to the drains; untouched, each customer's own setting stands
     const ov = (ovTouched && newOnes().length) ? {overnight: !!ovBox.checked, cleanDays: Number(ovClean.value) || 1} : null;
-    overlay.remove(); onSave(Array.from(picked), place, ov);
+    const opts = newOnes().length ? {photo: !!optPhoto.checked, email: !!optEmail.checked} : null;
+    overlay.remove(); onSave(Array.from(picked), place, ov, opts);
   });
   overlay.querySelector('.pdp-cancel').addEventListener('click', ()=> overlay.remove());
 }
@@ -12911,12 +13088,13 @@ function openWorkCalendar(startDay, stayHere){
     const after = ()=>{ saveFilterGroups(); renderFilterGroups(); draw(); };
     gridBtn('+ Work order', 'btn-ghost', ()=> wcalOpenForm('Work Order', sel, drawKeep));
     gridBtn('+ Task', 'btn-ghost', ()=> wcalOpenForm('Task', sel, drawKeep));
+    gridBtn('+ Clean & refill', 'btn-ghost', ()=> wcalOpenForm('Task', sel, drawKeep, {title: 'Clean & refill', heading: 'New clean & refill'}));
     gridBtn('Close', 'btn-primary', ()=>{ sel = ''; draw(); });
     gridBtn('+ Filter clean customer', 'btn-ghost', ()=> fcPickCustomersForDay(sel, after));
     gridBtn('+ Filter clean group', 'btn-ghost', ()=> fcPickGroupForDay(sel, after));
     gridBtn('+ Pool drain', 'btn-ghost', ()=>{
       // Grouped like the Drains page: overdue, due soon, never...
-      pdOpenDayPicker(sel, on.pd.map(e => e.customerId), (ids, place, ov)=>{
+      pdOpenDayPicker(sel, on.pd.map(e => e.customerId), (ids, place, ov, opts)=>{
         let all = pdCal();
         const want = new Set(ids);
         all.filter(e => e.date === sel && !want.has(e.customerId)).forEach(pdCalUnpush);
@@ -12930,6 +13108,8 @@ function openWorkCalendar(startDay, stayHere){
             const ent = {id: 'dc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), date: sel, customerId: cid, bodyKind: kinds[0], bodyKinds: kinds.slice()};
             if(typeof place === 'string') ent.placeAfter = place;   // where in the route (Nov 2)
             // This drain's own Overnight tick and cleaning day, when they differ from the customer's (Nov 9)
+            if(opts && opts.photo === false) ent.photoRequired = false;
+            if(opts && opts.email === false) ent.emailCustomer = false;
             if(ov){
               const cu = customers.find(x => x && x.id === cid);
               if(ov.overnight !== pdIsOvernight(cu)) ent.overnight = ov.overnight;
@@ -13515,7 +13695,7 @@ function openWorkCalendar(startDay, stayHere){
         }
         r.date = e.date; r.technicianId = tech; r.bodyKind = pdBodyCategory(c, k); r.bodyKey = k; r.bodyName = pdBodyLabel(c, k); r.order = Math.max(0, order);
         r.photoRequired = pdCustPhoto(c) && e.photoRequired !== false;   // the customer's Drains settings (Oct 19)
-        r.emailCustomer = pdCustEmail(c);
+        r.emailCustomer = pdCustEmail(c) && e.emailCustomer !== false;
         if(typeof e.placeAfter === 'string') r.placeAfter = e.placeAfter; else delete r.placeAfter;   // where in the route (Nov 2)
         if(want === 'done'){
           if(r.status !== 'done'){ r.status = 'done'; r.doneAt = new Date().toISOString(); r.doneBy = 'office'; }
@@ -13617,7 +13797,7 @@ function openWorkCalendar(startDay, stayHere){
           }
           r.date = day; r.technicianId = tech; r.bodyKind = pdBodyCategory(c, k); r.bodyKey = k; r.bodyName = pdBodyLabel(c, k); r.order = i;
           r.photoRequired = pdCustPhoto(c) && e.photoRequired !== false;   // the customer's Drains settings (Oct 19)
-          r.emailCustomer = pdCustEmail(c);
+          r.emailCustomer = pdCustEmail(c) && e.emailCustomer !== false;
           if(typeof e.placeAfter === 'string') r.placeAfter = e.placeAfter; else delete r.placeAfter;   // where in the route (Nov 2)
           drains++;
         });
@@ -13651,7 +13831,7 @@ function wcalRefresh(){
 // + Work order and + Task from a day (Oct 18): WorkCenter's own Work Order or
 // Task form in a window of its own, the day already filled in. Finalize or Add
 // to route puts it on the day; Cancel or a click outside closes it unsaved.
-function wcalOpenForm(kind, iso, onSaved){
+function wcalOpenForm(kind, iso, onSaved, preset){
   const isTask = kind === 'Task';
   const typeSel = document.getElementById('wcType');
   const formCard = document.getElementById('wcQuotesSection');
@@ -13669,6 +13849,8 @@ function wcalOpenForm(kind, iso, onSaved){
   if(isTask) clearTaskForm(); else resetWorkOrderForm();
   applyWorkOrderType();
   document.getElementById(isTask ? 'taskDate' : 'wcDate').value = iso;
+  // A Clean & refill job (Nov 9): a task named so, which the app shows as one
+  if(isTask && preset && preset.title){ const tt = document.getElementById('taskTitle'); if(tt) tt.value = preset.title; }
   // Into the window: no tabs above it, no Clear or Customize email below
   const hidden = [];
   const hide = id=>{ const el = document.getElementById(id); if(el){ hidden.push([el, el.style.display]); el.style.display = 'none'; } };
@@ -13680,7 +13862,7 @@ function wcalOpenForm(kind, iso, onSaved){
   panel.style.cssText = 'max-width:640px;width:100%;max-height:88vh;overflow-y:auto;text-align:left;padding:20px;';
   const h = document.createElement('h3');
   h.style.cssText = 'font-size:16px;margin:0 0 16px;';
-  h.textContent = isTask ? 'New task' : 'New work order';
+  h.textContent = isTask ? (preset && preset.heading ? preset.heading : 'New task') : 'New work order';
   panel.appendChild(h);
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
@@ -21851,7 +22033,41 @@ function addNameOnlyCustomer(name){
              active: true, hasPool: false, hasSpa: false, technicianId: '', nameOnly: true, createdAt: new Date().toISOString()};
   customers.push(c);
   try{ saveCustomers(); }catch(e){}
+  try{ jobAskContact(c); }catch(e){}
   return c;
+}
+// Someone added to a job by name only (Nov 9): a window for their email address
+// and phone number, wherever on the website a job is added. Both can be skipped.
+function jobAskContact(c){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:400px;width:100%;text-align:left;padding:20px;';
+  box.innerHTML = '<h3 style="font-size:16px;margin:0 0 4px;"></h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;">Add how to reach them, or skip for now.</p>'
+    + '<div class="field"><label>Email</label><input type="email" data-ce placeholder="name@example.com" autocomplete="off"></div>'
+    + '<div class="field"><label>Phone</label><input type="tel" data-cp placeholder="(555) 555-5555" autocomplete="off"></div>'
+    + '<div class="btn-row"><button type="button" class="btn btn-primary" data-save style="flex:1;">Save</button>'
+    + '<button type="button" class="btn btn-ghost" data-skip style="width:auto;">Skip</button></div>';
+  box.querySelector('h3').textContent = (typeof displayName === 'function' ? displayName(c.name) : c.name) + ' \u2013 contact';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const em = box.querySelector('[data-ce]'), ph = box.querySelector('[data-cp]');
+  const close = ()=> overlay.remove();
+  const save = ()=>{
+    const e = em.value.trim(), p = ph.value.trim();
+    if(e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)){ showToast('That email address doesn\u2019t look right.'); em.focus(); return; }
+    if(e) c.email = e;
+    if(p) c.phone = p;
+    if(e || p){ try{ saveCustomers(); }catch(x){} }
+    close();
+  };
+  box.querySelector('[data-save]').addEventListener('click', save);
+  box.querySelector('[data-skip]').addEventListener('click', close);
+  overlay.addEventListener('click', ev=>{ if(ev.target === overlay) close(); });
+  box.addEventListener('keydown', ev=>{ if(ev.key === 'Enter'){ ev.preventDefault(); save(); } });
+  setTimeout(()=>{ try{ em.focus(); }catch(x){} }, 30);
 }
 
 document.getElementById('wcCustomerSearch').addEventListener('focus', (e)=> renderWcSuggest(e.target.value));
