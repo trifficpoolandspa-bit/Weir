@@ -689,8 +689,8 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
       <button class="tab" data-view="technicians">Technicians</button>
       <!-- Technicians' sections in the sidebar (Oct 2); they press the page's own tabs -->
       <div class="nav-subs" id="techNavSubs">
-        <button type="button" class="nav-sub active" data-techmain="list"><span>Technicians</span></button>
-        <button type="button" class="nav-sub" data-techmain="route"><span>Today's Route</span></button>
+        <button type="button" class="nav-sub active" data-techmain="route"><span>Today's Route</span></button>
+        <button type="button" class="nav-sub" data-techmain="list"><span>Technicians</span></button>
         <button type="button" class="nav-sub" data-techmain="photos"><span>Photo requirements</span></button>
       </div>
       <button class="tab" data-view="customerconfig">Customer Customization</button>
@@ -1008,8 +1008,8 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
          the page background than it does on white -->
     <div class="card" style="padding:12px;">
       <div class="seg-control" id="techMainTabs" style="margin-bottom:0;">
-        <button class="history-type-btn active" data-techmain="list" type="button">Technicians</button>
-        <button class="history-type-btn" data-techmain="route" type="button">Today's Route</button>
+        <button class="history-type-btn active" data-techmain="route" type="button">Today's Route</button>
+        <button class="history-type-btn" data-techmain="list" type="button">Technicians</button>
         <button class="history-type-btn" data-techmain="photos" type="button">Photo requirements</button>
       </div>
     </div>
@@ -1880,6 +1880,11 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
         <div id="filterGroupSelBar" style="margin-left:auto;"></div>
       </div>
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Group customers together and give the group a technician. Put groups on days from the Calendar, then press Select for route there to push them onto the technician's route. Customize emails to send to groups individually or all together.</p>
+      <!-- Find a customer: which group they're in and where (Nov 10) -->
+      <div id="fgFindWrap" style="position:relative;margin:0 0 12px;">
+        <input type="text" id="fgFind" placeholder="Search a customer to see their group\u2026" autocomplete="off" aria-label="Search a customer">
+        <div id="fgFindResults" style="display:none;position:absolute;left:0;right:0;top:100%;margin-top:3px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:20;max-height:260px;overflow-y:auto;"></div>
+      </div>
       <div id="filterGroupList"></div>
     </div>
 
@@ -6811,8 +6816,8 @@ function openSingleFilterClean(){
     + '<div style="display:flex;gap:10px;">'
     + '<div class="field" style="flex:1;min-width:0;"><label>Date</label><input type="date" id="sfcDate"></div>'
     + '<div class="field" style="flex:1;min-width:0;"><label>Technician</label><select id="sfcTech"></select></div></div>'
-    + '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:500;text-transform:none;letter-spacing:0;color:var(--ink);margin:2px 0 8px;cursor:pointer;"><input type="checkbox" id="sfcPhoto" checked style="width:auto;margin:0;"> Photo required</label>'
-    + '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:500;text-transform:none;letter-spacing:0;color:var(--ink);margin:0 0 16px;cursor:pointer;"><input type="checkbox" id="sfcEmail" checked style="width:auto;margin:0;"> Email the customer</label>'
+    + '<label style="display:flex;width:fit-content;align-items:center;gap:8px;font-size:13.5px;font-weight:500;text-transform:none;letter-spacing:0;color:var(--ink);margin:2px 0 8px;cursor:pointer;"><input type="checkbox" id="sfcPhoto" checked style="width:auto;margin:0;"> Photo required</label>'
+    + '<label style="display:flex;width:fit-content;align-items:center;gap:8px;font-size:13.5px;font-weight:500;text-transform:none;letter-spacing:0;color:var(--ink);margin:0 0 16px;cursor:pointer;"><input type="checkbox" id="sfcEmail" checked style="width:auto;margin:0;"> Email the customer</label>'
     + '<div class="btn-row" style="flex-wrap:nowrap;"><button type="button" class="btn btn-primary" data-go style="flex:1 1 0;">Add to route</button>'
     + '<button type="button" class="btn btn-ghost" data-cancel style="flex:1 1 0;">Cancel</button></div>';
   overlay.appendChild(box);
@@ -8594,7 +8599,7 @@ function openAddReplacements(onSaved){
     + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Pick the customer, then tick everything their filter needs.</p>'
     + '<label for="arSearch" style="font-size:12.5px;font-weight:600;">Customer</label>'
     + '<input id="arSearch" placeholder="Search customers" autocomplete="off" style="margin:4px 0 4px;">'
-    + '<div data-results style="border:1px solid var(--line);border-radius:9px;margin-bottom:12px;max-height:150px;overflow-y:auto;display:none;"></div>'
+    + '<div data-results style="position:absolute;z-index:6;background:#fff;border:1px solid var(--line);border-radius:9px;box-shadow:0 8px 24px rgba(0,0,0,.22);overflow-y:auto;display:none;"></div>'
     + '<div data-list style="flex:1;overflow-y:auto;min-height:0;"></div>'
     + '<div style="display:flex;gap:8px;margin-top:10px;">'
     + '<input data-own placeholder="Something else" style="flex:1;min-width:0;">'
@@ -8610,13 +8615,30 @@ function openAddReplacements(onSaved){
   const say = t => { warn.textContent = t; warn.style.display = t ? 'block' : 'none'; };
   const active = customers.filter(c => c && !c.deleted && c.active !== false)
     .sort((a, b) => sortKeyName(a.name).localeCompare(sortKeyName(b.name)));
+  let listDismissed = false;
+  const boxEl = overlay.querySelector('.confirm-box');
+  boxEl.style.position = 'relative';
+  function placeResults(){
+    const top = search.offsetTop + search.offsetHeight + 3;
+    const rowTop = overlay.querySelector('.btn-row').offsetTop;
+    results.style.left = search.offsetLeft + 'px';
+    results.style.width = search.offsetWidth + 'px';
+    results.style.top = top + 'px';
+    results.style.maxHeight = Math.max(60, rowTop - top - 12) + 'px';
+  }
+  overlay.addEventListener('mousedown', e=>{ if(e.target !== search && !results.contains(e.target)){ listDismissed = true; results.style.display = 'none'; } });
+  search.addEventListener('focus', ()=>{ listDismissed = false; drawResults(); });
   function drawResults(){
     const q = search.value.trim().toLowerCase();
     results.innerHTML = '';
     let shown = picked ? [picked] : (q ? active.filter(c => (String(c.name || '') + ' ' + displayName(c.name) + ' ' + String(c.address || '')).toLowerCase().indexOf(q) !== -1) : []);
     shown = shown.slice(0, 30);
+    // A floating list (Nov 10): over the window, ending above Cancel and Save,
+    // scrolling inside. Once someone is picked, or on a click elsewhere, it goes.
+    if(picked || listDismissed){ results.style.display = 'none'; return; }
     results.style.display = shown.length || q ? 'block' : 'none';
-    if(!shown.length && q){ results.innerHTML = '<div style="padding:8px 10px;font-size:12.5px;color:var(--muted);">No customer matches.</div>'; return; }
+    placeResults();
+    if(!shown.length && q){ results.innerHTML = '<div style="padding:8px 10px;font-size:12.5px;color:var(--muted);">No customer matches.</div>'; placeResults(); return; }
     shown.forEach(c=>{
       const r = document.createElement('div');
       r.className = 'press-row';
@@ -8638,7 +8660,7 @@ function openAddReplacements(onSaved){
       results.appendChild(r);
     });
   }
-  search.addEventListener('input', ()=>{ picked = null; drawResults(); });
+  search.addEventListener('input', ()=>{ picked = null; listDismissed = false; drawResults(); });
   function row(name){
     const l = document.createElement('label');
     l.style.cssText = 'display:flex;align-items:center;gap:12px;padding:9px 2px;border-bottom:1px solid var(--line);font-size:14px;font-weight:500;margin:0;cursor:pointer;';
@@ -8670,7 +8692,8 @@ function openAddReplacements(onSaved){
   const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
   overlay.querySelector('[data-cancel]').addEventListener('click', close);
   overlay.querySelector('[data-save]').addEventListener('click', ()=>{
-    if(own.value.trim()){ say('\u201c' + own.value.trim() + '\u201d hasn\u2019t been added yet \u2014 press Add, or clear the box.'); return; }
+    // Something typed but not added is added now (Nov 10), as if Add was pressed
+    if(own.value.trim()) addOwn();
     if(!picked){ say('Pick a customer first.'); return; }
     // In the list's order, so it reads the same each time
     const items = Array.from(list.querySelectorAll('label')).map(l => l.textContent.trim()).filter(n => ticked.has(n));
@@ -8702,6 +8725,11 @@ function openFilterReplacements(){
     + '<h3 style="font-size:16px;margin:0 0 2px;">Replacements</h3>'
     + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;" data-sub></p>'
     + '<button type="button" class="btn btn-ghost" data-new style="width:auto;padding:7px 12px;font-size:12.5px;align-self:flex-start;margin:0 0 4px;">+ Add replacements</button>'
+    + '<div data-filters style="display:flex;gap:8px;margin:4px 0 6px;flex-wrap:wrap;">'
+    + '<input type="text" data-fsearch placeholder="Filter by customer\u2026" autocomplete="off" style="flex:1 1 140px;min-width:0;">'
+    + '<select data-fpart style="flex:0 1 150px;min-width:0;"></select>'
+    + '<select data-fgroup style="flex:0 1 150px;min-width:0;"></select></div>'
+    + '<div data-none style="display:none;font-size:12.5px;color:var(--muted);padding:8px 0;">Nothing matches that filter.</div>'
     + '<div data-list style="flex:1;overflow-y:auto;"></div>'
     + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-ghost" data-close style="flex:1;">Close</button></div></div>';
   overlay.querySelector('[data-sub]').textContent = done.length
@@ -8721,11 +8749,14 @@ function openFilterReplacements(){
       head.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);"
         + 'text-transform:uppercase;letter-spacing:0.07em;margin:12px 0 2px;';
       head.textContent = k === '__office' ? 'Added by the office' : k === '__wo' ? 'Work orders' : g ? g.name : (byGroup[k][0].groupName || 'No group');
+      head.dataset.fhead = k;
       box.appendChild(head);
       byGroup[k].forEach((f, i, all)=>{
         const c = customers.find(x => String(x.id) === String(f.customerId));
         const row = document.createElement('div');
         row.style.cssText = 'padding:10px 0;' + (i === all.length - 1 ? '' : 'border-bottom:1px solid var(--line);');
+        row.dataset.frow = k;
+        row.dataset.fname = c ? (String(c.name || '') + ' ' + displayName(c.name)).toLowerCase() : '';
         const l1 = document.createElement('div');
         l1.style.cssText = 'font-size:14px;font-weight:600;';
         l1.textContent = c ? displayName(c.name) : 'A customer no longer on file';
@@ -8768,6 +8799,7 @@ function openFilterReplacements(){
             updateFilterReplacementsButton();
             try{ if(qoCustomerId) renderCustomerWorkOrders(qoCustomerId); }catch(e){}
           });
+          lab.dataset.fpart = part;
           lab.appendChild(cb);
           lab.appendChild(document.createTextNode(part));
           l2.appendChild(lab);
@@ -8780,6 +8812,33 @@ function openFilterReplacements(){
         box.appendChild(row);
       });
     });
+  // Filter (Nov 10): by customer, by which part, by group. Kept while ticking parts off.
+  const fSearch = overlay.querySelector('[data-fsearch]'), fPart = overlay.querySelector('[data-fpart]'), fGroup = overlay.querySelector('[data-fgroup]');
+  const addOpt = (sel, val, txt)=>{ const o = document.createElement('option'); o.value = val; o.textContent = txt; sel.appendChild(o); };
+  addOpt(fPart, '', 'All parts');
+  Array.from(new Set(Array.from(box.querySelectorAll('[data-fpart]')).map(l => l.dataset.fpart))).sort((x, y) => x.localeCompare(y)).forEach(p => addOpt(fPart, p, p));
+  addOpt(fGroup, '', 'All groups');
+  Array.from(box.querySelectorAll('[data-fhead]')).forEach(h => addOpt(fGroup, h.dataset.fhead, h.textContent));
+  const keep = window.__replFilter || {};
+  fSearch.value = keep.q || ''; if(Array.from(fPart.options).some(o => o.value === keep.part)) fPart.value = keep.part; if(Array.from(fGroup.options).some(o => o.value === keep.group)) fGroup.value = keep.group;
+  const applyFilter = ()=>{
+    window.__replFilter = {q: fSearch.value, part: fPart.value, group: fGroup.value};
+    const q = fSearch.value.trim().toLowerCase();
+    let shown = 0;
+    box.querySelectorAll('[data-fhead]').forEach(h => { h.style.display = 'none'; });
+    box.querySelectorAll('[data-frow]').forEach(r=>{
+      let ok = (!q || r.dataset.fname.indexOf(q) !== -1) && (!fGroup.value || r.dataset.frow === fGroup.value);
+      let any = false;
+      r.querySelectorAll('[data-fpart]').forEach(l=>{ const m = !fPart.value || l.dataset.fpart === fPart.value; l.style.display = m ? '' : 'none'; if(m) any = true; });
+      ok = ok && any;
+      r.style.display = ok ? '' : 'none';
+      if(ok){ shown++; const h = box.querySelector('[data-fhead="' + r.dataset.frow + '"]'); if(h) h.style.display = ''; }
+    });
+    overlay.querySelector('[data-none]').style.display = done.length && !shown ? 'block' : 'none';
+  };
+  fSearch.addEventListener('input', applyFilter); fPart.addEventListener('change', applyFilter); fGroup.addEventListener('change', applyFilter);
+  if(!done.length) overlay.querySelector('[data-filters]').style.display = 'none';
+  applyFilter();
   overlay.querySelector('[data-close]').addEventListener('click', ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); });
   overlay.querySelector('[data-new]').addEventListener('click', ()=>{
     if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
@@ -8787,7 +8846,7 @@ function openFilterReplacements(){
   });
   document.body.appendChild(overlay);
 }
-document.getElementById('btnFilterReplacements').addEventListener('click', openFilterReplacements);
+document.getElementById('btnFilterReplacements').addEventListener('click', ()=>{ window.__replFilter = null; openFilterReplacements(); });
 
 // The groups the technician menu at the top of Filter cleans is showing, and
 // how many customers they hold between them, each counted once (Oct 3)
@@ -9473,140 +9532,97 @@ function fgScheduleWindow(g){
   if(!(g.customerIds || []).length){ showToast('Add customers to this group first'); return; }
   if(!fgLiveIds(g).length){ showToast('Everyone in this group is paused'); return; }
   if(g.solo ? fgLiveIds(g).some(cid => !fgCustTech(g, cid)) : !g.technicianId){ showToast('Assign a technician first'); return; }
-  // Everything on each day: the counts for the cells, the lines for the list under them
-  const byDay = {};
-  const day = d => (byDay[d] = byDay[d] || {fc: 0, pd: 0, wo: 0, tk: 0, items: []});
-  const nameOf = id => { const c = customers.find(x => x && x.id === id); return c ? displayName(c.name) : 'Customer'; };
-  const techOf = id => technicianNameById(id) || 'No technician';
-  filterGroups.forEach(x=>{
-    if(!x || x.id === g.id || !x.date || !fgLiveIds(x).length) return;
-    const n = fgLiveIds(x).length, d = day(x.date);
-    d.fc += n;
-    d.items.push({k: 'fc', title: x.name || 'Filter clean group', sub: n + (n === 1 ? ' customer' : ' customers') + ' \u00b7 ' + (x.solo ? 'Each customer\u2019s own' : techOf(x.technicianId))});
-  });
-  pdCal().forEach(e=>{
-    if(!e || !e.date || !customers.some(c => c.id === e.customerId)) return;
-    const c = customers.find(x => x.id === e.customerId), d = day(e.date);
-    d.pd++;
-    d.items.push({k: 'pd', title: nameOf(e.customerId), sub: 'Pool drain \u00b7 ' + techOf(e.technicianId || (c && c.technicianId))});
-  });
-  (lsGet('scheduledWorkOrders') || []).forEach(j=>{
-    if(!j || j.reopened || !j.date || !customers.some(c => c.id === j.customerId)) return;
-    const d = day(j.date);
-    d.wo++;
-    d.items.push({k: 'wo', title: nameOf(j.customerId), sub: (j.title || 'Work order') + ' \u00b7 ' + techOf(j.technicianId)});
-  });
-  (tasks || []).forEach(t=>{
-    if(!t || t.reopened || !t.date) return;
-    const d = day(t.date), ids = t.customerIds || (t.customerId ? [t.customerId] : []);
-    d.tk++;
-    d.items.push({k: 'tk', title: t.title || 'Task', sub: (ids.length ? ids.map(nameOf).join(', ') + ' \u00b7 ' : '') + techOf(t.technicianId)});
-  });
-  const todayIso = pdToday();
-  let sel = g.date || '';
-  let month = (sel || todayIso).slice(0, 7);
+  // The same window as the Drains tab's Schedule (Nov 10): a month with what's on
+  // each day as coloured tags, hover a day for the jobs under each technician,
+  // click a day to put the group on it.
+  let month = pdToday().slice(0, 7);
+  const n = fgLiveIds(g).length;
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
-  const box = document.createElement('div');
-  box.className = 'confirm-box';
-  box.style.cssText = 'max-width:620px;width:100%;max-height:92vh;overflow-y:auto;text-align:left;padding:20px;';
-  // Held at the top so the calendar never moves when a day is picked: the jobs list grows below it
-  overlay.style.alignItems = 'flex-start';
-  overlay.style.paddingTop = '3vh';
-  overlay.appendChild(box);
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:460px;width:100%;">'
+    + '<h3 style="font-size:15px;margin:0 0 2px;"></h3>'
+    + '<div style="font-size:12.5px;color:var(--muted);margin:0 0 12px;" data-sub></div>'
+    + '<div data-cal></div>'
+    + '<div class="btn-row" style="margin-top:12px;"><button type="button" class="btn btn-ghost" data-cancel style="flex:1;">Cancel</button></div></div>';
   document.body.appendChild(overlay);
-  const close = ()=> overlay.remove();
-  overlay.addEventListener('click', e=>{ if(e.target === overlay) close(); });
+  overlay.querySelector('h3').textContent = 'Schedule ' + (g.name || 'this group');
+  overlay.querySelector('[data-sub]').textContent = n + (n === 1 ? ' customer' : ' customers') + ' · click a day to put them on it';
+  const close = ()=>{ pdDayTip(null); overlay.remove(); };
+  overlay.querySelector('[data-cancel]').addEventListener('click', close);
+  overlay.addEventListener('click', e=>{ if(e.target === overlay) close(); });   // outside click closes
+  const host = overlay.querySelector('[data-cal]');
   const niceLong = iso => new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric'});
-  function draw(){
-    box.innerHTML = '';
-    const h = document.createElement('h3'); h.style.cssText = 'font-size:16px;margin:0 0 2px;'; h.textContent = 'Schedule ' + (g.name || 'this group');
-    const hint = document.createElement('p'); hint.style.cssText = 'font-size:12.5px;color:var(--muted);margin:0 0 12px;';
-    const n = fgLiveIds(g).length;
-    hint.textContent = 'Pick the day. ' + n + (n === 1 ? ' customer goes' : ' customers go') + ' on it. What\u2019s already on each day is shown.';
-    box.appendChild(h); box.appendChild(hint);
+  const draw = ()=>{
+    pdDayTip(null);
     const [yy, mm] = month.split('-').map(Number);
-    const nav = document.createElement('div'); nav.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;';
-    const mk = (t, d)=>{ const b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-ghost'; b.style.cssText = 'width:36px;flex:0 0 36px;padding:4px 0;'; b.textContent = t;
-      b.addEventListener('click', ()=>{ const dd = new Date(yy, mm - 1 + d, 1); month = dd.getFullYear() + '-' + String(dd.getMonth() + 1).padStart(2, '0'); draw(); }); return b; };
-    const lab = document.createElement('b'); lab.style.cssText = "font-family:'DM Serif Display',Georgia,serif;font-size:22px;font-weight:400;";
-    lab.textContent = new Date(yy, mm - 1, 1).toLocaleDateString(undefined, {month: 'long', year: 'numeric'});
-    nav.appendChild(mk('\u2039', -1)); nav.appendChild(lab); nav.appendChild(mk('\u203A', 1));
-    box.appendChild(nav);
+    host.innerHTML = '';
+    const nav = document.createElement('div');
+    nav.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:10px;';
+    const arrow = (text, delta, title)=>{
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'btn btn-ghost';
+      b.style.cssText = 'flex:0 0 34px;width:34px;min-width:0;max-width:34px;height:34px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:18px;line-height:1;';
+      b.textContent = text; b.title = title;
+      b.addEventListener('click', e=>{ e.stopPropagation(); const d = new Date(yy, mm - 1 + delta, 1); month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); draw(); });
+      return b;
+    };
+    const label = document.createElement('b');
+    label.style.cssText = 'font-size:14px;min-width:140px;text-align:center;';
+    label.textContent = new Date(yy, mm - 1, 1).toLocaleDateString(undefined, {month: 'long', year: 'numeric'});
+    nav.appendChild(arrow('‹', -1, 'Previous month')); nav.appendChild(label); nav.appendChild(arrow('›', 1, 'Next month'));
+    host.appendChild(nav);
     const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;';
-    ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(d => grid.insertAdjacentHTML('beforeend', '<div style="font-size:11px;font-weight:700;color:var(--muted);text-align:center;padding:2px 0;">' + d + '</div>'));
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;grid-template-rows:auto;grid-auto-rows:minmax(58px,auto);';
+    ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => grid.insertAdjacentHTML('beforeend', '<div style="font-size:11px;font-weight:700;color:var(--muted);text-align:center;padding:4px 0;">' + d + '</div>'));
     const first = new Date(yy, mm - 1, 1).getDay(), daysIn = new Date(yy, mm, 0).getDate();
     for(let i = 0; i < first; i++) grid.appendChild(document.createElement('div'));
+    const today = pdToday();
     for(let d = 1; d <= daysIn; d++){
       const iso = month + '-' + String(d).padStart(2, '0');
-      const on = byDay[iso];
-      const cell = document.createElement('button'); cell.type = 'button';
-      const isSel = iso === sel;
-      cell.style.cssText = 'all:unset;box-sizing:border-box;cursor:pointer;height:74px;overflow:hidden;border:1px solid var(--line);border-radius:8px;padding:4px 5px;background:#fff;min-width:0;text-align:left;'
-        + (isSel ? 'background:var(--teal-pale);border-color:var(--teal-deep);box-shadow:inset 0 0 0 1px var(--teal-deep);' : '')
-        + (iso === todayIso ? 'outline:1.5px solid var(--teal-mid);outline-offset:-1px;' : '');
-      const num = document.createElement('div'); num.style.cssText = 'font-size:12px;font-weight:700;margin-bottom:2px;'; num.textContent = d;
+      const past = iso < today;
+      const jobs = pdDayJobs(iso);
+      const any = PD_DAY_KINDS.some(([k]) => jobs[k].length);
+      const cell = document.createElement('div');
+      cell.className = past ? '' : 'press-row';
+      cell.style.cssText = 'border:1px solid var(--line);border-radius:8px;padding:4px 5px;background:#fff;min-width:0;display:flex;flex-direction:column;gap:4px;'
+        + (past ? 'opacity:.45;cursor:default;' : 'cursor:pointer;');
+      const num = document.createElement('div');
+      num.style.cssText = 'font-size:11.5px;font-weight:700;' + (iso === today ? 'color:#fff;background:var(--teal-deep);border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;' : '');
+      num.textContent = d;
       cell.appendChild(num);
-      ['fc', 'pd', 'wo', 'tk'].forEach(k=>{
-        if(!on || !on[k]) return;
-        const t = WCAL_TAGS[k];
-        const chip = document.createElement('div');
-        chip.style.cssText = 'font-family:\'JetBrains Mono\',monospace;font-size:9.5px;font-weight:700;border-radius:4px;padding:1px 4px;margin-top:1px;white-space:nowrap;overflow:hidden;background:' + t[2] + ';color:' + t[3] + ';';
-        chip.textContent = t[0] + ' ' + on[k];
-        chip.title = on[k] + ' ' + t[1].toLowerCase();
-        cell.appendChild(chip);
+      if(any){
+        const tags = document.createElement('div');
+        tags.style.cssText = 'display:flex;flex-wrap:wrap;gap:2px;';
+        PD_DAY_KINDS.forEach(([k])=>{
+          const c = jobs[k].length; if(!c) return;
+          const col = CAL_JOB_COLOURS[k];
+          const t = document.createElement('b');
+          t.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.03em;padding:2px 4px;border-radius:4px;line-height:1.1;color:" + col[1] + ';background:' + col[0] + ';';
+          t.textContent = k + (c > 1 ? ' ' + c : '');
+          tags.appendChild(t);
+        });
+        cell.appendChild(tags);
+      }
+      cell.title = '';
+      if(past) cell.title = 'In the past';
+      if(any){
+        cell.addEventListener('mouseenter', ()=>{ cell.style.boxShadow = '0 0 0 2px var(--teal-mid, #1F8A8C)'; pdDayTip(cell, iso, jobs); });
+        cell.addEventListener('mouseleave', ()=>{ cell.style.boxShadow = ''; pdDayTip(null); });
+      } else if(!past) cell.title = 'Put ' + (g.name || 'this group') + ' on ' + pdDate(iso);
+      if(!past) cell.addEventListener('click', e=>{
+        e.stopPropagation();
+        g.date = iso;
+        g.custHold = {};
+        scheduleFilterGroup(g);
+        saveFilterGroups();
+        renderFilterGroups();
+        close();
+        showToast((g.name || 'Group') + ' scheduled for ' + niceLong(iso));
       });
-      cell.addEventListener('click', ()=>{ sel = iso; draw(); });
       grid.appendChild(cell);
     }
-    box.appendChild(grid);
-    const legend = document.createElement('div'); legend.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin:10px 0 0;';
-    ['fc', 'pd', 'wo', 'tk'].forEach(k => { const t = WCAL_TAGS[k]; legend.insertAdjacentHTML('beforeend', '<span><b style="font-family:\'JetBrains Mono\',monospace;">' + t[0] + '</b> ' + t[1] + '</span>'); });
-    box.appendChild(legend);
-    // The jobs on the day picked, as under the Calendar tab's month
-    if(sel){
-      const list = document.createElement('div');
-      list.style.cssText = 'margin-top:12px;border-top:1px solid var(--line);padding-top:10px;';
-      const lh = document.createElement('div'); lh.style.cssText = 'font-size:12.5px;font-weight:700;margin-bottom:6px;';
-      const items = (byDay[sel] || {}).items || [];
-      lh.textContent = niceLong(sel) + (items.length ? '' : ' \u2014 nothing on it yet');
-      list.appendChild(lh);
-      const scroll = document.createElement('div'); scroll.style.cssText = 'max-height:170px;overflow-y:auto;';
-      items.forEach(it=>{
-        const t = WCAL_TAGS[it.k];
-        const r = document.createElement('div');
-        r.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line);font-size:13px;';
-        const bd = document.createElement('span');
-        bd.style.cssText = 'flex:0 0 auto;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;font-weight:600;letter-spacing:.07em;padding:3px 7px;border-radius:6px;background:' + t[2] + ';color:' + t[3] + ';';
-        bd.textContent = t[0];
-        const tx = document.createElement('div'); tx.style.cssText = 'min-width:0;flex:1;';
-        const a1 = document.createElement('div'); a1.style.cssText = 'font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'; a1.textContent = it.title;
-        const a2 = document.createElement('div'); a2.style.cssText = 'font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'; a2.textContent = it.sub;
-        tx.appendChild(a1); tx.appendChild(a2); r.appendChild(bd); r.appendChild(tx); scroll.appendChild(r);
-      });
-      list.appendChild(scroll);
-      box.appendChild(list);
-    }
-    const row = document.createElement('div'); row.className = 'btn-row'; row.style.marginTop = '14px';
-    const go = document.createElement('button'); go.type = 'button'; go.className = 'btn btn-primary'; go.style.flex = '1';
-    go.textContent = 'Schedule';
-    if(!sel){ go.disabled = true; go.style.opacity = '0.5'; }
-    go.addEventListener('click', ()=>{
-      if(!sel) return;
-      g.date = sel;
-      g.custHold = {};
-      scheduleFilterGroup(g);
-      saveFilterGroups();
-      renderFilterGroups();
-      close();
-      showToast((g.name || 'Group') + ' scheduled for ' + niceLong(sel));
-    });
-    const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'btn btn-ghost'; cancel.style.width = 'auto'; cancel.textContent = 'Cancel';
-    cancel.addEventListener('click', close);
-    row.appendChild(go); row.appendChild(cancel);
-    box.appendChild(row);
-  }
+    host.appendChild(grid);
+  };
   draw();
 }
 
@@ -12092,47 +12108,78 @@ function pdDayTip(anchor, iso, jobs){
   if(!anchor){ if(tip) tip.remove(); return; }
   if(!tip){ tip = document.createElement('div'); tip.id = 'dayJobsTip'; document.body.appendChild(tip); }
   const total = PD_DAY_KINDS.reduce((n, [k]) => n + jobs[k].length, 0);
-  tip.style.cssText = 'position:fixed;z-index:100001;width:280px;max-height:60vh;overflow:hidden;background:#fff;border:1px solid var(--line);border-radius:14px;'
+  // A column for each technician (Nov 10), up to 8 of their jobs in each, then "+ N more"
+  const byTech = {};
+  PD_DAY_KINDS.forEach(([k])=> jobs[k].forEach(j=>{ const t = j.tech || 'No technician'; (byTech[t] = byTech[t] || []).push(Object.assign({k: k}, j)); }));
+  const techs = Object.keys(byTech).sort((x, y) => x === 'No technician' ? 1 : y === 'No technician' ? -1 : x.localeCompare(y, undefined, {sensitivity: 'base'}));
+  const colW = 190, gap = 14;
+  const cols = Math.max(1, Math.min(techs.length, Math.floor((window.innerWidth - 16 - 28 + gap) / (colW + gap)), 5));
+  // Never taller than the screen (Nov 10): how many technicians and how many of each
+  // one's jobs fit. Each row of columns needs its heading, its "+ N more" line and
+  // at least 2 jobs; the jobs are 25px each.
+  const avail = window.innerHeight - 16 - 24 - 34;           // less the card's padding and its title line
+  const rowMin = 26 + 2 * 25 + 20 + 10;
+  const maxRows = Math.max(1, Math.floor(avail / rowMin));
+  const shownTechs = techs.slice(0, maxRows * cols);
+  const hiddenTechs = techs.slice(maxRows * cols);
+  const rowsOfCols = Math.max(1, Math.ceil(shownTechs.length / cols));
+  const perCol = Math.max(2, Math.min(8, Math.floor((avail - rowsOfCols * (26 + 20 + 10)) / (rowsOfCols * 25))));
+  const w = cols * colW + (cols - 1) * gap + 28;
+  tip.style.cssText = 'position:fixed;z-index:100001;width:' + w + 'px;max-height:' + (window.innerHeight - 16) + 'px;overflow:hidden;background:#fff;border:1px solid var(--line);border-radius:14px;'
     + 'box-shadow:0 16px 40px rgba(14,74,77,.22);padding:12px 14px;pointer-events:none;';
   tip.innerHTML = '';
   const head = document.createElement('div');
-  head.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px;';
+  head.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;';
   head.innerHTML = '<b style="font-size:14px;color:var(--ink);"></b><span style="font-size:11.5px;color:var(--muted);"></span>';
   head.children[0].textContent = new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
   head.children[1].textContent = total + (total === 1 ? ' job' : ' jobs');
   tip.appendChild(head);
-  PD_DAY_KINDS.forEach(([k, label])=>{
-    const list = jobs[k];
-    if(!list.length) return;
-    const col = CAL_JOB_COLOURS[k];
-    const sec = document.createElement('div');
-    sec.style.cssText = 'display:flex;align-items:center;gap:6px;margin:8px 0 4px;';
-    sec.innerHTML = '<b style="font-family:\'JetBrains Mono\',monospace;font-size:9.5px;font-weight:700;padding:2px 5px;border-radius:4px;color:' + col[1] + ';background:' + col[0] + ';"></b>'
-      + '<span style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);"></span>';
-    sec.children[0].textContent = k; sec.children[1].textContent = label;
-    tip.appendChild(sec);
-    list.slice(0, 8).forEach(j=>{
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:repeat(' + cols + ',' + colW + 'px);gap:10px ' + gap + 'px;align-items:start;';
+  shownTechs.forEach(t=>{
+    const list = byTech[t];
+    const col = document.createElement('div');
+    col.style.cssText = 'min-width:0;';
+    const hd = document.createElement('div');
+    hd.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding-bottom:3px;border-bottom:2px solid var(--teal-deep);';
+    hd.innerHTML = '<b style="font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--teal-deep);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></b><span style="font-size:11px;color:var(--muted);white-space:nowrap;"></span>';
+    hd.children[0].textContent = t; hd.children[1].textContent = list.length + (list.length === 1 ? ' job' : ' jobs');
+    col.appendChild(hd);
+    const room = perCol;
+    list.slice(0, room).forEach(j=>{
+      const c = CAL_JOB_COLOURS[j.k];
       const r = document.createElement('div');
-      r.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0 4px 2px;border-top:1px solid #EEF3F2;font-size:13px;';
-      r.innerHTML = '<span style="flex:1;min-width:0;"><b style="font-weight:600;color:var(--ink);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></b><span style="display:block;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span></span><span style="font-size:11.5px;color:var(--muted);flex-shrink:0;"></span>';
-      r.querySelector('b').textContent = j.who;
-      const w = r.querySelector('span span'); if(j.what) w.textContent = j.what; else w.remove();
-      r.lastElementChild.textContent = j.tech;
-      tip.appendChild(r);
+      r.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 0;border-top:1px solid #EEF3F2;font-size:12.5px;';
+      r.innerHTML = '<b style="flex:0 0 auto;font-family:\'JetBrains Mono\',monospace;font-size:9.5px;font-weight:700;padding:2px 5px;border-radius:4px;color:' + c[1] + ';background:' + c[0] + ';"></b>'
+        + '<span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b style="font-weight:600;color:var(--ink);"></b><span style="font-size:11px;color:var(--muted);margin-left:6px;"></span></span>';
+      r.children[0].textContent = j.k;
+      r.querySelector('span b').textContent = j.who;
+      const s = r.querySelector('span span'); if(j.what) s.textContent = j.what; else s.remove();
+      col.appendChild(r);
     });
-    if(list.length > 8){
+    if(list.length > room){
       const more = document.createElement('div');
       more.style.cssText = 'font-size:12px;color:var(--muted);font-weight:600;padding:3px 0 0 2px;';
-      more.textContent = '+ ' + (list.length - 8) + ' more';
-      tip.appendChild(more);
+      more.textContent = '+ ' + (list.length - room) + ' more';
+      col.appendChild(more);
     }
+    grid.appendChild(col);
   });
+  tip.appendChild(grid);
+  if(hiddenTechs.length){
+    const hn = hiddenTechs.reduce((n, t) => n + byTech[t].length, 0);
+    const hm = document.createElement('div');
+    hm.style.cssText = 'font-size:12px;color:var(--muted);font-weight:600;padding:8px 0 0 2px;';
+    hm.textContent = '+ ' + hiddenTechs.length + (hiddenTechs.length === 1 ? ' more technician' : ' more technicians') + ' (' + hn + (hn === 1 ? ' job)' : ' jobs)');
+    tip.appendChild(hm);
+  }
   // Under the day, or above it when there's no room; kept on screen
   const r = anchor.getBoundingClientRect();
-  const w = 280, h = tip.offsetHeight;
+  const h = tip.offsetHeight;
   const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
   let top = r.bottom + 8;
-  if(top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 8);
+  if(top + h > window.innerHeight - 8) top = r.top - h - 8;
+  top = Math.max(8, Math.min(top, window.innerHeight - 8 - h));   // always fully on screen
   tip.style.left = left + 'px'; tip.style.top = top + 'px';
 }
 function pdScheduleCustomers(cids){
@@ -19243,6 +19290,59 @@ function fcPickGroupForDay(iso, after){
   });
 }
 document.getElementById('filterGroupTech').addEventListener('change', ()=>{ filterGroupPage = 1; renderFilterGroups(); });
+// Customer search on Filter cleans (Nov 10): each match says which group the
+// customer is in and where in it, or that they're not in a group. Pressing a
+// result opens that group. Clicking anywhere else closes the list.
+(function fgFindSetup(){
+  const input = document.getElementById('fgFind'), res = document.getElementById('fgFindResults');
+  if(!input || !res) return;
+  const hide = ()=>{ res.style.display = 'none'; };
+  const draw = ()=>{
+    const q = input.value.trim().toLowerCase();
+    res.innerHTML = '';
+    if(!q){ hide(); return; }
+    const hits = customers.filter(c => c && !c.deleted && c.active !== false
+      && (String(c.name || '') + ' ' + displayName(c.name) + ' ' + String(c.address || '')).toLowerCase().indexOf(q) !== -1)
+      .sort((x, y) => displayName(x.name).localeCompare(displayName(y.name))).slice(0, 40);
+    if(!hits.length){
+      res.innerHTML = '<div style="padding:9px 12px;font-size:13px;color:var(--muted);">No customer matches.</div>';
+      res.style.display = 'block';
+      return;
+    }
+    hits.forEach(c=>{
+      const where = [];
+      filterGroups.forEach(g=>{
+        if(!g || g.solo) return;
+        const i = (g.customerIds || []).findIndex(id => String(id) === String(c.id));
+        if(i !== -1) where.push({g, n: i + 1, of: (g.customerIds || []).length});
+      });
+      const addRow = (g, txt)=>{
+        const r = document.createElement('div');
+        r.className = 'press-row';
+        r.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line);font-size:13.5px;' + (g ? 'cursor:pointer;' : '');
+        const nm = document.createElement('b'); nm.style.cssText = 'flex:1;min-width:0;'; nm.textContent = displayName(c.name);
+        const sp = document.createElement('span');
+        sp.style.cssText = g ? 'font-size:12px;color:var(--teal-deep);font-weight:600;' : 'font-size:12px;color:var(--muted);font-style:italic;';
+        sp.textContent = txt;
+        r.appendChild(nm); r.appendChild(sp);
+        if(g) r.addEventListener('click', ()=>{
+          hide();
+          openFilterGroupIds.add(g.id);
+          renderFilterGroups();
+          setTimeout(()=>{ try{ const card = document.querySelector('#filterGroupList [data-reorder-key="' + g.id + '"]'); if(card) card.scrollIntoView({block: 'center', behavior: 'smooth'}); }catch(e){} }, 60);
+        });
+        res.appendChild(r);
+      };
+      if(!where.length) addRow(null, 'Not in a group');
+      where.forEach(x => addRow(x.g, x.g.name + ' \u00b7 Stop ' + x.n + ' of ' + x.of));
+    });
+    res.style.display = 'block';
+  };
+  input.addEventListener('input', draw);
+  input.addEventListener('focus', draw);
+  document.addEventListener('click', e=>{ if(!e.target.closest('#fgFindWrap')) hide(); });
+})();
+
 
 async function openFilterGroupEmail(){
   // The groups for the technician chosen at the top of the page (Oct 3)
@@ -28938,6 +29038,9 @@ function openTechDetail(t, opts){
 document.getElementById('backToTechs').addEventListener('click', (e)=>{
   e.preventDefault();
   switchView('technicians');
+  // Back from one technician's page means the list, not Today's Route (Nov 10)
+  const listTab = document.querySelector('#techMainTabs .history-type-btn[data-techmain="list"]');
+  if(listTab) listTab.click();
 });
 
 // Previous and next technician, in the order of the Technicians list, the same
@@ -34180,15 +34283,11 @@ function switchView(view){
     hideTechForm();
     renderCompanySignIn();
     loadTechAccounts();
-    // Always arrives on the technician list, whichever tab was open last time
+    // Always arrives on Today's Route (Nov 10), for today, whichever tab was open last time
     photoStepOpen = null;
-    document.querySelectorAll('#techMainTabs .history-type-btn').forEach(b=>{
-      b.classList.toggle('active', b.dataset.techmain === 'list');
-    });
-    const listPane = document.getElementById('techListPane');
-    const photoCard = document.getElementById('photoRequireCard');
-    if(listPane) listPane.style.display = '';
-    if(photoCard) photoCard.style.display = 'none';
+    try{ twDateISO = twLocalISO(new Date()); }catch(e){}
+    const routeTab = document.querySelector('#techMainTabs .history-type-btn[data-techmain="route"]');
+    if(routeTab) routeTab.click();
   }
   if(view === 'map' && keep){
     setTimeout(()=>{ if(routeMapInstance) routeMapInstance.invalidateSize(); }, 50);
@@ -34304,7 +34403,7 @@ function sitePlace(){
   }
   if(place.v === 'technicians'){
     const tab = document.querySelector('#techMainTabs .history-type-btn.active');
-    place.tm = tab ? tab.dataset.techmain : 'list';
+    place.tm = tab ? tab.dataset.techmain : 'route';
   }
   if(place.v === 'chemconfig'){
     place.b = selectedChemConfigType;

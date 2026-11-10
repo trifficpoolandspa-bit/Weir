@@ -11144,11 +11144,8 @@ function openReplacementsPicker(current, onDone){
   overlay.querySelector('[data-add]').addEventListener('click', ()=>{ add(); hideWarn(); });
   own.addEventListener('keydown', e=>{ if(e.key === 'Enter'){ e.preventDefault(); add(); hideWarn(); } });
   overlay.querySelector('[data-done]').addEventListener('click', ()=>{
-    if(own.value.trim()){
-      warn.textContent = '\u201c' + own.value.trim() + '\u201d hasn\u2019t been added yet \u2014 press Add, or clear the box.';
-      warn.style.display = 'block';
-      return;
-    }
+    // Something typed but not added is added now (Nov 10), as if Add was pressed
+    if(own.value.trim()){ add(); hideWarn(); }
     // In the list's order, so it reads the same each time
     const order = Array.from(list.querySelectorAll('label')).map(l => l.textContent.trim());
     onDone(order.filter(n => picked.has(n)));
@@ -13487,7 +13484,7 @@ function renderServicedList(){
     const durationBadge = c.lastServiceDurationMs
       ? `<span class="mono" style="background:var(--teal-pale);color:var(--teal-deep);font-weight:700;font-size:11px;padding:3px 8px;border-radius:20px;margin-left:8px;white-space:nowrap;display:inline-block;">${formatDuration(c.lastServiceDurationMs)}</span>`
       : '';
-    row.innerHTML = `<div style="min-width:0;"><div class="cust-name">${c.name}${durationBadge}</div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${showsDay ? forDay : ''}${c.address || 'No address on file'}</div></div>`;
+    row.innerHTML = `<div style="min-width:0;flex:1 1 auto;"><div class="cust-name" style="display:flex;align-items:center;min-width:0;"><span class="cust-name-text" style="flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${c.name}</span><span style="flex:0 0 auto;">${durationBadge}</span></div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${showsDay ? forDay : ''}${c.address || 'No address on file'}</div></div>`;
     const reserviceBtn = document.createElement('button');
     reserviceBtn.className = 'btn btn-secondary';
     reserviceBtn.style.width = 'auto';
@@ -14705,7 +14702,7 @@ async function renderCustomerList(){
     const row = document.createElement('div');
     row.className = 'cust-row';
     const dayLabel = c.day ? c.day : 'No day set';
-    row.innerHTML = `<div style="min-width:0;"><div class="cust-name">${c.name}</div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.address || 'No address on file'}</div></div>`;
+    row.innerHTML = `<div style="min-width:0;flex:1 1 auto;">${custNameLineHtml(c, false)}<div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.address || 'No address on file'}</div></div>`;
     const rightWrap = document.createElement('div');
     rightWrap.style.display = 'flex';
     rightWrap.style.alignItems = 'center';
