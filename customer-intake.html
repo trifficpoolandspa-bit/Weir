@@ -1026,13 +1026,15 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
           <span id="twCounts" style="font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;"></span>
         </div>
         <!-- The same font as the site's other headings (Space Grotesk), 18px -->
-        <h2 id="twDayLabel" style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:18px;text-align:center;white-space:nowrap;"></h2>
+        <div style="display:flex;align-items:center;justify-content:center;gap:14px;min-width:0;">
+          <button class="btn btn-ghost" id="twPrev" type="button" title="Previous day" style="width:auto;padding:6px 12px;font-size:16px;line-height:1;flex:0 0 auto;">&lsaquo;</button>
+          <h2 id="twDayLabel" style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:18px;text-align:center;white-space:nowrap;"></h2>
+          <button class="btn btn-ghost" id="twNext" type="button" title="Next day" style="width:auto;padding:6px 12px;font-size:16px;line-height:1;flex:0 0 auto;">&rsaquo;</button>
+        </div>
         <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;min-width:0;">
           <input type="date" id="twDateInput" title="Jump to a date" style="width:140px;flex:0 1 auto;min-width:0;padding:6px 8px;font-size:13px;">
           <!-- Back to today in one press -->
           <button class="btn btn-primary" id="twToday" type="button" title="Go to today" style="width:auto;flex:0 0 auto;padding:6px 12px;font-size:13px;">Today</button>
-          <button class="btn btn-ghost" id="twPrev" type="button" title="Previous day" style="width:auto;padding:6px 12px;font-size:16px;line-height:1;">&lsaquo;</button>
-          <button class="btn btn-ghost" id="twNext" type="button" title="Next day" style="width:auto;padding:6px 12px;font-size:16px;line-height:1;">&rsaquo;</button>
         </div>
       </div>
       <div id="twOrderBar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;background:var(--gold-pale);border:1px solid #E0B877;border-radius:10px;padding:10px 12px;margin:0 0 12px;">
@@ -1882,7 +1884,7 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Group customers together and give the group a technician. Put groups on days from the Calendar, then press Select for route there to push them onto the technician's route. Customize emails to send to groups individually or all together.</p>
       <!-- Find a customer: which group they're in and where (Nov 10) -->
       <div id="fgFindWrap" style="position:relative;margin:0 0 12px;">
-        <input type="text" id="fgFind" placeholder="Search a customer to see their group\u2026" autocomplete="off" aria-label="Search a customer">
+        <input type="text" id="fgFind" placeholder="Search a customer to see their group" autocomplete="off" aria-label="Search a customer">
         <div id="fgFindResults" style="display:none;position:absolute;left:0;right:0;top:100%;margin-top:3px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:20;max-height:260px;overflow-y:auto;"></div>
       </div>
       <div id="filterGroupList"></div>
@@ -2250,7 +2252,7 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
 
     <div class="card">
       <h2>Backup &amp; restore</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Download a snapshot of everything — customers, technicians, readings, equipment, routes, and settings. Keep it somewhere safe. If data is ever changed or deleted by mistake, restoring a backup puts it all back.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Download a snapshot of everything — customers, technicians, calendar schedules, filter clean groups, service reports and job histories, emails, photos, and settings. Keep it somewhere safe. If data is ever changed or deleted by mistake, restoring a backup puts it all back.</p>
       <div class="btn-row">
         <button class="btn btn-primary" id="btnBackupDownload" style="width:auto;">Download backup</button>
         <button class="btn btn-ghost" id="btnBackupRestore" style="width:auto;">Restore from backup</button>
@@ -5789,6 +5791,8 @@ function renderGlobalHistory(){
         });
         body.appendChild(t);
       }
+
+      repairsReportDom(r, body);
 
       if(r.notes){
         const lbl = document.createElement('div');
@@ -12923,14 +12927,6 @@ function openWorkCalendar(startDay, stayHere){
     nav.appendChild(pickBtn);
     head.appendChild(nav);
     { const tm = calTechMenu(viewTech, v => { viewTech = v; draw(); }); tm.style.marginLeft = '6px'; nav.appendChild(tm); }
-    // Export (Nov 2): the calendar as a spreadsheet, one tab a month, to keep
-    {
-      const ex = smallBtn('', 'btn-ghost', 'display:inline-flex;align-items:center;gap:6px;margin-left:6px;');
-      ex.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span>Export</span>';
-      ex.title = 'Save the calendar as a spreadsheet';
-      ex.addEventListener('click', ()=> calExportWindow(month, viewTech, onDays));
-      nav.appendChild(ex);
-    }
     // Select for route on a row of its own below, at the right: filter cleans
     // and drains on the days picked go to the app
     const right = document.createElement('div');
@@ -13385,12 +13381,16 @@ function openWorkCalendar(startDay, stayHere){
           // stays in their history.
           {
             const bin = binBtn('Take off this day', async ()=>{
-              const ok = await confirmDialog('Take ' + displayName(c.name) + ' off ' + (g.name || 'this group') + (isDone ? '? The finished filter clean stays in their history.' : g.finalized ? '? Their filter clean comes off the app.' : '?'), 'Take off');
+              const ok = await confirmDialog('Take ' + displayName(c.name) + ' off this day' + (isDone ? '? The finished filter clean stays in their history.' : g.finalized ? '? Their filter clean comes off the app.' : '?'), 'Take off');
               if(!ok) return;
               const it = filterGroups.find(x => x && x.id === g.id); if(!it) return;
-              it.customerIds = (it.customerIds || []).filter(id => id !== cid);
+              // Off the calendar only: they stay in the group, set aside (paused) so
+              // the group can be scheduled again and they can be resumed
+              const list = Array.isArray(it.pausedIds) ? it.pausedIds.slice() : [];
+              if(list.indexOf(cid) === -1) list.push(cid);
+              it.pausedIds = list;
               saveFilterGroups(); renderFilterGroups(); draw();
-              showToast(displayName(c.name) + ' taken off');
+              showToast(displayName(c.name) + ' taken off this day, still in the group');
             });
             // Move (Nov 1): out of this group onto their own filter clean that
             // day, with their technician and extra work; still in the app if it was
@@ -29189,6 +29189,88 @@ function twJobColours(kind){
     : kind === 'pool drain' ? ['#C3DEF3', '#174C78']
     : ['#E9EEF0', '#3E5560'];
 }
+// Reschedule a job on Today's Route (Nov 10): the same Move window the calendar uses,
+// with the same changes made to the record for each kind of job
+function twJobReschedule(job, c){
+  const id = String(job.key || '').split(':').slice(1).join(':');
+  const who = c ? displayName(c.name) : 'No customer';
+  const done = ()=>{ try{ renderTechRouteWeb(); }catch(e){} };
+  let cur = null;
+  if(job.kind === 'work order') cur = (lsGet('scheduledWorkOrders') || []).find(x => x && String(x.id) === id);
+  else if(job.kind === 'filter clean') cur = (lsGet('scheduledFilterCleans') || []).find(x => x && String(x.id) === id);
+  else if(job.kind === 'pool drain') cur = (lsGet('scheduledPoolDrains') || []).find(x => x && String(x.id) === id);
+  else cur = (tasks || []).find(x => x && String(x.id) === id);
+  if(!cur){ showToast('This job is no longer here'); return; }
+  const what = job.kind === 'task' ? 'Task' + (job.title ? ': ' + job.title : '')
+    : job.kind === 'work order' ? 'Work order' + (job.title ? ': ' + job.title : '')
+    : String(job.label || job.kind).replace(/^[^A-Za-z]+/, '');
+  const opts = {name: who, what: what, fromIso: cur.date || twDateISO, techId: cur.technicianId || '', after: done};
+  if(job.kind === 'work order'){
+    opts.onMove = (iso, tech)=>{
+      const list = lsGet('scheduledWorkOrders') || []; const it = list.find(x => x && String(x.id) === id); if(!it) return;
+      it.date = iso; if(tech) it.technicianId = tech; delete it.placeAfter;
+      lsSet('scheduledWorkOrders', list);
+      try{ renderWorkOrderHistory(); }catch(e){}
+      return true;
+    };
+  } else if(job.kind === 'task'){
+    opts.onMove = (iso, tech)=>{
+      const it = tasks.find(x => x && String(x.id) === id); if(!it) return;
+      it.date = iso; if(tech) it.technicianId = tech; delete it.placeAfter;
+      saveTasks();
+      try{ renderTaskList(); }catch(e){}
+      return true;
+    };
+  } else if(job.kind === 'pool drain'){
+    opts.onMove = (iso, tech)=>{
+      const all = pdCal();
+      const recs = pdScheduled();
+      const rr0 = recs.find(x => x && String(x.id) === id);
+      const it = all.find(y => pdEntryRecords(y).some(x => x.rec && String(x.rec.id) === id))
+        || (rr0 && all.find(y => y.customerId === rr0.customerId && y.date === rr0.date));
+      if(it){
+        pdShiftRefill(it.id, it.date, iso);
+        const own = (customers.find(x => x && x.id === it.customerId) || {}).technicianId;
+        it.date = iso;
+        if(tech && String(tech) !== String(own || '')) it.technicianId = tech; else delete it.technicianId;
+        const ids = new Set(pdEntryRecords(it).filter(x => x.rec && x.rec.status !== 'done').map(x => x.rec.id));
+        recs.forEach(rr => { if(ids.has(rr.id)){ rr.date = iso; if(tech) rr.technicianId = tech; } });
+        pdCalSave(all);
+      } else {
+        const rr = recs.find(x => x && String(x.id) === id); if(!rr) return;
+        rr.date = iso; if(tech) rr.technicianId = tech;
+      }
+      lsSet('scheduledPoolDrains', recs);
+      return true;
+    };
+  } else {
+    // Filter clean: the customer comes out of their group onto their own filter
+    // clean that day, as in the calendar
+    opts.note = 'They come out of their group onto their own filter clean that day.';
+    opts.onMove = (iso, tech)=>{
+      const list = lsGet('scheduledFilterCleans') || []; const rec = list.find(x => x && String(x.id) === id); if(!rec) return;
+      const cid = rec.customerId;
+      const g = filterGroups.find(x => x && x.id === rec.groupId);
+      const to = fgSoloFor(iso);
+      if(g && g !== to){
+        const extra = typeof fgCustExtra === 'function' ? fgCustExtra(g, cid) : [];
+        g.customerIds = (g.customerIds || []).filter(x => x !== cid);
+        if(g.custExtra) delete g.custExtra[cid];
+        if(g.custTech) delete g.custTech[cid];
+        if((to.customerIds || []).indexOf(cid) === -1) to.customerIds.push(cid);
+        to.custTech = to.custTech || {};
+        if(tech) to.custTech[cid] = tech;
+        if(extra && extra.length){ to.custExtra = to.custExtra || {}; to.custExtra[cid] = extra; }
+        saveFilterGroups(); renderFilterGroups();
+      }
+      rec.date = iso; rec.groupId = to.id; rec.groupName = to.name;
+      if(tech) rec.technicianId = tech;
+      lsSet('scheduledFilterCleans', list);
+      return true;
+    };
+  }
+  calMoveDialog(opts);
+}
 function twJobRow(job, withCustomer){
   const c = job.customerId ? customers.find(x => String(x.id) === String(job.customerId)) : null;
   const row = document.createElement('div');
@@ -29225,7 +29307,19 @@ function twJobRow(job, withCustomer){
   }
   status.innerHTML = job.done ? '<span class="tw-pill done">Done' + esc(when) + '</span>' : '<span class="tw-pill todo">To do</span>';
   row.appendChild(status);
-  row.appendChild(document.createElement('span'));
+  // Reschedule (Nov 10), as in the app: another day, another technician, or both.
+  // A job already done stays where it was done.
+  const rcell = document.createElement('span');
+  rcell.style.cssText = 'justify-self:end;';
+  if(!job.done){
+    const rb = document.createElement('button');
+    rb.className = 'btn btn-ghost'; rb.type = 'button';
+    rb.style.cssText = 'width:auto;padding:4px 10px;font-size:12px;';
+    rb.textContent = 'Reschedule';
+    rb.addEventListener('click', ev=>{ ev.stopPropagation(); twJobReschedule(job, c); });
+    rcell.appendChild(rb);
+  }
+  row.appendChild(rcell);
   // Opens in the customer's Quotes & Orders
   if(c && job.drainIcon){
     row.title = 'Open ' + displayName(c.name) + '\u2019s pool drains';
@@ -30353,12 +30447,18 @@ function renderStorageBreakdown(){
   box.appendChild(note);
 }
 
+// Kept out of a backup file: the sign-in token. It would let anyone holding the
+// file into the account, and a restore keeps this device signed in as it is.
+const BACKUP_SKIP_KEYS = ['sbSession'];
+
 function collectBackup(){
   const data = {};
   for(let i = 0; i < localStorage.length; i++){
     const fullKey = localStorage.key(i);
     if(fullKey && fullKey.startsWith(STORAGE_PREFIX)){
-      data[fullKey.slice(STORAGE_PREFIX.length)] = localStorage.getItem(fullKey);
+      const k = fullKey.slice(STORAGE_PREFIX.length);
+      if(BACKUP_SKIP_KEYS.indexOf(k) !== -1) continue;
+      data[k] = localStorage.getItem(fullKey);
     }
   }
   return {
@@ -30370,6 +30470,43 @@ function collectBackup(){
   };
 }
 
+// Every picture held on this device: visit photos, equipment photos, skip
+// proof. They live in the photo database, not in the saved data above, so a
+// backup has to carry them separately or a restore brings back empty frames.
+async function collectBackupPhotos(){
+  const out = {};
+  try{
+    const db = await openPhotoDb();
+    await new Promise((resolve, reject)=>{
+      const tx = db.transaction(PHOTO_STORE, 'readonly');
+      const st = tx.objectStore(PHOTO_STORE);
+      const kr = st.getAllKeys(), vr = st.getAll();
+      tx.oncomplete = ()=>{
+        const ks = kr.result || [], vs = vr.result || [];
+        ks.forEach((k, i)=>{ if(typeof vs[i] === 'string') out[String(k)] = vs[i]; });
+        resolve();
+      };
+      tx.onerror = ()=> reject(tx.error || new Error('photos could not be read'));
+    });
+  }catch(e){ if(window.indexedDB) throw e; }
+  return out;
+}
+
+// The file is put together in pieces so a few hundred photos never have to
+// sit in one giant string
+function backupToBlob(payload, photos){
+  const head = Object.assign({}, payload, {version: 2, photoCount: Object.keys(photos).length});
+  const headJson = JSON.stringify(head, null, 2);
+  const parts = [headJson.slice(0, headJson.lastIndexOf('}')).replace(/\s+$/, ''), ',\n"photos": {'];
+  let first = true;
+  Object.keys(photos).forEach(id=>{
+    parts.push((first ? '\n' : ',\n') + JSON.stringify(id) + ': ' + JSON.stringify(photos[id]));
+    first = false;
+  });
+  parts.push('\n}\n}');
+  return new Blob(parts, {type: 'application/json'});
+}
+
 function backupSummary(){
   const custs = lsGet('customers') || [];
   const techs = lsGet('technicians') || [];
@@ -30377,21 +30514,25 @@ function backupSummary(){
     + ', ' + techs.length + (techs.length === 1 ? ' technician' : ' technicians');
 }
 
-document.getElementById('btnBackupDownload').addEventListener('click', ()=>{
+document.getElementById('btnBackupDownload').addEventListener('click', async ()=>{
   const payload = collectBackup();
   if(payload.keyCount === 0){
     showToast('Nothing to back up yet');
     return;
   }
-  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  let photos;
+  try{ photos = await collectBackupPhotos(); }
+  catch(e){ showToast('Could not read the photos, so no backup was made'); return; }
+  const blob = backupToBlob(payload, photos);
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
   a.download = `poollog-backup-${stamp}.json`;
   a.click();
-  URL.revokeObjectURL(a.href);
+  setTimeout(()=> URL.revokeObjectURL(a.href), 60000);
+  const n = Object.keys(photos).length;
   document.getElementById('backupStatus').textContent =
-    'Last backup downloaded ' + new Date().toLocaleString() + ' — ' + backupSummary() + '.';
+    'Last backup downloaded ' + new Date().toLocaleString() + ' — ' + backupSummary() + ', ' + n + (n === 1 ? ' photo' : ' photos') + '.';
   showToast('Backup downloaded');
 });
 
@@ -30439,13 +30580,13 @@ document.getElementById('backupFileInput').addEventListener('change', async (e)=
   try{
     const pre = collectBackup();
     if(pre.keyCount > 0){
-      const blob = new Blob([JSON.stringify(pre, null, 2)], {type:'application/json'});
+      const blob = backupToBlob(pre, await collectBackupPhotos());
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
       a.download = `poollog-before-restore-${stamp}.json`;
       a.click();
-      URL.revokeObjectURL(a.href);
+      setTimeout(()=> URL.revokeObjectURL(a.href), 60000);
     }
   }catch(err){}
 
@@ -30454,6 +30595,23 @@ document.getElementById('backupFileInput').addEventListener('change', async (e)=
   try{ await waitForSyncToFinish(); }catch(e){}
 
   try{
+    // Photos first, all or nothing: the photo database becomes exactly what it
+    // was. A backup from before photos were included leaves them alone.
+    if(payload.photos && typeof payload.photos === 'object'){
+      const db = await openPhotoDb();
+      await new Promise((resolve, reject)=>{
+        const tx = db.transaction(PHOTO_STORE, 'readwrite');
+        const st = tx.objectStore(PHOTO_STORE);
+        st.clear();
+        Object.keys(payload.photos).forEach(id => st.put(payload.photos[id], id));
+        tx.oncomplete = ()=> resolve();
+        tx.onerror = ()=> reject(tx.error || new Error('photos could not be restored'));
+        tx.onabort = ()=> reject(tx.error || new Error('photos could not be restored'));
+      });
+    }
+    // This device stays signed in as it is
+    const keepKeys = {};
+    BACKUP_SKIP_KEYS.forEach(k=>{ const v = localStorage.getItem(STORAGE_PREFIX + k); if(v !== null) keepKeys[k] = v; });
     // Clear existing Weir keys, then write the backup in
     const toRemove = [];
     for(let i = 0; i < localStorage.length; i++){
@@ -30462,8 +30620,9 @@ document.getElementById('backupFileInput').addEventListener('change', async (e)=
     }
     toRemove.forEach(k => localStorage.removeItem(k));
     Object.entries(payload.data).forEach(([k, v])=>{
-      localStorage.setItem(STORAGE_PREFIX + k, v);
+      if(BACKUP_SKIP_KEYS.indexOf(k) === -1) localStorage.setItem(STORAGE_PREFIX + k, v);
     });
+    Object.entries(keepKeys).forEach(([k, v])=> localStorage.setItem(STORAGE_PREFIX + k, v));
     // Restore wins: everything just put back is sent to the server and the
     // phones as the newest change, and whatever the restore took away is
     // removed there too
@@ -30940,6 +31099,31 @@ function reportEmailBlock(title, pairs){
     + esc(title) + '</div></td></tr><tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">'
     + reportEmailRows(pairs) + '</table></td></tr>';
 }
+// Repairs / Replacements on a service report (Nov 10): each item, with its photo beside it
+function repairsReportDom(r, parent){
+  const items = (Array.isArray(r && r.repairs) ? r.repairs : []).filter(x => x && String(x.name || '').trim());
+  if(!items.length) return;
+  const lbl = document.createElement('div');
+  lbl.className = 'report-sec';
+  lbl.textContent = 'Repairs / Replacements';
+  parent.appendChild(lbl);
+  items.forEach(it=>{
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:6px 0;border-bottom:1px solid var(--line);';
+    const nm = document.createElement('div');
+    nm.style.cssText = 'flex:1;min-width:0;font-size:14px;';
+    nm.textContent = it.name;
+    row.appendChild(nm);
+    if(it.photo){
+      const img = document.createElement('img');
+      img.alt = it.name + ' photo';
+      img.style.cssText = 'width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--line);flex-shrink:0;';
+      row.appendChild(img);
+      resolvePhoto(it.photo).then(d => { if(d) img.src = d; else img.remove(); }).catch(()=>{ img.remove(); });
+    }
+    parent.appendChild(row);
+  });
+}
 function reportEmailSection(customer, part){
   const r = part.r || {};
   const label = historyTypeLabel(customer, part.type);
@@ -31123,6 +31307,7 @@ function buildReportDoc(customerId, name, customer, type, r, onDelete){
     }
 
     doc.innerHTML = html;
+    repairsReportDom(r, doc);
 
     if(r.beforePhoto || r.photo){
       const secLabel = document.createElement('div');
@@ -33589,6 +33774,11 @@ function collectAlerts(){
         const notes = String(r.notes || '').trim();
         if(notes && noteOk('note:' + r.id, t)){
           out.push(Object.assign({id: 'note:' + r.id, kind: 'note', notes: notes}, base));
+        }
+        // Repairs / Replacements the technician entered on the after photos page (Nov 10)
+        const reps = (Array.isArray(r.repairs) ? r.repairs : []).map(x => String((x && x.name) || '').trim()).filter(Boolean);
+        if(reps.length){
+          out.push(Object.assign({id: 'visitrepair:' + r.id, kind: 'repair', notes: 'Needs repair or replacing: ' + reps.join(', ')}, base));
         }
       });
     });

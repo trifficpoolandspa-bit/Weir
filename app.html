@@ -843,6 +843,7 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
         <button class="btn btn-ghost" id="btnRemovePhoto" style="width:auto;display:none;color:var(--rust);border-color:#EFC9BC;">Remove photo</button>
       </div>
       <input type="file" accept="image/*" capture="environment" id="inPhoto" style="display:none;">
+      <div id="repairsHost_pool"></div>
       <!-- One short video for the visit, if the office allows it for this
            technician. Seen by the office only, never sent to the customer. -->
       <div id="visitVideoBlock" style="display:none;margin-top:6px;padding:14px;border:1.5px solid #A8CBE0;border-radius:11px;background:#EEF6FB;text-align:center;">
@@ -904,6 +905,7 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
         <button class="btn btn-ghost" id="btnRemovePhotoSpa" style="width:auto;display:none;color:var(--rust);border-color:#EFC9BC;">Remove photo</button>
       </div>
       <input type="file" accept="image/*" capture="environment" id="inPhotoSpa" style="display:none;">
+      <div id="repairsHost_spa"></div>
     </div>
 
     <div class="card" id="visitSpaSaveSection" style="display:none;">
@@ -956,6 +958,7 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
         <button class="btn btn-ghost" id="btnRemovePhotoFountain" style="width:auto;display:none;color:var(--rust);border-color:#EFC9BC;">Remove photo</button>
       </div>
       <input type="file" accept="image/*" capture="environment" id="inPhotoFountain" style="display:none;">
+      <div id="repairsHost_fountain"></div>
     </div>
 
     <div class="card" id="visitFountainSaveSection" style="display:none;">
@@ -2490,6 +2493,182 @@ function missingCustomPhoto(type, when){
 
 function clearCustomPhotoData(){
   Object.keys(customPhotoData).forEach(k => delete customPhotoData[k]);
+  Object.keys(visitRepairData).forEach(k => delete visitRepairData[k]);
+}
+
+// Repairs / Replacements on the After Photos page (Nov 10): what the pool,
+// spa or extra body needs, typed in or picked from Products & Services, with
+// up to 3 photos across the list, each beside its own item. Kept per body of
+// water, like the extra photos. The photos show only beside their items.
+const REPAIR_PHOTOS_MAX = 3;
+const visitRepairData = {};
+function repairsTakenFor(type){
+  const key = customPhotoSection(type);
+  return visitRepairData[key] || (visitRepairData[key] = []);
+}
+// What goes on the saved reading: names, and photos unless photos are off
+function repairsForSave(key){
+  return (visitRepairData[key] || []).map(it => ({name: it.name, photo: appSettings.storePhotos === false ? null : (it.photo || null)}));
+}
+const REPAIR_BIN_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5"/></svg>';
+function openRepairsWindow(type, onDone){
+  const work = repairsTakenFor(type).map(it => ({name: it.name, photo: it.photo || null}));
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" style="max-width:420px;width:100%;max-height:86vh;display:flex;flex-direction:column;">'
+    + '<h3 style="font-size:17px;margin:0 0 4px;">Repairs / Replacements</h3>'
+    + '<p style="font-size:13px;color:var(--muted);margin:0 0 10px;">Type what is needed, then add a photo next to it if you like.</p>'
+    + '<div style="display:flex;gap:8px;">'
+    + '<input data-own placeholder="What is needed" autocomplete="off" style="flex:1;min-width:0;">'
+    + '<button type="button" class="btn btn-primary" data-add style="width:auto;flex-shrink:0;padding:10px 16px;">Add</button></div>'
+    + '<div data-sug style="display:none;border:1px solid var(--line);border-radius:10px;margin-top:6px;overflow:hidden;background:#fff;"></div>'
+    + '<div data-list style="flex:1;overflow-y:auto;margin-top:4px;"></div>'
+    + '<div data-count style="font-size:12px;color:var(--muted);margin-top:8px;"></div>'
+    + '<div style="display:flex;gap:8px;margin-top:12px;">'
+    + '<button type="button" class="btn btn-ghost" data-cancel style="flex:1;color:var(--rust);border-color:#EFC9BC;">Cancel</button>'
+    + '<button type="button" class="btn btn-primary" data-done style="flex:1;">Done</button></div></div>';
+  const list = overlay.querySelector('[data-list]');
+  const own = overlay.querySelector('[data-own]');
+  const sug = overlay.querySelector('[data-sug]');
+  const count = overlay.querySelector('[data-count]');
+  const used = ()=> work.filter(w => w.photo).length;
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+  const draw = ()=>{
+    list.innerHTML = '';
+    work.forEach((it, idx)=>{
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px;margin-top:8px;';
+      const nm = document.createElement('div');
+      nm.style.cssText = 'flex:1;min-width:0;font-size:14.5px;overflow-wrap:anywhere;';
+      nm.textContent = it.name;
+      row.appendChild(nm);
+      const ph = document.createElement('button');
+      ph.type = 'button';
+      ph.style.cssText = 'width:46px;height:46px;border-radius:8px;flex-shrink:0;padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center;overflow:hidden;';
+      if(it.photo){
+        ph.style.border = '1px solid var(--line)';
+        ph.style.background = '#fff';
+        const im = document.createElement('img');
+        im.src = it.photo; im.alt = it.name + ' photo';
+        im.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+        ph.appendChild(im);
+        ph.title = 'Tap to see it full size';
+        ph.addEventListener('click', ()=> openPhotoFullSize(it.photo, ()=>{ it.photo = null; draw(); }));
+      } else {
+        const full = used() >= REPAIR_PHOTOS_MAX;
+        ph.style.border = '1.5px dashed #9DB5B1';
+        ph.style.background = '#fff';
+        ph.style.color = full ? '#B5C0BE' : 'var(--teal)';
+        ph.title = full ? 'Up to ' + REPAIR_PHOTOS_MAX + ' photos' : 'Add a photo';
+        ph.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>';
+        ph.addEventListener('click', async ()=>{
+          if(used() >= REPAIR_PHOTOS_MAX){ showToast('Up to ' + REPAIR_PHOTOS_MAX + ' photos'); return; }
+          try{
+            const data = await captureFromCamera(900, 0.5);
+            if(data){ it.photo = data; draw(); }
+          }catch(err){ showToast('Could not open the camera'); }
+        });
+      }
+      row.appendChild(ph);
+      const bin = document.createElement('button');
+      bin.type = 'button';
+      bin.title = 'Delete';
+      bin.setAttribute('aria-label', 'Delete ' + it.name);
+      bin.style.cssText = 'background:none;border:0;color:var(--rust);padding:4px;cursor:pointer;display:flex;flex-shrink:0;';
+      bin.innerHTML = REPAIR_BIN_SVG;
+      bin.addEventListener('click', ()=>{ work.splice(idx, 1); draw(); });
+      row.appendChild(bin);
+      list.appendChild(row);
+    });
+    count.textContent = 'Photos ' + used() + ' of ' + REPAIR_PHOTOS_MAX;
+  };
+  const addName = name=>{
+    name = String(name || '').trim();
+    if(!name) return false;
+    if(!work.some(w => w.name.toLowerCase() === name.toLowerCase())) work.push({name, photo: null});
+    own.value = ''; hideSug(); draw();
+    list.scrollTop = list.scrollHeight;
+    return true;
+  };
+  // Suggestions from Products & Services as it's typed
+  function hideSug(){ sug.style.display = 'none'; sug.innerHTML = ''; }
+  const showSug = ()=>{
+    const t = own.value.trim().toLowerCase();
+    if(!t){ hideSug(); return; }
+    const have = new Set(work.map(w => w.name.toLowerCase()));
+    const seen = new Set();
+    const hits = (lsGet('productsServices') || []).map(x => x && String(x.name || '').trim()).filter(n =>{
+      if(!n) return false;
+      const k = n.toLowerCase();
+      if(seen.has(k) || have.has(k) || k.indexOf(t) === -1) return false;
+      seen.add(k); return true;
+    }).sort((a, b)=> (a.toLowerCase().indexOf(t) === 0 ? 0 : 1) - (b.toLowerCase().indexOf(t) === 0 ? 0 : 1)).slice(0, 5);
+    sug.innerHTML = '';
+    if(!hits.length){ sug.style.display = 'none'; return; }
+    hits.forEach(n=>{
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = n;
+      b.style.cssText = 'display:block;width:100%;text-align:left;background:#fff;border:0;border-bottom:1px solid var(--line);padding:10px 12px;font-size:14px;cursor:pointer;color:var(--ink);';
+      b.addEventListener('click', ()=> addName(n));
+      sug.appendChild(b);
+    });
+    sug.style.display = 'block';
+  };
+  own.addEventListener('input', showSug);
+  own.addEventListener('keydown', e=>{ if(e.key === 'Enter'){ e.preventDefault(); addName(own.value); } });
+  overlay.querySelector('[data-add]').addEventListener('click', ()=> addName(own.value));
+  const finish = ()=>{
+    // Something typed but not added is added now, as if Add was pressed
+    if(own.value.trim()) addName(own.value);
+    visitRepairData[customPhotoSection(type)] = work.map(w => ({name: w.name, photo: w.photo || null}));
+    close();
+    if(onDone) onDone();
+  };
+  overlay.querySelector('[data-done]').addEventListener('click', finish);
+  overlay.querySelector('[data-cancel]').addEventListener('click', close);
+  // A tap outside the window keeps what was entered, like Done
+  overlay.addEventListener('mousedown', e=>{ overlay._down = e.target === overlay; });
+  overlay.addEventListener('click', e=>{ if(e.target === overlay && overlay._down) finish(); });
+  draw();
+  document.body.appendChild(overlay);
+}
+// The button and the list under it, on each body's After Photos page
+function renderRepairsHost(type){
+  const host = document.getElementById('repairsHost_' + type);
+  if(!host) return;
+  const items = repairsTakenFor(type);
+  host.innerHTML = '';
+  host.style.cssText = 'margin:0 0 18px;';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-primary';
+  btn.style.cssText = 'width:100%;padding:12px 16px;font-size:15px;';
+  btn.textContent = 'Repairs / Replacements' + (items.length ? ' (' + items.length + ')' : '');
+  btn.addEventListener('click', ()=> openRepairsWindow(type, ()=> renderRepairsHost(type)));
+  host.appendChild(btn);
+  if(items.length){
+    const head = document.createElement('div');
+    head.style.cssText = 'font-size:13.5px;font-weight:700;color:var(--ink);margin-top:10px;';
+    head.textContent = 'Needs repair or replacing:';
+    host.appendChild(head);
+    items.forEach(it=>{
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:8px;margin-top:8px;background:#fff;';
+      const nm = document.createElement('div');
+      nm.style.cssText = 'flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere;';
+      nm.textContent = it.name;
+      row.appendChild(nm);
+      if(it.photo){
+        const im = document.createElement('img');
+        im.src = it.photo; im.alt = it.name + ' photo'; im.title = 'Tap to see it full size';
+        im.style.cssText = 'width:46px;height:46px;border-radius:8px;object-fit:cover;border:1px solid var(--line);cursor:zoom-in;flex-shrink:0;';
+        im.addEventListener('click', ()=> openPhotoFullSize(it.photo, ()=>{ it.photo = null; renderRepairsHost(type); }));
+        row.appendChild(im);
+      }
+      host.appendChild(row);
+    });
+  }
 }
 
 function renderConfigFields(containerId, list, type, kind, onInput){
@@ -2794,6 +2973,7 @@ function renderAllConfigFields(){
   ['pool','spa','fountain'].forEach(t=>{
     renderCustomPhotoBlocks(t, 'before');
     renderCustomPhotoBlocks(t, 'after');
+    try{ renderRepairsHost(t); }catch(e){}
   });
   syncRegularPhotoParts();
   renderConfigFields('poolChemFields', poolL.chemicals, 'pool', 'chem', renderStripPreview);
@@ -5353,6 +5533,10 @@ function syncPhotosHere(){
       Object.keys(r.customPhotos || {}).forEach(k=>{
         add(r.customPhotos[k], {customerId, kind: 'custom', body, visitId: String(r.id), takenAt: when});
       });
+      // Photos beside repairs and replacements (Nov 10)
+      (Array.isArray(r.repairs) ? r.repairs : []).forEach(it=>{
+        if(it && it.photo) add(it.photo, {customerId, kind: 'custom', body, visitId: String(r.id), takenAt: when});
+      });
     };
     (lsGet(readingsStorageKey(customerId, 'pool')) || []).forEach(r => fromVisit(r, 'pool'));
     (lsGet(readingsStorageKey(customerId, 'spa')) || []).forEach(r => fromVisit(r, 'spa'));
@@ -5866,6 +6050,12 @@ async function storeReadingPhotos(reading, hint){
       if(reading.customPhotos[id]){
         reading.customPhotos[id] = await storePhoto(reading.customPhotos[id], hint + '_' + id);
       }
+    }
+  }
+  if(Array.isArray(reading.repairs)){
+    for(let i = 0; i < reading.repairs.length; i++){
+      const it = reading.repairs[i];
+      if(it && it.photo) it.photo = await storePhoto(it.photo, hint + '_repair' + (i + 1));
     }
   }
   return reading;
@@ -8880,6 +9070,7 @@ document.getElementById('btnSaveReading').addEventListener('click', async ()=>{
     isFilterClean: isFilterCleanVisit,
     isRedo: !!(customers.find(x => x.id === customerId) || {}).pendingRedo,
     customPhotos: appSettings.storePhotos === false ? {} : Object.assign({}, customPhotoData['pool'] || {}),
+    repairs: repairsForSave('pool'),
     gatePhoto: appSettings.storePhotos === false ? null : (gatePhotoController.getData() || null),
     gatePhotoMore: appSettings.storePhotos === false ? [] : gatePhotoController.getAll().slice(1),
     video: (isLastSectionOfVisit() && visitVideoRefs[0]) || null,
@@ -8948,6 +9139,7 @@ document.getElementById('btnSaveSpaReading').addEventListener('click', async ()=
     id: 'spa_' + Date.now(),
     isRedo: !!(customers.find(x => x.id === customerId) || {}).pendingRedo,
     customPhotos: appSettings.storePhotos === false ? {} : Object.assign({}, customPhotoData['spa'] || {}),
+    repairs: repairsForSave('spa'),
     date: visitTimestamp(),
     notes: document.getElementById('inSpaNotes').value.trim(),
     photo: appSettings.storePhotos === false ? null : (spaPhotoController.getData() || null),
@@ -9002,6 +9194,7 @@ document.getElementById('btnSaveFountainReading').addEventListener('click', asyn
     id: 'fountain_' + Date.now(),
     isRedo: !!(customers.find(x => x.id === customerId) || {}).pendingRedo,
     customPhotos: appSettings.storePhotos === false ? {} : Object.assign({}, customPhotoData['fountain:' + fountainId] || {}),
+    repairs: repairsForSave('fountain:' + fountainId),
     date: visitTimestamp(),
     notes: document.getElementById('inFountainNotes').value.trim(),
     photo: appSettings.storePhotos === false ? null : (fountainPhotoController.getData() || null),
@@ -11718,6 +11911,8 @@ function jobSkipButton(customer, job, dayISO){
 // Why a job is skipped (Oct 25): a reason is needed, like Skip Service
 function askJobSkipReason(customer, job){
   const needPhoto = techRequires('requireSkipJobProof') || photoEveryoneOn('skipjob', 'skipjob');
+  // Not required (Nov 10): the reason and photo are still offered, both optional
+  const optional = !needPhoto;
   return new Promise(resolve=>{
     const overlay = document.createElement('div');
     overlay.className = 'confirm-overlay';
@@ -11726,8 +11921,8 @@ function askJobSkipReason(customer, job){
     box.style.maxWidth = '440px';
     box.innerHTML = '<h3 style="font-size:15px;margin:0 0 4px;"></h3>'
       + '<p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">This goes to the office with the job so they know what happened.</p>'
-      + '<div class="field"><label>Reason</label><textarea rows="4" placeholder="Gate was locked, part not in yet, customer asked to move it..." style="min-height:96px;"></textarea></div>'
-      + (needPhoto ? '<div class="field"><label>Photo (required)</label><button type="button" class="btn btn-ghost" data-k="photo" style="width:auto;">Take photo</button>'
+      + '<div class="field"><label>Reason' + (optional ? ' (optional)' : '') + '</label><textarea rows="4" placeholder="Gate was locked, part not in yet, customer asked to move it..." style="min-height:96px;"></textarea></div>'
+      + (true ? '<div class="field"><label>Photo' + (needPhoto ? ' (required)' : ' (optional)') + '</label><button type="button" class="btn btn-ghost" data-k="photo" style="width:auto;">Take photo</button>'
         + '<input type="file" accept="image/*" capture="environment" data-k="file" style="display:none;">'
         + '<div data-k="wrap" style="display:none;margin-top:10px;"><img data-k="img" style="max-width:50%;border-radius:10px;border:1px solid var(--line);display:block;" alt="Skip photo"></div></div>' : '')
       + '<div class="btn-row"><button class="btn btn-primary" data-k="ok" style="flex:1;">Skip job</button><button class="btn btn-ghost" data-k="no" style="width:auto;">Cancel</button></div>';
@@ -11738,7 +11933,7 @@ function askJobSkipReason(customer, job){
     setTimeout(()=> text.focus(), 60);
     const done = r => { overlay.remove(); resolve(r); };
     let photoData = null;
-    if(needPhoto){
+    {
       const fileEl = box.querySelector('[data-k="file"]');
       box.querySelector('[data-k="photo"]').addEventListener('click', ()=> openCameraFor(fileEl));
       fileEl.addEventListener('change', async ev=>{
@@ -11756,7 +11951,7 @@ function askJobSkipReason(customer, job){
     overlay.addEventListener('click', ev => { if(ev.target === overlay) done(null); });
     box.querySelector('[data-k="ok"]').addEventListener('click', ()=>{
       const reason = text.value.trim();
-      if(!reason){ showToast('Add a reason first'); text.focus(); return; }
+      if(!reason && !optional){ showToast('Add a reason first'); text.focus(); return; }
       if(needPhoto && !photoData){ showToast('A photo is required to skip a job'); return; }
       done({reason, photo: photoData});
     });
@@ -11770,7 +11965,7 @@ async function skipRouteJob(customer, job, dayISO){
   if(!skipAns) return;
   const reason = skipAns.reason;
   const stamp = new Date().toISOString();
-  const noteText = 'Skipped — ' + reason;
+  const noteText = reason ? 'Skipped — ' + reason : 'Skipped';
   const me = currentUser ? currentUser.id : '';
   try{ const st = lsGet('jobStartedAt') || {}; delete st[job.key]; lsSet('jobStartedAt', st); }catch(e){}
   const list = jobSubmissions();
@@ -13879,6 +14074,9 @@ async function startCorrection(customerIn){
     if(o.customPhotos){
       for(const id of Object.keys(o.customPhotos)) o.customPhotos[id] = await resolvePhoto(o.customPhotos[id]);
     }
+    if(Array.isArray(o.repairs)){
+      for(const it of o.repairs) if(it && it.photo) it.photo = await resolvePhoto(it.photo);
+    }
     sections[k] = o;
   }
 
@@ -13905,7 +14103,7 @@ async function startCorrection(customerIn){
   clearVisitVideo();
   resetDoseRuleTracking();
   clearCustomPhotoData();
-  needed.forEach(k => { if(sections[k].customPhotos) customPhotoData[k] = Object.assign({}, sections[k].customPhotos); });
+  needed.forEach(k => { if(sections[k].customPhotos) customPhotoData[k] = Object.assign({}, sections[k].customPhotos); if(Array.isArray(sections[k].repairs) && sections[k].repairs.length) visitRepairData[k] = sections[k].repairs.map(x => ({name: x.name, photo: x.photo || null})); });
   syncGatePhotoBlock();
   if(isFilterCleanVisit){
     const box = document.getElementById('poolServiceChecks');
@@ -14164,8 +14362,9 @@ async function reserviceCustomer(customer, forDay){
 
 
 // Asks why a service was skipped, with an optional photo
-function openSkipReasonModal(customer, forcePhoto){
+function openSkipReasonModal(customer, forcePhoto, optional){
   const photoNeeded = forcePhoto === true || appSettings.requireSkipPhoto === true;
+  // Nothing requires a reason or photo (Nov 10): the window is still there, both optional
   return new Promise((resolve)=>{
     const overlay = document.createElement('div');
     overlay.className = 'confirm-overlay';
@@ -14174,7 +14373,7 @@ function openSkipReasonModal(customer, forcePhoto){
         <h3 style="font-size:15px;margin:0 0 4px;">Why was ${customer.name} skipped?</h3>
         <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">This is saved with the visit so the office knows what happened.</p>
         <div class="field">
-          <label>Reason</label>
+          <label>Reason${optional ? ' (optional)' : ''}</label>
           <textarea id="skipReasonText" rows="4" placeholder="Gate was locked, dog in the yard, customer asked to reschedule..." style="min-height:96px;"></textarea>
         </div>
         <div class="field">
@@ -14222,7 +14421,7 @@ function openSkipReasonModal(customer, forcePhoto){
     overlay.addEventListener('click', (e)=>{ if(e.target === overlay) done(null); });
     overlay.querySelector('#skipReasonSave').addEventListener('click', ()=>{
       const reason = textEl.value.trim();
-      if(!reason){ showToast('Add a reason first'); textEl.focus(); return; }
+      if(!reason && !optional){ showToast('Add a reason first'); textEl.focus(); return; }
       if(photoNeeded && !photoData){
         showToast('A photo is required to skip a service');
         return;
@@ -14246,12 +14445,10 @@ function skipService(...args){
 async function adminVersion_skipService(customer){
   let skipInfo = null;
   const mustProve = techRequires('requireSkipJobProof') || photoEveryoneOn('skipjob', 'skipjob');
-  if(mustProve || appSettings.requireSkipReason === true || appSettings.requireSkipPhoto === true){
-    skipInfo = await openSkipReasonModal(customer, mustProve);
+  {
+    const optional = !(mustProve || appSettings.requireSkipReason === true || appSettings.requireSkipPhoto === true);
+    skipInfo = await openSkipReasonModal(customer, mustProve, optional);
     if(!skipInfo) return;
-  } else {
-    const confirmed = await confirmDialog('Are you sure you want to skip service for ' + customer.name + ' today?', 'Yes');
-    if(!confirmed) return;
   }
   if(pendingVisit && pendingVisit.customerId === customer.id){
     pendingVisit = null;
@@ -14293,12 +14490,10 @@ async function adminVersion_skipService(customer){
 async function techVersion_skipService(customer){
   let skipInfo = null;
   const mustProve = techRequires('requireSkipJobProof') || photoEveryoneOn('skipjob', 'skipjob');
-  if(mustProve || appSettings.requireSkipReason === true || appSettings.requireSkipPhoto === true){
-    skipInfo = await openSkipReasonModal(customer, mustProve);
+  {
+    const optional = !(mustProve || appSettings.requireSkipReason === true || appSettings.requireSkipPhoto === true);
+    skipInfo = await openSkipReasonModal(customer, mustProve, optional);
     if(!skipInfo) return;
-  } else {
-    const confirmed = await confirmDialog('Are you sure you want to skip service for ' + customer.name + ' today?', 'Yes');
-    if(!confirmed) return;
   }
   if(pendingVisit && pendingVisit.customerId === customer.id){
     pendingVisit = null;
@@ -16007,7 +16202,19 @@ async function renderPoolServiceChecks(customer){
         if(!data){ showToast('A photo of the salt cell is needed'); return; }
         shots().saltcell = data;
         lastLine.textContent = '\ud83d\udcf7 Photo taken';
-      } else if(needsShot && !nowOn){
+      } else if(ch.id === 'chkSaltCell' && nowOn){
+        // Not required (Nov 10): a photo and a note are still offered, neither needed.
+        // A note goes onto the visit's service notes.
+        const extra = await askSkipProof('salt cell', false, {title: 'Salt cell cleaned',
+          intro: 'Add a photo of the cell, and a note, if you like \u2014 neither is needed.',
+          noteLabel: 'Note (optional)', saveText: 'Done'});
+        if(!extra) return;                  // backed out: the button stays off
+        if(extra.photo){ shots().saltcell = extra.photo; lastLine.textContent = '\ud83d\udcf7 Photo taken'; }
+        if(extra.note){
+          const nb = document.getElementById('inNotes');
+          if(nb) nb.value = (nb.value ? nb.value.replace(/\s+$/, '') + '\n' : '') + 'Salt cell cleaned: ' + extra.note;
+        }
+      } else if(ch.id === 'chkSaltCell' && !nowOn){
         delete shots().saltcell;
         lastLine.textContent = lastDoneText(ch.field);
       }
@@ -23193,17 +23400,18 @@ async function techVersion_openVisit(customerId){
 // When a technician is required to justify a skip, this asks for a photo and a
 // note and refuses to go ahead without both. Returns null if they back out, or
 // {photo, note} once it has what it needs.
-function askSkipProof(label, required){
+function askSkipProof(label, required, o){
   if(required === undefined) required = true;
+  o = o || {};
   return new Promise(resolve=>{
     const overlay = document.createElement('div');
     overlay.className = 'confirm-overlay';
     overlay.innerHTML = `
       <div class="confirm-box" style="max-width:420px;">
-        <h3 style="margin:0 0 6px;">Skipping the ${esc(label)}</h3>
+        <h3 style="margin:0 0 6px;">${o.title ? esc(o.title) : 'Skipping the ' + esc(label)}</h3>
         <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.5;">${required
           ? 'You need a photo of why it is being skipped, and a short note. Both are required before this can be skipped.'
-          : 'Add a photo of why it is being skipped, and a short note, if you like \u2014 neither is needed.'}</p>
+          : (o.intro || 'Add a photo of why it is being skipped, and a short note, if you like \u2014 neither is needed.')}</p>
 
         <div class="field">
           <button class="btn btn-ghost" type="button" id="skipProofPhotoBtn" style="width:100%;">Take photo</button>
@@ -23218,14 +23426,14 @@ function askSkipProof(label, required){
         </div>
 
         <div class="field">
-          <label>Why is it being skipped?</label>
+          <label>${o.noteLabel ? esc(o.noteLabel) : 'Why is it being skipped?'}</label>
           <textarea id="skipProofNote" rows="3" placeholder="Spa drained for repairs, fountain switched off for winter..." style="min-height:74px;"></textarea>
         </div>
 
         <p id="skipProofErr" style="font-size:12.5px;color:var(--rust);margin:0 0 10px;display:none;"></p>
 
         <div class="btn-row">
-          <button class="btn btn-primary" id="skipProofSave" style="flex:1;">Skip it</button>
+          <button class="btn btn-primary" id="skipProofSave" style="flex:1;">${o.saveText ? esc(o.saveText) : 'Skip it'}</button>
           <button class="btn btn-ghost" id="skipProofCancel" style="width:auto;">Cancel</button>
         </div>
       </div>`;
@@ -23334,17 +23542,11 @@ async function skipBodyOfWater(type){
   if(techRequires('requireSkipProof') || photoEveryoneOn('skip', 'skip')){
     proof = await askSkipProof(label, true);
     if(!proof) return;                      // backed out
-  } else if(techOptionalPhoto('skip')){
-    // Optional (Oct 3): the same window, nothing in it needed
+  } else {
+    // Not required (Nov 10): the same window is still there, nothing in it needed
     proof = await askSkipProof(label, false);
     if(!proof) return;                      // backed out
     if(!proof.photo && !proof.note) proof = null;   // nothing added: a plain skip
-  } else {
-    const ok = await confirmDialog(
-      'Skip the ' + label + ' on this visit?\n\n'
-      + 'No readings or photos will be recorded for it, and it will not appear on '
-      + 'the service report.', 'Skip it');
-    if(!ok) return;
   }
 
   // Anything already typed for this body goes, so a half-filled reading cannot
