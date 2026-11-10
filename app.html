@@ -11165,6 +11165,14 @@ function woIsFilterClean(lineItems){
   return (lineItems || []).some(li => li && (li.filterClean === true || /filter\s*clean/i.test(String(li.description || ''))));
 }
 // A Clean & refill task (an overnight drain's second day) shows bright sky blue (Nov 1)
+// The style set on a customer's filter(s) (Nov 9): [{style, type}] for each filter that has one.
+// Shown on a filter clean on Today's list and at the top of its report.
+function filterStylesOf(customer){
+  return ((customer && customer.equipment) || [])
+    .filter(i => i && baseEquipmentType(i.type) === 'Filter' && String(i.filterSize || '').trim())
+    .map(i => ({style: String(i.filterSize).trim(),
+                type: i.filterTypeChoice === 'Other' ? String(i.filterTypeCustom || '').trim() : String(i.filterTypeChoice || '').trim()}));
+}
 function isRefillJob(t){ return !!(t && (t.refillOf || /^clean\s*&\s*refill$/i.test(String(t.title || '').trim()))); }
 function shownJobKind(job){
   if(job && job.kind === 'task' && isRefillJob(job)) return 'clean refill';
@@ -11434,6 +11442,10 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
       if(dogNames.length) line(dogNames.length === 1 ? '\ud83d\udc15 Dog' : '\ud83d\udc15 Dogs', dogNames.join(', '));
       line((jobKindIcon(job.kind) ? jobKindIcon(job.kind) + ' ' : '') + jobKindLabel(job.kind), job.title);
       if(job.details) line('Details', job.details);
+      // The filter's style, set on the customer's equipment (Nov 9)
+      if(job.kind === 'filter clean'){
+        filterStylesOf(customer).forEach(f => line('\ud83d\udd27 Filter style', f.style + (f.type ? ' \u00b7 ' + f.type : '')));
+      }
       // Extra work added to a filter clean or drain (Oct 30): a heading, then a
       // line each; one too long for the window slides across to show the rest
       const extra = (job.kind === 'filter clean' || job.kind === 'pool drain')
@@ -11601,6 +11613,10 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
       if(dogNames.length) line(dogNames.length === 1 ? '\ud83d\udc15 Dog' : '\ud83d\udc15 Dogs', dogNames.join(', '));
       line((jobKindIcon(job.kind) ? jobKindIcon(job.kind) + ' ' : '') + jobKindLabel(job.kind), job.title);
       if(job.details) line('Details', job.details);
+      // The filter's style, set on the customer's equipment (Nov 9)
+      if(job.kind === 'filter clean'){
+        filterStylesOf(customer).forEach(f => line('\ud83d\udd27 Filter style', f.style + (f.type ? ' \u00b7 ' + f.type : '')));
+      }
       // Extra work added to a filter clean or drain (Oct 30): a heading, then a
       // line each; one too long for the window slides across to show the rest
       const extra = (job.kind === 'filter clean' || job.kind === 'pool drain')
@@ -11909,6 +11925,31 @@ function openJobPage(customer, job){
     nt.textContent = customer.drainNotes;
     nb.appendChild(nh); nb.appendChild(nt);
     card.appendChild(nb);
+  }
+  // A filter clean shows the filter's style at the top, above the photos (Nov 9)
+  if(job.kind === 'filter clean'){
+    const fs = filterStylesOf(customer);
+    if(fs.length){
+      const fb = document.createElement('div');
+      fb.style.cssText = 'background:var(--teal-pale);border:1.5px solid #9CC5BF;border-radius:12px;padding:10px 12px;margin:0 0 14px;';
+      const fh = document.createElement('div');
+      fh.style.cssText = 'font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--teal-deep);margin-bottom:4px;';
+      fh.textContent = 'Filter style';
+      fb.appendChild(fh);
+      fs.forEach(f=>{
+        const ft = document.createElement('div');
+        ft.style.cssText = 'font-size:15px;font-weight:700;color:var(--ink);';
+        ft.textContent = f.style;
+        fb.appendChild(ft);
+        if(f.type){
+          const fy = document.createElement('div');
+          fy.style.cssText = 'font-size:12px;font-weight:500;color:var(--muted);margin-top:1px;';
+          fy.textContent = f.type;
+          fb.appendChild(fy);
+        }
+      });
+      card.appendChild(fb);
+    }
   }
   // A work order shows its line items and a task its name, in black, with no
   // customer name or address (Oct 3)
@@ -20701,7 +20742,49 @@ async function acalAddDrains(iso, ids, tech, photo, placeAfter, email, ov){
     });
     entries.push(e);
   });
+  // Overnight drains get their Clean & refill right away (Nov 9): a task that many days
+  // after the drain (next day unless set otherwise), as the website makes it. Marked on
+  // the entry so taking the job off by hand doesn't bring it back.
+  const refillTasks = [], refillGone = [];
+  {
+    const list = lsGet('tasks') || [];
+    const nice = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
+    const addDays = (d, n)=>{ const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+    entries.forEach(e=>{
+      const c = acalCust(e.customerId);
+      const over = typeof e.overnight === 'boolean' ? e.overnight : !!c && c.drainOvernight !== false;
+      const days = Math.max(1, Math.min(30, Math.round(Number(e.cleanDays) || Number(c && c.drainCleanDays) || 1)));
+      const have = list.filter(t => t && (t.refillOf === e.id || t.id === 'task_refill_' + e.id));
+      if(!over){
+        have.filter(t => !t.done).forEach(t => refillGone.push(t));
+        return;
+      }
+      if(have.length){
+        have.filter(t => !t.done && t.date !== addDays(iso, days)).forEach(t => { t.date = addDays(iso, days); refillTasks.push(t); });
+        return;
+      }
+      refillTasks.push({
+        id: 'task_refill_' + e.id, title: 'Clean & refill', details: 'Second day of the overnight drain on ' + nice(iso) + '.',
+        technicianId: e.technicianId || (c && c.technicianId) || '',
+        date: addDays(iso, days), customerIds: [e.customerId], everyWeeks: 0, everyDays: 0, seriesId: '', taskGroupId: '',
+        photoRequired: !(c && c.drainCleanPhotoRequired === false), videoRequired: false, done: false, createdAt: new Date().toISOString(),
+        refillOf: e.id
+      });
+      e.refillMade = true;
+    });
+  }
   for(const e of entries){ if(!(await acalPushOffice('drain_entry', e))) return false; }
+  if(refillTasks.length || refillGone.length){
+    let list = lsGet('tasks') || [];
+    refillGone.forEach(t => { list = list.filter(x => x !== t && x.id !== t.id); queueOfficeWork('task', t.id, true); });
+    refillTasks.forEach(t=>{
+      const i = list.findIndex(x => x && x.id === t.id);
+      if(i === -1) list.push(t); else list[i] = t;
+      queueOfficeWork('task', t.id);
+    });
+    lsSet('tasks', list);
+    try{ if(typeof tasks !== 'undefined') tasks = list; }catch(err){}
+  }
   entries.forEach(e=>{
     const i = cal.findIndex(x => x && x.id === e.id);
     if(i === -1) cal.push(e); else cal[i] = e;

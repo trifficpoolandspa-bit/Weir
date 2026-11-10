@@ -9509,7 +9509,10 @@ function fgScheduleWindow(g){
   overlay.className = 'confirm-overlay';
   const box = document.createElement('div');
   box.className = 'confirm-box';
-  box.style.cssText = 'max-width:620px;width:100%;max-height:90vh;overflow-y:auto;text-align:left;padding:20px;';
+  box.style.cssText = 'max-width:620px;width:100%;max-height:92vh;overflow-y:auto;text-align:left;padding:20px;';
+  // Held at the top so the calendar never moves when a day is picked: the jobs list grows below it
+  overlay.style.alignItems = 'flex-start';
+  overlay.style.paddingTop = '3vh';
   overlay.appendChild(box);
   document.body.appendChild(overlay);
   const close = ()=> overlay.remove();
@@ -9587,7 +9590,7 @@ function fgScheduleWindow(g){
     }
     const row = document.createElement('div'); row.className = 'btn-row'; row.style.marginTop = '14px';
     const go = document.createElement('button'); go.type = 'button'; go.className = 'btn btn-primary'; go.style.flex = '1';
-    go.textContent = sel ? 'Schedule on ' + niceLong(sel) : 'Pick a day';
+    go.textContent = 'Schedule';
     if(!sel){ go.disabled = true; go.style.opacity = '0.5'; }
     go.addEventListener('click', ()=>{
       if(!sel) return;
