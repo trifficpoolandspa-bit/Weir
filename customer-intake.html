@@ -13129,15 +13129,22 @@ function openWorkCalendar(startDay, stayHere){
     phL.children[1].textContent = counts.length ? counts.join(' · ') : 'Nothing on this day yet';
     ph.appendChild(phL);
     const btns = document.createElement('div');
-    btns.style.cssText = 'margin-left:auto;display:grid;grid-template-columns:repeat(3,170px);gap:8px;flex-shrink:0;';
-    const gridBtn = (text, cls, fn)=>{ const b = smallBtn(text, cls, 'width:100%;padding:6px 10px;font-size:12px;'); b.addEventListener('click', fn); btns.appendChild(b); return b; };
+    btns.style.cssText = 'margin-left:auto;display:grid;grid-template-columns:repeat(4,150px);gap:8px;flex-shrink:0;';
+    // Top row: Work order, Task, Filter clean, Close. Bottom row: Pool drain, Clean & refill, Filter clean group (Nov 10)
+    const gridBtn = (text, cls, fn, order)=>{
+      const b = smallBtn('', cls, 'width:100%;padding:6px 10px;font-size:12px;display:inline-flex;align-items:center;justify-content:center;gap:4px;order:' + order + ';');
+      if(text.indexOf('+ ') === 0){
+        const pl = document.createElement('span'); pl.textContent = '+'; pl.style.cssText = 'display:inline-block;transform:translateY(-1px);font-size:14px;line-height:1;';
+        b.appendChild(pl); b.appendChild(document.createTextNode(text.slice(2)));
+      } else b.textContent = text;
+      b.addEventListener('click', fn); btns.appendChild(b); return b; };
     const after = ()=>{ saveFilterGroups(); renderFilterGroups(); draw(); };
-    gridBtn('+ Work order', 'btn-ghost', ()=> wcalOpenForm('Work Order', sel, drawKeep));
-    gridBtn('+ Task', 'btn-ghost', ()=> wcalOpenForm('Task', sel, drawKeep));
-    gridBtn('+ Clean & refill', 'btn-ghost', ()=> wcalOpenForm('Task', sel, drawKeep, {title: 'Clean & refill', heading: 'New clean & refill'}));
-    gridBtn('Close', 'btn-primary', ()=>{ sel = ''; draw(); });
-    gridBtn('+ Filter clean customer', 'btn-ghost', ()=> fcPickCustomersForDay(sel, after));
-    gridBtn('+ Filter clean group', 'btn-ghost', ()=> fcPickGroupForDay(sel, after));
+    gridBtn('+ Work order', 'btn-ghost', ()=> wcalOpenForm('Work Order', sel, drawKeep), 1);
+    gridBtn('+ Task', 'btn-ghost', ()=> wcalOpenForm('Task', sel, drawKeep), 2);
+    gridBtn('+ Clean & refill', 'btn-ghost', ()=> wcalOpenForm('Task', sel, drawKeep, {title: 'Clean & refill', heading: 'New clean & refill'}), 6);
+    gridBtn('Close', 'btn-primary', ()=>{ sel = ''; draw(); }, 4);
+    gridBtn('+ Filter clean', 'btn-ghost', ()=> fcPickCustomersForDay(sel, after), 3);
+    gridBtn('+ Filter clean group', 'btn-ghost', ()=> fcPickGroupForDay(sel, after), 7);
     gridBtn('+ Pool drain', 'btn-ghost', ()=>{
       // Grouped like the Drains page: overdue, due soon, never...
       pdOpenDayPicker(sel, on.pd.map(e => e.customerId), (ids, place, ov, opts)=>{
@@ -13171,7 +13178,7 @@ function openWorkCalendar(startDay, stayHere){
         renderPoolDrains();
         draw();
       });
-    });
+    }, 5);
     ph.appendChild(btns);
     panel.appendChild(ph);
     // Nothing on the day yet (Oct 26): a narrower window, the buttons under
@@ -13183,7 +13190,7 @@ function openWorkCalendar(startDay, stayHere){
       ph.style.gap = '12px';
       btns.style.marginLeft = '0';
       btns.style.width = '100%';
-      btns.style.gridTemplateColumns = 'repeat(3,minmax(0,1fr))';
+      btns.style.gridTemplateColumns = 'repeat(4,minmax(0,1fr))';
     }
     // Every section on the same columns, so they line up down the window
     // The last column holds Move and the bin (Nov 1)
@@ -14962,10 +14969,9 @@ function openFilterPrices(){
       tier.styles.forEach(s => ((byStyle.get(fpKey(s)) || {ids: []}).ids).forEach(id => people.add(id)));
       total.textContent = people.size + (people.size === 1 ? ' customer' : ' customers');
       const rm = document.createElement('button');
-      rm.type = 'button'; rm.className = 'btn btn-ghost';
+      rm.type = 'button';
       rm.title = 'Delete this price'; rm.setAttribute('aria-label', 'Delete this price');
-      rm.style.cssText = 'width:auto;padding:6px 8px;color:var(--rust);display:inline-flex;align-items:center;';
-      rm.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>';
+      rm.innerHTML = WEIR_BIN_SVG;
       rm.addEventListener('click', async ()=>{
         if(!(await confirmDialog('Are you sure you want to delete this?'))) return;
         tiers.splice(tiers.indexOf(tier), 1); render();
@@ -31145,7 +31151,22 @@ function reportEmailSection(customer, part){
    ['poolSkimmed', 'Pool skimmed'], ['wallsBrushed', 'Walls brushed']].forEach(([f, l]) => { if(r[f]) servicePairs.push([l, 'Yes']); });
   return {label, readingPairs, productPairs, servicePairs};
 }
-function buildServiceReportEmailHtml(customer, whenText, sections, techName){
+// The repairs and replacements ticked for the customer (Nov 10): a box near the
+// top naming each one, with its photo beside it
+function repairsEmailRow(items){
+  if(!items || !items.length) return '';
+  const only = items.every(x => /spa/i.test(x.body)) ? 'spa' : 'pool';
+  return '<tr><td style="padding:20px 26px 0;">'
+    + '<div style="border:1.5px solid #EFC9BC;background:#FDF3EF;border-radius:10px;padding:14px 16px;">'
+    + '<div style="font-size:14.5px;font-weight:600;color:#8C3B2A;">We noticed an issue while servicing your ' + only + ' today.</div>'
+    + items.map(x =>
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFFFF;border:1px solid #EFD6CD;border-radius:8px;margin-top:10px;"><tr>'
+        + '<td style="padding:10px 12px;font-size:14.5px;font-weight:600;color:#16302E;">' + esc(x.name) + '</td>'
+        + (x.cid ? '<td style="padding:8px;width:124px;" align="right"><img src="cid:' + x.cid + '" width="116" alt="' + esc(x.name) + '" style="width:116px;max-width:100%;height:auto;border-radius:6px;display:block;"></td>' : '')
+        + '</tr></table>').join('')
+    + '</div></td></tr>';
+}
+function buildServiceReportEmailHtml(customer, whenText, sections, techName, repairs){
   const b = loadEmailStyle();
   const company = companyName();
   let body = '';
@@ -31172,6 +31193,7 @@ function buildServiceReportEmailHtml(customer, whenText, sections, techName){
     + (customer.address ? '<div style="font-size:13.5px;color:#6B7B79;margin-top:3px;">' + esc(customer.address) + '</div>' : '')
     + '<div style="font-size:13.5px;color:#6B7B79;margin-top:3px;">' + esc(whenText) + '</div>'
     + '</td></tr>'
+    + repairsEmailRow(repairs)
     + '<tr><td style="padding:0 26px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">' + body + '</table></td></tr>'
     + '<tr><td style="padding:26px;">'
     + (b.signoff ? '<div style="font-size:14px;color:#4A5A58;padding-top:18px;border-top:1px solid #E6E9E8;">' + esc(b.signoff) + '</div>' : '')
@@ -31224,13 +31246,30 @@ async function resendServiceReport(customer, v){
       if(content) photos.push({filename: (body + '-' + lbl).toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.jpg', content, caption: body + ' ' + lbl.toLowerCase()});
     }
   }
+  // Repairs ticked for the customer, each with its photo placed beside it
+  const repairs = [];
+  let repN = 0;
+  for(const p of parts){
+    if(p.type === 'skip' || p.r.skipped) continue;
+    for(const it of (Array.isArray(p.r.repairs) ? p.r.repairs : [])){
+      if(!it || it.share !== true || !String(it.name || '').trim()) continue;
+      let cid = '';
+      if(it.photo){
+        let data = null;
+        try{ data = await resolvePhoto(it.photo); }catch(e){}
+        const content = data ? await reportPhotoJpeg(data) : '';
+        if(content){ cid = 'repair-' + (++repN); photos.push({filename: cid + '.jpg', content, caption: String(it.name), cid}); }
+      }
+      repairs.push({name: String(it.name).trim(), cid, body: historyTypeLabel(customer, p.type)});
+    }
+  }
   // "Pool", or "Pool & Spa" for more than one, as the phone names it
   const label = sections.length ? sections.map(x => x.label).join(' & ') : 'Pool';
   try{
     const res = await sbFetch('/functions/v1/send-report', {
       method: 'POST',
       body: JSON.stringify({to, subject: label + ' service report — ' + customer.name,
-        html: buildServiceReportEmailHtml(customer, whenText, sections, techName), customerId: customer.id, photos, kind: 'report'})
+        html: buildServiceReportEmailHtml(customer, whenText, sections, techName, repairs), customerId: customer.id, photos, kind: 'report'})
     });
     if(res && res.ok){ showToast('Report sent to ' + to); return true; }
     recordEmailFailure(customer, 'Service report', to, emailFailReason(res));

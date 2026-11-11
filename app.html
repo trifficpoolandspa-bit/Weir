@@ -2508,11 +2508,11 @@ function repairsTakenFor(type){
 }
 // What goes on the saved reading: names, and photos unless photos are off
 function repairsForSave(key){
-  return (visitRepairData[key] || []).map(it => ({name: it.name, photo: appSettings.storePhotos === false ? null : (it.photo || null)}));
+  return (visitRepairData[key] || []).map(it => ({name: it.name, photo: appSettings.storePhotos === false ? null : (it.photo || null), share: it.share === true}));
 }
-const REPAIR_BIN_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5"/></svg>';
+const REPAIR_BIN_SVG = '<svg class="weir-bin" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
 function openRepairsWindow(type, onDone){
-  const work = repairsTakenFor(type).map(it => ({name: it.name, photo: it.photo || null}));
+  const work = repairsTakenFor(type).map(it => ({name: it.name, photo: it.photo || null, share: it.share === true}));
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
   overlay.innerHTML = '<div class="confirm-box" style="max-width:420px;width:100%;max-height:86vh;display:flex;flex-direction:column;">'
@@ -2536,8 +2536,10 @@ function openRepairsWindow(type, onDone){
   const draw = ()=>{
     list.innerHTML = '';
     work.forEach((it, idx)=>{
+      const card = document.createElement('div');
+      card.style.cssText = 'border:1px solid var(--line);border-radius:10px;padding:8px;margin-top:8px;';
       const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px;margin-top:8px;';
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;';
       const nm = document.createElement('div');
       nm.style.cssText = 'flex:1;min-width:0;font-size:14.5px;overflow-wrap:anywhere;';
       nm.textContent = it.name;
@@ -2574,18 +2576,29 @@ function openRepairsWindow(type, onDone){
       bin.type = 'button';
       bin.title = 'Delete';
       bin.setAttribute('aria-label', 'Delete ' + it.name);
-      bin.style.cssText = 'background:none;border:0;color:var(--rust);padding:4px;cursor:pointer;display:flex;flex-shrink:0;';
+      bin.style.cssText = 'flex-shrink:0;';   // the shared bin button look comes from the page styles
       bin.innerHTML = REPAIR_BIN_SVG;
       bin.addEventListener('click', ()=>{ work.splice(idx, 1); draw(); });
       row.appendChild(bin);
-      list.appendChild(row);
+      card.appendChild(row);
+      // Include it in the email to the customer (Nov 10)
+      const ck = document.createElement('label');
+      ck.style.cssText = 'display:flex;align-items:center;gap:9px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:13px;cursor:pointer;';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = it.share === true;
+      cb.style.cssText = 'width:20px;height:20px;margin:0;flex-shrink:0;';
+      cb.addEventListener('change', ()=>{ it.share = cb.checked; });
+      ck.appendChild(cb);
+      ck.appendChild(document.createTextNode('Include in the customer\u2019s report'));
+      card.appendChild(ck);
+      list.appendChild(card);
     });
-    count.textContent = 'Photos ' + used() + ' of ' + REPAIR_PHOTOS_MAX;
+    count.textContent = 'Photos ' + used() + ' of ' + REPAIR_PHOTOS_MAX + ' \u00b7 Ticked items go in the customer\u2019s email';
   };
   const addName = name=>{
     name = String(name || '').trim();
     if(!name) return false;
-    if(!work.some(w => w.name.toLowerCase() === name.toLowerCase())) work.push({name, photo: null});
+    if(!work.some(w => w.name.toLowerCase() === name.toLowerCase())) work.push({name, photo: null, share: false});
     own.value = ''; hideSug(); draw();
     list.scrollTop = list.scrollHeight;
     return true;
@@ -2621,7 +2634,7 @@ function openRepairsWindow(type, onDone){
   const finish = ()=>{
     // Something typed but not added is added now, as if Add was pressed
     if(own.value.trim()) addName(own.value);
-    visitRepairData[customPhotoSection(type)] = work.map(w => ({name: w.name, photo: w.photo || null}));
+    visitRepairData[customPhotoSection(type)] = work.map(w => ({name: w.name, photo: w.photo || null, share: w.share === true}));
     close();
     if(onDone) onDone();
   };
@@ -2658,6 +2671,12 @@ function renderRepairsHost(type){
       const nm = document.createElement('div');
       nm.style.cssText = 'flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere;';
       nm.textContent = it.name;
+      if(it.share === true){
+        const tg = document.createElement('div');
+        tg.style.cssText = 'font-size:11.5px;font-weight:600;color:var(--teal);margin-top:2px;';
+        tg.textContent = 'In the customer\u2019s report';
+        nm.appendChild(tg);
+      }
       row.appendChild(nm);
       if(it.photo){
         const im = document.createElement('img');
@@ -14103,7 +14122,7 @@ async function startCorrection(customerIn){
   clearVisitVideo();
   resetDoseRuleTracking();
   clearCustomPhotoData();
-  needed.forEach(k => { if(sections[k].customPhotos) customPhotoData[k] = Object.assign({}, sections[k].customPhotos); if(Array.isArray(sections[k].repairs) && sections[k].repairs.length) visitRepairData[k] = sections[k].repairs.map(x => ({name: x.name, photo: x.photo || null})); });
+  needed.forEach(k => { if(sections[k].customPhotos) customPhotoData[k] = Object.assign({}, sections[k].customPhotos); if(Array.isArray(sections[k].repairs) && sections[k].repairs.length) visitRepairData[k] = sections[k].repairs.map(x => ({name: x.name, photo: x.photo || null, share: x.share === true})); });
   syncGatePhotoBlock();
   if(isFilterCleanVisit){
     const box = document.getElementById('poolServiceChecks');
@@ -24226,6 +24245,11 @@ function collectReportPhotos(sections){
     out.push({name: name, source: dataUrl, caption: caption || ''});
   };
 
+  // The photos beside repairs ticked for the customer go first, so they are never
+  // the ones left out; each is placed in the repair box by its cid, not in Photos
+  sharedRepairsOf(sections).filter(x => x.photo).forEach(x=>{
+    out.push({name: x.cid + '.jpg', source: x.photo, caption: x.name, inline: x.cid});
+  });
   (sections || []).forEach(s=>{
     const r = s.reading || {};
     const body = String(s.label || '').trim();
@@ -24600,6 +24624,9 @@ async function adminVersion_renderFullCombinedReport(customerId, poolReadingId, 
         }
       }
     }
+    if(Array.isArray(s.reading.repairs)){
+      for(const it of s.reading.repairs) if(it && it.photo) it.photo = await resolvePhoto(it.photo);
+    }
   }
 
   const labelParts = sections.map(s => s.label);
@@ -24679,7 +24706,7 @@ async function adminVersion_renderFullCombinedReport(customerId, poolReadingId, 
         productPairs: s.productPairs || [],
         servicePairs: s.servicePairs || []
       })),
-      {technician: (currentUser && currentUser.name) ? currentUser.name : ''});
+      {technician: (currentUser && currentUser.name) ? currentUser.name : '', repairs: sharedRepairsOf(sections)});
   }catch(e){
     // Never let a formatting problem stop a report going out
     currentReportHtml = '';
@@ -24789,6 +24816,9 @@ async function techVersion_renderFullCombinedReport(customerId, poolReadingId, s
         }
       }
     }
+    if(Array.isArray(s.reading.repairs)){
+      for(const it of s.reading.repairs) if(it && it.photo) it.photo = await resolvePhoto(it.photo);
+    }
   }
 
   const labelParts = sections.map(s => s.label);
@@ -24866,7 +24896,7 @@ async function techVersion_renderFullCombinedReport(customerId, poolReadingId, s
         productPairs: s.productPairs || [],
         servicePairs: s.servicePairs || []
       })),
-      {technician: (currentUser && currentUser.name) ? currentUser.name : ''});
+      {technician: (currentUser && currentUser.name) ? currentUser.name : '', repairs: sharedRepairsOf(sections)});
   }catch(e){
     // Never let a formatting problem stop a report going out
     currentReportHtml = '';
@@ -25018,6 +25048,34 @@ function emailSectionBlock(title, pairs){
 }
 
 // sections: [{label, readingPairs, productPairs, servicePairs}]
+// The repairs and replacements the technician ticked for the customer's
+// report, in order; each with a photo gets a cid the email refers to (Nov 10)
+function sharedRepairsOf(sections){
+  const out = [];
+  let n = 0;
+  (sections || []).forEach(s=>{
+    const r = (s && s.reading) || {};
+    (Array.isArray(r.repairs) ? r.repairs : []).forEach(it=>{
+      if(!it || it.share !== true || !String(it.name || '').trim()) return;
+      const hasPhoto = !!(it.photo && !isPhotoRef(it.photo));
+      out.push({name: String(it.name).trim(), photo: hasPhoto ? it.photo : null, cid: hasPhoto ? 'repair-' + (++n) : '', body: String(s.label || '')});
+    });
+  });
+  return out;
+}
+function repairsEmailRow(items){
+  if(!items || !items.length) return '';
+  const only = items.every(x => /spa/i.test(x.body)) ? 'spa' : 'pool';
+  return '<tr><td style="padding:20px 26px 0;">'
+    + '<div style="border:1.5px solid #EFC9BC;background:#FDF3EF;border-radius:10px;padding:14px 16px;">'
+    + '<div style="font-size:14.5px;font-weight:600;color:#8C3B2A;">We noticed an issue while servicing your ' + only + ' today.</div>'
+    + items.map(x =>
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFFFF;border:1px solid #EFD6CD;border-radius:8px;margin-top:10px;"><tr>'
+        + '<td style="padding:10px 12px;font-size:14.5px;font-weight:600;color:#16302E;">' + esc(x.name) + '</td>'
+        + (x.cid ? '<td style="padding:8px;width:124px;" align="right"><img src="cid:' + x.cid + '" width="116" alt="' + esc(x.name) + '" style="width:116px;max-width:100%;height:auto;border-radius:6px;display:block;"></td>' : '')
+        + '</tr></table>').join('')
+    + '</div></td></tr>';
+}
 function buildReportEmailHtml(customer, whenText, sections, opts){
   const b = emailBrand();
   // The field apps have no companyName() helper — read it the same way the
@@ -25086,6 +25144,7 @@ function buildReportEmailHtml(customer, whenText, sections, opts){
         + 'border:1px solid #EDC79B;border-radius:8px;font-size:13.5px;color:#8A5A22;">'
         + esc(o.skipReason || 'No service was performed on this visit.') + '</div>' : '')
     + '</td></tr>'
+    + repairsEmailRow(o.repairs)
 
     // The report itself
     + '<tr><td style="padding:0 26px;">'
@@ -25287,7 +25346,7 @@ async function sendReportFromOffice(customerId, type){
       try{ content = String(p.source || '').split(',')[1] || ''; }catch(e){}
     }
     if(content){
-      photos.push({filename: p.name || 'photo.jpg', content: content, caption: p.caption || ''});
+      photos.push({filename: p.name || 'photo.jpg', content: content, caption: p.caption || '', ...(p.inline ? {cid: p.inline} : {})});
     } else {
       couldNotRead++;
     }
@@ -25359,7 +25418,7 @@ async function holdReportEmail(customerId, type, email, custName){
     const photos = [];
     for(const p of (currentReportPhotos || [])){
       const ref = await storePhoto(p.source, 'heldreport');
-      if(ref) photos.push({name: p.name || 'photo.jpg', caption: p.caption || '', ref: ref});
+      if(ref) photos.push({name: p.name || 'photo.jpg', caption: p.caption || '', ref: ref, ...(p.inline ? {inline: p.inline} : {})});
     }
     const q = lsGet('reportEmailsToSend') || [];
     q.push({key: 'rep_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
@@ -25388,7 +25447,7 @@ async function sendHeldReportEmails(){
           const jpeg = src ? await webpToJpegDataUrl(src) : '';
           content = String(jpeg || src || '').split(',')[1] || '';
         }catch(e){}
-        if(content) photos.push({filename: p.name, content: content, caption: p.caption || ''});
+        if(content) photos.push({filename: p.name, content: content, caption: p.caption || '', ...(p.inline ? {cid: p.inline} : {})});
       }
       let res;
       try{
