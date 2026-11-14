@@ -634,11 +634,14 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
   <div style="background:#fff;border-radius:16px;padding:26px 22px;max-width:360px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,0.28);">
     <h2 style="font-size:20px;margin:0 0 4px;">Weir</h2>
     <p style="font-size:12.5px;color:#5E7371;margin:0 0 18px;">Sign in to manage your customers and settings.</p>
-    <div class="field"><label>Email</label><input id="siteUsername" type="email" autocomplete="username" inputmode="email" placeholder="you@yourcompany.com"></div>
-    <div class="field"><label>Password</label><input id="sitePassword" type="password" autocomplete="current-password" placeholder="Your password"></div>
+    <form id="siteLoginForm" action="#" onsubmit="return false;" style="margin:0;">
+    <div class="field"><label>Email</label><input id="siteUsername" name="username" type="email" autocomplete="username" inputmode="email" placeholder="you@yourcompany.com"></div>
+    <div class="field"><label>Password</label><input id="sitePassword" name="password" type="password" autocomplete="current-password" placeholder="Your password"></div>
+    <div class="field" style="margin:-4px 0 14px;"><label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-family:inherit;color:var(--ink,#0B2422);font-size:13.5px;font-weight:600;margin:0;cursor:pointer;"><input type="checkbox" id="siteSaveLogin" checked style="width:auto;margin:0;"> Save my login</label></div>
     <p id="siteLoginError" style="display:none;font-size:12.5px;color:#B8492E;margin:0 0 12px;"></p>
     <p id="siteLoginNote" style="display:none;font-size:12.5px;color:#2F6F4F;margin:0 0 12px;"></p>
-    <button class="btn btn-primary" id="btnSiteLogin" style="width:100%;">Sign in</button>
+    <button class="btn btn-primary" id="btnSiteLogin" type="submit" style="width:100%;">Sign in</button>
+    </form>
     <button class="btn btn-ghost" id="btnForgotPassword" style="width:100%;margin-top:8px;font-size:12.5px;">Forgot your password?</button>
     <!-- To the app's sign-in instead (?app=service keeps that page from sending
          an owner straight back here) -->
@@ -706,7 +709,7 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
       <button class="tab" data-view="workcenter">WorkCenter</button>
       <div class="nav-subs" id="wcNavSubs">
         <button type="button" class="nav-sub active" data-type="calendar"><span>Calendar</span></button>
-        <button type="button" class="nav-sub" data-type="quotes"><span>Work orders and quotes</span></button>
+        <button type="button" class="nav-sub" data-type="quotes"><span>Work orders and estimates</span></button>
         <button type="button" class="nav-sub" data-type="filters"><span>Filter cleans</span></button>
         <button type="button" class="nav-sub" data-type="drains"><span>Drains</span></button>
         <button type="button" class="nav-sub" data-type="broadcast"><span>Email</span></button>
@@ -849,7 +852,7 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
           <!-- Which kind to show, All records to start (Oct 3); right beside the date (Oct 13) -->
           <select id="qoKindFilter" style="width:auto;flex:0 0 auto;padding:6px 10px;font-size:13px;">
             <option value="">All records</option>
-            <option value="quote">Quotes</option>
+            <option value="quote">Estimates</option>
             <option value="workorder">Work orders</option>
             <option value="clean">Filter cleans</option>
             <option value="drain">Pool drains</option>
@@ -1254,8 +1257,8 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
 
   <div id="quoteEmailOverlay" style="display:none;position:fixed;inset:0;z-index:320;background:rgba(9,32,34,0.5);align-items:center;justify-content:center;padding:20px;">
     <div style="background:var(--card);border-radius:14px;padding:22px;max-width:480px;width:100%;box-shadow:0 14px 44px rgba(0,0,0,0.3);max-height:88vh;overflow-y:auto;">
-      <h2 style="font-size:18px;margin:0 0 4px;">Quote email</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:0 0 16px;">What goes at the top and the bottom of every quote you send. The color comes from your report email settings.</p>
+      <h2 style="font-size:18px;margin:0 0 4px;">Estimate email</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 16px;">What goes at the top and the bottom of every estimate you send. The color comes from your report email settings.</p>
       <div class="field">
         <label>Header</label>
         <input id="qeHeader" placeholder="Your company name">
@@ -1267,7 +1270,7 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
       <!-- The body (Nov 1): under the customer, above the items -->
       <div class="field">
         <label>Body (optional)</label>
-        <textarea id="qeBody" rows="4" placeholder="A few words above the quote"></textarea>
+        <textarea id="qeBody" rows="4" placeholder="A few words above the estimate"></textarea>
         <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">Shows under the customer’s name and address, above the items. {first name} becomes the customer’s first name.</div>
       </div>
       <div class="field">
@@ -1508,10 +1511,10 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
   <div class="view" id="view-workcenter">
     <div class="card">
       <h2>WorkCenter</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Send work orders and quotes, and schedule one-off service calls outside a customer's regular route day.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Send work orders and estimates, and schedule one-off service calls outside a customer's regular route day.</p>
       <div class="seg-control" id="workCenterTypeControl">
         <button class="history-type-btn active" data-type="calendar">Calendar</button>
-        <button class="history-type-btn" data-type="quotes">Work Orders & Quotes</button>
+        <button class="history-type-btn" data-type="quotes">Work Orders & Estimates</button>
         <button class="history-type-btn" data-type="filters">Filter Cleans</button>
         <button class="history-type-btn" data-type="drains">Drains</button>
         <button class="history-type-btn" data-type="broadcast">Email</button>
@@ -1579,19 +1582,19 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
     <div class="card" id="wcQuotesSection">
       <h2 id="wcFormHeading" style="display:none;"></h2>
       <div class="btn-row" id="wcTypeToggle" style="gap:8px;margin-bottom:26px;padding-bottom:20px;border-bottom:1px solid var(--line);">
-        <button type="button" class="btn" id="btnTypeQuote" data-wctype="Quote" style="flex:1;">Quote</button>
+        <button type="button" class="btn" id="btnTypeQuote" data-wctype="Quote" style="flex:1;">Estimate</button>
         <button type="button" class="btn" id="btnTypeWorkOrder" data-wctype="Work Order" style="flex:1;">Work Order</button>
         <button type="button" class="btn" id="btnTypeTask" data-wctype="Task" style="flex:1;">Task</button>
       </div>
       <!-- Each kind has its own two tabs: the kind itself, and its History -->
       <div class="seg-control" id="wcViewControl" style="margin:-8px 0 22px;">
-        <button type="button" class="history-type-btn active" id="btnWcViewMain" data-wcview="main">Quote</button>
+        <button type="button" class="history-type-btn active" id="btnWcViewMain" data-wcview="main">Estimate</button>
         <button type="button" class="history-type-btn" data-wcview="current">Current</button>
         <!-- History is hidden for now (Oct 3); its code stays, to bring back -->
         <button type="button" class="history-type-btn" data-wcview="history" style="display:none;">History</button>
       </div>
       <select id="wcType" style="display:none;">
-        <option value="Quote">Quote</option>
+        <option value="Quote">Estimate</option>
         <option value="Work Order">Work Order</option>
         <option value="Task">Task</option>
       </select>
@@ -1637,7 +1640,7 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
       </div>
       <!-- Quotes only -->
       <div class="field" id="wcQuoteNameField">
-        <label>Quote name</label>
+        <label>Estimate name</label>
         <input id="wcQuoteName" placeholder="e.g. Heater replacement" autocomplete="off">
       </div>
       <div class="field" style="position:relative;">
@@ -1916,6 +1919,7 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
           <!-- The technician menu just left of Email (Nov 1) -->
           <select id="drainTech" aria-label="Technician" title="Show one technician's customers" style="width:auto;min-width:160px;"></select>
           <!-- Drain emails (Oct 11): coming up, and scheduled -->
+          <button type="button" class="btn btn-ghost" id="btnDrainCheck" style="width:auto;" title="Look for drains and Clean &amp; refills that shouldn't be on the calendar">Calendar check</button>
           <button type="button" class="btn btn-primary" id="btnDrainEmail" style="width:auto;">Email</button>
         </div>
       </div>
@@ -2005,7 +2009,7 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
           <select id="emailHistKind">
             <option value="">All emails</option>
             <option value="report">Service reports</option>
-            <option value="quote">Quotes</option>
+            <option value="quote">Estimates</option>
             <option value="workorder">Work orders</option>
             <option value="clean">Filter cleans</option>
             <option value="drain">Pool drains</option>
@@ -2068,7 +2072,7 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
       </div>
       <div class="field">
         <label>License number <span style="font-weight:400;color:var(--muted);">(optional)</span></label>
-        <input id="acctLicense" placeholder="Shown on quotes and invoices where required">
+        <input id="acctLicense" placeholder="Shown on estimates and invoices where required">
       </div>
       <div class="field">
         <label>Service area <span style="font-weight:400;color:var(--muted);">(optional)</span></label>
@@ -2232,7 +2236,7 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
         <button type="button" class="history-type-btn" data-kind="video">Videos</button>
         <button type="button" class="history-type-btn" data-kind="note">Notes</button>
         <!-- Quotes, was Repairs (Nov 1) -->
-        <button type="button" class="history-type-btn" data-kind="repair">Quotes</button>
+        <button type="button" class="history-type-btn" data-kind="repair">Estimates</button>
         <!-- Emails that didn't go out (Oct 8) -->
         <button type="button" class="history-type-btn" data-kind="email">Emails</button>
         <!-- Drains and filter cleans coming due (Oct 10) -->
@@ -2701,9 +2705,20 @@ function showErrorBanner(entry){
   else document.addEventListener('DOMContentLoaded', ()=> document.body.appendChild(bar));
 }
 
+// Errors that come from the browser's own injected scripts (Brave and Firefox on iPhone add
+// "__firefox__" helpers, some browsers add a "Script error." with no file) are not this
+// page's and say nothing is wrong with it, so they don't get a banner
+function isBrowserInjectedError(message, filename){
+  const m = String(message || '');
+  if(/__firefox__|webkit\.messageHandlers|window\.webkit/i.test(m)) return true;
+  if(/^script error\.?$/i.test(m.trim()) && !filename) return true;
+  return false;
+}
+
 window.addEventListener('error', (e)=>{
   // Failed images and scripts fire here too, and are not worth a banner
   if(e && e.target && e.target !== window && e.target.tagName) return;
+  if(isBrowserInjectedError(e && e.message, e && e.filename)) return;
   const entry = recordError('Error', e.message, e.filename, e.lineno, e.colno,
     e.error && e.error.stack);
   showErrorBanner(entry);
@@ -2711,6 +2726,7 @@ window.addEventListener('error', (e)=>{
 
 window.addEventListener('unhandledrejection', (e)=>{
   const reason = e && e.reason;
+  if(isBrowserInjectedError(reason && reason.message || reason, '')) return;
   const entry = recordError('Unhandled promise',
     (reason && reason.message) || reason || 'A background task failed',
     '', '', '', reason && reason.stack);
@@ -5212,7 +5228,7 @@ function openProductServiceModal(opts){
     <div class="confirm-box ps-window" style="max-width:460px;">
       <!-- Add line item (Nov 1) -->
       <h3 style="font-size:15px;margin:0 0 4px;">Add line item</h3>
-      <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Pick a category, give it a name and a price, and it’s ready to drop onto any quote or work order.</p>
+      <p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Pick a category, give it a name and a price, and it’s ready to drop onto any estimate or work order.</p>
       <div class="field"><label>Category</label>
         <select id="psCategoryPick">
           <option value="">Uncategorized</option>
@@ -5224,7 +5240,7 @@ function openProductServiceModal(opts){
       </div>
       <div class="field"><label>Product or service</label><input id="psName" placeholder="e.g. Filter replacement"></div>
       <div class="field"><label>Price ($)</label><input id="psPrice" type="number" step="0.01" placeholder="0.00"></div>
-      <div class="field" data-for="other"><label>Description (optional)</label><textarea id="psDesc" rows="3" placeholder="What’s included. Shows under the line on quotes and work orders."></textarea></div>
+      <div class="field" data-for="other"><label>Description (optional)</label><textarea id="psDesc" rows="3" placeholder="What’s included. Shows under the line on estimates and work orders."></textarea></div>
       <div class="field" data-for="chem"><label>Unit (optional)</label><input id="psUnit" placeholder="gal, lb, oz, tab…"></div>
       <!-- Only the box and its words tick it (Oct 2); the rest of the line does nothing -->
       <div class="field" data-for="chem">
@@ -5258,7 +5274,7 @@ function openProductServiceModal(opts){
     if(opts.price !== undefined && opts.price !== null && opts.price !== '') priceEl.value = opts.price;
     if(opts.detail) descEl.value = String(opts.detail).trim();
     const sub = overlay.querySelector('.ps-window p');
-    if(sub) sub.textContent = 'From your quote. Check the name and price, add anything else, and it’ll be ready for every quote and work order after this one.';
+    if(sub) sub.textContent = 'From your estimate. Check the name and price, add anything else, and it’ll be ready for every estimate and work order after this one.';
     if(catPick.value === 'chemicals') catPick.value = '';
   }
   // The colour dots for an extra charge chemical
@@ -5427,7 +5443,7 @@ function recordEmailFailure(customer, what, to, reason){
 function emailWhatFromSubject(subject){
   const s = String(subject || '');
   if(/service report/i.test(s)) return 'Service report';
-  if(/quote/i.test(s)) return 'Quote';
+  if(/quote|estimate/i.test(s)) return 'Estimate';
   if(/work order/i.test(s)) return 'Work order email';
   if(/filter clean/i.test(s)) return 'Filter clean email';
   if(/drain/i.test(s)) return 'Pool drain email';
@@ -5604,7 +5620,7 @@ function collectAllReports(){
       id: 'wo|' + w.id,
       kind: 'workorder',
       customer: cust,
-      bodyLabel: w.type || 'Work Order',
+      bodyLabel: kindLabel(w.type || 'Work Order'),
       workOrder: w,
       reading: {date: w.date || w.createdAt},
       sortDate: w.date || w.createdAt || ''
@@ -6281,7 +6297,7 @@ let emailHistAsked = 0;
 
 const EH_KINDS = {
   report: ['Report', 'var(--teal-pale)', 'var(--ink)'],
-  quote: ['Quote', '#F1E8F3', '#6B3E78'],
+  quote: ['Estimate', '#F1E8F3', '#6B3E78'],
   workorder: ['Work order', '#E9EEF0', '#3E5560'],
   clean: ['Filter clean', '#FBF1DD', '#8A5E0B'],
   drain: ['Pool drain', '#C3DEF3', '#174C78'],
@@ -6296,7 +6312,7 @@ const EH_PROBLEM = {bounced: 'bounced', complained: 'marked as spam', failed: 'f
 function ehKindFromWhat(what){
   const w = String(what || '');
   if(/report/i.test(w)) return 'report';
-  if(/quote/i.test(w)) return 'quote';
+  if(/quote|estimate/i.test(w)) return 'quote';
   if(/work order/i.test(w)) return 'workorder';
   if(/filter clean/i.test(w)) return 'clean';
   if(/drain/i.test(w)) return 'drain';
@@ -7248,7 +7264,7 @@ function bfDefs(){
   out.push(['equip', 'salt', 'Salt cell', salt]);
   out.push(['equip', 'big', 'Pool 20,000+ gallons', c => gallons(c) >= 20000]);
   out.push(['equip', 'dog', 'Has a dog', c => (c.dogs || []).some(d => d && (d.name || d.breed))]);
-  out.push(['jobs', 'quote', 'Quote waiting on an answer', quoteWaiting]);
+  out.push(['jobs', 'quote', 'Estimate waiting on an answer', quoteWaiting]);
   out.push(['jobs', 'wo', 'Work order in the last 30 days', recentWo]);
   out.push(['jobs', 'skip', 'Skipped a service in the last 30 days', recentSkip]);
   out.push(['cust', 'new', 'Added in the last 30 days', added]);
@@ -7257,7 +7273,7 @@ function bfDefs(){
   return out;
 }
 var BF_SECTIONS = [['group', 'Filter clean group'], ['drain', 'Pool drains'], ['fc', 'Filter cleans'],
-  ['equip', 'Pool & equipment'], ['jobs', 'Quotes & jobs'], ['cust', 'Customer']];
+  ['equip', 'Pool & equipment'], ['jobs', 'Estimates & jobs'], ['cust', 'Customer']];
 function bfMatches(c){
   if(!bfAny()) return true;
   const defs = bfDefs();
@@ -10797,7 +10813,13 @@ function pdApplyDrainSettings(cids){
     }
     // A drain's own Overnight tick, where it has one, over the customer's (Nov 9)
     const offEnts = ents.filter(e => !pdEntryOvernight(e, c));
-    if(offEnts.length) dropped += pdDropRefill(offEnts.map(e => e.id));
+    if(offEnts.length){
+      dropped += pdDropRefill(offEnts.map(e => e.id));
+      // Taken off because Overnight went off, not by hand: turning it on again may bring them back
+      const calOff = pdCal(); let clr = false;
+      offEnts.forEach(o => { const x = calOff.find(y => y && y.id === o.id); if(x && x.refillMade){ x.refillMade = false; clr = true; } });
+      if(clr) lsSet('drainCalendar', calOff);
+    }
     const onEnts = ents.filter(e => pdEntryOvernight(e, c));
     if(!onEnts.length) return;
     const fresh = [];
@@ -10807,16 +10829,14 @@ function pdApplyDrainSettings(cids){
       if(t){
         if(t.date !== want){ t.date = want; moved++; }
         t.photoRequired = pdCustCleanPhoto(c);
-      } else if(want >= today && !tasks.some(x => x && x.id === 'task_refill_' + e.id)){
-        e.refillMade = false; fresh.push(e);
+      } else if(want >= today && !e.refillMade && !tasks.some(x => x && x.id === 'task_refill_' + e.id)){
+        // Not one taken off by hand (Nov 14): that drain's mark says it was made once, and it stays off
+        fresh.push(e);
       }
     });
     if(moved) saveTasks();
     if(fresh.length){
-      // clear the "made once" mark so the sweep and this call may make it again
       const cal = pdCal();
-      fresh.forEach(f => { const x = cal.find(y => y && y.id === f.id); if(x) delete x.refillMade; });
-      lsSet('drainCalendar', cal);
       const before = tasks.length;
       pdAfterScheduled(fresh.map(f => cal.find(y => y && y.id === f.id) || f));
       made += tasks.length - before;
@@ -10849,8 +10869,22 @@ function pdMarkRefillMade(entryId){
 // came in from another computer. Runs when the website opens, every minute,
 // and when the calendar opens.
 let pdRefillSweeping = false;
+// Was this Clean & refill taken off, here or on another computer (Nov 14)? The
+// server keeps a "deleted" mark for it. A job with that mark is never made
+// again on its own: only the person scheduling the drain brings it back.
+function pdRefillRemoved(entryId){
+  try{
+    if(!(siteUser && siteUser.companyId)) return false;
+    const st = loadSyncState(siteUser.companyId);
+    const k = st.records && st.records.known && st.records.known['task\u0002task_refill_' + entryId];
+    return !!(k && k.d);
+  }catch(e){ return false; }
+}
 function pdEnsureRefills(){
   if(pdRefillSweeping) return 0;
+  // While the server's changes are still coming in, a drain's Clean & refill may
+  // be on its way: wait, rather than make a second one (Nov 14)
+  if(typeof syncRunning !== 'undefined' && syncRunning) return 0;
   pdRefillSweeping = true;
   try{
     if(typeof tasks === 'undefined' || !Array.isArray(customers)) return 0;
@@ -10866,6 +10900,7 @@ function pdEnsureRefills(){
       const c = customers.find(x => x && x.id === e.customerId);
       if(!c || c.active === false || !pdEntryOvernight(e, c)) return false;
       if(pdAddDays(e.date, pdEntryCleanDays(e, c)) < today) return false;
+      if(pdRefillRemoved(e.id)) return false;   // taken off: stays off (Nov 14)
       return !tasks.some(t => t && (t.refillOf === e.id || t.id === 'task_refill_' + e.id));
     });
     if(!want.length) return 0;
@@ -10930,6 +10965,11 @@ function calFollowRoute(){
     // A drain on the route with no calendar day of its own (made again from Serviced)
     recs.forEach(r=>{
       if(!live(r) || r.date < today || !r.customerId) return;
+      // Only a drain that never had a calendar day (Nov 14). One that points at a
+      // day that is gone was taken off the calendar, or that day is still on its
+      // way from the server: either way, no second copy.
+      if(r.calendarId) return;
+      if(typeof syncRunning !== 'undefined' && syncRunning) return;
       if(cal.some(e => e && (e.id === r.calendarId || Object.keys(e.pushed || {}).some(k => e.pushed[k] === r.id)))) return;
       const e = {id: 'pdcal_' + r.id, customerId: r.customerId, date: r.date, pushed: {}};
       e.pushed[r.bodyKey || 'pool'] = r.id;
@@ -10946,6 +10986,152 @@ function calFollowRoute(){
 }
 setTimeout(()=>{ try{ calFollowRoute(); pdEnsureRefills(); }catch(e){} }, 3000);
 setInterval(()=>{ try{ calFollowRoute(); pdEnsureRefills(); }catch(e){} }, 60000);
+
+
+// ---------- Calendar check (Nov 14) ----------
+// Finds extras on the drain calendar from today on, and takes off the ones
+// ticked: a customer's drain listed twice on one day, a Clean & refill with
+// no drain, two Clean & refills for one drain, one not on its right day. Also
+// takes every drain off a range of days. Nothing is changed until Take off /
+// Fix is pressed, and drains already done are never touched.
+function pdCheckFindings(){
+  const today = pdToday();
+  const nice = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
+  const calAll = pdCal().filter(e => e && e.id);
+  const open = e => e.date && e.date >= today && !((pdCalRecord(e) || {}).status === 'done');
+  const nameOf = cid => { const c = customers.find(x => x && x.id === cid); return c ? displayName(c.name) : 'A customer'; };
+  const out = [];
+  const taken = new Set();
+  // A drain listed twice on one day for the same customer: keep the one on the route, else the first
+  const groups = {};
+  calAll.filter(open).forEach(e => { (groups[e.customerId + '\u0002' + e.date] = groups[e.customerId + '\u0002' + e.date] || []).push(e); });
+  Object.keys(groups).forEach(k=>{
+    const g = groups[k]; if(g.length < 2) return;
+    const inApp = g.filter(e => pdCalRecord(e));
+    const keep = inApp[0] || g[0];
+    g.filter(e => e !== keep).forEach(e=>{
+      taken.add(e.id);
+      out.push({kind: 'copy', entryId: e.id, text: nameOf(e.customerId) + ' — drain on ' + nice(e.date) + ' is listed twice', sub: 'Takes off the extra one and its Clean & refill.', checked: true});
+    });
+  });
+  // Clean & refills
+  const refills = (typeof tasks !== 'undefined' ? tasks : []).filter(t => t && t.refillOf && !t.done && t.date && t.date >= today);
+  const byDrain = {};
+  refills.forEach(t => { (byDrain[t.refillOf] = byDrain[t.refillOf] || []).push(t); });
+  Object.keys(byDrain).forEach(did=>{
+    const list = byDrain[did].slice().sort((a, b) => (a.id === 'task_refill_' + did ? 0 : 1) - (b.id === 'task_refill_' + did ? 0 : 1));
+    const e = calAll.find(x => x.id === did);
+    const cid = (list[0].customerIds || [])[0];
+    if(!e){
+      list.forEach(t => out.push({kind: 'orphan', taskId: t.id, text: nameOf(cid) + ' — Clean & refill on ' + nice(t.date) + ' has no drain', sub: 'Its drain is gone from the calendar.', checked: true}));
+      return;
+    }
+    if(taken.has(did)) return;   // goes with the drain
+    list.slice(1).forEach(t => out.push({kind: 'twice', taskId: t.id, text: nameOf(cid) + ' — two Clean & refills for the drain on ' + nice(e.date), sub: 'Takes off the second one.', checked: true}));
+    const c = customers.find(x => x && x.id === e.customerId);
+    const want = pdAddDays(e.date, pdEntryCleanDays(e, c));
+    if(list[0].date !== want) out.push({kind: 'day', taskId: list[0].id, to: want, text: nameOf(cid) + ' — drain ' + nice(e.date) + ', Clean & refill ' + nice(list[0].date), sub: 'Move the Clean & refill to ' + nice(want) + '.', checked: false});
+  });
+  return out;
+}
+function pdCheckApply(rows){
+  const cal = pdCal();
+  const dropE = new Set(), dropT = new Set(), moves = [];
+  rows.forEach(r=>{
+    if(r.kind === 'copy') dropE.add(r.entryId);
+    else if(r.kind === 'orphan' || r.kind === 'twice') dropT.add(r.taskId);
+    else if(r.kind === 'day') moves.push(r);
+  });
+  // The route jobs of the days that stay are never touched, nor any done
+  const keepRec = new Set();
+  cal.filter(e => !dropE.has(e.id)).forEach(e => { try{ pdEntryRecords(e).forEach(x => { if(x.rec) keepRec.add(x.rec.id); }); }catch(err){} });
+  const goneRec = new Set();
+  cal.filter(e => dropE.has(e.id)).forEach(e => { try{ pdEntryRecords(e).forEach(x => { if(x.rec && x.rec.status !== 'done' && !keepRec.has(x.rec.id)) goneRec.add(x.rec.id); }); }catch(err){} });
+  if(goneRec.size) lsSet('scheduledPoolDrains', pdScheduled().filter(x => !goneRec.has(x.id)));
+  if(dropE.size) pdDropRefill(Array.from(dropE));
+  if(dropT.size){ tasks = tasks.filter(t => !dropT.has(t.id)); saveTasks(); }
+  moves.forEach(m => { const t = tasks.find(x => x && x.id === m.taskId); if(t) t.date = m.to; });
+  if(moves.length) saveTasks();
+  if(dropE.size) pdCalSave(pdCal().filter(e => !dropE.has(e.id)));
+  try{ renderTaskList(); }catch(err){}
+  try{ wcalRefresh(); }catch(err){}
+  try{ renderPoolDrains(); }catch(err){}
+  return dropE.size + dropT.size + moves.length;
+}
+function pdOpenCalendarCheck(){
+  const nice = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.style.cssText = 'max-width:520px;width:100%;text-align:left;max-height:88vh;overflow:auto;';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const close = ()=>{ document.removeEventListener('keydown', keys, true); if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+  const keys = ev=>{
+    if(ev.key === 'Escape'){ ev.preventDefault(); close(); }
+    else if(ev.key === 'Enter' && !/^(INPUT|SELECT|TEXTAREA)$/.test((ev.target || {}).tagName || '')){ ev.preventDefault(); const go = box.querySelector('[data-fix]'); if(go) go.click(); }
+  };
+  document.addEventListener('keydown', keys, true);
+  overlay.addEventListener('mousedown', ev=>{ if(ev.target === overlay) close(); });
+  const today = pdToday();
+  const draw = ()=>{
+    const found = pdCheckFindings();
+    box.innerHTML = '<h3 style="font-size:16px;margin:0 0 4px;">Calendar check</h3>'
+      + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Looks at every drain and Clean &amp; refill from today on. Nothing changes until you press the button.</p>'
+      + '<div data-found></div>'
+      + '<div style="border-top:1px solid var(--line);margin:16px 0 12px;"></div>'
+      + '<div style="font-size:13px;font-weight:700;margin:0 0 6px;">Take every drain off a range of days</div>'
+      + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 8px;">Drains already done stay. Their Clean &amp; refills come off too.</p>'
+      + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;"><input type="date" data-from style="width:auto;margin:0;"><span style="color:var(--muted);">to</span><input type="date" data-to style="width:auto;margin:0;"><button type="button" class="btn btn-ghost" data-range style="width:auto;color:var(--rust);">Take off</button></div>'
+      + '<div class="btn-row" style="margin-top:6px;gap:8px;"><button type="button" class="btn btn-ghost" data-close style="flex:1;">Close</button></div>';
+    const fEl = box.querySelector('[data-found]');
+    if(!found.length){
+      fEl.innerHTML = '<p style="font-size:13.5px;margin:0;color:var(--ink);">Nothing extra found.</p>';
+    } else {
+      const list = document.createElement('div');
+      found.forEach(f=>{
+        const row = document.createElement('label');
+        row.style.cssText = 'display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer;text-transform:none;letter-spacing:0;color:var(--ink);font-size:13.5px;font-weight:600;';
+        row.innerHTML = '<input type="checkbox" style="margin-top:3px;flex:none;"' + (f.checked ? ' checked' : '') + '><span><span data-t></span><span data-s style="display:block;font-weight:400;font-size:12px;color:var(--muted);"></span></span>';
+        row.querySelector('[data-t]').textContent = f.text;
+        row.querySelector('[data-s]').textContent = f.sub;
+        f.box = row.querySelector('input');
+        list.appendChild(row);
+      });
+      fEl.appendChild(list);
+      const go = document.createElement('button');
+      go.type = 'button'; go.className = 'btn btn-primary'; go.setAttribute('data-fix', ''); go.style.cssText = 'width:100%;margin-top:12px;';
+      go.textContent = 'Fix ticked';
+      go.addEventListener('click', ()=>{
+        const picked = found.filter(f => f.box && f.box.checked);
+        if(!picked.length){ showToast('Nothing ticked'); return; }
+        const n = pdCheckApply(picked);
+        showToast(n + (n === 1 ? ' change made' : ' changes made'));
+        draw();
+      });
+      fEl.appendChild(go);
+    }
+    const from = box.querySelector('[data-from]'), to = box.querySelector('[data-to]');
+    from.value = pdAddDays(today, 1); to.value = pdAddDays(today, 1);
+    box.querySelector('[data-close]').addEventListener('click', close);
+    box.querySelector('[data-range]').addEventListener('click', async ()=>{
+      const a = from.value, b = to.value;
+      if(!a || !b || b < a){ showToast('Pick the first day, then the last'); return; }
+      if(a < today){ showToast('Only today and later'); return; }
+      const ents = pdCal().filter(e => e && e.id && e.date >= a && e.date <= b && !((pdCalRecord(e) || {}).status === 'done'));
+      const refs = (typeof tasks !== 'undefined' ? tasks : []).filter(t => t && t.refillOf && !t.done && t.date >= a && t.date <= b && !ents.some(e => e.id === t.refillOf));
+      if(!ents.length && !refs.length){ showToast('Nothing on those days'); return; }
+      const ok = await confirmDialog('Take ' + ents.length + (ents.length === 1 ? ' drain' : ' drains') + (refs.length ? ' and ' + refs.length + ' Clean & refill' + (refs.length === 1 ? '' : 's') : '') + ' off ' + nice(a) + (a === b ? '' : ' to ' + nice(b)) + '? Their Clean & refills and any sent to the app come off too. This can’t be undone.', 'Take off');
+      if(!ok) return;
+      const rows = ents.map(e => ({kind: 'copy', entryId: e.id})).concat(refs.map(t => ({kind: 'orphan', taskId: t.id})));
+      pdCheckApply(rows);
+      showToast('Taken off');
+      draw();
+    });
+  };
+  draw();
+}
 
 // Take customers off every upcoming day on the drain calendar (Nov 1)
 async function pdUnschedule(cids){
@@ -14443,6 +14629,7 @@ function openDrainEmail(){
   draw();
 }
 document.getElementById('btnDrainEmail').addEventListener('click', openDrainEmail);
+document.getElementById('btnDrainCheck').addEventListener('click', ()=>{ pdOpenCalendarCheck(); });
 
 
 // ---- Import drains from a spreadsheet (Oct 10) ----
@@ -15170,6 +15357,8 @@ function taskTodayStr(){
 
 // A sample report, so the look can be checked without sending anything.
 // Mirrors what the field apps build — same markup, invented readings.
+// What an estimate was called before: the saved kind is still 'Quote'; it shows as Estimate
+function kindLabel(t){ return /^quote$/i.test(String(t == null ? '' : t)) ? 'Estimate' : String(t == null ? '' : t); }
 function esc(s){
   return String(s === null || s === undefined ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -15542,6 +15731,7 @@ async function siteLogout(){
   const p = document.getElementById('sitePassword');
   if(u) u.value = '';
   if(p) p.value = '';
+  try{ siteFillSavedLogin(); }catch(e){}
   // Back to the customer list behind the sign-in screen. Otherwise signing
   // back in drops you wherever you happened to be when you signed out —
   // usually the Account page, since that is where the sign-out button is.
@@ -15669,6 +15859,30 @@ function startPasswordReset(){
   return true;
 }
 
+// ---------- Save my login ----------
+// The box keeps the email on this computer so it is already typed next time. The
+// password is never kept by the page: the browser's own password manager offers
+// that, and the sign-in stays until Sign out. Kept outside the synced data.
+const SITE_SAVED_LOGIN_KEY = 'weirdevice:siteSavedLogin';
+function siteFillSavedLogin(){
+  try{
+    const raw = localStorage.getItem(SITE_SAVED_LOGIN_KEY);
+    const box = document.getElementById('siteSaveLogin');
+    const u = document.getElementById('siteUsername');
+    if(raw === null){ if(box) box.checked = true; return; }
+    const saved = JSON.parse(raw) || {};
+    if(box) box.checked = !!saved.save;
+    if(saved.save && saved.email && u && !u.value) u.value = saved.email;
+  }catch(e){}
+}
+function siteRememberLogin(email){
+  try{
+    const box = document.getElementById('siteSaveLogin');
+    const on = !box || box.checked;
+    localStorage.setItem(SITE_SAVED_LOGIN_KEY, JSON.stringify(on ? {save: true, email: email} : {save: false}));
+  }catch(e){}
+}
+
 async function attemptSiteLogin(){
   const err = document.getElementById('siteLoginError');
   const say = (msg)=>{ if(err){ err.textContent = msg; err.style.display = 'block'; } };
@@ -15694,6 +15908,7 @@ async function attemptSiteLogin(){
   }
 
   if(!result.ok){ done(); say(result.message); return; }
+  siteRememberLogin(email);
 
   // Signed in, but not necessarily part of a company. Without a membership
   // row there is no data to see, so say that rather than showing an empty app.
@@ -15759,8 +15974,11 @@ async function guardSiteSession(){
 document.addEventListener('DOMContentLoaded', ()=>{
   const btn = document.getElementById('btnSiteLogin');
   const pass = document.getElementById('sitePassword');
-  if(btn) btn.addEventListener('click', attemptSiteLogin);
-  if(pass) pass.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); attemptSiteLogin(); } });
+  // The sign-in is a real form, so the Sign in button and Enter both submit it, and the
+  // browser's own password manager can offer to keep the password
+  const form = document.getElementById('siteLoginForm');
+  if(form) form.addEventListener('submit', (e)=>{ e.preventDefault(); attemptSiteLogin(); });
+  siteFillSavedLogin();
   guardSiteSession();
 });
 
@@ -19922,7 +20140,7 @@ function renderWorkOrderHistory(){
 
   if(workOrders.length === 0){
     countEl.textContent = '';
-    container.innerHTML = emptyState('Nothing sent yet — quotes and work orders you send will show up here.');
+    container.innerHTML = emptyState('Nothing sent yet — estimates and work orders you send will show up here.');
     return;
   }
 
@@ -19972,7 +20190,7 @@ function renderWorkOrderHistory(){
   const histPages = Math.max(1, Math.ceil(allHist.length / CUSTOM_PER_PAGE));
   wcHistoryPage = Math.min(histPages, Math.max(1, wcHistoryPage));
   const sortedHist = allHist.slice((wcHistoryPage - 1) * CUSTOM_PER_PAGE, wcHistoryPage * CUSTOM_PER_PAGE);
-  container.appendChild(selectionBar(histKey, sortedHist.map(w => w.id), kindNow === 'Quote' ? 'quote' : 'work order', ids=>{
+  container.appendChild(selectionBar(histKey, sortedHist.map(w => w.id), kindNow === 'Quote' ? 'estimate' : 'work order', ids=>{
     const set = new Set(ids);
     workOrders = workOrders.filter(x => !set.has(x.id));
     saveWorkOrders();
@@ -19986,7 +20204,7 @@ function renderWorkOrderHistory(){
       const row = document.createElement('div');
       row.className = 'cust-row wc-row';
       const dateStr = new Date(wo.createdAt).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'});
-      row.innerHTML = `<div><div class="cust-name">${wo.type} — ${customer ? displayName(customer.name) : 'Unknown customer'}</div><div class="cust-meta">${dateStr} · $${wo.total.toFixed(2)}</div></div>`;
+      row.innerHTML = `<div><div class="cust-name">${kindLabel(wo.type)} — ${customer ? displayName(customer.name) : 'Unknown customer'}</div><div class="cust-meta">${dateStr} · $${wo.total.toFixed(2)}</div></div>`;
       addQuoteMessagePill(row.querySelector('.cust-meta'), wo);
       if((wo.type || 'Quote') === 'Quote'){
         // A quote: the customer and the quote's name (no "Quote —"), then a
@@ -20041,7 +20259,7 @@ function renderWorkOrderHistory(){
         toWO.className = 'btn btn-ghost';
         toWO.style.cssText = editBtn.style.cssText;
         toWO.textContent = 'Convert to work order';
-        toWO.title = 'Start a work order with this quote\u2019s customer and items';
+        toWO.title = 'Start a work order with this estimate\u2019s customer and items';
         toWO.addEventListener('click', e=>{ e.stopPropagation(); convertQuoteToWorkOrder(wo); });
         rightWrap.appendChild(toWO);
       }
@@ -20053,7 +20271,7 @@ function renderWorkOrderHistory(){
       delBtn.style.cssText = 'width:auto;padding:6px 10px;font-size:12px;color:var(--rust);border-color:#EFC9BC;';
       delBtn.textContent = 'Delete';
       delBtn.addEventListener('click', async ()=>{
-        const ok = await confirmDialog('Delete this ' + (wo.type || 'record').toLowerCase() +
+        const ok = await confirmDialog('Delete this ' + kindLabel(wo.type || 'record').toLowerCase() +
           ' for ' + (customer ? customer.name : 'this customer') + '? This cannot be undone.');
         if(!ok) return;
         workOrders = workOrders.filter(x => x.id !== wo.id);
@@ -20995,12 +21213,12 @@ function renderCurrentList(kind){
     });
   } else {
     expireOldQuotes();
-    heading.textContent = 'Open quotes';
-    note.textContent = 'Quotes sent and not yet closed, newest first. Close one once it\u2019s been answered or no longer needs following up \u2014 it stays in History.';
+    heading.textContent = 'Open estimates';
+    note.textContent = 'Estimates sent and not yet closed, newest first. Close one once it\u2019s been answered or no longer needs following up \u2014 it stays in History.';
     rows = workOrders.filter(w => (w.type || 'Quote') === 'Quote' && !w.closed).map(w => ({
       id: w.id, date: w.date || (w.createdAt || '').slice(0, 10), who: custName(w.customerId), look: custLook([w.customerId]),
       quoteName: w.name || '',
-      what: (w.lineItems || []).map(li => li.description).filter(Boolean).join(', ') || 'Quote',
+      what: (w.lineItems || []).map(li => li.description).filter(Boolean).join(', ') || 'Estimate',
       total: w.total
     }));
   }
@@ -21037,7 +21255,7 @@ function renderCurrentList(kind){
   count.textContent = rows.length ? String(rows.length) : '';
   box.innerHTML = '';
   if(!rows.length){
-    box.innerHTML = emptyState(kind === 'Quote' ? 'No open quotes.' : 'Nothing scheduled' + (tech ? ' for ' + technicianNameById(tech) : '') + '.');
+    box.innerHTML = emptyState(kind === 'Quote' ? 'No open estimates.' : 'Nothing scheduled' + (tech ? ' for ' + technicianNameById(tech) : '') + '.');
     return;
   }
   const pages = Math.max(1, Math.ceil(rows.length / CUSTOM_PER_PAGE));
@@ -21046,7 +21264,7 @@ function renderCurrentList(kind){
   const selKey = 'current:' + kind;
   const redrawCur = () => renderCurrentList(kind);
   box.appendChild(selectionBar(selKey, pageRows.map(r => r.id),
-    kind === 'Task' ? 'task' : (kind === 'Quote' ? 'quote' : 'scheduled visit'), ids=>{
+    kind === 'Task' ? 'task' : (kind === 'Quote' ? 'estimate' : 'scheduled visit'), ids=>{
       const set = new Set();
       ids.forEach(id=>{
         if(String(id).indexOf('bundle:') !== 0){ set.add(id); return; }
@@ -21148,7 +21366,7 @@ function renderCurrentList(kind){
       resend.className = 'btn btn-ghost';
       resend.style.cssText = 'width:auto;padding:5px 10px;font-size:12px;';
       resend.textContent = 'Resend';
-      resend.title = 'Email this quote to the customer again';
+      resend.title = 'Email this estimate to the customer again';
       resend.addEventListener('click', async (e)=>{
         e.stopPropagation();
         if(resend.disabled) return;
@@ -21765,7 +21983,7 @@ function applyWorkOrderType(){
 
   if(history){
     if(!isTask && !isWO){
-      document.getElementById('wcHistoryHeading').textContent = 'Quotes sent';
+      document.getElementById('wcHistoryHeading').textContent = 'Estimates sent';
       renderWorkOrderHistory();
     }
     if(chosen !== 'Quote') renderSubmittedHistory(isTask ? 'task' : 'work order');
@@ -22335,7 +22553,7 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
     // before sending (without it, the email just goes without the buttons)
     const quoteId = 'wo_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
     const expiresDays = type === 'Quote' ? quoteExpiresDays() : null;
-    if(expiresDays) message += `\n\nThis quote expires in ${expiresDays} ${expiresDays === 1 ? 'day' : 'days'}.`;
+    if(expiresDays) message += `\n\nThis estimate expires in ${expiresDays} ${expiresDays === 1 ? 'day' : 'days'}.`;
     // This quote's number: the next one up
     const quoteNumber = nextQuoteNumber();
     lsSet('quoteCounter', quoteNumber);
@@ -22386,7 +22604,7 @@ document.getElementById('btnSendWorkOrder').addEventListener('click', async ()=>
 const QUOTE_EMAIL_DEFAULTS = {
   header: '',          // blank means the company name
   subheader: '',
-  body: 'Hi {first name},\nHere\u2019s your quote. Please review it when you have a chance, and let us know if you\u2019d like us to proceed.',   // above the items (Nov 1)
+  body: 'Hi {first name},\nHere\u2019s your estimate. Please review it when you have a chance, and let us know if you\u2019d like us to proceed.',   // above the items (Nov 1)
   closing: 'Questions, or ready to go ahead? Just reply to this email.',
   signoff: null,       // null means the report's sign-off
   showContact: true
@@ -22473,7 +22691,7 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
     + '<tr><td style="padding:24px 26px 0;">'
     // The top line: QUOTE, with the quote's number just to its right
     + '<div style="font-size:12px;font-weight:700;color:#0F766E;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">'
-    + esc(type)
+    + esc(kindLabel(type))
     // The number as on the form: large, with a light # (Oct 2)
     + (quoteNumber ? '<span style="display:inline-block;vertical-align:middle;margin-left:10px;'
         + 'font-family:\'Space Grotesk\',Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;letter-spacing:-0.01em;color:#0E4A4D;text-transform:none;line-height:1;">'
@@ -22501,7 +22719,7 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
     // Footer
     + '<tr><td style="padding:26px;">'
     // How long this quote is good for (quotes sent with a set number of days)
-    + (expiresDays ? '<div style="font-size:13.5px;color:#4A5A58;margin:0 0 4px;">This quote expires in <strong>'
+    + (expiresDays ? '<div style="font-size:13.5px;color:#4A5A58;margin:0 0 4px;">This estimate expires in <strong>'
         + expiresDays + (expiresDays === 1 ? ' day' : ' days') + '</strong>, on '
         + esc(new Date(Date.now() + expiresDays * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'}))
         + '.</div>' : '')
@@ -22513,7 +22731,7 @@ function quoteEmailHtml(customer, type, dateText, items, total, notes, styleOver
         // Download quote (Oct 15): the breakdown as a PDF to keep
         + (!quoteLinkCanDownload(respondUrl) ? '' : '<a href="' + respondUrl + '&a=download" style="display:block;text-align:center;margin:12px 0 6px;padding:12px 10px;border-radius:10px;'
         + 'background:#F1F8F7;color:' + esc(colour) + ';border:1.5px solid #BFDCD8;font-weight:700;font-size:14.5px;text-decoration:none;">'
-        + '&#8615;&nbsp; Download ' + esc(String(type || 'Quote').toLowerCase()) + ' (PDF)</a>')
+        + '&#8615;&nbsp; Download ' + esc(kindLabel(type || 'Quote').toLowerCase()) + ' (PDF)</a>')
         // Send a message (Oct 22): the customer asks something without answering
         + '<a href="' + respondUrl + '&a=message" style="display:block;text-align:center;margin:12px 0 6px;padding:12px 10px;border-radius:10px;'
         + 'background:#F1F8F7;color:' + esc(colour) + ';border:1.5px solid #BFDCD8;font-weight:700;font-size:14.5px;text-decoration:none;">'
@@ -22561,25 +22779,25 @@ function fillQuoteEmailForm(q){
   document.getElementById('btnSaveQuoteEmail').addEventListener('click', ()=>{
     lsSet('quoteEmailStyle', quoteEmailFormValues());
     close();
-    showToast('Quote email saved');
+    showToast('Estimate email saved');
   });
   // Asks first: confirming puts the defaults back and saves them there and then
   document.getElementById('btnQeReset').addEventListener('click', async ()=>{
     const ok = await confirmDialog(
-      'Reset the quote email to its default? This will permanently delete your edits to the email.',
+      'Reset the estimate email to its default? This will permanently delete your edits to the email.',
       'Reset');
     if(!ok) return;
     const defaults = Object.assign({}, QUOTE_EMAIL_DEFAULTS);
     lsSet('quoteEmailStyle', defaults);
     fillQuoteEmailForm(defaults);
-    showToast('Quote email reset to default');
+    showToast('Estimate email reset to default');
   });
   // What it looks like with what's in the boxes now, before saving
   document.getElementById('btnQePreview').addEventListener('click', ()=>{
     const sample = {name: 'Sample Customer', address: '123 Example St'};
     const items = [{description: 'Acid wash', qty: 1, price: 250}, {description: 'Filter clean', qty: 2, price: 85}];
     const html = quoteEmailHtml(sample, 'Quote', new Date().toLocaleDateString(undefined, {month:'long', day:'numeric', year:'numeric'}),
-      items, 420, 'Notes you add to a quote appear here.', quoteEmailFormValues());
+      items, 420, 'Notes you add to an estimate appear here.', quoteEmailFormValues());
     const view = document.createElement('div');
     view.style.cssText = 'position:fixed;inset:0;z-index:330;background:rgba(9,32,34,0.55);display:flex;align-items:center;justify-content:center;padding:18px;';
     const card = document.createElement('div');
@@ -22667,7 +22885,7 @@ function convertQuoteToWorkOrder(q){
     renderLineItems();
     recalcWorkOrderTotal();
     applyWcTicks('wo');
-    showToast('Quote copied to a new work order');
+    showToast('Estimate copied to a new work order');
   }, 0);
 }
 
@@ -22682,9 +22900,9 @@ async function resendQuoteEmail(w, customer){
       : new Date(w.createdAt || Date.now()).toLocaleDateString(undefined, {month: 'long', day: 'numeric', year: 'numeric'});
     html = quoteEmailHtml(customer, w.type || 'Quote', dateText, w.lineItems || [], Number(w.total) || 0, w.notes || '', null, null, w.number);
   }
-  const subject = w.emailSubject || ((w.type || 'Quote') + ' from ' + companyName() + ' \u2014 ' + customer.name);
+  const subject = w.emailSubject || (kindLabel(w.type || 'Quote') + ' from ' + companyName() + ' \u2014 ' + customer.name);
   // Plain words, only if the email service can't send the designed one
-  let plain = (w.type || 'Quote').toUpperCase() + '\n' + customer.name + '\n\n';
+  let plain = kindLabel(w.type || 'Quote').toUpperCase() + '\n' + customer.name + '\n\n';
   (w.lineItems || []).forEach(li => {
     const qty = parseFloat(li.qty) || 0, price = parseFloat(li.price) || 0;
     plain += (li.description || '') + '  x' + qty + '  $' + price.toFixed(2) + ' each  =  $' + (qty * price).toFixed(2) + '\n';
@@ -22695,7 +22913,7 @@ async function resendQuoteEmail(w, customer){
   if(!sent){ showToast('Could not resend \u2014 check the connection and try again'); return false; }
   w.lastResentAt = new Date().toISOString();
   saveWorkOrders();
-  showToast('Quote resent to ' + (customer.email || customer.name));
+  showToast('Estimate resent to ' + (customer.email || customer.name));
   return true;
 }
 
@@ -22763,7 +22981,7 @@ function showSentQuoteEmail(w){
   const head = document.createElement('div');
   head.style.cssText = 'margin:0 0 10px;';
   head.innerHTML = '<h3 style="font-size:15px;margin:0 0 3px;"></h3><p style="font-size:12px;color:var(--muted);margin:0;"></p>';
-  head.children[0].textContent = w.emailSubject || ((w.type || 'Quote') + ' to ' + displayName(customer.name));
+  head.children[0].textContent = w.emailSubject || (kindLabel(w.type || 'Quote') + ' to ' + displayName(customer.name));
   const when = w.createdAt ? new Date(w.createdAt).toLocaleString() : '';
   head.children[1].textContent = rebuilt
     ? 'Sent before copies were kept \u2014 shown with today\u2019s template'
@@ -22992,8 +23210,8 @@ async function sendQuoteEmail(customer, subject, html, plainText){
     body: JSON.stringify({to: customerEmailTo(customer), subject: subject, html: html, customerId: customer.id, kind: 'quote'})
   });
   if(res.ok) return true;
-  recordEmailFailure(customer, 'Quote', customerEmailTo(customer), emailFailReason(res));
-  showToast('Could not send the quote \u2014 the office could not be reached. Try again in a moment.');
+  recordEmailFailure(customer, 'Estimate', customerEmailTo(customer), emailFailReason(res));
+  showToast('Could not send the estimate \u2014 the office could not be reached. Try again in a moment.');
   return false;
 }
 
@@ -23072,7 +23290,7 @@ function qoEntriesFor(customerId){
       const outcome = w.approved ? (lt.mixed ? 'Approved ' + lt.yes + ' of ' + lt.of : 'Approved') : w.denied ? 'Declined' : w.expired ? 'Expired' : (w.status === 'draft' ? 'Draft' : 'Sent');
       // The badge says where the customer stands; the row says what's on it (Oct 3)
       const status = w.approved ? 'approved' : w.denied ? 'declined' : w.expired ? 'expired' : 'pending';
-      out.push({key: 'q:' + w.id, kind: 'quote', w: w, tag: 'Quote' + num, badge: 'Quote', num: num.trim(), outcome: outcome, status: status,
+      out.push({key: 'q:' + w.id, kind: 'quote', w: w, tag: 'Estimate' + num, badge: 'Estimate', num: num.trim(), outcome: outcome, status: status,
         title: (w.lineItems || []).map(li => li.description).filter(Boolean).join(', ') || w.name || '',
         done: !!w.closed, date: w.createdAt || ''});
       return;
@@ -23271,7 +23489,7 @@ function qoJobInfo(item){
   };
   if(item.kind === 'quote'){
     const w = item.w;
-    info.title = 'Quote' + (w.number ? ' #' + quoteNumberText(w.number) : '');
+    info.title = 'Estimate' + (w.number ? ' #' + quoteNumberText(w.number) : '');
     info.kind = 'quote';
     if(w.createdAt) info.lines.push('Written ' + when(w.createdAt));
     info.lines.push('Status: ' + item.outcome);
@@ -23357,7 +23575,7 @@ async function qoEmailJob(item, customerId){
   const customer = customers.find(c => c.id === customerId);
   if(!customer){ showToast('This customer is no longer on file'); return; }
   if(item.kind === 'quote'){
-    const ok = await confirmDialog('Email this quote to ' + esc(customerEmailTo(customer) || 'the customer') + ' again, exactly as it first went?', 'Send');
+    const ok = await confirmDialog('Email this estimate to ' + esc(customerEmailTo(customer) || 'the customer') + ' again, exactly as it first went?', 'Send');
     if(ok) await resendQuoteEmail(item.w, customer);
     return;
   }
@@ -23522,13 +23740,13 @@ function qoReplyInWeir(w, cust, customerId){
     const text = ta.value.trim();
     if(!jobHasAll(box, [[!text, ta, 'Write your reply first.']])) return;
     send.disabled = true; send.textContent = 'Sending…';
-    const info = {title: 'Re: Quote' + num, lines: [], items: [], itemsLabel: '', prices: false,
+    const info = {title: 'Re: Estimate' + num, lines: [], items: [], itemsLabel: '', prices: false,
       sections: [['Reply', text]].concat(last ? [['Your message', last.text]] : []), photos: []};
     const res = await sbFetch('/functions/v1/send-report', {method: 'POST',
-      body: JSON.stringify({to: to, subject: 'Re: Quote' + num + ' — ' + companyName(), html: qoJobEmailHtml(cust, info), customerId: cust.id, kind: 'quote'})});
+      body: JSON.stringify({to: to, subject: 'Re: Estimate' + num + ' — ' + companyName(), html: qoJobEmailHtml(cust, info), customerId: cust.id, kind: 'quote'})});
     if(!(res && res.ok)){
       send.disabled = false; send.textContent = 'Send';
-      recordEmailFailure(cust, 'Quote reply', to, emailFailReason(res));
+      recordEmailFailure(cust, 'Estimate reply', to, emailFailReason(res));
       showToast('Could not send it — the office could not be reached. Try again in a moment.');
       return;
     }
@@ -23549,7 +23767,7 @@ function qoBodyInner(item, customerId){
   const tech = id => id === 'office' ? 'the office' : (technicianNameById(id) || '');
   if(item.kind === 'quote'){
     const w = item.w;
-    const doc = qoDoc('Quote' + (w.number ? ' #' + quoteNumberText(w.number) : ''),
+    const doc = qoDoc('Estimate' + (w.number ? ' #' + quoteNumberText(w.number) : ''),
       ['Written ' + when(w.createdAt), item.outcome], !item.done);
     const card = doc;
     if((w.lineItems || []).length){
@@ -23638,7 +23856,7 @@ function qoBodyInner(item, customerId){
         const reply = document.createElement('a');
         reply.className = 'btn btn-ghost';
         reply.style.cssText = 'display:inline-flex;width:auto;padding:7px 12px;font-size:12.5px;text-decoration:none;';
-        reply.href = 'mailto:' + to + '?subject=' + encodeURIComponent('Re: Quote' + (w.number ? ' #' + quoteNumberText(w.number) : ''));
+        reply.href = 'mailto:' + to + '?subject=' + encodeURIComponent('Re: Estimate' + (w.number ? ' #' + quoteNumberText(w.number) : ''));
         reply.textContent = 'Reply by email';
         reply.addEventListener('click', e => e.stopPropagation());
         row.appendChild(reply);
@@ -23664,7 +23882,7 @@ function qoBodyInner(item, customerId){
     delBtn.style.cssText = 'width:auto;padding:7px 12px;font-size:12.5px;color:var(--rust);border-color:#EFC9BC;';
     delBtn.textContent = 'Delete';
     delBtn.addEventListener('click', async ()=>{
-      const ok = await confirmDialog('Delete this ' + (w.type || 'record').toLowerCase() + '? This cannot be undone.');
+      const ok = await confirmDialog('Delete this ' + kindLabel(w.type || 'record').toLowerCase() + '? This cannot be undone.');
       if(!ok) return;
       workOrders = workOrders.filter(x => x.id !== w.id);
       saveWorkOrders();
@@ -24135,11 +24353,11 @@ function renderCustomerWorkOrders(customerId, fromSync){
   const kind = kindSel ? kindSel.value : '';
   let list = all.filter(x => (!qoDateFilter || qoDay(x) === qoDateFilter) && (!kind || x.kind === kind));
   if(!list.length){
-    const kindName = {quote: 'quotes', workorder: 'work orders', clean: 'filter cleans', drain: 'pool drains', task: 'tasks'}[kind];
+    const kindName = {quote: 'estimates', workorder: 'work orders', clean: 'filter cleans', drain: 'pool drains', task: 'tasks'}[kind];
     if(qoSlot) qoSlot.innerHTML = '';
     container.innerHTML = emptyState(qoDateFilter ? 'Nothing on that date.'
       : kindName ? 'No ' + kindName + ' for this customer yet.'
-      : 'No quotes, work orders, filter cleans, pool drains or tasks for this customer yet.');
+      : 'No estimates, work orders, filter cleans, pool drains or tasks for this customer yet.');
     return;
   }
   if(qoOpenId && !list.some(x => x.key === qoOpenId)) qoOpenId = null;
@@ -33903,9 +34121,9 @@ function collectAlerts(){
     const qid = 'quote:' + w.id + ':' + (w.approved ? 'a' : 'd') + (Array.isArray(w.lineAnswers) && quoteLineTally(w).mixed ? ':' + w.lineAnswers.map(x => x === 'approved' ? 'a' : x === 'denied' ? 'd' : '-').join('') : '');
     if(!tm || isNaN(tm) || !noteOk(qid, tm)) return;   // answered in the last 30 days
     const what = (w.lineItems || []).map(li => li && li.description).filter(Boolean).join(', ') || w.name || '';
-    out.push({id: qid, kind: 'repair', tagText: 'Quote', answer: w.approved ? 'approved' : 'denied',
+    out.push({id: qid, kind: 'repair', tagText: 'Estimate', answer: w.approved ? 'approved' : 'denied',
       customerId: c.id, name: displayName(c.name),
-      body: 'Quote' + (w.number ? ' #' + quoteNumberText(w.number) : ''), t: tm, jobKey: 'q:' + w.id, tech: '',
+      body: 'Estimate' + (w.number ? ' #' + quoteNumberText(w.number) : ''), t: tm, jobKey: 'q:' + w.id, tech: '',
       notes: (()=>{
         // Some lines approved and some not (Nov 1): which is which
         const lt = quoteLineTally(w);
@@ -33929,7 +34147,7 @@ function collectAlerts(){
       if(!tm || isNaN(tm) || !noteOk('qmsg:' + w.id + ':' + m.at, tm)) return;
       out.push({id: 'qmsg:' + w.id + ':' + m.at, kind: 'repair', tagText: 'Message',
         customerId: c.id, name: displayName(c.name),
-        body: 'Message about quote' + (w.number ? ' #' + quoteNumberText(w.number) : ''), t: tm, jobKey: 'q:' + w.id, tech: '',
+        body: 'Message about estimate' + (w.number ? ' #' + quoteNumberText(w.number) : ''), t: tm, jobKey: 'q:' + w.id, tech: '',
         notes: m.text});
     });
   });

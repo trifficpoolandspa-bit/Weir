@@ -618,10 +618,13 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
   <div style="background:#fff;border-radius:16px;padding:26px 22px;max-width:360px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,0.28);">
     <h2 style="font-size:20px;margin:0 0 4px;">Weir</h2>
     <p style="font-size:12.5px;color:#5E7371;margin:0 0 18px;">Sign in to see your route.</p>
-    <div class="field"><label>Username</label><input id="loginUsername" autocomplete="username" placeholder="sam.rivera"></div>
-    <div class="field"><label>Password</label><input id="loginPassword" type="password" autocomplete="current-password" placeholder="Your password"></div>
+    <form id="loginForm" action="#" onsubmit="return false;" style="margin:0;">
+    <div class="field"><label>Username</label><input id="loginUsername" name="username" autocomplete="username" autocapitalize="none" placeholder="sam.rivera"></div>
+    <div class="field"><label>Password</label><input id="loginPassword" name="password" type="password" autocomplete="current-password" placeholder="Your password"></div>
+    <div class="field" id="loginSaveRow" style="margin:-4px 0 14px;"><label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-family:inherit;color:var(--ink,#0B2422);font-size:13.5px;font-weight:600;margin:0;cursor:pointer;"><input type="checkbox" id="loginSave" checked style="width:auto;margin:0;"> Save my login</label></div>
     <p id="loginError" style="display:none;font-size:12.5px;color:#B8492E;margin:0 0 12px;"></p>
-    <button class="btn btn-primary" id="btnLogin" style="width:100%;">Sign in</button>
+    <button class="btn btn-primary" id="btnLogin" type="submit" style="width:100%;">Sign in</button>
+    </form>
   </div>
 </div>
 
@@ -1682,9 +1685,20 @@ function showErrorBanner(entry){
   else document.addEventListener('DOMContentLoaded', ()=> document.body.appendChild(bar));
 }
 
+// Errors that come from the browser's own injected scripts (Brave and Firefox on iPhone add
+// "__firefox__" helpers, some browsers add a "Script error." with no file) are not this
+// page's and say nothing is wrong with it, so they don't get a banner
+function isBrowserInjectedError(message, filename){
+  const m = String(message || '');
+  if(/__firefox__|webkit\.messageHandlers|window\.webkit/i.test(m)) return true;
+  if(/^script error\.?$/i.test(m.trim()) && !filename) return true;
+  return false;
+}
+
 window.addEventListener('error', (e)=>{
   // Failed images and scripts fire here too, and are not worth a banner
   if(e && e.target && e.target !== window && e.target.tagName) return;
+  if(isBrowserInjectedError(e && e.message, e && e.filename)) return;
   const entry = recordError('Error', e.message, e.filename, e.lineno, e.colno,
     e.error && e.error.stack);
   showErrorBanner(entry);
@@ -1692,6 +1706,7 @@ window.addEventListener('error', (e)=>{
 
 window.addEventListener('unhandledrejection', (e)=>{
   const reason = e && e.reason;
+  if(isBrowserInjectedError(reason && reason.message || reason, '')) return;
   const entry = recordError('Unhandled promise',
     (reason && reason.message) || reason || 'A background task failed',
     '', '', '', reason && reason.stack);
@@ -3094,6 +3109,9 @@ function measureBottomBar(){
 window.addEventListener('load', measureBottomBar);
 window.addEventListener('resize', measureBottomBar);
 window.addEventListener('orientationchange', ()=> setTimeout(measureBottomBar, 200));
+// Portrait only: the installed app is locked by its manifest, and this holds it
+// where the browser allows a lock (it refuses outside an installed or full screen app)
+try{ if(screen.orientation && screen.orientation.lock) screen.orientation.lock('portrait').catch(()=>{}); }catch(e){}
 document.addEventListener('DOMContentLoaded', ()=> setTimeout(measureBottomBar, 0));
 
 function showToast(msg){
@@ -4166,7 +4184,29 @@ function fieldLoginParts(){
   const p = document.getElementById('loginPassword');
   const b = document.getElementById('btnLogin');
   const wrap = el => (el && el.closest && el.closest('.field')) || el;
-  return {user: wrap(u), pass: wrap(p), button: b};
+  return {user: wrap(u), pass: wrap(p), button: b, save: document.getElementById('loginSaveRow')};
+}
+
+// ---- Save my login ----
+// The box keeps the username on this phone, so it is already typed next time. The
+// password is never kept by the app: the phone's own password manager offers that,
+// and the sign-in stays until Sign out. Kept on the device, never synced.
+function fieldFillSavedLogin(companyId){
+  try{
+    const saved = deviceGet('savedLogin');
+    const box = document.getElementById('loginSave');
+    const u = document.getElementById('loginUsername');
+    if(!saved){ if(box) box.checked = true; return; }
+    if(box) box.checked = !!saved.save;
+    if(saved.save && saved.username && String(saved.company || '') === String(companyId || '') && u && !u.value) u.value = saved.username;
+  }catch(e){}
+}
+function fieldSaveLoginName(username){
+  try{
+    const box = document.getElementById('loginSave');
+    const company = deviceGet('company');
+    deviceSet('savedLogin', (!box || box.checked) ? {save: true, username: String(username || '').trim(), company: company && company.id || ''} : {save: false});
+  }catch(e){}
 }
 
 function fieldShowError(msg){
@@ -4207,7 +4247,8 @@ function fieldRenderLogin(){
     document.getElementById('loginCompanyName').textContent = company.name || '';
     row.style.display = 'flex';
     document.getElementById('loginCompanyStep').style.display = 'none';
-    [parts.user, parts.pass, parts.button].forEach(el => { if(el) el.style.display = ''; });
+    [parts.user, parts.pass, parts.save, parts.button].forEach(el => { if(el) el.style.display = ''; });
+    fieldFillSavedLogin(company.id);
   } else {
     fieldShowCompanyStep(false);
   }
@@ -4224,7 +4265,7 @@ function fieldShowCompanyStep(canGoBack){
   document.getElementById('btnLoginCompany').textContent = 'Continue';
   document.getElementById('btnLoginCompanyBack').style.display = canGoBack && deviceGet('company') ? 'block' : 'none';
   document.getElementById('loginCompanyCode').value = '';
-  [parts.user, parts.pass, parts.button].forEach(el => { if(el) el.style.display = 'none'; });
+  [parts.user, parts.pass, parts.save, parts.button].forEach(el => { if(el) el.style.display = 'none'; });
   fieldShowError('');
 }
 
@@ -11514,11 +11555,13 @@ function placeChosenJobs(container){
     }
     const target = Array.from(container.children).find(el => isStop(el) && String(el.dataset.reorderKey) === String(after));
     if(!target) return;
-    // Past its drop-down and that customer's own jobs
+    // Past its drop-down and every job that customer already has there, whether
+    // that job sits under them by default or was placed there on purpose, so a
+    // new job never jumps above one that was already there
     let anchor = target;
     const next = () => anchor.nextElementSibling;
     while(next() && next() !== row && (/route-brief|route-job-brief/.test(next().className)
-      || (next().dataset.jobCust === String(after) && next().dataset.placeAfter === undefined))) anchor = next();
+      || next().dataset.jobCust === String(after))) anchor = next();
     if(anchor !== row) anchor.after(row);
   });
 }
@@ -17598,13 +17641,13 @@ function appWorkOrderDates(startISO, repeat, customEvery, customUnit){
   document.head.appendChild(st);
 })();
 
-var awcKind = 'Quote';           // or 'Work Order' or 'Task'; opens on Quote (Oct 15)
+var awcKind = 'Quote';           // or 'Work Order' or 'Task'; opens on Estimate (Oct 15)
 var awcView = 'main';            // main | current | history
 var awcWoCustomers = [];         // customer ids on the work order
 var awcTaskCustomers = [];       // customer ids on the task (optional)
 var awcLineItems = [{description: '', qty: '', price: ''}];
 var awcPickFilterCleans = function(){};
-var awcQuoteCustomers = [];      // customer ids on the quote (Oct 15)
+var awcQuoteCustomers = [];      // customer ids on the estimate (Oct 15)
 var awcQuoteLines = [{description: '', qty: '', price: ''}];
 var awcWoTechs = [];             // technician ids ticked
 var awcTaskTechs = [];
@@ -17619,6 +17662,8 @@ function awcEndEdit(){
   const f = document.getElementById('awcFinalize'); if(f) f.textContent = 'Finalize';
 }
 
+// What an estimate was called before: the saved kind is still 'Quote'; it shows as Estimate
+function kindLabel(t){ return /^quote$/i.test(String(t == null ? '' : t)) ? 'Estimate' : String(t == null ? '' : t); }
 function awcEsc(s){
   return String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
@@ -17675,7 +17720,7 @@ function awcBuild(pane){
   <div class="card" id="awc">
     <div class="btn-row" id="awcKindRow" style="gap:6px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line);flex-wrap:nowrap;">
       <!-- Quote (Oct 15), as on the website: to the left of Work Order -->
-      <button type="button" class="btn" data-kind="Quote" style="flex:1;padding:10px 6px;">Quote</button>
+      <button type="button" class="btn" data-kind="Quote" style="flex:1;padding:10px 6px;">Estimate</button>
       <button type="button" class="btn" data-kind="Work Order" style="flex:1;padding:10px 6px;">Work Order</button>
       <button type="button" class="btn" data-kind="Task" style="flex:1;padding:10px 6px;">Task</button>
     </div>
@@ -17689,9 +17734,9 @@ function awcBuild(pane){
 
     <!-- A quote (Oct 15): the website's quote, laid out like the work order
          form. Emailed with Approve / Decline / Download, and kept on the server
-         so the website's Quotes, Alerts and the customer's Quotes & Orders have it -->
+         so the website's Estimates, Alerts and the customer's Estimates & Orders have it -->
     <div id="awcQuoteForm" style="display:none;">
-      <h2>New quote</h2>
+      <h2>New estimate</h2>
       <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Emailed to the customer to approve or decline.</p>
       <div class="field">
         <!-- Expires in ... days on the Date line, between Date and the number
@@ -17707,7 +17752,7 @@ function awcBuild(pane){
         <input type="date" id="awcQuoteDate" style="display:none;">
       </div>
       <div class="field">
-        <label>Quote name</label>
+        <label>Estimate name</label>
         <input id="awcQuoteName" placeholder="e.g. Heater replacement" autocomplete="off">
       </div>
       <div class="field" style="position:relative;">
@@ -18031,7 +18076,7 @@ function awcApply(){
   document.getElementById('awcQuoteForm').style.display = (awcView === 'main' && isQuote) ? '' : 'none';
   document.getElementById('awcWoForm').style.display = (awcView === 'main' && !isTask && !isQuote) ? '' : 'none';
   const curSub = document.getElementById('awcCurSub');
-  if(curSub) curSub.textContent = isQuote ? 'Quotes sent and waiting on an answer, and ones answered in the last 30 days.' : 'Work orders and tasks still to be done.';
+  if(curSub) curSub.textContent = isQuote ? 'Estimates sent and waiting on an answer, and ones answered in the last 30 days.' : 'Work orders and tasks still to be done.';
   const curTech = document.getElementById('awcCurTech');
   if(curTech) curTech.style.display = isQuote ? 'none' : '';
   document.getElementById('awcTaskForm').style.display = (awcView === 'main' && isTask) ? '' : 'none';
@@ -18216,13 +18261,13 @@ function awcProductWindow(opts){
   box.className = 'confirm-box';
   box.style.cssText = 'max-width:420px;width:100%;text-align:left;max-height:88vh;overflow-y:auto;';
   box.innerHTML = '<h3 style="font-size:17px;margin:0 0 4px;">Add line item</h3>'
-    + '<p data-sub style="font-size:13px;color:var(--muted);margin:0 0 14px;">Pick a category, give it a name and a price, and it’s ready to drop onto any quote or work order.</p>'
+    + '<p data-sub style="font-size:13px;color:var(--muted);margin:0 0 14px;">Pick a category, give it a name and a price, and it’s ready to drop onto any estimate or work order.</p>'
     + '<div class="field"><label>Category</label><select data-cat>'
     + '<option value="">Uncategorized</option><option value="repairs">Repair</option><option value="products">Product</option>'
     + '<option value="services">Service</option><option value="chemicals">Chemical</option></select></div>'
     + '<div class="field"><label>Product or service</label><input data-name placeholder="e.g. Filter replacement"></div>'
     + '<div class="field"><label>Price ($)</label><input data-price type="number" step="0.01" inputmode="decimal" placeholder="0.00"></div>'
-    + '<div class="field" data-for="other"><label>Description (optional)</label><textarea data-desc rows="3" placeholder="What’s included. Shows under the line on quotes and work orders."></textarea></div>'
+    + '<div class="field" data-for="other"><label>Description (optional)</label><textarea data-desc rows="3" placeholder="What’s included. Shows under the line on estimates and work orders."></textarea></div>'
     + '<div class="field" data-for="chem"><label>Unit (optional)</label><input data-unit placeholder="gal, lb, oz, tab…"></div>'
     + '<div class="field" data-for="chem"><label class="inline-check" style="margin:0;"><input type="checkbox" data-extra> Extra charge chemical</label></div>'
     + '<div data-for="extra" style="display:none;">'
@@ -18241,7 +18286,7 @@ function awcProductWindow(opts){
     nameEl.value = opts.name || '';
     if(opts.price !== undefined && opts.price !== null && opts.price !== '') priceEl.value = opts.price;
     if(opts.detail) descEl.value = String(opts.detail).trim();
-    q('[data-sub]').textContent = 'From your ' + (opts.from || 'quote') + '. Check the name and price, add anything else, and it’ll be ready for every quote and work order after this one.';
+    q('[data-sub]').textContent = 'From your ' + (opts.from || 'estimate') + '. Check the name and price, add anything else, and it’ll be ready for every estimate and work order after this one.';
   }
   let colour = AWC_EXTRA_COLOURS[0];
   const dots = q('[data-dots]');
@@ -18419,7 +18464,7 @@ function awcRenderLines(boxId){
       + 'border:1.5px solid #9CC5BF;background:var(--teal-pale);color:var(--teal-deep);font-size:13px;font-weight:700;cursor:pointer;';
     const drawAddPs = ()=>{ addPs.style.display = desc.value.trim() && !awcHasProduct(desc.value) ? 'inline-flex' : 'none'; };
     addPs.addEventListener('click', ()=>{
-      awcProductWindow({name: desc.value.trim(), price: item.price, detail: item.detail, from: isQuote ? 'quote' : 'work order', onSaved: saved=>{
+      awcProductWindow({name: desc.value.trim(), price: item.price, detail: item.detail, from: isQuote ? 'estimate' : 'work order', onSaved: saved=>{
         if(saved.name !== desc.value){ item.description = saved.name; desc.value = saved.name; }
         drawAddPs();
       }});
@@ -18464,7 +18509,7 @@ function awcQuoteExpiresDays(){
 }
 var AWC_QUOTE_EMAIL_DEFAULTS = {
   header: '', subheader: '',
-  body: 'Hi {first name},\nHere\u2019s your quote. Please review it when you have a chance, and let us know if you\u2019d like us to proceed.',   // above the items (Nov 1)
+  body: 'Hi {first name},\nHere\u2019s your estimate. Please review it when you have a chance, and let us know if you\u2019d like us to proceed.',   // above the items (Nov 1)
   closing: 'Questions, or ready to go ahead? Just reply to this email.',
   signoff: null, showContact: true
 };
@@ -18539,7 +18584,7 @@ function awcWireQuote(){
   document.getElementById('awcQuoteSend').addEventListener('click', awcSendQuote);
   // Asks first (Oct 22)
   document.getElementById('awcQuoteClear').addEventListener('click', async ()=>{
-    const ok = await confirmDialog('Are you sure you want to clear this quote? Everything filled in will be removed.', 'Clear');
+    const ok = await confirmDialog('Are you sure you want to clear this estimate? Everything filled in will be removed.', 'Clear');
     if(ok) awcClearQuote();
   });
   document.getElementById('awcQuoteCustomize').addEventListener('click', awcCustomizeQuoteEmail);
@@ -18632,7 +18677,7 @@ async function awcSendQuote(){
       const details = awcQuoteDownloadDetails(c, 'Quote', dateText, items, total, notes, number, expiresDays, name);
       const respondUrl = await awcRegisterQuote(quoteId, expiresDays, details);
       const html = awcQuoteEmailHtml(c, 'Quote', dateText, items, total, notes, null, respondUrl, number, expiresDays);
-      const subject = 'Quote from ' + awcCompanyName() + ' — ' + c.name;
+      const subject = 'Estimate from ' + awcCompanyName() + ' — ' + c.name;
       const res = await fieldAuthed('/functions/v1/send-report', {
         method: 'POST',
         body: JSON.stringify({to: customerEmailTo(c), subject: subject, html: html, customerId: c.id, kind: 'quote'})
@@ -18656,7 +18701,7 @@ async function awcSendQuote(){
   }
   try{ fieldSync(); }catch(e){}
   if(!notSent.length){
-    showToast('Quote sent to ' + (sent === 1 ? (picked[0].name || 'the customer') : sent + ' customers'));
+    showToast('Estimate sent to ' + (sent === 1 ? (picked[0].name || 'the customer') : sent + ' customers'));
     awcClearQuote();
   } else {
     showToast((sent ? 'Sent to ' + sent + '. ' : '') + 'Not sent: ' + notSent.join(', ') + ' — it’s saved; try again with a connection.');
@@ -18724,7 +18769,7 @@ function awcRenderQuoteCurrent(){
   }).sort((a, b) => String(b.w.createdAt || '').localeCompare(String(a.w.createdAt || '')));
   box.innerHTML = '';
   if(!rows.length){
-    box.innerHTML = '<div style="font-size:13.5px;color:var(--muted);padding:12px 2px;">No quotes waiting on an answer.</div>';
+    box.innerHTML = '<div style="font-size:13.5px;color:var(--muted);padding:12px 2px;">No estimates waiting on an answer.</div>';
     return;
   }
   rows.slice(0, awcShown).forEach(({w, st})=>{
@@ -18744,7 +18789,7 @@ function awcRenderQuoteCurrent(){
     const what = document.createElement('div');
     what.style.cssText = 'font-size:13px;color:var(--muted);margin-top:3px;';
     const title = w.name || (w.lineItems || []).map(li => li && li.description).filter(Boolean).join(', ');
-    what.textContent = ['Quote' + (w.number ? ' #' + awcQuoteNumberText(w.number) : ''), title, '$' + (Number(w.total) || 0).toFixed(2)]
+    what.textContent = ['Estimate' + (w.number ? ' #' + awcQuoteNumberText(w.number) : ''), title, '$' + (Number(w.total) || 0).toFixed(2)]
       .filter(Boolean).join(' · ');
     const when = document.createElement('div');
     when.style.cssText = 'font-size:12.5px;color:var(--muted);margin-top:2px;';
@@ -18812,7 +18857,7 @@ function awcOpenQuote(w){
   card.style.cssText = 'max-width:560px;width:100%;display:flex;flex-direction:column;max-height:88vh;';
   const h = document.createElement('h3');
   h.style.cssText = 'font-size:16px;margin:0 0 4px;';
-  h.textContent = 'Quote' + (w.number ? ' #' + awcQuoteNumberText(w.number) : '') + ' — ' + (awcCustName(w.customerId) || 'Customer');
+  h.textContent = 'Estimate' + (w.number ? ' #' + awcQuoteNumberText(w.number) : '') + ' — ' + (awcCustName(w.customerId) || 'Customer');
   const sub = document.createElement('p');
   sub.style.cssText = 'font-size:12.5px;color:var(--muted);margin:0 0 10px;';
   sub.textContent = w.createdAt ? 'Sent ' + new Date(w.createdAt).toLocaleString() : '';
@@ -18826,7 +18871,7 @@ function awcOpenQuote(w){
   btns.style.cssText = 'margin-top:12px;flex-wrap:nowrap;';
   const copy = document.createElement('button');
   copy.type = 'button'; copy.className = 'btn btn-ghost'; copy.style.cssText = 'flex:1 1 0;min-width:0;';
-  copy.textContent = 'Copy to a new quote';
+  copy.textContent = 'Copy to a new estimate';
   const close = document.createElement('button');
   close.type = 'button'; close.className = 'btn btn-primary'; close.style.cssText = 'flex:1 1 0;min-width:0;';
   close.textContent = 'Close';
@@ -18861,10 +18906,10 @@ function awcCustomizeQuoteEmail(){
   card.className = 'confirm-box';
   card.style.cssText = 'max-width:440px;width:100%;max-height:88vh;overflow-y:auto;';
   card.innerHTML = '<h3 style="font-size:17px;margin:0 0 4px;">Customize email</h3>'
-    + '<p style="font-size:13px;color:var(--muted);margin:0 0 14px;">The top and bottom of every quote email, here and on the website.</p>'
+    + '<p style="font-size:13px;color:var(--muted);margin:0 0 14px;">The top and bottom of every estimate email, here and on the website.</p>'
     + '<div class="field"><label>Header</label><input data-f="header"></div>'
     + '<div class="field"><label>Line under the header (optional)</label><input data-f="subheader" placeholder="e.g. Licensed &amp; insured"></div>'
-    + '<div class="field"><label>Body (optional)</label><textarea data-f="body" rows="4" placeholder="A few words above the quote"></textarea>'
+    + '<div class="field"><label>Body (optional)</label><textarea data-f="body" rows="4" placeholder="A few words above the estimate"></textarea>'
     + '<div style="font-size:11.5px;color:var(--muted);margin-top:4px;">Shows under the customer\u2019s name and address, above the items. {first name} becomes the customer\u2019s first name.</div></div>'
     + '<div class="field"><label>Closing line</label><textarea data-f="closing" rows="2"></textarea></div>'
     + '<div class="field"><label>Sign-off</label><input data-f="signoff"></div>'
@@ -18898,7 +18943,7 @@ function awcCustomizeQuoteEmail(){
     queueSetupSend('quoteEmailStyle');
     try{ fieldSync(); }catch(e){}
     shut();
-    showToast('Quote email saved');
+    showToast('Estimate email saved');
   });
   card.querySelector('[data-preview]').addEventListener('click', ()=>{
     const sample = {name: 'Sample Customer', address: '123 Main St'};
@@ -18991,7 +19036,7 @@ function awcQuoteEmailHtml(customer, type, dateText, items, total, notes, styleO
     + '<tr><td style="padding:24px 26px 0;">'
     // The top line: QUOTE, with the quote's number just to its right
     + '<div style="font-size:12px;font-weight:700;color:#0F766E;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">'
-    + awcEsc(type)
+    + awcEsc(kindLabel(type))
     // The number as on the form: large, with a light # (Oct 2)
     + (quoteNumber ? '<span style="display:inline-block;vertical-align:middle;margin-left:10px;'
         + 'font-family:\'Space Grotesk\',Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;letter-spacing:-0.01em;color:#0E4A4D;text-transform:none;line-height:1;">'
@@ -19019,7 +19064,7 @@ function awcQuoteEmailHtml(customer, type, dateText, items, total, notes, styleO
     // Footer
     + '<tr><td style="padding:26px;">'
     // How long this quote is good for (quotes sent with a set number of days)
-    + (expiresDays ? '<div style="font-size:13.5px;color:#4A5A58;margin:0 0 4px;">This quote expires in <strong>'
+    + (expiresDays ? '<div style="font-size:13.5px;color:#4A5A58;margin:0 0 4px;">This estimate expires in <strong>'
         + expiresDays + (expiresDays === 1 ? ' day' : ' days') + '</strong>, on '
         + awcEsc(new Date(Date.now() + expiresDays * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'}))
         + '.</div>' : '')
@@ -19031,7 +19076,7 @@ function awcQuoteEmailHtml(customer, type, dateText, items, total, notes, styleO
         // Download quote (Oct 15): the breakdown as a PDF to keep
         + (!awcQuoteLinkCanDownload(respondUrl) ? '' : '<a href="' + respondUrl + '&a=download" style="display:block;text-align:center;margin:12px 0 6px;padding:12px 10px;border-radius:10px;'
         + 'background:#F1F8F7;color:' + awcEsc(colour) + ';border:1.5px solid #BFDCD8;font-weight:700;font-size:14.5px;text-decoration:none;">'
-        + '&#8615;&nbsp; Download ' + awcEsc(String(type || 'Quote').toLowerCase()) + ' (PDF)</a>')
+        + '&#8615;&nbsp; Download ' + awcEsc(kindLabel(type || 'Quote').toLowerCase()) + ' (PDF)</a>')
         // Send a message (Oct 22): the customer asks something without answering
         + '<a href="' + respondUrl + '&a=message" style="display:block;text-align:center;margin:12px 0 6px;padding:12px 10px;border-radius:10px;'
         + 'background:#F1F8F7;color:' + awcEsc(colour) + ';border:1.5px solid #BFDCD8;font-weight:700;font-size:14.5px;text-decoration:none;">'
@@ -20662,8 +20707,21 @@ async function acalFetchOffice(force){
 }
 // A filter group or drain day changed here (Oct 26): straight to the server,
 // as the website keeps them. Needs signal; false if it didn't go.
-async function acalPushOffice(kind, item){
+async function acalPushOffice(kind, item, isNew){
   try{
+    // A drain day changed here that was already at the office (Nov 14): first make
+    // sure it is still there. The server counts any new edit to a deleted day as
+    // "bring it back", so a phone that hadn't heard it was taken off must not
+    // send one.
+    if(kind === 'drain_entry' && !isNew){
+      const ok = await acalFetchOffice(true);
+      if(!ok) return false;
+      if(!(acalOffice.drainCalendar || []).some(x => x && String(x.id) === String(item.id))){
+        try{ showToast('That drain was taken off at the office'); }catch(e){}
+        try{ acalDraw(); }catch(e){}
+        return false;
+      }
+    }
     const at = new Date().toISOString();
     const flat = syncExplode(item);
     const changes = {};
@@ -20996,7 +21054,8 @@ async function acalAddDrains(iso, ids, tech, photo, placeAfter, email, ov){
       e.refillMade = true;
     });
   }
-  for(const e of entries){ if(!(await acalPushOffice('drain_entry', e))) return false; }
+  const knownIds = new Set(cal.map(x => x && x.id));
+  for(const e of entries){ if(!(await acalPushOffice('drain_entry', e, !knownIds.has(e.id)))) return false; }
   if(refillTasks.length || refillGone.length){
     let list = lsGet('tasks') || [];
     refillGone.forEach(t => { list = list.filter(x => x !== t && x.id !== t.id); queueOfficeWork('task', t.id, true); });
@@ -25947,6 +26006,7 @@ function attachAdminLoginHandlers(){
     if(btn) btn.disabled = false;
     if(!r.ok){ fieldShowError(r.message); return; }
     fieldShowError('');
+    fieldSaveLoginName(document.getElementById('loginUsername').value);
     pass.value = '';
     currentUser = fieldCurrentUser();
     const who = document.getElementById('signedInAs');
@@ -25961,8 +26021,15 @@ function attachAdminLoginHandlers(){
     startFieldSync();
   }
 
-  if(btn) btn.addEventListener('click', attempt);
-  if(pass) pass.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') attempt(); });
+  // A real form: the Sign in button and Enter both submit it, and the phone's password
+  // manager can offer to keep the password. Enter on the company code is its own step.
+  const form = document.getElementById('loginForm');
+  if(form) form.addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const step = document.getElementById('loginCompanyStep');
+    if(step && step.style.display !== 'none') return;
+    attempt();
+  });
 }
 
 function guardAdminSession(){
