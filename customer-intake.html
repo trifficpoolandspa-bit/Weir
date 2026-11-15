@@ -13320,7 +13320,7 @@ function openWorkCalendar(startDay, stayHere){
     const panel = document.createElement('div');
     panel.dataset.calPanel = '1';
     panel.className = 'confirm-box';
-    panel.style.cssText = 'max-width:1000px;width:100%;max-height:88vh;overflow-y:auto;text-align:left;padding:18px 20px;';
+    panel.style.cssText = 'max-width:1000px;width:100%;max-height:88vh;overflow-y:auto;text-align:left;padding:18px 20px;position:relative;';
     dayWin.appendChild(panel);
     // The date and what's on it at the left; six buttons, three by two, at the
     // right, Close at the top right
@@ -13394,9 +13394,10 @@ function openWorkCalendar(startDay, stayHere){
     const xBtn = document.createElement('button');
     xBtn.type = 'button'; xBtn.setAttribute('aria-label', 'Close'); xBtn.title = 'Close';
     xBtn.textContent = '\u00d7';
-    xBtn.style.cssText = 'flex:0 0 auto;width:32px;height:32px;padding:0;margin:-4px -6px 0 0;border:0;background:none;font-size:26px;line-height:1;cursor:pointer;color:var(--muted);border-radius:8px;';
+    xBtn.style.cssText = 'position:absolute;top:8px;right:10px;z-index:2;width:32px;height:32px;padding:0;margin:0;border:0;background:none;font-size:26px;line-height:1;cursor:pointer;color:var(--muted);border-radius:8px;';
     xBtn.addEventListener('click', ()=>{ sel = ''; draw(); });
-    ph.appendChild(xBtn);
+    ph.style.paddingRight = '34px';   // room for the X
+    panel.appendChild(xBtn);
     panel.appendChild(ph);
     // Nothing on the day yet (Oct 26): a narrower window, the buttons under
     // the date. Once anything is on it, the full width again for the list.
@@ -13407,7 +13408,7 @@ function openWorkCalendar(startDay, stayHere){
       ph.style.gap = '12px';
       btns.style.marginLeft = '0';
       btns.style.width = '100%';
-      btns.style.gridTemplateColumns = 'repeat(4,minmax(0,1fr))';
+      btns.style.gridTemplateColumns = 'repeat(3,minmax(0,1fr))';
     }
     // Every section on the same columns, so they line up down the window
     // The last column holds Move and the bin (Nov 1)
