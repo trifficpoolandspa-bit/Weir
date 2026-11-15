@@ -6345,7 +6345,7 @@ async function saveFountainReadings(customerId, fountainId, list){
 
 function populateCustomerSelect(selectEl, placeholder, filterFn){
   selectEl.innerHTML = '';
-  const list = customers.filter(c => c.active !== false && (!filterFn || filterFn(c)));
+  const list = customers.filter(c => c.active !== false && !c.oneTime && (!filterFn || filterFn(c)));
   if(list.length === 0){
     const opt = document.createElement('option');
     opt.textContent = placeholder || 'No customers yet';
@@ -10026,7 +10026,7 @@ function openJobRescheduleModal(job){
   overlay.innerHTML = '<div class="confirm-box" style="max-width:420px;">'
     + '<h3 style="font-size:15px;margin:0 0 4px;"></h3>'
     + '<p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;"></p>'
-    + '<div class="field"><label>New date</label><input type="date" data-date></div>'
+    + '<div class="field"><label>New date</label><input type="date" data-date data-nopast></div>'
     + '<div class="field"><label>Technician</label><select data-tech></select></div>'
     + '<div class="btn-row" style="flex-direction:column;gap:8px;">'
     + '<button class="btn btn-primary" data-save style="width:100%;">Reschedule</button>'
@@ -10218,7 +10218,7 @@ function openTechCustomerPicker(){
   const search = overlay.querySelector('#tcPickSearch');
   const draw = ()=>{
     const q = search.value.trim().toLowerCase();
-    const all = customers.filter(c => c && c.active !== false)
+    const all = customers.filter(c => c && c.active !== false && !c.oneTime)
       .filter(c => !q || (c.name || '').toLowerCase().includes(q) || (c.address || '').toLowerCase().includes(q))
       .sort((a, b) => ((a.technicianId === techId ? 0 : 1) - (b.technicianId === techId ? 0 : 1))
         || String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity: 'base'}));
@@ -13744,8 +13744,9 @@ function renderServicedList(){
     row.innerHTML = `<div style="min-width:0;flex:1 1 auto;"><div class="cust-name" style="display:flex;align-items:center;min-width:0;"><span class="cust-name-text" style="flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${c.name}</span><span style="flex:0 0 auto;">${durationBadge}</span></div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${showsDay ? forDay : ''}${c.address || 'No address on file'}</div></div>`;
     const reserviceBtn = document.createElement('button');
     reserviceBtn.className = 'btn btn-secondary';
-    reserviceBtn.style.width = 'auto';
-    reserviceBtn.style.padding = '7px 12px';
+    reserviceBtn.style.width = '84px';
+    reserviceBtn.style.flex = '0 0 84px';
+    reserviceBtn.style.padding = '7px 0';
     reserviceBtn.style.fontSize = '12px';
     reserviceBtn.textContent = 'Reservice';
     reserviceBtn.addEventListener('click', (e)=>{
@@ -13756,8 +13757,9 @@ function renderServicedList(){
     if(isAdminUser()){
       const corrBtn = document.createElement('button');
       corrBtn.className = 'btn btn-secondary';
-      corrBtn.style.width = 'auto';
-      corrBtn.style.padding = '7px 12px';
+      corrBtn.style.width = '104px';
+      corrBtn.style.flex = '0 0 104px';
+      corrBtn.style.padding = '7px 0';
       corrBtn.style.fontSize = '12px';
       corrBtn.style.marginRight = '6px';
       corrBtn.textContent = 'Corrections';
@@ -13837,6 +13839,14 @@ function servicedJobsOn(iso, techId){
     const ids = (t.customerIds || []).length ? t.customerIds : (t.customerId ? [t.customerId] : ['']);
     ids.forEach(cid => out.push({kind: 'task', id: t.id, report: cid ? 'tk:' + t.id : '', customerId: cid, doneAt: t.doneAt, durationMs: t.doneDurationMs, skipped: jobWasSkipped(t), title: t.title || 'Task'}));
   });
+  // One row per job (Nov 14): a job rescheduled from Serviced and done again the same day
+  // shows only its latest one; the earlier one stays in the records
+  const copyOf = deviceGet('jobCopyOf') || {};
+  if(Object.keys(copyOf).length){
+    const older = new Set();
+    out.forEach(x=>{ let p = copyOf[String(x.id)], n = 0; while(p && n++ < 50){ older.add(String(p)); p = copyOf[p]; } });
+    return out.filter(x => !older.has(String(x.id)));
+  }
   return out;
 }
 // A finished job's row on Serviced: its colour and icon, when it was done;
@@ -13895,9 +13905,13 @@ function servicedJobRow(job){
   const resched = document.createElement('button');
   resched.type = 'button';
   resched.className = 'btn btn-secondary';
-  resched.style.cssText = 'width:auto;padding:7px 12px;font-size:12px;flex-shrink:0;';
-  resched.textContent = 'Reschedule';
+  resched.style.cssText = 'width:84px;flex:0 0 84px;padding:7px 0;font-size:12px;';
+  resched.textContent = 'Reservice';
   resched.addEventListener('click', e=>{ e.stopPropagation(); rescheduleDoneJob(job); });
+  // Where Corrections sits on a customer's row, so Reservice lines up down the list
+  const corrGap = document.createElement('div');
+  corrGap.style.cssText = 'flex:0 0 110px;width:110px;';
+  row.appendChild(corrGap);
   row.appendChild(resched);
   return row;
 }
@@ -13919,11 +13933,11 @@ function rescheduleDoneJob(job, move){
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
   overlay.innerHTML = '<div class="confirm-box" id="rdjBox" style="max-width:420px;">'
-    + '<h3 style="font-size:16px;margin:0 0 4px;">Reschedule</h3>'
+    + '<h3 style="font-size:16px;margin:0 0 4px;">Reservice</h3>'
     + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;"></p>'
-    + '<div class="field"><label>Date</label><input type="date" id="rdjDate"></div>'
+    + '<div class="field"><label>Date</label><input type="date" id="rdjDate" data-nopast></div>'
     + '<div class="field"><label>Technician</label><select id="rdjTech"></select></div>'
-    + '<div class="btn-row" style="flex-wrap:nowrap;"><button type="button" class="btn btn-primary" id="rdjGo" style="flex:1 1 0;">Reschedule</button>'
+    + '<div class="btn-row" style="flex-wrap:nowrap;"><button type="button" class="btn btn-primary" id="rdjGo" style="flex:1 1 0;">Reservice</button>'
     + '<button type="button" class="btn btn-ghost" id="rdjCancel" style="flex:1 1 0;">Cancel</button></div></div>';
   overlay.querySelector('p').textContent = (job.title || jobKindLabel(job.kind))
     + (move ? ' moves to the route for the day and technician you pick.'
@@ -13932,6 +13946,7 @@ function rescheduleDoneJob(job, move){
   techs.forEach(t => { const o = document.createElement('option'); o.value = String(t.id); o.textContent = t.name || 'Technician'; sel.appendChild(o); });
   if(Array.from(sel.options).some(o => o.value === wasTech)) sel.value = wasTech;
   document.body.appendChild(overlay);
+  try{ overlay.querySelector('#rdjDate').value = todayDateStr(); }catch(e){}
   const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
   overlay.querySelector('#rdjCancel').addEventListener('click', close);
   overlay.addEventListener('click', e=>{ if(e.target === overlay) close(); });
@@ -13969,13 +13984,20 @@ function rescheduleDoneJob(job, move){
     copy.createdAt = new Date().toISOString();
     now.push(copy);
     if(!lsSet(where[0], now)){ showToast('Could not save \u2014 the phone is full'); return; }
+    // Remembered on this phone only, so Serviced shows one row however many times it is rescheduled and done
+    try{
+      const co = deviceGet('jobCopyOf') || {};
+      co[copy.id] = String(done.id);
+      const ks = Object.keys(co); if(ks.length > 300) ks.slice(0, ks.length - 300).forEach(k => { delete co[k]; });
+      deviceSet('jobCopyOf', co);
+    }catch(e){}
     queueOfficeWork(where[1], copy.id, false);
     try{ if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange(); }catch(e){}
     close();
     try{ renderServicedList(); }catch(e){}
     try{ renderHomeList(); }catch(e){}
     const t = techs.find(x => String(x.id) === sel.value);
-    showToast((job.title || jobKindLabel(job.kind)) + ' rescheduled for '
+    showToast((job.title || jobKindLabel(job.kind)) + ' reserviced for '
       + new Date(copy.date + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})
       + (t ? ' with ' + t.name : ''));
   });
@@ -14931,6 +14953,7 @@ function sendOnMyWay(customer, what){
 let adminCustomerSearchTerm = '';
 
 function adminMatchesSearch(c, term){
+  if(c && c.oneTime) return false;   // used for one job only (Nov 14)
   if(!term) return true;
   const haystack = [c.name, c.address, c.phone, c.email].filter(Boolean).join(' ').toLowerCase();
   return haystack.includes(term);
@@ -17668,7 +17691,7 @@ function awcEsc(s){
   return String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
 function awcCustomers(){
-  return (customers || []).filter(c => c && !c.deleted && c.active !== false);
+  return (customers || []).filter(c => c && !c.deleted && !c.oneTime && c.active !== false);
 }
 function awcCustName(id){
   const c = (customers || []).find(x => x && String(x.id) === String(id));
@@ -17793,7 +17816,7 @@ function awcBuild(pane){
           <label style="margin:0;">Scheduled date</label>
           <span class="awc-num" id="awcWoNumber"></span>
         </div>
-        <input type="date" id="awcWoDate" style="width:auto;min-width:0;max-width:140px;">
+        <input type="date" id="awcWoDate" data-nopast style="width:auto;min-width:0;max-width:140px;">
         <!-- The four ticks in two even columns under the date (Oct 19): Photo and
              Video required, then Email customer and Include prices, as on the
              website. A label too long for its half wraps rather than running
@@ -17871,7 +17894,7 @@ function awcBuild(pane){
       <div class="field">
         <label>Scheduled date</label>
         <div style="display:flex;align-items:center;gap:10px;">
-          <input type="date" id="awcTaskDate" style="width:auto;min-width:0;max-width:140px;">
+          <input type="date" id="awcTaskDate" data-nopast style="width:auto;min-width:0;max-width:140px;">
           <button type="button" class="btn btn-primary" id="awcSavedTasks" style="width:auto;margin-left:auto;padding:9px 14px;font-size:14px;white-space:nowrap;flex-shrink:0;">Saved tasks</button>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:12px;">
@@ -18070,7 +18093,7 @@ function awcApply(){
   document.querySelectorAll('#awcKindRow [data-kind]').forEach(b=>{
     b.className = 'btn ' + (b.dataset.kind === awcKind ? 'btn-primary' : 'btn-ghost');
   });
-  document.getElementById('awcMainTab').textContent = awcKind;
+  document.getElementById('awcMainTab').textContent = kindLabel(awcKind);
   document.querySelectorAll('#awcViewRow [data-view]').forEach(b => { b.className = 'btn ' + (b.dataset.view === awcView ? 'btn-primary' : 'btn-ghost'); });
   const isQuote = awcKind === 'Quote';
   document.getElementById('awcQuoteForm').style.display = (awcView === 'main' && isQuote) ? '' : 'none';
@@ -18127,23 +18150,37 @@ function awcApplyRepeats(){
 // route or a drain list; the details can be filled in later.
 // "+ Use <name>" row for a customer search (Nov 5): someone not on the list,
 // by name, for a job. Not shown when that exact name is already a customer.
-function jobNameOnlyRow(typed, onAdd, css){
+function jobNameOnlyRow(typed, onAdd, css, useClick){
   const t = String(typed || '').trim();
-  if(!t || (customers || []).some(c => c && !c.deleted && String(c.name || '').trim().toLowerCase() === t.toLowerCase())) return null;
-  const row = document.createElement('div');
-  row.className = 'press-row';
-  row.dataset.addName = '1';
-  row.style.cssText = css || 'padding:10px 12px;cursor:pointer;border-top:1px solid var(--line);font-size:14px;';
-  row.innerHTML = '<div style="font-weight:600;"></div><div style="font-size:12px;color:var(--muted);">Not a customer yet — just the name for now</div>';
-  row.firstChild.textContent = '+ Use “' + t + '”';
-  const go = e=>{ e.preventDefault(); onAdd(t); };
-  row.addEventListener('mousedown', go);
-  row.addEventListener('touchstart', go, {passive: false});
-  return row;
+  if(!t || (customers || []).some(c => c && !c.deleted && !c.oneTime && String(c.name || '').trim().toLowerCase() === t.toLowerCase())) return null;
+  // Two choices (Nov 14): add them to the customer list, or use the name for
+  // this one job only, which isn't saved to the list
+  const wrap = document.createElement('div');
+  wrap.style.display = 'contents';
+  wrap.dataset.addName = '1';
+  const mk = (title, sub, keep)=>{
+    const row = document.createElement('div');
+    row.className = 'press-row';
+    row.dataset.keep = keep ? '1' : '0';
+    row.style.cssText = css === undefined ? 'padding:9px 12px;cursor:pointer;border-top:1px solid var(--line);font-size:13px;' : css;
+    row.innerHTML = '<div style="font-weight:600;"></div><div style="font-size:11.5px;color:var(--muted);"></div>';
+    row.firstChild.textContent = title;
+    row.lastChild.textContent = sub;
+    const go = e=>{ e.preventDefault(); onAdd(t, keep); };
+    if(useClick){ row.addEventListener('click', go); }
+    else { row.addEventListener('mousedown', go); row.addEventListener('touchstart', go, {passive: false}); }
+    wrap.appendChild(row);
+  };
+  mk('+ Add “' + t + '” to customers', 'Saved to your customer list', true);
+  mk('Use “' + t + '” this one time', 'Not saved — only for this job', false);
+  return wrap;
 }
-function addNameOnlyCustomer(name){
+function addNameOnlyCustomer(name, keep){
+  // keep === false: used for one job only. The record has to exist so the job
+  // can show the name, but it's kept out of the customer list and the searches.
   const c = {id: 'cust_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), name: String(name || '').trim(),
              active: true, hasPool: false, hasSpa: false, technicianId: '', nameOnly: true, createdAt: new Date().toISOString()};
+  if(keep === false) c.oneTime = true;
   customers.push(c);
   try{ saveCustomers(); }catch(e){}
   return c;
@@ -18171,19 +18208,15 @@ function awcWireSearch(inputId, boxId, picked, onPick, allowNew){
     // Not on file: use the name as typed (Oct 26)
     const exact = awcCustomers().some(c => String(c.name || '').trim().toLowerCase() === t);
     const addRow = ()=>{
-      if(!allowNew || exact) return;
-      const row = document.createElement('div');
-      row.dataset.addName = '1';
-      row.innerHTML = '<div style="font-weight:600;"></div><div style="font-size:11.5px;color:var(--muted);">Not a customer yet \u2014 just the name for now</div>';
-      row.firstChild.textContent = '+ Use \u201c' + typed + '\u201d';
-      row.addEventListener('click', ()=>{
-        const c = addNameOnlyCustomer(typed);
+      if(!allowNew) return;
+      const r = jobNameOnlyRow(typed, (name, keep)=>{
+        const c = addNameOnlyCustomer(name, keep);
         onPick(c.id);
         input.value = '';
         box.style.display = 'none';
         box.innerHTML = '';
-      });
-      box.appendChild(row);
+      }, '', true);
+      if(r) box.appendChild(r);
     };
     if(!matches.length){
       box.innerHTML = '<div style="color:var(--muted);cursor:default;">No customers match that search.</div>';
@@ -18562,7 +18595,7 @@ async function awcRegisterQuote(quoteId, expiresDays, details){
 
 function awcWireQuote(){
   document.getElementById('awcQuoteDate').value = '';   // set by hand (Oct 21)
-  awcWireSearch('awcQuoteSearch', 'awcQuoteSuggest', ()=> awcQuoteCustomers, id=>{ awcQuoteCustomers.push(id); awcRenderChips(); });
+  awcWireSearch('awcQuoteSearch', 'awcQuoteSuggest', ()=> awcQuoteCustomers, id=>{ awcQuoteCustomers.push(id); awcRenderChips(); }, true);
   document.getElementById('awcQuoteAddLine').addEventListener('click', ()=>{
     awcQuoteLines.push({description: '', qty: '', price: ''});
     awcRenderLines('awcQuoteLines');
@@ -20207,7 +20240,7 @@ function awcVisitEditor(isTask, id, onDone){
   const field = (t, el) => { const f = document.createElement('div'); f.className = 'field'; const l = document.createElement('label'); l.textContent = t; f.appendChild(l); f.appendChild(el); return f; };
   const tick = (t, on) => { const l = document.createElement('label'); l.className = 'inline-check'; l.style.cssText = 'white-space:normal;min-width:0;'; const b = document.createElement('input'); b.type = 'checkbox'; b.checked = !!on; l.appendChild(b); l.appendChild(document.createTextNode(' ' + t)); l._box = b; return l; };
   const date = document.createElement('input');
-  date.type = 'date'; date.value = item.date || ''; date.style.width = 'auto';
+  date.type = 'date'; date.setAttribute('data-nopast', '1'); date.value = item.date || ''; date.style.width = 'auto';
   panel.appendChild(field('Scheduled date', date));
   const grid = document.createElement('div');
   grid.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 14px;margin:-2px 0 14px;';
@@ -20675,7 +20708,7 @@ function awcRenderHistory(){
 var acalMode = 'today', acalMonth = '', acalSel = '', acalTech = '', acalPick = false, acalPickYear = 0, acalJobMenu = false;
 var acalSlide = 0, acalSwipedAt = 0;   // which way the month just moved by a swipe (1 next, -1 before), and when
 var acalOffice = {filterGroups: null, drainCalendar: null, at: 0};
-const ACAL_TAGS = {fc: ['FC', 'Filter cleans', '#FBF1DD', '#8A5E0B'], pd: ['PD', 'Pool drains', '#C3DEF3', '#174C78'],
+const ACAL_TAGS = {fc: ['FC', 'Filter cleans', '#FBF1DD', '#8A5E0B'], pd: ['PD', 'Drains', '#C3DEF3', '#174C78'],
   cr: ['CR', 'Clean & refill', '#8EC5F5', '#0D3A66'],   // overnight drain's second day (Nov 1)
   wo: ['WO', 'Work orders', '#E9EEF0', '#3E5560'], tk: ['TK', 'Tasks', '#C9EBC3', '#24601F']};
 const ACAL_STATES = {'': ['Not in app', '#8A9795'], app: ['In the app', '#C68A17'], done: ['Done', '#2E8B57']};
@@ -20812,7 +20845,7 @@ function acalAddFcPd(kind, iso){
       + '<div data-ovnote style="font-size:11.5px;color:var(--muted);margin:4px 0 0 26px;"></div></div>')
     + '<div class="btn-row" style="flex-wrap:nowrap;"><button type="button" class="btn btn-primary" data-go style="flex:1 1 0;">Add to route</button>'
     + '<button type="button" class="btn btn-ghost" data-cancel style="flex:1 1 0;">Cancel</button></div>';
-  box.querySelector('h3').textContent = (isFc ? 'Filter clean' : 'Pool drain') + ' \u2013 ' + nice;
+  box.querySelector('h3').textContent = (isFc ? 'Filter clean' : 'Drain') + ' \u2013 ' + nice;
   box.querySelector('p').textContent = isFc ? 'For customers on their own, not in a group.' : 'Every body of water each customer has is drained.';
   overlay.appendChild(box);
   document.body.appendChild(overlay);
@@ -20867,7 +20900,7 @@ function acalAddFcPd(kind, iso){
   const rp = makeRoutePlace({host: 'acalRpHost', active: ()=> true, date: ()=> iso,
     techIds: ()=> techSel.value ? [techSel.value] : Array.from(new Set(picked.map(id => String((acalCust(id) || {}).technicianId || '')).filter(Boolean))),
     customerIds: ()=> picked.slice(),
-    label: ()=> (isFc ? 'Filter clean' : 'Pool drain') + (picked.length === 1 ? ' \u00b7 ' + nameOf(acalCust(picked[0]) || {}) : ''),
+    label: ()=> (isFc ? 'Filter clean' : 'Drain') + (picked.length === 1 ? ' \u00b7 ' + nameOf(acalCust(picked[0]) || {}) : ''),
     stopsFor: appRouteStopsFor, techName: id => acalTechName(id), nameOf: c => c.name || ''});
   techSel.addEventListener('change', ()=> rp.refresh());
   function drawChips(){
@@ -20893,10 +20926,10 @@ function acalAddFcPd(kind, iso){
     const term = search.value.trim().toLowerCase();
     sug.innerHTML = '';
     if(!term){ sug.style.display = 'none'; return; }
-    const list = (customers || []).filter(c => c && !c.deleted && c.active !== false && picked.indexOf(c.id) === -1
+    const list = (customers || []).filter(c => c && !c.deleted && !c.oneTime && c.active !== false && picked.indexOf(c.id) === -1
       && [c.name, c.address, c.phone].some(v => String(v || '').toLowerCase().indexOf(term) !== -1)).slice(0, 12);
     const addRow = ()=>{
-      const r = jobNameOnlyRow(search.value, name=>{ const c = addNameOnlyCustomer(name); picked.push(c.id); search.value = ''; drawSug(); drawChips(); });
+      const r = jobNameOnlyRow(search.value, (name, keep)=>{ const c = addNameOnlyCustomer(name, keep); picked.push(c.id); search.value = ''; drawSug(); drawChips(); });
       if(r) sug.appendChild(r);
     };
     if(!list.length){ sug.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:10px 12px;">Nobody matches.</div>'; addRow(); sug.style.display = 'block'; return; }
@@ -21407,17 +21440,18 @@ function acalDayWindow(on){
   // A window with every kind of job (Nov 2): the drop-down ran off the screen
   add.addEventListener('click', e=>{ e.stopPropagation(); acalJobMenu = false; acalJobWindow(iso); });
   const close = document.createElement('button');
-  close.type = 'button'; close.className = 'btn btn-primary'; close.style.cssText = 'width:auto;flex:0 0 auto;padding:7px 12px;font-size:13px;';
-  close.textContent = 'Close';
+  close.type = 'button'; close.setAttribute('aria-label', 'Close'); close.title = 'Close';
+  close.style.cssText = 'flex:0 0 auto;width:34px;height:34px;padding:0;border:0;background:none;font-size:26px;line-height:1;cursor:pointer;color:var(--muted);border-radius:8px;';
+  close.textContent = '\u00d7';
   close.addEventListener('click', ()=>{ acalSel = ''; acalJobMenu = false; acalDraw(); });
-  top.appendChild(h); top.appendChild(add); top.appendChild(close);
+  top.appendChild(h); if(iso >= todayDateStr()) top.appendChild(add); top.appendChild(close);   // no + Job on a past day (Nov 14)
   sheet.appendChild(top);
   if(acalJobMenu){
     const menu = document.createElement('div');
     menu.id = 'acalJobMenu';
     menu.style.cssText = 'position:absolute;top:50px;right:12px;z-index:5;width:200px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 6px 18px rgba(19,78,74,.18);padding:4px;';
     // Filter clean and Pool drain under Work order and Task (Oct 26)
-    [['wo', 'Work order', 'Work Order'], ['tk', 'Task', 'Task'], ['fc', 'Filter clean', 'fc'], ['pd', 'Pool drain', 'pd']].forEach(([k, label, kind])=>{
+    [['wo', 'Work order', 'Work Order'], ['tk', 'Task', 'Task'], ['fc', 'Filter clean', 'fc'], ['pd', 'Drain', 'pd']].forEach(([k, label, kind])=>{
       const it = document.createElement('div');
       it.className = 'press-row';
       it.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;';
@@ -21697,7 +21731,7 @@ function acalDayWindow(on){
       })];
       // Move (Nov 1): the day's drain and anything of it on the route, not done
       if(r.entry && r.st !== 'done') right.push(moveBtn({
-        name: (acalCust(r.cid) || {}).name || 'Customer', what: 'Pool drain', techId: r.tech || '',
+        name: (acalCust(r.cid) || {}).name || 'Customer', what: 'Drain', techId: r.tech || '',
         onMove: async (to, tech)=>{
           const e = JSON.parse(JSON.stringify(r.entry));
           const c = acalCust(r.cid) || {};
@@ -21923,7 +21957,7 @@ function acalMoveDialog(opts){
     + '<p data-sub style="font-size:13px;color:var(--muted);margin:0 0 12px;"></p>'
     + '<div data-chips style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;"></div>'
     + '<div style="font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:4px;">Or pick a date</div>'
-    + '<input type="date" data-date style="margin:0 0 12px;">'
+    + '<input type="date" data-date data-nopast style="margin:0 0 12px;">'
     + '<label data-keepwrap class="inline-check" style="display:flex;white-space:normal;font-size:14px;font-weight:600;margin:0 0 8px;gap:8px;"><input type="checkbox" data-keep checked style="width:20px;height:20px;margin:0;flex:0 0 auto;"> <span data-keepword></span></label>'
     + '<select data-tech style="display:none;margin:0 0 8px;"></select>'
     + '<div style="display:flex;gap:8px;margin-top:12px;"><button type="button" class="btn btn-ghost" data-cancel style="flex:1 1 0;">Cancel</button><button type="button" class="btn btn-primary" data-go style="flex:1 1 0;">Move</button></div>';
@@ -21983,7 +22017,7 @@ function acalJobWindow(iso){
   box.innerHTML = '<h3 style="font-size:17px;margin:0 0 2px;">Add a job</h3><p data-day style="font-size:13px;color:var(--muted);margin:0 0 12px;"></p>';
   box.querySelector('[data-day]').textContent = new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric'});
   const shut = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
-  [['wo', 'Work order'], ['tk', 'Task'], ['fc', 'Filter clean'], ['pd', 'Pool drain'], ['cr', 'Clean & refill']].forEach(([k, label])=>{
+  [['wo', 'Work order'], ['tk', 'Task'], ['fc', 'Filter clean'], ['pd', 'Drain'], ['cr', 'Clean & refill']].forEach(([k, label])=>{
     const it = document.createElement('div');
     it.className = 'press-row';
     it.style.cssText = 'display:flex;align-items:center;gap:12px;padding:13px 12px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px;font-size:15.5px;font-weight:600;cursor:pointer;';
@@ -27255,7 +27289,7 @@ function renderPhotoTaskCustomers(){
   if(!box) return;
   if(count) count.textContent = photoTaskCustomers.size ? photoTaskCustomers.size + ' chosen' : 'All customers';
   const term = (document.getElementById('photoTaskCustSearch').value || '').trim().toLowerCase();
-  const list = customers.filter(c => c.active !== false)
+  const list = customers.filter(c => c.active !== false && !c.oneTime)
     .filter(c => !term || (c.name || '').toLowerCase().includes(term) || (c.address || '').toLowerCase().includes(term))
     .sort((a, b) => sortKeyName(a.name).localeCompare(sortKeyName(b.name)));
   box.innerHTML = '';
@@ -27609,7 +27643,7 @@ function marqueeIfCut(el){
   box.checked = CB_ON;
   box.addEventListener('change', ()=>{ try{ showToast(box.checked ? 'Color-blind mode on' : 'Color-blind mode off'); }catch(e){} setColourBlind(box.checked); });
   const key = document.getElementById('colourBlindKey');
-  if(key) [['FC', 'Filter clean'], ['PD', 'Pool drain'], ['CR', 'Clean & refill'], ['WO', 'Work order'], ['TK', 'Task']].forEach(([t, w])=>{
+  if(key) [['FC', 'Filter clean'], ['PD', 'Drain'], ['CR', 'Clean & refill'], ['WO', 'Work order'], ['TK', 'Task']].forEach(([t, w])=>{
     const c = CB_JOB[t];
     const s = document.createElement('span');
     s.style.cssText = 'font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:6px;background:' + c[0] + ';color:' + c[1] + ';';
@@ -28077,7 +28111,7 @@ function emailApplyLogo(html){
     box.style.cssText = 'max-width:420px;';
     box.innerHTML = '<h3 style="font-size:15px;margin:0 0 4px;"></h3>'
       + '<p data-names style="font-size:11.5px;color:var(--muted);margin:0 0 14px;"></p>'
-      + '<div class="field"><label>New date</label><input type="date" data-date></div>'
+      + '<div class="field"><label>New date</label><input type="date" data-date data-nopast></div>'
       + (admin ? '<div class="field"><label>Technician</label><select data-tech></select></div>' : '')
       + '<div class="btn-row" style="flex-direction:column;gap:8px;">'
       + '<button type="button" class="btn btn-primary" data-once style="width:100%;">Just this once</button>'
@@ -28196,6 +28230,30 @@ function emailApplyLogo(html){
   window.addEventListener('focus', recount);
   window.recountHome = recount;
 })();
+// ---------- No scheduling on past days (Nov 14) ----------
+// A job can't be given a day before today: the picker greys past days out, and a
+// past day typed in goes back to what the box held before. Only boxes that set a
+// job's day carry the mark; a date for something already done (a drain done last
+// week) is left alone.
+(function noPastDays(){
+  const SEL = '[data-nopast]';
+  const todayISO = ()=>{ const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+  const isMine = el => !!(el && el.matches && el.matches(SEL));
+  const arm = el => { if(isMine(el)){ try{ el.min = todayISO(); }catch(e){} } };
+  const sweep = root => { if(!root) return; if(root.querySelectorAll) root.querySelectorAll(SEL).forEach(arm); arm(root); };
+  const check = el => {
+    if(!isMine(el) || !el.value || el.value >= todayISO() || el.value === el.dataset.lastOk) return;
+    el.value = el.dataset.lastOk || '';
+    try{ el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true})); }catch(e){}
+    try{ showToast('Jobs can\u2019t be scheduled on a past day'); }catch(e){}
+  };
+  sweep(document);
+  try{ new MutationObserver(list => list.forEach(m => m.addedNodes.forEach(n => { if(n.nodeType === 1) sweep(n); }))).observe(document.documentElement, {childList: true, subtree: true}); }catch(e){}
+  document.addEventListener('focusin', e => { if(isMine(e.target)){ arm(e.target); e.target.dataset.lastOk = e.target.value; } }, true);
+  document.addEventListener('focusout', e => check(e.target), true);
+  document.addEventListener('keydown', e => { if(e.key === 'Enter') check(e.target); }, true);
+})();
+
 </script>
 </body>
 </html>

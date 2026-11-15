@@ -1919,7 +1919,6 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
           <!-- The technician menu just left of Email (Nov 1) -->
           <select id="drainTech" aria-label="Technician" title="Show one technician's customers" style="width:auto;min-width:160px;"></select>
           <!-- Drain emails (Oct 11): coming up, and scheduled -->
-          <button type="button" class="btn btn-ghost" id="btnDrainCheck" style="width:auto;" title="Look for drains and Clean &amp; refills that shouldn't be on the calendar">Calendar check</button>
           <button type="button" class="btn btn-primary" id="btnDrainEmail" style="width:auto;">Email</button>
         </div>
       </div>
@@ -5344,7 +5343,7 @@ function openProductServiceModal(opts){
 
 // Schedule an existing product or service for a customer on a date
 function openScheduleServiceModal(item){
-  const active = customers.filter(c => c.active !== false);
+  const active = customers.filter(c => c.active !== false && !c.oneTime);
   if(active.length === 0){ showToast('Add a customer first'); return; }
 
   const overlay = document.createElement('div');
@@ -5516,7 +5515,7 @@ async function sendCustomerEmail(toEmail, subject, message, customer, what){
 function populateWorkCenterCustomerSelect(selectEl){
   const prevValue = selectEl.value;
   selectEl.innerHTML = '';
-  const activeCustomers = customers.filter(c => c.active !== false);
+  const activeCustomers = customers.filter(c => c.active !== false && !c.oneTime);
   if(activeCustomers.length === 0){
     const opt = document.createElement('option');
     opt.value = '';
@@ -6697,7 +6696,7 @@ function fcPickCustomersForDay(iso, after){
   const nice = new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
   const onDay = new Set();
   filterGroups.forEach(g => { if(g && g.date === iso) (g.customerIds || []).forEach(id => onDay.add(id)); });
-  const all = customers.filter(c => c && !c.deleted && c.active !== false && !onDay.has(c.id))
+  const all = customers.filter(c => c && !c.deleted && !c.oneTime && c.active !== false && !onDay.has(c.id))
     .slice().sort((a, b) => String(displayName(a.name)).localeCompare(String(displayName(b.name)), undefined, {sensitivity: 'base', numeric: true}));
   if(!all.length){ showToast('Everyone is on this day already'); return; }
   const overlay = document.createElement('div');
@@ -6732,7 +6731,7 @@ function fcPickCustomersForDay(iso, after){
     listEl.innerHTML = '';
     const shown = all.filter(c => !term || [c.name, c.address, c.phone, c.email].some(v => String(v || '').toLowerCase().indexOf(term) !== -1));
     if(!shown.length) listEl.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:8px 2px;">Nobody matches.</div>';
-    const addR = jobNameOnlyRow(search.value, name=>{ const c = addNameOnlyCustomer(name); all.push(c); picked.add(c.id); search.value = ''; drawList(); rp.refresh(); }, 'padding:8px 2px;cursor:pointer;border-top:1px solid var(--line);font-size:13px;');
+    const addR = jobNameOnlyRow(search.value, (name, keep)=>{ const c = addNameOnlyCustomer(name, keep); all.push(c); picked.add(c.id); search.value = ''; drawList(); rp.refresh(); }, 'padding:8px 2px;cursor:pointer;border-top:1px solid var(--line);font-size:13px;');
     if(addR) listEl.insertBefore(addR, listEl.firstChild);
     shown.slice(0, 200).forEach(c=>{
       const row = document.createElement('label');
@@ -6780,6 +6779,30 @@ function fcPickCustomersForDay(iso, after){
       : picked.size === 1 ? 'Added to the route for ' + nice : picked.size + ' customers added to the route for ' + nice);
   });
 }
+
+// ---------- No scheduling on past days (Nov 14) ----------
+// A job can't be given a day before today: the picker greys past days out, and a
+// past day typed in goes back to what the box held before. Only boxes that set a
+// job's day carry the mark; a date for something already done (a drain done last
+// week) is left alone.
+(function noPastDays(){
+  const SEL = '#twMoveDate,#wcDate,#taskDate,#scDate,#schDate,#sfcDate,[data-nopast]';
+  const todayISO = ()=>{ const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+  const isMine = el => !!(el && el.matches && el.matches(SEL));
+  const arm = el => { if(isMine(el)){ try{ el.min = todayISO(); }catch(e){} } };
+  const sweep = root => { if(!root) return; if(root.querySelectorAll) root.querySelectorAll(SEL).forEach(arm); arm(root); };
+  const check = el => {
+    if(!isMine(el) || !el.value || el.value >= todayISO() || el.value === el.dataset.lastOk) return;
+    el.value = el.dataset.lastOk || '';
+    try{ el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true})); }catch(e){}
+    try{ showToast('Jobs can\u2019t be scheduled on a past day'); }catch(e){}
+  };
+  sweep(document);
+  try{ new MutationObserver(list => list.forEach(m => m.addedNodes.forEach(n => { if(n.nodeType === 1) sweep(n); }))).observe(document.documentElement, {childList: true, subtree: true}); }catch(e){}
+  document.addEventListener('focusin', e => { if(isMine(e.target)){ arm(e.target); e.target.dataset.lastOk = e.target.value; } }, true);
+  document.addEventListener('focusout', e => check(e.target), true);
+  document.addEventListener('keydown', e => { if(e.key === 'Enter') check(e.target); }, true);
+})();
 
 // ---------- No typed-history suggestions in search boxes (Oct 25) ----------
 // A customer search only ever suggests customers: the browser's memory of
@@ -6874,10 +6897,10 @@ function openSingleFilterClean(){
     const term = search.value.trim().toLowerCase();
     sug.innerHTML = '';
     if(!term){ sug.style.display = 'none'; return; }
-    const list = customers.filter(c => c && !c.deleted && c.active !== false && picked.indexOf(c.id) === -1
+    const list = customers.filter(c => c && !c.deleted && !c.oneTime && c.active !== false && picked.indexOf(c.id) === -1
       && [c.name, c.address, c.phone, c.email].some(v => String(v || '').toLowerCase().indexOf(term) !== -1)).slice(0, 12);
     const addRow = ()=>{
-      const r = jobNameOnlyRow(search.value, name=>{ const c = addNameOnlyCustomer(name); picked.push(c.id); search.value = ''; drawSug(); drawChips(); });
+      const r = jobNameOnlyRow(search.value, (name, keep)=>{ const c = addNameOnlyCustomer(name, keep); picked.push(c.id); search.value = ''; drawSug(); drawChips(); });
       if(r) sug.appendChild(r);
     };
     if(!list.length){ sug.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:9px 12px;">Nobody matches.</div>'; addRow(); sug.style.display = 'block'; return; }
@@ -8633,7 +8656,7 @@ function openAddReplacements(onSaved){
   const own = overlay.querySelector('[data-own]');
   const warn = overlay.querySelector('[data-warn]');
   const say = t => { warn.textContent = t; warn.style.display = t ? 'block' : 'none'; };
-  const active = customers.filter(c => c && !c.deleted && c.active !== false)
+  const active = customers.filter(c => c && !c.deleted && !c.oneTime && c.active !== false)
     .sort((a, b) => sortKeyName(a.name).localeCompare(sortKeyName(b.name)));
   let listDismissed = false;
   const boxEl = overlay.querySelector('.confirm-box');
@@ -9382,7 +9405,7 @@ function renderFilterGroups(){
     controls.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;';
 
     const dateInput = document.createElement('input');
-    dateInput.type = 'date';
+    dateInput.type = 'date'; dateInput.setAttribute('data-nopast', '1');
     dateInput.value = g.date || '';
     dateInput.style.cssText = 'flex:1;min-width:150px;';
     // Saved as it changes, and the heading's date updated in place: no redraw at
@@ -9693,7 +9716,7 @@ function openGroupCustomerPicker(g, opts){
   const saveGroup = opts.save || saveFilterGroups;
   const afterClose = opts.done || renderFilterGroups;
   // only (Oct 9): just some customers, e.g. one technician's
-  const active = customers.filter(c => c.active !== false && (!opts.only || opts.only(c)));
+  const active = customers.filter(c => c.active !== false && !c.oneTime && (!opts.only || opts.only(c)));
   if(active.length === 0){ showToast('No customers yet'); return; }
 
   const overlay = document.createElement('div');
@@ -9750,8 +9773,8 @@ function openGroupCustomerPicker(g, opts){
     // Someone not on the list, by name (Nov 5)
     const oldAdd = listEl.querySelector('[data-add-name]');
     if(oldAdd) oldAdd.remove();
-    const addR = jobNameOnlyRow(searchEl.value, name=>{
-      const c = addNameOnlyCustomer(name);
+    const addR = jobNameOnlyRow(searchEl.value, (name, keep)=>{
+      const c = addNameOnlyCustomer(name, keep);
       if(g.technicianId && !c.technicianId){ c.technicianId = String(g.technicianId); try{ saveCustomers(); }catch(e){} }
       g.customerIds = g.customerIds || [];
       if(g.customerIds.indexOf(c.id) === -1) g.customerIds.push(c.id);
@@ -10049,7 +10072,7 @@ function pdShownCustomers(){
   const term = String((document.getElementById('drainSearch') || {}).value || '').trim().toLowerCase();
   // Every active customer, whatever bodies of water they have (Oct 10: spa,
   // fountain or pond only were left out)
-  return customers.filter(c => c && c.active !== false && !c.deleted
+  return customers.filter(c => c && c.active !== false && !c.deleted && !c.oneTime
     && (!tech || (tech === 'none' ? !c.technicianId : String(c.technicianId || '') === tech))
     && (!term || matchesSearch(c, term) || displayName(c.name).toLowerCase().includes(term)));
 }
@@ -11715,7 +11738,7 @@ function renderDrainGroups(){
     const controls = document.createElement('div');
     controls.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;';
     const dateInput = document.createElement('input');
-    dateInput.type = 'date';
+    dateInput.type = 'date'; dateInput.setAttribute('data-nopast', '1');
     dateInput.value = g.date || '';
     dateInput.style.cssText = 'flex:1;min-width:150px;';
     dateInput.addEventListener('change', ()=>{
@@ -12291,7 +12314,7 @@ function pdDayJobs(iso){
   });
   return out;
 }
-var PD_DAY_KINDS = [['PD', 'Pool drains'], ['FC', 'Filter cleans'], ['WO', 'Work orders'], ['TK', 'Tasks']];
+var PD_DAY_KINDS = [['PD', 'Drains'], ['FC', 'Filter cleans'], ['WO', 'Work orders'], ['TK', 'Tasks']];
 // The card under a hovered day; null hides it
 function pdDayTip(anchor, iso, jobs){
   let tip = document.getElementById('dayJobsTip');
@@ -12497,7 +12520,7 @@ function pdScheduleCustomers(cids){
 // start open; a search looks through every list.
 function pdOpenDayPicker(iso, currentIds, onSave){
   const picked = new Set(currentIds || []);
-  const active = customers.filter(c => c && c.active !== false && !c.deleted);
+  const active = customers.filter(c => c && c.active !== false && !c.deleted && !c.oneTime);
   if(!active.length){ showToast('No customers yet'); return; }
   const byBucket = {overdue: [], soon: [], never: [], later: [], self: []};
   active.forEach(c => { try{ byBucket[pdBucket(c)].push(c); }catch(e){ byBucket.never.push(c); } });
@@ -12547,7 +12570,7 @@ function pdOpenDayPicker(iso, currentIds, onSave){
   const rp = makeRoutePlace({host: 'pdpRpHost', active: ()=> true, date: ()=> iso,
     techIds: ()=> Array.from(new Set(newOnes().map(id => String((customers.find(x => x && x.id === id) || {}).technicianId || '')).filter(Boolean))),
     customerIds: newOnes,
-    label: ()=> 'Pool drain' + (newOnes().length === 1 ? ' \u00b7 ' + displayName((customers.find(x => x && x.id === newOnes()[0]) || {}).name || '') : ''),
+    label: ()=> 'Drain' + (newOnes().length === 1 ? ' \u00b7 ' + displayName((customers.find(x => x && x.id === newOnes()[0]) || {}).name || '') : ''),
     stopsFor: (t, d)=> twRouteFor(t, d).list, techName: id => twTechName(id), nameOf: c => displayName(c.name || '')});
   // Overnight drain (Nov 9): for the drains being put on this day. Starts as the
   // customer's own setting (next day unless they've set another), and once
@@ -12645,8 +12668,8 @@ function pdOpenDayPicker(iso, currentIds, onSave){
       });
     });
     if(t && !any) listEl.innerHTML = '<div style="padding:12px 4px;font-size:12.5px;color:var(--muted);">No customers match that search.</div>';
-    const addR = jobNameOnlyRow(search.value, name=>{
-      const c = addNameOnlyCustomer(name);
+    const addR = jobNameOnlyRow(search.value, (name, keep)=>{
+      const c = addNameOnlyCustomer(name, keep);
       active.push(c); byBucket.never.push(c); byBucket.never.sort(byName);
       picked.add(c.id); search.value = ''; draw(); drawCount(); rp.refresh();
     }, 'padding:10px 6px;cursor:pointer;border-bottom:1px solid var(--line);font-size:13px;');
@@ -12818,7 +12841,7 @@ function calTechMenu(value, onChange){
 // Filter cleans and Drains tabs; what their day windows did, this one does.
 const WCAL_TAGS = {
   fc: ['FC', 'Filter cleans', '#FBF1DD', '#8A5E0B'],
-  pd: ['PD', 'Pool drains', '#C3DEF3', '#174C78'],
+  pd: ['PD', 'Drains', '#C3DEF3', '#174C78'],
   cr: ['CR', 'Clean & refill', '#8EC5F5', '#0D3A66'],   // right under the drains (Nov 3)
   wo: ['WO', 'Work orders', '#E9EEF0', '#3E5560'],
   tk: ['TK', 'Tasks', '#C9EBC3', '#24601F']
@@ -12828,7 +12851,7 @@ if(CB_ON){ Object.keys(WCAL_TAGS).forEach(k=>{ const c = CB_JOB[WCAL_TAGS[k][0]]
 // The calendar as an Excel spreadsheet, kept in case anything is ever lost:
 // one tab a month laid out as a calendar, each day's jobs one to a line
 // (FC, PD, CR, WO, TK and the customer, with the technician in brackets).
-const CAL_EXPORT_TYPES = [['FC', 'Filter clean', '8A5E0B', 'FBF1DD'], ['PD', 'Pool drain', '174C78', 'C3DEF3'], ['CR', 'Clean & refill', '0D3A66', '8EC5F5'], ['WO', 'Work order', '3E5560', 'E9EEF0'], ['TK', 'Task', '24601F', 'C9EBC3']];
+const CAL_EXPORT_TYPES = [['FC', 'Filter clean', '8A5E0B', 'FBF1DD'], ['PD', 'Drain', '174C78', 'C3DEF3'], ['CR', 'Clean & refill', '0D3A66', '8EC5F5'], ['WO', 'Work order', '3E5560', 'E9EEF0'], ['TK', 'Task', '24601F', 'C9EBC3']];
 function loadExcelJs(){
   if(window.ExcelJS) return Promise.resolve(window.ExcelJS);
   return new Promise((res, rej)=>{
@@ -13266,7 +13289,7 @@ function openWorkCalendar(startDay, stayHere){
     const key = document.createElement('div');
     key.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12px;color:var(--muted);margin-top:12px;align-items:center;';
     // Each job in its colour, then the dots (Oct 28)
-    [['FC', 'Filter clean'], ['PD', 'Pool drain'], ['CR', 'Clean & refill'], ['WO', 'Work order'], ['TK', 'Task']].forEach(([t, w])=>{
+    [['FC', 'Filter clean'], ['PD', 'Drain'], ['CR', 'Clean & refill'], ['WO', 'Work order'], ['TK', 'Task']].forEach(([t, w])=>{
       const s = document.createElement('span');
       s.style.cssText = 'display:inline-flex;align-items:center;gap:5px;';
       s.innerHTML = '<b style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:.04em;padding:2px 4px;border-radius:4px;color:' + CAL_JOB_COLOURS[t][1] + ';background:' + CAL_JOB_COLOURS[t][0] + ';box-shadow:inset 0 0 0 1px ' + CAL_JOB_COLOURS[t][1] + '55;"></b>';
@@ -13312,12 +13335,14 @@ function openWorkCalendar(startDay, stayHere){
     if(on.pd.length) counts.push(on.pd.length + (on.pd.length === 1 ? ' drain' : ' drains'));
     if(on.wo.length) counts.push(on.wo.length + (on.wo.length === 1 ? ' work order' : ' work orders'));
     if(on.tk.length) counts.push(on.tk.length + (on.tk.length === 1 ? ' task' : ' tasks'));
-    phL.children[1].textContent = counts.length ? counts.join(' · ') : 'Nothing on this day yet';
+    phL.children[1].textContent = (counts.length ? counts.join(' · ') : 'Nothing on this day yet') + (sel < twLocalISO(new Date()) ? ' · A past day: nothing can be scheduled on it' : '');
     ph.appendChild(phL);
     const btns = document.createElement('div');
-    btns.style.cssText = 'margin-left:auto;display:grid;grid-template-columns:repeat(4,150px);gap:8px;flex-shrink:0;';
-    // Top row: Work order, Task, Filter clean, Close. Bottom row: Pool drain, Clean & refill, Filter clean group (Nov 10)
+    btns.style.cssText = 'margin-left:auto;display:grid;grid-template-columns:repeat(3,170px);gap:8px;flex-shrink:0;';
+    // Top row: Work order, Task, Filter clean (the X is at the top right). Bottom row: Pool drain, Clean & refill, Filter clean group (Nov 10)
+    const pastDay = sel < twLocalISO(new Date());   // no scheduling on a past day (Nov 14)
     const gridBtn = (text, cls, fn, order)=>{
+      if(pastDay && text.indexOf('+ ') === 0) return null;
       const b = smallBtn('', cls, 'width:100%;padding:6px 10px;font-size:12px;display:inline-flex;align-items:center;justify-content:center;gap:4px;order:' + order + ';');
       if(text.indexOf('+ ') === 0){
         const pl = document.createElement('span'); pl.textContent = '+'; pl.style.cssText = 'display:inline-block;transform:translateY(-1px);font-size:14px;line-height:1;';
@@ -13328,10 +13353,9 @@ function openWorkCalendar(startDay, stayHere){
     gridBtn('+ Work order', 'btn-ghost', ()=> wcalOpenForm('Work Order', sel, drawKeep), 1);
     gridBtn('+ Task', 'btn-ghost', ()=> wcalOpenForm('Task', sel, drawKeep), 2);
     gridBtn('+ Clean & refill', 'btn-ghost', ()=> wcalOpenForm('Task', sel, drawKeep, {title: 'Clean & refill', heading: 'New clean & refill'}), 6);
-    gridBtn('Close', 'btn-primary', ()=>{ sel = ''; draw(); }, 4);
     gridBtn('+ Filter clean', 'btn-ghost', ()=> fcPickCustomersForDay(sel, after), 3);
     gridBtn('+ Filter clean group', 'btn-ghost', ()=> fcPickGroupForDay(sel, after), 7);
-    gridBtn('+ Pool drain', 'btn-ghost', ()=>{
+    gridBtn('+ Drain', 'btn-ghost', ()=>{
       // Grouped like the Drains page: overdue, due soon, never...
       pdOpenDayPicker(sel, on.pd.map(e => e.customerId), (ids, place, ov, opts)=>{
         let all = pdCal();
@@ -13366,6 +13390,13 @@ function openWorkCalendar(startDay, stayHere){
       });
     }, 5);
     ph.appendChild(btns);
+    // An X at the top right closes the window (Nov 14)
+    const xBtn = document.createElement('button');
+    xBtn.type = 'button'; xBtn.setAttribute('aria-label', 'Close'); xBtn.title = 'Close';
+    xBtn.textContent = '\u00d7';
+    xBtn.style.cssText = 'flex:0 0 auto;width:32px;height:32px;padding:0;margin:-4px -6px 0 0;border:0;background:none;font-size:26px;line-height:1;cursor:pointer;color:var(--muted);border-radius:8px;';
+    xBtn.addEventListener('click', ()=>{ sel = ''; draw(); });
+    ph.appendChild(xBtn);
     panel.appendChild(ph);
     // Nothing on the day yet (Oct 26): a narrower window, the buttons under
     // the date. Once anything is on it, the full width again for the list.
@@ -13675,7 +13706,7 @@ function openWorkCalendar(startDay, stayHere){
           // Move (Nov 1): the day's entry and anything of it in the app, not done
           if(st === 'done') row.appendChild(bin);
           else row.appendChild(actCell(moveBtn({
-            name: displayName(c.name), what: 'Pool drain', techId: e.technicianId || c.technicianId || '',
+            name: displayName(c.name), what: 'Drain', techId: e.technicianId || c.technicianId || '',
             onMove: (iso, tech)=>{
               const all = pdCal(); const it = all.find(y => y.id === e.id); if(!it) return;
               pdShiftRefill(e.id, it.date, iso);   // its clean & refill day moves with it (Nov 1)
@@ -14270,7 +14301,7 @@ function openDrainEmail(){
   let calMonth = pdToday().slice(0, 7);
   let calDay = '';
 
-  const active = customers.filter(c => c && c.active !== false && !c.deleted);
+  const active = customers.filter(c => c && c.active !== false && !c.deleted && !c.oneTime);
   const byBucket = {overdue: [], soon: [], never: [], later: []};
   active.forEach(c => { let b; try{ b = pdBucket(c); }catch(e){ b = 'never'; } if(byBucket[b]) byBucket[b].push(c); });
   const byDue = (a, b) => pdDue(a).localeCompare(pdDue(b));
@@ -14629,7 +14660,6 @@ function openDrainEmail(){
   draw();
 }
 document.getElementById('btnDrainEmail').addEventListener('click', openDrainEmail);
-document.getElementById('btnDrainCheck').addEventListener('click', ()=>{ pdOpenCalendarCheck(); });
 
 
 // ---- Import drains from a spreadsheet (Oct 10) ----
@@ -19330,7 +19360,7 @@ function calMoveDialog(opts){
     + '<p data-sub style="font-size:12.5px;color:var(--muted);margin:0 0 12px;"></p>'
     + '<div data-chips style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;"></div>'
     + '<div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px;">Or pick a date</div>'
-    + '<input type="date" data-date style="margin:0 0 12px;">'
+    + '<input type="date" data-date data-nopast style="margin:0 0 12px;">'
     + '<label data-keepwrap style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin:0 0 8px;cursor:pointer;text-transform:none;letter-spacing:0;color:var(--ink);"><input type="checkbox" data-keep checked style="width:18px;height:18px;margin:0;"> <span data-keepword></span></label>'
     + '<select data-tech style="display:none;margin:0 0 8px;"></select>'
     + '<div class="btn-row" style="margin-top:12px;gap:8px;"><button type="button" class="btn btn-ghost" data-cancel style="flex:1;">Cancel</button><button type="button" class="btn btn-primary" data-go style="flex:1;">Move</button></div>';
@@ -19525,7 +19555,7 @@ document.getElementById('filterGroupTech').addEventListener('change', ()=>{ filt
     const q = input.value.trim().toLowerCase();
     res.innerHTML = '';
     if(!q){ hide(); return; }
-    const hits = customers.filter(c => c && !c.deleted && c.active !== false
+    const hits = customers.filter(c => c && !c.deleted && !c.oneTime && c.active !== false
       && (String(c.name || '') + ' ' + displayName(c.name) + ' ' + String(c.address || '')).toLowerCase().indexOf(q) !== -1)
       .sort((x, y) => displayName(x.name).localeCompare(displayName(y.name))).slice(0, 40);
     if(!hits.length){
@@ -21033,7 +21063,7 @@ function wcVisitEditor(kind, id, onSaved, onCancel){
   const dWrap = document.createElement('div');
   dWrap.appendChild(lab('Scheduled date'));
   const date = document.createElement('input');
-  date.type = 'date'; date.value = item.date || ''; date.style.cssText = 'width:auto;';
+  date.type = 'date'; date.setAttribute('data-nopast', '1'); date.value = item.date || ''; date.style.cssText = 'width:auto;';
   dWrap.appendChild(date);
   top.appendChild(dWrap);
   const ticks = document.createElement('div');
@@ -21943,7 +21973,7 @@ function applyWorkOrderType(){
   const history = wcView === 'history';
   const current = wcView === 'current';
   const mainTab = document.getElementById('btnWcViewMain');
-  if(mainTab) mainTab.textContent = chosen;
+  if(mainTab) mainTab.textContent = kindLabel(chosen);
   document.querySelectorAll('#wcViewControl [data-wcview]').forEach(b=>{
     b.classList.toggle('active', b.dataset.wcview === (wcView || 'main'));
   });
@@ -22273,7 +22303,7 @@ function renderWcSuggest(term){
   }
 
   const matches = customers
-    .filter(c => c.active !== false)
+    .filter(c => c.active !== false && !c.oneTime)
     .filter(c => !wcSelectedCustomerIds.includes(c.id))
     .filter(c => [c.name, c.address, c.phone, c.email]
       .filter(Boolean).join(' ').toLowerCase().includes(t))
@@ -22284,28 +22314,20 @@ function renderWcSuggest(term){
   box.innerHTML = '';
   // Someone not on file, for a work order (Oct 26): the name as typed
   const typed = (term || '').trim();
-  const isWO = (document.getElementById('wcType') || {}).value === 'Work Order';
-  const exact = customers.some(c => c && !c.deleted && String(c.name || '').trim().toLowerCase() === t);
+  const wcT = (document.getElementById('wcType') || {}).value;
+  const isWO = wcT === 'Work Order' || wcT === 'Quote';
   const addRow = ()=>{
-    if(!isWO || exact) return;
-    const item = document.createElement('div');
-    item.dataset.addName = '1';
-    item.style.cssText = 'padding:10px 12px;font-size:13.5px;cursor:pointer;border-bottom:1px solid var(--line);';
-    item.innerHTML = '<div style="font-weight:600;"></div><div style="font-size:11.5px;color:var(--muted);">Not a customer yet \u2014 just the name for now</div>';
-    item.firstChild.textContent = '+ Use \u201c' + typed + '\u201d';
-    item.addEventListener('mouseenter', ()=>{ item.style.background = 'var(--teal-pale)'; });
-    item.addEventListener('mouseleave', ()=>{ item.style.background = '#fff'; });
-    item.addEventListener('mousedown', (e)=>{
-      e.preventDefault();
-      const c = addNameOnlyCustomer(typed);
+    if(!isWO) return;
+    const r = jobNameOnlyRow(typed, (name, keep)=>{
+      const c = addNameOnlyCustomer(name, keep);
       wcSelectedCustomerIds.push(c.id);
       renderWcCustomerChips();
       const inp = document.getElementById('wcCustomerSearch');
       inp.value = '';
       renderWcSuggest('');
       inp.focus();
-    });
-    box.appendChild(item);
+    }, 'padding:10px 12px;font-size:13.5px;cursor:pointer;border-bottom:1px solid var(--line);');
+    if(r) box.appendChild(r);
   };
   if(matches.length === 0){
     box.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--muted);">No customers match that search.</div>';
@@ -22340,24 +22362,38 @@ function renderWcSuggest(term){
 // route or a drain list; the details can be filled in later.
 // "+ Use <name>" row for a customer search (Nov 5): someone not on the list,
 // by name, for a job. Not shown when that exact name is already a customer.
-function jobNameOnlyRow(typed, onAdd, css){
+function jobNameOnlyRow(typed, onAdd, css, useClick){
   const t = String(typed || '').trim();
-  if(!t || (customers || []).some(c => c && !c.deleted && String(c.name || '').trim().toLowerCase() === t.toLowerCase())) return null;
-  const row = document.createElement('div');
-  row.className = 'press-row';
-  row.dataset.addName = '1';
-  row.style.cssText = css || 'padding:9px 12px;cursor:pointer;border-top:1px solid var(--line);font-size:13px;';
-  row.innerHTML = '<div style="font-weight:600;"></div><div style="font-size:11.5px;color:var(--muted);">Not a customer yet — just the name for now</div>';
-  row.firstChild.textContent = '+ Use “' + t + '”';
-  const go = e=>{ e.preventDefault(); onAdd(t); };
-  row.addEventListener('mousedown', go);
-  row.addEventListener('touchstart', go, {passive: false});
-  return row;
+  if(!t || (customers || []).some(c => c && !c.deleted && !c.oneTime && String(c.name || '').trim().toLowerCase() === t.toLowerCase())) return null;
+  // Two choices (Nov 14): add them to the customer list, or use the name for
+  // this one job only, which isn't saved to the list
+  const wrap = document.createElement('div');
+  wrap.style.display = 'contents';
+  wrap.dataset.addName = '1';
+  const mk = (title, sub, keep)=>{
+    const row = document.createElement('div');
+    row.className = 'press-row';
+    row.dataset.keep = keep ? '1' : '0';
+    row.style.cssText = css === undefined ? 'padding:9px 12px;cursor:pointer;border-top:1px solid var(--line);font-size:13px;' : css;
+    row.innerHTML = '<div style="font-weight:600;"></div><div style="font-size:11.5px;color:var(--muted);"></div>';
+    row.firstChild.textContent = title;
+    row.lastChild.textContent = sub;
+    const go = e=>{ e.preventDefault(); onAdd(t, keep); };
+    if(useClick){ row.addEventListener('click', go); }
+    else { row.addEventListener('mousedown', go); row.addEventListener('touchstart', go, {passive: false}); }
+    wrap.appendChild(row);
+  };
+  mk('+ Add “' + t + '” to customers', 'Saved to your customer list', true);
+  mk('Use “' + t + '” this one time', 'Not saved — only for this job', false);
+  return wrap;
 }
 
-function addNameOnlyCustomer(name){
+function addNameOnlyCustomer(name, keep){
+  // keep === false: used for one job only. The record has to exist so the job
+  // can show the name, but it's kept out of the customer list and the searches.
   const c = {id: 'cust_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), name: String(name || '').trim(),
              active: true, hasPool: false, hasSpa: false, technicianId: '', nameOnly: true, createdAt: new Date().toISOString()};
+  if(keep === false) c.oneTime = true;
   customers.push(c);
   try{ saveCustomers(); }catch(e){}
   try{ jobAskContact(c); }catch(e){}
@@ -36471,7 +36507,7 @@ let customerSearchTerm = '';
 let customerPage = 1;
 
 function updateStats(){
-  const activeCustomers = customers.filter(c => c.active !== false);
+  const activeCustomers = customers.filter(c => c.active !== false && !c.oneTime);
   const total = activeCustomers.length;
   const poolCount = activeCustomers.filter(c => c.hasPool !== false).length;
   const spaCount = activeCustomers.filter(c => c.hasSpa).length;
@@ -36568,7 +36604,7 @@ function guessColumn(headers, field){
 // Export customers: one row per customer, every detail in its own column, as a
 // .csv file that Excel, Numbers and Google Sheets open as a spreadsheet
 function exportCustomersCsv(){
-  const list = (customers || []).filter(c => c && !c._deleted);
+  const list = (customers || []).filter(c => c && !c._deleted && !c.oneTime);
   if(!list.length){ showToast('No customers to export yet'); return; }
   const techName = id => { const t = (technicians || []).find(x => x && String(x.id) === String(id)); return t ? (t.name || '') : ''; };
   const size = (c, key) => {
@@ -36801,20 +36837,20 @@ function renderList(){
   updateStats();
   const term = customerSearchTerm.trim().toLowerCase();
   const filtered = customers
-    .filter(c => matchesSearch(c, term))
+    .filter(c => !c.oneTime && matchesSearch(c, term))
     .slice()
     .sort((a,b)=> sortKeyName(a.name).localeCompare(sortKeyName(b.name)));
 
   const countEl = document.getElementById('listCount');
   if(countEl){
     if(term){
-      countEl.textContent = filtered.length + ' of ' + customers.length + (customers.length === 1 ? ' customer' : ' customers');
+      countEl.textContent = filtered.length + ' of ' + customers.filter(c => !c.oneTime).length + (customers.filter(c => !c.oneTime).length === 1 ? ' customer' : ' customers');
     } else {
-      countEl.textContent = customers.length ? customers.length + (customers.length === 1 ? ' customer' : ' customers') : '';
+      countEl.textContent = customers.filter(c => !c.oneTime).length ? customers.filter(c => !c.oneTime).length + (customers.filter(c => !c.oneTime).length === 1 ? ' customer' : ' customers') : '';
     }
   }
 
-  if(customers.length === 0){
+  if(customers.filter(c => !c.oneTime).length === 0){
     container.innerHTML = emptyState('No customers yet — add your first one above.');
     return;
   }
@@ -38046,7 +38082,7 @@ document.getElementById('btnChangePassword').addEventListener('click', changeOwn
   box.checked = CB_ON;
   box.addEventListener('change', ()=>{ showToast(box.checked ? 'Color-blind mode on' : 'Color-blind mode off'); setColourBlind(box.checked); });
   const key = document.getElementById('colourBlindKey');
-  if(key) [['FC', 'Filter clean'], ['PD', 'Pool drain'], ['CR', 'Clean & refill'], ['WO', 'Work order'], ['TK', 'Task']].forEach(([t, w])=>{
+  if(key) [['FC', 'Filter clean'], ['PD', 'Drain'], ['CR', 'Clean & refill'], ['WO', 'Work order'], ['TK', 'Task']].forEach(([t, w])=>{
     const c = CB_JOB[t];
     const s = document.createElement('span');
     s.style.cssText = 'font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:6px;background:' + c[0] + ';color:' + c[1] + ';';
