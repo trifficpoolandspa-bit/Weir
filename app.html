@@ -352,6 +352,10 @@ textarea{min-height:52px;resize:vertical;}
 }
 .btn-voice.listening .mic-dot{animation:pulse 1s infinite;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.35;}}
+/* Something required wasn't filled in (Nov 16): its border blinks red, then stays red until it's dealt with */
+@keyframes reqBlink{0%,100%{border-color:#D62D20;outline-color:#D62D20;}50%{border-color:transparent;outline-color:transparent;}}
+.req-blink{border:3px solid #D62D20 !important;outline:3px solid #D62D20;outline-offset:1px;border-radius:12px;animation:reqBlink .5s ease-in-out 6;}
+.req-blink.req-on{animation:none;}
 .voice-status{font-size:12px;color:var(--muted);}
 .voice-transcript{
   display:none;background:#F7F5EF;border:1px solid var(--line);border-radius:9px;
@@ -413,6 +417,15 @@ textarea{min-height:52px;resize:vertical;}
 }
 .cust-meta{font-size:12px;color:var(--muted);margin-top:3px;}
 .chev{color:var(--muted);font-size:18px;}
+/* Serviced rows are dropdowns (Nov 16): tap a row for Reschedule, Corrections and View report */
+.serviced-item{border-bottom:1px solid var(--line);}
+.serviced-item:last-child{border-bottom:none;}
+.serviced-item > .cust-row{border-bottom:none;}
+.serviced-item .sv-chev{flex:0 0 auto;margin:0 8px 0 6px;color:var(--muted);font-size:16px;line-height:1;transition:transform .15s ease;}
+.serviced-item.open .sv-chev{transform:rotate(180deg);}
+.sv-panel{display:none;gap:8px;margin:0 12px;padding:14px 0;}
+.serviced-item.open .sv-panel{display:flex;}
+.sv-panel .btn{flex:1 1 0;min-width:0;padding:9px 4px;font-size:13px;}
 
 .hist-row{
   display:grid;grid-template-columns:80px 1fr 1fr 1fr 1fr 1fr 28px;
@@ -1258,7 +1271,7 @@ textarea:not([readonly]),[contenteditable="true"],[contenteditable=""]{caret-col
         </div>
       <div class="card">
         <h2 id="servicedHeading">Serviced today</h2>
-        <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Customers whose report has already gone out. Use "Reservice" to send someone back to Today's list if you need to revisit them.</p>
+        <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;">Tap a row for Reschedule, Corrections or View report. Reschedule sends it back to a route if you need to revisit it.</p>
         <div id="servicedList"></div>
       </div>
     </div>
@@ -6875,6 +6888,7 @@ function refreshSaveButtons(){
     btn.disabled = !ready;
     btn.style.opacity = ready ? '' : '0.4';
     btn.style.cursor = ready ? '' : 'not-allowed';
+    btn.style.pointerEvents = ready ? '' : 'none';   // a press goes to the page, which blinks what's missing (Nov 16)
     btn.title = ready
       ? ''
       : (!afterOk ? 'Take an after photo first' : 'Take a closed gate photo first');
@@ -6883,6 +6897,22 @@ function refreshSaveButtons(){
   // stays greyed out until something else redraws it.
   if(typeof syncStepChrome === 'function') syncStepChrome();
 }
+
+// A press on a Save report button that can't save yet: say why and blink the photo needed (Nov 16)
+document.addEventListener('click', e=>{
+  try{
+    for(const id of ['btnSaveReading', 'btnSaveSpaReading', 'btnSaveFountainReading']){
+      const b = document.getElementById(id);
+      if(!b || !b.disabled || !b.offsetParent) continue;
+      const r = b.getBoundingClientRect();
+      if(e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) continue;
+      showToast(gatePhotoRequired() && typeof gatePhotoController !== 'undefined' && !gatePhotoController.getData()
+        ? 'Take a closed gate photo first' : 'Take an after photo first');
+      flashRequired(visibleTakePhotoButtons());
+      return;
+    }
+  }catch(err){}
+}, true);
 
 function refreshDynamicFieldLabels(){
   dynamicFieldLabels = {};
@@ -9933,7 +9963,7 @@ function techRouteJobsFor(techId, iso){
       done: j.status === 'done', doneAt: j.doneAt, date: j.date, technicianId: j.technicianId, placeAfter: j.placeAfter});
   });
   (lsGet('scheduledFilterCleans') || []).filter(f => f && f.date === iso && mine(f) && !f.reopened && !fcPausedHere(f)).forEach(f=>{
-    out.push({kind: 'filter clean', id: f.id, key: 'filter clean:' + f.id, report: 'fc:' + f.id, title: 'Filter clean', customerId: f.customerId,
+    out.push({kind: 'filter clean', id: f.id, key: 'filter clean:' + f.id, report: 'fc:' + f.id, title: fcTitle(f), filterLabel: f.filterLabel, customerId: f.customerId,
       done: f.status === 'done', doneAt: f.doneAt, date: f.date, technicianId: f.technicianId, placeAfter: f.placeAfter});
   });
   (lsGet('scheduledPoolDrains') || []).filter(f => f && f.date === iso && mine(f) && !f.reopened).forEach(f=>{
@@ -11344,7 +11374,7 @@ function routeJobsFor(customerId, dayISO, techId){
     .filter(s => s && s.status === 'scheduled' && s.date === dayISO && s.customerId === customerId && mine(s) && !fcPausedHere(s))
     .map(s => ({key: 'filter clean:' + s.id, kind: 'filter clean', id: s.id, placeAfter: s.placeAfter,
                 // Only when the group's Photo required was ticked (Oct 3)
-                title: 'Filter clean', details: '', photoRequired: s.photoRequired === true, videoRequired: false,
+                title: fcTitle(s), filterLabel: s.filterLabel, details: '', photoRequired: s.photoRequired === true, videoRequired: false,
                 // Extra work the office added on the calendar's day window (Oct 13)
                 lineItems: Array.isArray(s.lineItems) ? s.lineItems : []}));
   // Pool drains, sent from the website's Pool drains page (Oct 10)
@@ -11432,6 +11462,8 @@ function filterStylesOf(customer){
     .map(i => ({style: String(i.filterSize).trim(),
                 type: i.filterTypeChoice === 'Other' ? String(i.filterTypeCustom || '').trim() : String(i.filterTypeChoice || '').trim()}));
 }
+// A filter clean's name, with the filter when the customer has more than one (Nov 16)
+function fcTitle(f){ return 'Filter clean' + (f && f.filterLabel ? ' \u2013 ' + f.filterLabel : ''); }
 function isRefillJob(t){ return !!(t && (t.refillOf || /^clean\s*&\s*refill$/i.test(String(t.title || '').trim()))); }
 function shownJobKind(job){
   if(job && job.kind === 'task' && isRefillJob(job)) return 'clean refill';
@@ -12022,8 +12054,8 @@ function askJobSkipReason(customer, job){
     overlay.addEventListener('click', ev => { if(ev.target === overlay) done(null); });
     box.querySelector('[data-k="ok"]').addEventListener('click', ()=>{
       const reason = text.value.trim();
-      if(!reason && !optional){ showToast('Add a reason first'); text.focus(); return; }
-      if(needPhoto && !photoData){ showToast('A photo is required to skip a job'); return; }
+      if(!reason && !optional){ showToast('Add a reason first'); flashRequired(text); text.focus(); return; }
+      if(needPhoto && !photoData){ showToast('A photo is required to skip a job'); flashRequired(visibleTakePhotoButtons(overlay)); return; }
       done({reason, photo: photoData});
     });
   });
@@ -12100,7 +12132,9 @@ function jobWasSkipped(j){
 // website shows them under their own heading.
 var DRAIN_CHECKS = ['Autofill valve turned off', 'Pump turned off'];
 // A filter clean can't be submitted until this is ticked (Nov 16)
-var FILTER_CHECKS = ['Air valve closed and drain plug in place'];
+var FILTER_CHECKS = ['Air valve closed', 'Drain plug reinstalled'];
+// The one check this was before it was split in two (Nov 16); jobs done then still show it
+var FILTER_CHECK_OLD = 'Air valve closed and drain plug in place';
 function jobTickTile(line, cb){
   line.style.cssText = 'display:flex;align-items:center;gap:12px;padding:13px 14px;margin:0 0 8px;cursor:pointer;'
     + 'border:1.5px solid #BFDCD8;border-radius:12px;background:#fff;font-size:15.5px;font-weight:700;color:var(--ink);'
@@ -12133,7 +12167,7 @@ function openJobPage(customer, job){
     openJobPage.open = keptPage;
     return;
   }
-  const savedDraft = (deviceGet('jobDrafts') || {})[job.key] || null;
+  const savedDraft = job.correcting ? null : ((deviceGet('jobDrafts') || {})[job.key] || null);
 
   const page = document.createElement('div');
   page.id = 'jobPage';
@@ -12146,24 +12180,27 @@ function openJobPage(customer, job){
   head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;';
   const h = document.createElement('h2');
   h.style.cssText = 'margin:0;min-width:0;';
-  h.textContent = job.kind === 'pool drain' ? (job.title || 'Pool drain') : jobKindLabel(job.kind);
+  h.textContent = job.kind === 'pool drain' ? (job.title || 'Pool drain') : job.kind === 'filter clean' ? fcTitle(job) : jobKindLabel(job.kind);
+  if(job.correcting) h.textContent = 'Corrections \u2013 ' + (job.title || h.textContent);
   const back = document.createElement('button');
   back.className = 'btn btn-ghost';
   back.style.cssText = 'width:auto;flex-shrink:0;padding:6px 12px;font-size:12.5px;';
-  back.textContent = '\u2190 Return to route';
+  back.textContent = job.correcting ? 'Cancel correction' : '\u2190 Return to route';
+  if(job.correcting) back.style.cssText = 'width:auto;flex-shrink:0;padding:6px 12px;font-size:12.5px;background:#FFF8E8;border:1px solid #E8CF9A;color:#7A5A12;';
   head.appendChild(h); head.appendChild(back);
   card.appendChild(head);
 
   // The time on this job, from when it was first opened, as a visit's (Oct 10).
   // Kept on this phone until it's submitted, so leaving and coming back carries on.
   const startedAll = lsGet('jobStartedAt') || {};
-  if(!startedAll[job.key]){ startedAll[job.key] = new Date().toISOString(); lsSet('jobStartedAt', startedAll); }
+  if(!job.correcting && !startedAll[job.key]){ startedAll[job.key] = new Date().toISOString(); lsSet('jobStartedAt', startedAll); }
   const jobStartedAt = startedAll[job.key];
   const timer = document.createElement('div');
   timer.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--teal-deep);margin:-6px 0 10px;";
   const tick = ()=>{ if(!timer.isConnected && page.isConnected) return; timer.textContent = '\u23f1 ' + formatDuration(Date.now() - new Date(jobStartedAt).getTime()); };
   tick();
   const timerIv = setInterval(()=>{ if(!page.isConnected){ clearInterval(timerIv); return; } tick(); }, 1000);
+  if(job.correcting) timer.style.display = 'none';
   card.appendChild(timer);
 
   const who = document.createElement('div');
@@ -12269,7 +12306,7 @@ function openJobPage(customer, job){
     });
     card.appendChild(wrap);
   }
-  // Filter clean (Nov 16): the air valve closed and the drain plug in place, ticked
+  // Filter clean (Nov 16): the air valve closed, and the drain plug reinstalled, each ticked
   // before Submit, first on the screen
   if(job.kind === 'filter clean'){
     const wrap = document.createElement('div');
@@ -12509,7 +12546,7 @@ function openJobPage(customer, job){
   submit.className = 'btn btn-primary';
   submit.style.cssText = 'width:100%;';
   // Drains of any body just say Submit (Oct 20)
-  submit.textContent = job.kind === 'pool drain' ? 'Submit' : 'Submit ' + job.kind;
+  submit.textContent = job.correcting ? 'Save corrections' : job.kind === 'pool drain' ? 'Submit' : 'Submit ' + job.kind;
   card.appendChild(submit);
 
   // What is entered is kept on this phone while the job is open, so leaving the
@@ -12518,7 +12555,7 @@ function openJobPage(customer, job){
   const photoRefCache = new Map();
   let draftSaving = false;
   const saveDraft = async ()=>{
-    if(draftSaving || !page.isConnected) return;
+    if(draftSaving || !page.isConnected || job.correcting) return;
     draftSaving = true;
     try{
       const refs = [];
@@ -12555,42 +12592,108 @@ function openJobPage(customer, job){
   };
   const stored_isUsed = r => false;
   back.addEventListener('click', async ()=>{
+    // In a correction, Back is Cancel correction (Nov 16): asks, then throws the changes away
+    if(job.correcting){
+      const pick = await correctionDialog(
+        '<h3 style="font-size:16px;margin:0 0 6px;">Cancel this correction?</h3>'
+        + '<p style="font-size:13px;color:var(--muted);margin:0 0 14px;">Your changes are thrown away. '
+        + 'The saved job stays exactly as it was.</p>',
+        [{label: 'Cancel correction', value: 'cancel', cls: 'btn-primary', style: 'background:var(--rust);'},
+         {label: 'Keep correcting', value: 'keep', cls: 'btn-ghost'}]);
+      if(pick === 'cancel') close();
+      return;
+    }
     await saveDraft();
     page.style.display = 'none';
     if(openJobPage.open === page) openJobPage.open = null;
   });
+  // Corrections (Nov 16): the finished job's own page, with what was written and the photos
+  // it has. Saving changes those on the job; it stays done, nothing is sent again.
+  const saveCorrections = async ()=>{
+    const LISTS = {'work order': ['scheduledWorkOrders', 'work_order'], 'filter clean': ['scheduledFilterCleans', 'filter_clean'],
+      'pool drain': ['scheduledPoolDrains', 'pool_drain'], 'task': ['tasks', 'task']};
+    const where = LISTS[job.kind];
+    if(!where) return;
+    submit.disabled = true;
+    try{
+      const all = lsGet(where[0]) || [];
+      const r = all.find(x => x && String(x.id) === String(job.id));
+      if(!r){ showToast('That job is no longer here'); submit.disabled = false; return; }
+      const refs = [];
+      for(const shot of (photos ? photos.getAll() : [])){
+        let ref = isPhotoRef(shot) ? shot : photoRefCache.get(shot);
+        if(!ref) ref = await storePhoto(shot, 'job');
+        if(ref) refs.push(ref);
+      }
+      const vids = videoRefs.slice();
+      const text = notes.value.trim();
+      const put = (k, v)=>{ if(v === undefined || v === null || (Array.isArray(v) && !v.length)) delete r[k]; else r[k] = v; };
+      r.doneNotes = text;
+      put('donePhoto', refs[0] || null);
+      put('donePhotoMore', refs.slice(1));
+      put('doneVideo', vids[0] || null);
+      put('doneVideoMore', vids.slice(1));
+      if(job.kind !== 'task') put('doneReplacements', replacements.slice());
+      r.editedAt = new Date().toISOString();
+      // What this phone kept when it was submitted, so the same photos show in its report
+      try{
+        const subs = jobSubmissions();
+        const s = subs.find(x => x && x.key === job.sourceKey);
+        if(s){ s.notes = text; s.photo = refs[0] || null; s.photoMore = refs.slice(1); s.video = vids[0] || null; s.videoMore = vids.slice(1); lsSet('jobSubmissions', subs); }
+        if(job.kind === 'task' && (r.customerIds || []).length > 1){
+          r.doneNotes = (r.customerIds || []).map(id => {
+            const x = subs.find(y => y.key === 'task:' + r.id + ':' + id);
+            return x && x.notes ? (x.customerName ? x.customerName + ': ' : '') + x.notes : '';
+          }).filter(Boolean).join('\n');
+        }
+      }catch(e){}
+      if(!lsSet(where[0], all)){ showToast('Could not save \u2014 the phone is full'); submit.disabled = false; return; }
+      queueOfficeWork(where[1], r.id, false);
+      try{ if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange(); }catch(e){}
+    }catch(e){ showToast('Could not save the corrections'); submit.disabled = false; return; }
+    close();
+    try{ renderServicedList(); }catch(e){}
+    showToast('Corrections saved');
+  };
   submit.addEventListener('click', async ()=>{
+    if(job.correcting){ saveCorrections(); return; }
     // A task marked "Photo required" can't go without one
     const shots = photos ? photos.getAll() : [];
     // Autofill valve and pump off first (Nov 1)
     const notOff = drainChecks.filter(cb => !cb.checked).map(cb => cb.dataset.drainCheck);
     if(notOff.length){
       showToast('Tick ' + notOff.map(t => '\u201c' + t + '\u201d').join(' and ') + ' first');
+      flashRequired(drainChecks.filter(cb => !cb.checked).map(cb => cb.closest('label') || cb));
       return;
     }
     // A filter clean can't go until the air valve and drain plug are ticked (Nov 16)
     const notDone = filterChecks.filter(cb => !cb.checked).map(cb => cb.dataset.filterCheck);
     if(notDone.length){
       showToast('Tick \u201c' + notDone[0] + '\u201d first');
+      flashRequired(filterChecks.filter(cb => !cb.checked).map(cb => cb.closest('label') || cb));
       return;
     }
     // A Clean & refill can't go until autofill is turned on (Nov 3)
     if(refillChecks.some(cb => !cb.checked)){
       showToast('Tick \u201cTurn on autofill\u201d first');
+      flashRequired(refillChecks.filter(cb => !cb.checked).map(cb => cb.closest('label') || cb));
       return;
     }
     // Every line item ticked first (Oct 3)
     const unticked = lineChecks.filter(cb => !cb.checked).length;
     if(unticked){
       showToast('Tick every item first \u2014 ' + unticked + (unticked === 1 ? ' isn\u2019t' : ' aren\u2019t') + ' ticked yet');
+      flashRequired(lineChecks.filter(cb => !cb.checked).map(cb => cb.closest('label') || cb));
       return;
     }
     if(job.photoRequired && !shots.length){
       showToast('Take the photo first \u2014 this ' + job.kind + ' needs one');
+      flashRequired(document.getElementById(pid('Take')));
       return;
     }
     if(job.videoRequired && !videoRefs.length){
       showToast('Record the video first \u2014 this ' + job.kind + ' needs one');
+      flashRequired(recVideo);
       return;
     }
     submit.disabled = true;
@@ -12735,6 +12838,30 @@ function openJobPage(customer, job){
     previewWrap: pid('Wrap'), previewImg: pid('Img'), removeBtn: pid('Remove'), max: maxPhotos});
   page.scrollTop = 0;
   openJobPage.kept[job.key] = page;
+  // A correction opens with what the job already has
+  if(job.correcting){
+    (async ()=>{
+      try{
+        const LISTS = {'work order': 'scheduledWorkOrders', 'filter clean': 'scheduledFilterCleans', 'pool drain': 'scheduledPoolDrains', 'task': 'tasks'};
+        const r = (lsGet(LISTS[job.kind]) || []).find(x => x && String(x.id) === String(job.id));
+        if(!r) return;
+        notes.value = r.doneNotes || '';
+        allChecks.forEach(c => { c.checked = true; c.dispatchEvent(new Event('change')); });
+        if(Array.isArray(r.doneReplacements) && r.doneReplacements.length){
+          replacements = r.doneReplacements.slice();
+          if(repRow && repRow.__show) repRow.__show();
+        }
+        videoRefs = [r.doneVideo].concat(r.doneVideoMore || []).filter(isPhotoRef);
+        drawJobVideos();
+        const back2 = [];
+        for(const ref of [r.donePhoto].concat(r.donePhotoMore || []).filter(isPhotoRef)){
+          const data = await resolvePhoto(ref);
+          if(data){ back2.push(data); photoRefCache.set(data, ref); }
+        }
+        if(back2.length && photos) photos.setAll(back2);
+      }catch(e){}
+    })();
+  }
   // Back as it was left, if this phone was closed on it
   if(savedDraft){
     (async ()=>{
@@ -13721,6 +13848,61 @@ document.addEventListener('DOMContentLoaded', ()=>{
   if(next) next.addEventListener('click', ()=> stepServicedDay(1));
 });
 
+// A Serviced row as a dropdown (Nov 16). `row` is the row as before; `actions` is
+// [label, handler] pairs shown inside once the row is tapped.
+function servicedDropdown(row, actions){
+  const wrap = document.createElement('div');
+  wrap.className = 'serviced-item';
+  wrap.dataset.doneAt = row.dataset.doneAt || '';
+  const chev = document.createElement('span');
+  chev.className = 'sv-chev';
+  chev.textContent = '\u25BE';
+  row.appendChild(chev);
+  const panel = document.createElement('div');
+  panel.className = 'sv-panel';
+  actions.filter(Boolean).forEach(([label, fn])=>{
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn btn-secondary';
+    b.textContent = label;
+    b.addEventListener('click', e=>{ e.stopPropagation(); fn(); });
+    panel.appendChild(b);
+  });
+  row.style.cursor = 'pointer';
+  row.addEventListener('click', ()=>{
+    if(viewJustChanged()) return;
+    // One open at a time (Nov 16): opening this one closes whichever was open
+    if(!wrap.classList.contains('open') && wrap.parentElement)
+      wrap.parentElement.querySelectorAll('.serviced-item.open').forEach(o => o.classList.remove('open'));
+    wrap.classList.toggle('open');
+  });
+  wrap.appendChild(row);
+  wrap.appendChild(panel);
+  return wrap;
+}
+// Open a saved report on the Reports side (customer, and the date or job it was for)
+async function openServicedReport(customer, which){
+  if(viewJustChanged()) return;
+  reportOpenedFrom = null;
+  if(currentViewName !== 'serviced' && currentViewName !== 'report') return;
+  const sel = document.getElementById('reportCustomerSelect');
+  if(sel){ populateCustomerSelect(sel, 'Add a customer first'); sel.value = customer.id; }
+  if(typeof syncReportCustomerSearchField === 'function') syncReportCustomerSearchField();
+  await refreshDateSelector(customer.id);
+  const dateSel = document.getElementById('reportReadingSelect');
+  if(dateSel){
+    const today = todayDateStr();
+    const match = which
+      ? Array.from(dateSel.options).find(o => o.value === which)
+      : Array.from(dateSel.options).find(o => o.value === today || o.value === today + '|redo');
+    if(match){ dateSel.value = match.value; await renderDateReport(customer.id, match.value); }
+  }
+  const btnReports = document.getElementById('btnReportModeReports');
+  if(btnReports && isAdminUser()) btnReports.click();
+  if(currentViewName !== 'report') switchView('report', {skipRefresh: true});
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
 function renderServicedList(){
   const container = document.getElementById('servicedList');
   if(!container) return;
@@ -13784,75 +13966,12 @@ function renderServicedList(){
       ? `<span class="mono" style="background:var(--teal-pale);color:var(--teal-deep);font-weight:700;font-size:11px;padding:3px 8px;border-radius:20px;margin-left:8px;white-space:nowrap;display:inline-block;">${formatDuration(c.lastServiceDurationMs)}</span>`
       : '';
     row.innerHTML = `<div style="min-width:0;flex:1 1 auto;"><div class="cust-name" style="display:flex;align-items:center;min-width:0;"><span class="cust-name-text" style="flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${c.name}</span><span style="flex:0 0 auto;">${durationBadge}</span></div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${showsDay ? forDay : ''}${c.address || 'No address on file'}</div></div>`;
-    const reserviceBtn = document.createElement('button');
-    reserviceBtn.className = 'btn btn-secondary';
-    reserviceBtn.style.width = '84px';
-    reserviceBtn.style.flex = '0 0 84px';
-    reserviceBtn.style.padding = '7px 0';
-    reserviceBtn.style.fontSize = '12px';
-    reserviceBtn.textContent = 'Reservice';
-    reserviceBtn.addEventListener('click', (e)=>{
-      e.stopPropagation();
-      reserviceCustomer(c, entry.day);
-    });
-    // Corrections: fix the saved report (admins), just left of Reservice
-    if(isAdminUser()){
-      const corrBtn = document.createElement('button');
-      corrBtn.className = 'btn btn-secondary';
-      corrBtn.style.width = '104px';
-      corrBtn.style.flex = '0 0 104px';
-      corrBtn.style.padding = '7px 0';
-      corrBtn.style.fontSize = '12px';
-      corrBtn.style.marginRight = '6px';
-      corrBtn.textContent = 'Corrections';
-      corrBtn.addEventListener('click', (e)=>{
-        e.stopPropagation();
-        startCorrection(c);
-      });
-      row.appendChild(corrBtn);
-    }
-    row.appendChild(reserviceBtn);
     row.dataset.doneAt = c.lastServicedAt || '';
-
-    // Tapping the row pulls up today's report for that customer.
-    // Guarded so a leftover click from a previous screen can't trigger it.
-    row.style.cursor = 'pointer';
-    row.addEventListener('click', async (ev)=>{
-      if(ev.target.closest('button')) return;    // leave Reservice alone
-      if(viewJustChanged()) return;
-      reportOpenedFrom = null;                   // reached from the serviced list
-      // This list appears inside the Report tab in one app and its own tab in
-      // the other, so accept either rather than naming one.
-      if(currentViewName !== 'serviced' && currentViewName !== 'report') return;
-
-      const sel = document.getElementById('reportCustomerSelect');
-      if(sel){
-        populateCustomerSelect(sel, 'Add a customer first');
-        sel.value = c.id;
-      }
-      if(typeof syncReportCustomerSearchField === 'function') syncReportCustomerSearchField();
-      await refreshDateSelector(c.id);
-
-      // Open today's report specifically, not just the newest one
-      const today = todayDateStr();
-      const dateSel = document.getElementById('reportReadingSelect');
-      if(dateSel){
-        const match = Array.from(dateSel.options)
-          .find(o => o.value === today || o.value === today + '|redo');
-        if(match){
-          dateSel.value = match.value;
-          await renderDateReport(c.id, match.value);
-        }
-      }
-
-      // Switch to the Reports side of the tab so the report is visible
-      const btnReports = document.getElementById('btnReportModeReports');
-      if(btnReports && isAdminUser()) btnReports.click();
-      if(currentViewName !== 'report') switchView('report', {skipRefresh: true});
-      window.scrollTo({top: 0, behavior: 'smooth'});
-    });
-
-    container.appendChild(row);
+    container.appendChild(servicedDropdown(row, [
+      ['Reschedule', ()=> reserviceCustomer(c, entry.day)],
+      isAdminUser() ? ['Corrections', ()=> startCorrection(c)] : null,
+      ['View report', ()=> openServicedReport(c, null)]
+    ]));
   });
   // Jobs and services together, the most recent at the top
   if(finishedJobs.length){
@@ -13873,7 +13992,7 @@ function servicedJobsOn(iso, techId){
       (lsGet(key) || []).forEach(j=>{
         if(!j || j.status !== 'done' || !j.doneAt || localDay(j.doneAt) !== iso || !whose(j)) return;
         out.push({kind, id: j.id, report: pre + j.id, customerId: j.customerId, doneAt: j.doneAt, durationMs: j.doneDurationMs, skipped: jobWasSkipped(j),
-          title: kind === 'work order' ? (j.title || 'Work order') : kind === 'pool drain' ? drainTitle(j) : jobKindLabel(kind)});
+          title: kind === 'work order' ? (j.title || 'Work order') : kind === 'pool drain' ? drainTitle(j) : kind === 'filter clean' ? fcTitle(j) : jobKindLabel(kind)});
       });
     });
   (lsGet('tasks') || []).forEach(t=>{
@@ -13894,41 +14013,22 @@ function servicedJobsOn(iso, techId){
 // Corrections on a finished job (Nov 15): change what was written on it. It stays
 // done, nothing is sent again, and the change goes to the office like any other.
 function correctDoneJob(job){
-  const LISTS = {'work order': ['scheduledWorkOrders', 'work_order'], 'filter clean': ['scheduledFilterCleans', 'filter_clean'],
-    'pool drain': ['scheduledPoolDrains', 'pool_drain'], 'task': ['tasks', 'task']};
-  const where = LISTS[job.kind];
-  if(!where) return;
-  const rec = (lsGet(where[0]) || []).find(x => x && String(x.id) === String(job.id));
+  const LISTS = {'work order': 'scheduledWorkOrders', 'filter clean': 'scheduledFilterCleans', 'pool drain': 'scheduledPoolDrains', 'task': 'tasks'};
+  const list = LISTS[job.kind];
+  if(!list) return;
+  const rec = (lsGet(list) || []).find(x => x && String(x.id) === String(job.id));
   if(!rec){ showToast('That job is no longer here'); return; }
-  const overlay = document.createElement('div');
-  overlay.className = 'confirm-overlay';
-  overlay.innerHTML = '<div class="confirm-box" id="cdjBox" style="max-width:440px;">'
-    + '<h3 style="font-size:16px;margin:0 0 4px;">Corrections</h3>'
-    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;"></p>'
-    + '<div class="field"><label>Technician’s notes</label><textarea id="cdjNotes" rows="6" style="width:100%;"></textarea></div>'
-    + '<div class="btn-row" style="flex-wrap:nowrap;"><button type="button" class="btn btn-primary" id="cdjSave" style="flex:1 1 0;">Save</button>'
-    + '<button type="button" class="btn btn-ghost" id="cdjCancel" style="flex:1 1 0;">Cancel</button></div></div>';
-  overlay.querySelector('p').textContent = (job.title || jobKindLabel(job.kind)) + ' stays done. Nothing is sent again.';
-  document.body.appendChild(overlay);
-  const ta = overlay.querySelector('#cdjNotes');
-  ta.value = rec.doneNotes || '';
-  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
-  overlay.querySelector('#cdjCancel').addEventListener('click', close);
-  overlay.addEventListener('click', e=>{ if(e.target === overlay) close(); });
-  overlay.querySelector('#cdjSave').addEventListener('click', ()=>{
-    const all = lsGet(where[0]) || [];
-    const r = all.find(x => x && String(x.id) === String(job.id));
-    if(!r){ close(); showToast('That job is no longer here'); return; }
-    const text = ta.value.trim();
-    if(text === String(r.doneNotes || '').trim()){ close(); return; }
-    r.doneNotes = text;
-    r.editedAt = new Date().toISOString();
-    if(!lsSet(where[0], all)){ showToast('Could not save — the phone is full'); return; }
-    queueOfficeWork(where[1], r.id, false);
-    try{ if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange(); }catch(e){}
-    close();
-    try{ renderServicedList(); }catch(e){}
-    showToast('Corrections saved');
+  const customer = job.customerId ? customers.find(c => String(c.id) === String(job.customerId)) : null;
+  const srcKey = job.kind === 'task' ? 'task:' + rec.id + ':' + (job.customerId || 'none') : job.kind + ':' + rec.id;
+  // The same page the technician filled in, opened on the finished job (Nov 16)
+  openJobPage(customer, {
+    kind: job.kind, id: rec.id, key: srcKey + ':fix', sourceKey: srcKey, correcting: true,
+    customerId: job.customerId || null,
+    title: job.kind === 'filter clean' ? fcTitle(rec) : job.title,
+    filterLabel: rec.filterLabel,
+    lineItems: Array.isArray(rec.lineItems) ? rec.lineItems : [],
+    extraWork: Array.isArray(rec.extraWork) ? rec.extraWork : [],
+    photoRequired: false, videoRequired: false, emailCustomer: false
   });
 }
 // A finished job's row on Serviced: its colour and icon, when it was done;
@@ -13962,45 +14062,14 @@ function servicedJobRow(job){
   }
   left.appendChild(name); left.appendChild(meta);
   row.appendChild(left);
-  if(customer && job.report){
-    row.style.cursor = 'pointer';
-    row.addEventListener('click', async ()=>{
-      if(viewJustChanged()) return;
-      reportOpenedFrom = null;
-      const sel = document.getElementById('reportCustomerSelect');
-      if(sel){ populateCustomerSelect(sel, 'Add a customer first'); sel.value = customer.id; }
-      if(typeof syncReportCustomerSearchField === 'function') syncReportCustomerSearchField();
-      await refreshDateSelector(customer.id);
-      const dateSel = document.getElementById('reportReadingSelect');
-      if(dateSel && Array.from(dateSel.options).some(o => o.value === job.report)){
-        dateSel.value = job.report;
-        await renderDateReport(customer.id, job.report);
-      }
-      const btnReports = document.getElementById('btnReportModeReports');
-      if(btnReports && isAdminUser()) btnReports.click();
-      if(currentViewName !== 'report') switchView('report', {skipRefresh: true});
-      window.scrollTo({top: 0, behavior: 'smooth'});
-    });
-  }
-  // Reschedule (Oct 21): the finished one stays in the records; a fresh copy
-  // goes on the date and technician chosen
-  const resched = document.createElement('button');
-  resched.type = 'button';
-  resched.className = 'btn btn-secondary';
-  resched.style.cssText = 'width:84px;flex:0 0 84px;padding:7px 0;font-size:12px;';
-  resched.textContent = 'Reservice';
-  resched.addEventListener('click', e=>{ e.stopPropagation(); rescheduleDoneJob(job); });
-  // Corrections (Nov 15): the technician's notes on a finished job can be changed
-  // without submitting it again. Same size and place as the customer rows' button.
-  const corr = document.createElement('button');
-  corr.type = 'button';
-  corr.className = 'btn btn-secondary';
-  corr.style.cssText = 'width:104px;flex:0 0 104px;padding:7px 0;font-size:12px;margin-right:6px;';
-  corr.textContent = 'Corrections';
-  corr.addEventListener('click', e=>{ e.stopPropagation(); correctDoneJob(job); });
-  row.appendChild(corr);
-  row.appendChild(resched);
-  return row;
+  return servicedDropdown(row, [
+    ['Reschedule', ()=> rescheduleDoneJob(job)],
+    ['Corrections', ()=> correctDoneJob(job)],
+    ['View report', ()=>{
+      if(customer && job.report) openServicedReport(customer, job.report);
+      else showToast('No report was saved for this one');
+    }]
+  ]);
 }
 
 // The window for it: a date (it has to be set) and whose route it goes on
@@ -14592,9 +14661,10 @@ function openSkipReasonModal(customer, forcePhoto, optional){
     overlay.addEventListener('click', (e)=>{ if(e.target === overlay) done(null); });
     overlay.querySelector('#skipReasonSave').addEventListener('click', ()=>{
       const reason = textEl.value.trim();
-      if(!reason && !optional){ showToast('Add a reason first'); textEl.focus(); return; }
+      if(!reason && !optional){ showToast('Add a reason first'); flashRequired(textEl); textEl.focus(); return; }
       if(photoNeeded && !photoData){
         showToast('A photo is required to skip a service');
+        flashRequired(Array.from(overlay.querySelectorAll('button')).filter(b => /photo/i.test(b.textContent) && b.id !== 'skipReasonSave'));
         return;
       }
       done({reason, photo: photoData});
@@ -15501,7 +15571,7 @@ async function renderWorkOrderReport(customerId, jobId, isClean){
   }
   out.innerHTML = '<div class="report-doc">'
     + '<div class="report-head"><div>'
-    + '<h2>' + (isDrain ? drainTitle(j) : isClean ? 'Filter clean' : 'Work order ' + esc(num)) + '</h2>'
+    + '<h2>' + (isDrain ? drainTitle(j) : isClean ? esc(fcTitle(j)) : 'Work order ' + esc(num)) + '</h2>'
     + '<div class="rdate">' + esc(customer.name) + (customer.address ? ' \u2014 ' + esc(customer.address) : '') + '</div>'
     + '<div class="rdate">Scheduled for ' + esc(fmtDate(j.date + 'T12:00:00'))
     + (j.doneAt ? ' \u00b7 Submitted ' + esc(fmtDateTime(j.doneAt)) : '') + '</div>'
@@ -16705,6 +16775,30 @@ let currentVisitStep = 1;
 
 // Returns a message if this section requires a photo that hasn't been taken.
 // The global before/after switches remove the step entirely, so they win.
+// Blink a red border on whatever is still needed, scroll to the first, and keep it red until
+// the person touches it or fixes it (Nov 16)
+function flashRequired(targets){
+  const list = (Array.isArray(targets) ? targets : [targets]).filter(el => el && el.classList);
+  if(!list.length) return;
+  list.forEach(el=>{
+    el.classList.remove('req-blink', 'req-on');
+    void el.offsetWidth;
+    el.classList.add('req-blink');
+    const settle = setTimeout(()=> el.classList.add('req-on'), 3100);
+    const clear = ()=>{
+      clearTimeout(settle);
+      el.classList.remove('req-blink', 'req-on');
+      ['input', 'change', 'click'].forEach(ev => el.removeEventListener(ev, clear, true));
+    };
+    ['input', 'change', 'click'].forEach(ev => el.addEventListener(ev, clear, true));
+  });
+  try{ list[0].scrollIntoView({behavior: 'smooth', block: 'center'}); }catch(e){}
+}
+// The Take photo buttons on screen right now (the step being filled in)
+function visibleTakePhotoButtons(root){
+  return Array.from((root || document).querySelectorAll('button')).filter(b =>
+    b.offsetParent && /take.*photo|record.*video/i.test(b.textContent) && !b.closest('.confirm-overlay'));
+}
 function missingRequiredPhoto(){
   if(!currentVisibleSection) return '';
   if(typeof isFilterCleanVisit !== 'undefined' && isFilterCleanVisit) return '';
@@ -16808,19 +16902,7 @@ function missingReadingFields(){
 }
 
 function flagMissingReadings(missing){
-  missing.forEach(m=>{
-    m.el.style.borderColor = 'var(--rust)';
-    m.el.style.boxShadow = '0 0 0 3px rgba(184,73,46,0.15)';
-    const clear = ()=>{
-      m.el.style.borderColor = '';
-      m.el.style.boxShadow = '';
-      m.el.removeEventListener('input', clear);
-    };
-    m.el.addEventListener('input', clear);
-  });
-  if(missing[0] && missing[0].el.scrollIntoView){
-    missing[0].el.scrollIntoView({behavior:'smooth', block:'center'});
-  }
+  flashRequired(missing.map(m => m.el));
 }
 
 
@@ -17035,7 +17117,8 @@ function syncStepChrome(){
         : (currentVisibleSection === 'spa' ? 'btnSaveSpaReading' : 'btnSaveFountainReading');
       const src = document.getElementById(saveId);
       const ready = src ? !src.disabled : true;
-      nextBtn.disabled = !ready;
+      // Still pressable when something's missing: pressing it blinks what's needed (Nov 16)
+      nextBtn.disabled = false;
       nextBtn.style.opacity = ready ? '' : '0.4';
       nextBtn.title = ready ? '' : 'Take an after photo first';
     } else {
@@ -17082,8 +17165,8 @@ function syncStepChrome(){
     const lbl = cust ? sectionLabel(cust, prevKey) : '';
     prevName = (lbl === 'Pool' || lbl === 'Spa') ? lbl.toLowerCase() : (lbl || 'the last one');
   }
-  const cancelsCorrection = !!(correctionJob && correctionJob.customerId === currentVisitCustomerId
-    && currentVisitStep === 1 && !prevKey);
+  // Anywhere in a correction, Back is Cancel correction (Nov 16)
+  const cancelsCorrection = !!(correctionJob && correctionJob.customerId === currentVisitCustomerId);
   back.textContent = cancelsCorrection ? 'Cancel correction'
     : currentVisitStep !== 1 ? '\u2190 Back'
     : (prevKey ? '\u2190 Return to ' + prevName : '\u2190 Return to route');
@@ -22392,7 +22475,7 @@ document.getElementById('stepBarNext').addEventListener('click', ()=>{
   const total = currentVisibleSection ? visitStepCardsFor(currentVisibleSection).length : 1;
 
   const photoMsg = missingRequiredPhoto();
-  if(photoMsg){ showToast(photoMsg); return; }
+  if(photoMsg){ showToast(photoMsg); flashRequired(visibleTakePhotoButtons()); return; }
 
   // On the last step the bar saves instead of advancing
   if(currentVisitStep >= total){
@@ -22400,9 +22483,9 @@ document.getElementById('stepBarNext').addEventListener('click', ()=>{
       : (currentVisibleSection === 'spa' ? 'btnSaveSpaReading' : 'btnSaveFountainReading');
     const btn = document.getElementById(saveId);
     if(btn && !btn.disabled) btn.click();
-    else if(btn) showToast(gatePhotoRequired() && !gatePhotoController.getData()
+    else if(btn){ showToast(gatePhotoRequired() && !gatePhotoController.getData()
       ? 'Take a closed gate photo first'
-      : 'Take an after photo first');
+      : 'Take an after photo first'); flashRequired(visibleTakePhotoButtons()); }
 
     return;
   }
@@ -25360,7 +25443,7 @@ function buildJobEmailHtml(customer, job, techName){
   const company = (lsGet('companyName') || '').trim() || 'Your pool service';
   const isWO = job.kind === 'work order';
   const num = isWO && job.workOrderNumber ? ' #' + String(job.workOrderNumber).padStart(4, '0') : '';
-  const what = job.kind === 'pool drain' ? drainTitle(job) : 'Filter clean';   // a drain says which (Oct 19)
+  const what = job.kind === 'pool drain' ? drainTitle(job) : fcTitle(job);   // a drain says which (Oct 19)
   const heading = (isWO ? 'Work order' + num : what) + ' completed';
   const when = job.doneAt ? new Date(job.doneAt) : new Date((job.date || '') + 'T12:00:00');
   const whenText = when.toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
@@ -25386,7 +25469,7 @@ function buildJobEmailHtml(customer, job, techName){
   } else {
     rows = '<tr><td style="' + cell + '">' + esc(what) + '</td><td style="' + cell + '"></td></tr>';
     // A drain: the autofill valve and pump checks (Nov 1)
-    if(job.kind === 'pool drain' || job.kind === 'filter clean') (job.doneExtraWork || []).filter(t => DRAIN_CHECKS.indexOf(t) !== -1 || FILTER_CHECKS.indexOf(t) !== -1).forEach(t=>{
+    if(job.kind === 'pool drain' || job.kind === 'filter clean') (job.doneExtraWork || []).filter(t => DRAIN_CHECKS.indexOf(t) !== -1 || FILTER_CHECKS.indexOf(t) !== -1 || t === FILTER_CHECK_OLD).forEach(t=>{
       rows += '<tr><td style="' + cell + '">' + esc(t) + '</td><td style="' + cell + 'text-align:right;color:#2E8B57;font-weight:700;">\u2713</td></tr>';
     });
   }
@@ -28342,5 +28425,12 @@ function emailApplyLogo(html){
 })();
 
 </script>
+<style id="upright-style">
+/* Phone held sideways (Nov 16): the app can't be locked on every phone, so sideways it is covered */
+#uprightCover{display:none;position:fixed;inset:0;z-index:2147483647;background:#114B4F;color:#fff;align-items:center;justify-content:center;flex-direction:column;gap:10px;text-align:center;font:600 20px/1.3 -apple-system,system-ui,sans-serif;padding:20px;}
+#uprightCover span{font-size:44px;line-height:1;}
+@media (orientation: landscape) and (max-height: 520px) and (pointer: coarse){ #uprightCover{display:flex;} }
+</style>
+<div id="uprightCover" aria-hidden="true"><span>&#128241;</span>Turn your phone upright</div>
 </body>
 </html>

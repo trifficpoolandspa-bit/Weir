@@ -8910,13 +8910,40 @@ function fgPaused(g, cid){ return Array.isArray(g.pausedIds) && g.pausedIds.inde
 function fgLiveIds(g){ return (g.customerIds || []).filter(cid => !fgPaused(g, cid)); }
 // Where each customer in a scheduled group is up to: their filter clean for
 // this group's date, 'done' or 'scheduled' (Oct 3)
+// A customer's filters (Nov 16), each by the style chosen on it. Only a customer
+// with two or more gets a choice of which to clean; one filter works as it always has.
+function custFilterList(cust){
+  return ((cust && cust.equipment) || [])
+    .filter(i => i && baseEquipmentType(i.type) === 'Filter')
+    .map(i => ({key: String(i.type), label: String(i.filterSize || '').trim() || String(i.type)}));
+}
+// The filters chosen for this customer in this group, or null when they have fewer
+// than two. Every filter is chosen until some are unticked; never none.
+function fgFilterPicks(g, cid){
+  const all = custFilterList(customers.find(x => x && String(x.id) === String(cid)));
+  if(all.length < 2) return null;
+  const chosen = g && g.filterPick && Array.isArray(g.filterPick[cid]) ? g.filterPick[cid] : null;
+  const keep = chosen ? all.filter(f => chosen.indexOf(f.key) !== -1) : all;
+  return keep.length ? keep : all;
+}
+// A new clean for each chosen filter (one, untagged, for a customer with a single filter)
+function fgFilterTag(rec, pick){
+  if(pick){ rec.filterKey = pick.key; rec.filterLabel = pick.label; }
+  return rec;
+}
 function fgCleanStatus(g){
   const out = {};
+  const per = {};   // customers whose cleans are one per filter (Nov 16): done only when every filter is
   (lsGet('scheduledFilterCleans') || []).forEach(f=>{
     if(!f || f.reopened || f.groupId !== g.id || (g.date && f.date !== g.date)) return;   // a done one put back in the app counts no more (Oct 19)
+    if(f.filterKey){
+      const p = per[f.customerId] = per[f.customerId] || {n: 0, open: 0, plain: false};
+      p.n++; if(f.status !== 'done') p.open++;
+    } else if(per[f.customerId]) per[f.customerId].plain = true;
     if(out[f.customerId] === 'done') return;
     out[f.customerId] = f.status === 'done' ? 'done' : 'scheduled';
   });
+  Object.keys(per).forEach(cid => { if(!per[cid].plain) out[cid] = per[cid].open ? 'scheduled' : 'done'; });
   return out;
 }
 const FILTER_GROUPS_PER_PAGE = 10;
@@ -9048,23 +9075,42 @@ function fgSyncScheduledInner(){
     live.forEach((cid, i)=>{
       // This round's: still to do, or done since the group was last sent (one
       // done in an earlier round doesn't count)
-      const mine = sched.filter(sc => sc && !sc.reopened && sc.groupId === g.id && sc.customerId === cid
+      const mineAll = sched.filter(sc => sc && !sc.reopened && sc.groupId === g.id && sc.customerId === cid
         && (sc.status !== 'done' || !g.scheduledAt || String(sc.doneAt || sc.date || '') >= g.scheduledAt.slice(0, 10)));
-      if(!mine.length){
-        // Added to the group after it was scheduled: onto the route too
-        // (a customer on their own has their own technician, Oct 19)
-        if(!g.date || !fgCustTech(g, cid)) return;
-        const nsc = {
+      let mine = mineAll;
+      const picks = fgFilterPicks(g, cid);   // 2+ filters: a clean for each one chosen (Nov 16)
+      const newRec = pick => {
+        const nsc = fgFilterTag({
           id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
           groupId: g.id, groupName: g.name, customerId: cid, technicianId: fgCustTech(g, cid),
           date: g.date, order: i, photoRequired: fgCustPhoto(g, cid), lineItems: fgCustLineItems(g, cid),
           emailCustomer: fgCustEmail(g, cid), status: 'scheduled'
-        };
+        }, pick);
         if(fgCustPlace(g, cid) !== undefined) nsc.placeAfter = fgCustPlace(g, cid);
-        sched.push(nsc);
+        return nsc;
+      };
+      if(picks && !mineAll.some(sc => !sc.filterKey)){
+        // A clean already sent for the whole customer is left alone; otherwise one per
+        // chosen filter. An unticked one not yet done comes off the route; a ticked one
+        // not there yet goes on. Done ones are never touched.
+        const gone = mineAll.filter(sc => sc.status !== 'done' && !picks.some(p => p.key === sc.filterKey));
+        if(gone.length){ sched = sched.filter(sc => gone.indexOf(sc) === -1); mine = mineAll.filter(sc => gone.indexOf(sc) === -1); changed = true; }
+        if(g.date && fgCustTech(g, cid)){
+          picks.forEach(p=>{
+            if(mine.some(sc => sc.filterKey === p.key)) return;
+            const nsc = newRec(p);
+            sched.push(nsc); mine = mine.concat([nsc]); changed = true;
+          });
+        }
+      } else if(!mine.length){
+        // Added to the group after it was scheduled: onto the route too
+        // (a customer on their own has their own technician, Oct 19)
+        if(!g.date || !fgCustTech(g, cid)) return;
+        sched.push(newRec(null));
         changed = true;
         return;
       }
+      const firstKey = picks && picks.length ? picks[0].key : null;
       mine.forEach(sc=>{
         if(sc.status === 'done') return;
         const want = {groupName: g.name, order: i, photoRequired: fgCustPhoto(g, cid), emailCustomer: fgCustEmail(g, cid)};
@@ -9076,8 +9122,9 @@ function fgSyncScheduledInner(){
         const wpl = fgCustPlace(g, cid);
         if(wpl !== undefined){ if(sc.placeAfter !== wpl){ sc.placeAfter = wpl; changed = true; } }
         else if(g.custPlace && 'placeAfter' in sc){ delete sc.placeAfter; changed = true; }
-        // Extra work for this customer (Oct 13), compared as a whole
-        const li = fgCustLineItems(g, cid);
+        // Extra work for this customer (Oct 13), compared as a whole. With one clean a
+        // filter, it rides on the first one only, so it isn't ticked twice (Nov 16)
+        const li = (sc.filterKey && firstKey && sc.filterKey !== firstKey) ? [] : fgCustLineItems(g, cid);
         if(JSON.stringify(sc.lineItems || []) !== JSON.stringify(li)){ sc.lineItems = li; changed = true; }
       });
     });
@@ -9687,17 +9734,19 @@ async function finalizeFilterGroup(g){
   // Re-finalizing replaces this group's previous schedule rather than stacking
   sched = sched.filter(s => s.groupId !== g.id || s.status === 'done');
   fgLiveIds(g).forEach((cid, i)=>{
-    sched.push({
-      id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-      groupId: g.id,
-      groupName: g.name,
-      customerId: cid,
-      technicianId: g.technicianId,
-      date: g.date,
-      order: i,            // the group's order, kept on the technician's phone
-      photoRequired: g.photoRequired !== false,   // the group's Photo required (Oct 3)
-      emailCustomer: g.emailCustomer !== false,   // the group's Email customer (Oct 11)
-      status: 'scheduled'
+    (fgFilterPicks(g, cid) || [null]).forEach(pick=>{
+      sched.push(fgFilterTag({
+        id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+        groupId: g.id,
+        groupName: g.name,
+        customerId: cid,
+        technicianId: g.technicianId,
+        date: g.date,
+        order: i,            // the group's order, kept on the technician's phone
+        photoRequired: g.photoRequired !== false,   // the group's Photo required (Oct 3)
+        emailCustomer: g.emailCustomer !== false,   // the group's Email customer (Oct 11)
+        status: 'scheduled'
+      }, pick));
     });
   });
   lsSet('scheduledFilterCleans', sched);
@@ -13641,6 +13690,40 @@ function openWorkCalendar(startDay, stayHere){
               }
             }), bin));
           }
+          // Which filters (Nov 16): a customer with two or more shows each, ticked, and every
+          // one ticked is its own filter clean on the technician's list
+          let filterLine = null;
+          {
+            const picks = fgFilterPicks(g, cid);
+            if(picks && !isDone){
+              const all = custFilterList(c);
+              const fl = document.createElement('div');
+              fl.style.cssText = 'grid-column:2 / -1;display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:0 0 4px;font-size:12px;color:var(--muted);';
+              const lab = document.createElement('span');
+              lab.textContent = 'Filters:'; lab.style.fontWeight = '600';
+              fl.appendChild(lab);
+              all.forEach(f=>{
+                const l = document.createElement('label');
+                l.style.cssText = 'display:inline-flex;gap:5px;align-items:center;cursor:pointer;color:var(--ink);';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox'; cb.checked = picks.some(p => p.key === f.key);
+                cb.addEventListener('change', ()=>{
+                  const cur = (fgFilterPicks(g, cid) || []).map(p => p.key);
+                  const next = cb.checked ? cur.concat([f.key]) : cur.filter(k => k !== f.key);
+                  if(!next.length){ cb.checked = true; showToast('Keep at least one filter, or take ' + displayName(c.name) + ' off this day'); return; }
+                  editGroup(g.id, it=>{
+                    it.filterPick = it.filterPick || {};
+                    if(next.length === all.length) delete it.filterPick[cid]; else it.filterPick[cid] = next;
+                  });
+                });
+                const t = document.createElement('span');
+                t.textContent = f.label;
+                l.appendChild(cb); l.appendChild(t);
+                fl.appendChild(l);
+              });
+              filterLine = fl;   // added after the row's own buttons, so they stay in place
+            }
+          }
           // Extra work under the customer: ticked off on this filter clean in the app
           const [extra, tagsWrap] = extraLine();
           const exItems = fgCustExtra(g, cid);
@@ -13659,6 +13742,7 @@ function openWorkCalendar(startDay, stayHere){
             }));
           });
           if(!tagsWrap.children.length) tagsWrap.remove();
+          if(filterLine) row.appendChild(filterLine);
           if(extra.children.length) row.appendChild(extra);
           listEl.appendChild(row);
         });
@@ -13929,8 +14013,9 @@ function openWorkCalendar(startDay, stayHere){
       saveFilterGroups();   // puts their clean on the app
       if(want === 'done'){
         const list = mine();
-        const r = list.find(ours);
-        if(r && r.status !== 'done'){ r.status = 'done'; r.doneAt = new Date().toISOString(); r.doneBy = 'office'; lsSet('scheduledFilterCleans', list); }
+        let marked = 0;
+        list.filter(ours).forEach(r=>{ if(r.status !== 'done'){ r.status = 'done'; r.doneAt = new Date().toISOString(); r.doneBy = 'office'; marked++; } });
+        if(marked) lsSet('scheduledFilterCleans', list);
       }
     }
     saveFilterGroups(); renderFilterGroups(); draw();
@@ -18517,7 +18602,7 @@ function renderTaskSuggest(term){
   }
 
   const matches = customers
-    .filter(c => c.active !== false)
+    .filter(c => c.active !== false && !c.oneTime)
     .filter(c => !taskPicked.has(c.id))
     .filter(c => [c.name, c.address, c.phone, c.email]
       .filter(Boolean).join(' ').toLowerCase().includes(t))
@@ -18526,8 +18611,23 @@ function renderTaskSuggest(term){
     .slice(0, 10);
 
   box.innerHTML = '';
+  // Someone not on file, for a task or Clean & refill (Nov 16): the name as typed
+  const addRow = ()=>{
+    const r = jobNameOnlyRow(term, (name, keep)=>{
+      const c = addNameOnlyCustomer(name, keep);
+      taskPicked.add(c.id);
+      renderTaskChips();
+      const inp = document.getElementById('taskCustomerSearch');
+      inp.value = '';
+      renderTaskSuggest('');
+      inp.focus();
+    }, 'padding:10px 12px;font-size:13.5px;cursor:pointer;border-bottom:1px solid var(--line);');
+    if(r) box.appendChild(r);
+  };
   if(!matches.length){
-    box.style.display = 'none';
+    box.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--muted);">No customers match that search.</div>';
+    addRow();
+    box.style.display = 'block';
     return;
   }
 
@@ -18546,6 +18646,7 @@ function renderTaskSuggest(term){
     });
     box.appendChild(row);
   });
+  addRow();
   box.style.display = 'block';
 }
 
@@ -19134,20 +19235,22 @@ function scheduleFilterGroup(g){
   // Re-scheduling replaces this group's previous entries rather than stacking
   sched = sched.filter(s => s.groupId !== g.id || s.status === 'done');
   fgLiveIds(g).forEach((cid, i)=>{
-    const nsc = {
-      id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-      groupId: g.id,
-      groupName: g.name,
-      customerId: cid,
-      technicianId: g.technicianId,
-      date: g.date,
-      order: i,            // the group's order, kept on the technician's phone
-      photoRequired: g.photoRequired !== false,   // the group's Photo required (Oct 3)
-      emailCustomer: g.emailCustomer !== false,   // the group's Email customer (Oct 11)
-      status: 'scheduled'
-    };
-    if(fgCustPlace(g, cid) !== undefined) nsc.placeAfter = fgCustPlace(g, cid);   // where in the route (Nov 2)
-    sched.push(nsc);
+    (fgFilterPicks(g, cid) || [null]).forEach(pick=>{
+      const nsc = fgFilterTag({
+        id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+        groupId: g.id,
+        groupName: g.name,
+        customerId: cid,
+        technicianId: g.technicianId,
+        date: g.date,
+        order: i,            // the group's order, kept on the technician's phone
+        photoRequired: g.photoRequired !== false,   // the group's Photo required (Oct 3)
+        emailCustomer: g.emailCustomer !== false,   // the group's Email customer (Oct 11)
+        status: 'scheduled'
+      }, pick);
+      if(fgCustPlace(g, cid) !== undefined) nsc.placeAfter = fgCustPlace(g, cid);   // where in the route (Nov 2)
+      sched.push(nsc);
+    });
   });
   lsSet('scheduledFilterCleans', sched);
   g.finalized = true;
@@ -34093,7 +34196,7 @@ function collectAlerts(){
     }
     const items = partsStillNeeded(f);
     if(items.length){
-      out.push(Object.assign({id: 'repair:' + f.id, kind: 'repair', notes: 'Needs replacing: ' + items.join(', ')}, base));
+      out.push(Object.assign({id: 'repair:' + f.id, kind: 'repair', notes: 'Replacement needed: ' + items.join(', ')}, base));
     }
   });
   // Work orders and pool drains finished in the field with notes from the
@@ -34113,7 +34216,7 @@ function collectAlerts(){
       if(notes && noteOk(idp + ':' + j.id, tm)) out.push(Object.assign({id: idp + ':' + j.id, kind: 'note', notes: notes}, base));
       if(pre === 'pd'){
         const items = partsStillNeeded(j);
-        if(items.length) out.push(Object.assign({id: 'pdrepair:' + j.id, kind: 'repair', notes: 'Needs replacing: ' + items.join(', ')}, base));
+        if(items.length) out.push(Object.assign({id: 'pdrepair:' + j.id, kind: 'repair', notes: 'Replacement needed: ' + items.join(', ')}, base));
       }
     });
   });
@@ -34126,7 +34229,7 @@ function collectAlerts(){
     if(!c || c.deleted) return;
     const tm = new Date(j.doneAt || ((j.date || '') + 'T12:00:00')).getTime();
     if(!tm || isNaN(tm)) return;
-    out.push({id: 'worepair:' + j.id, kind: 'repair', notes: 'Needs replacing: ' + items.join(', '),
+    out.push({id: 'worepair:' + j.id, kind: 'repair', notes: 'Replacement needed: ' + items.join(', '),
       customerId: c.id, name: displayName(c.name), body: 'Work order' + (j.title ? ': ' + j.title : ''), t: tm,
       jobKey: 'wo:' + j.id, tech: j.doneBy === 'office' ? 'the office' : techName(j.doneBy || j.technicianId)});
   });
@@ -34390,6 +34493,11 @@ function renderAlerts(){
   const rowsAll = all.filter(a => alertsKind === 'all' || (alertsKind === 'fav' ? isFav(a) : a.kind === alertsKind));
   // On All, the starred ones first (they sit in the Favorites box at the top)
   if(alertsKind === 'all') rowsAll.sort((x, y) => (isFav(y) ? 1 : 0) - (isFav(x) ? 1 : 0));
+  // Anything marked NEW sits at the top of whichever tab it's on (Nov 16); the
+  // rest keep their order
+  { const nw = a => seen[a.id] ? 0 : 1;
+    const fv = a => alertsKind === 'all' && isFav(a) ? 1 : 0;
+    rowsAll.sort((x, y) => (fv(y) - fv(x)) || (nw(y) - nw(x))); }
   // Ten a page, on every tab, each tab keeping its own page (Nov 1)
   const pageCount = Math.max(1, Math.ceil(rowsAll.length / ALERTS_PER_PAGE));
   const page = Math.min(Math.max(1, alertsPages[alertsKind] || 1), pageCount);

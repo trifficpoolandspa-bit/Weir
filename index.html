@@ -858,5 +858,12 @@ addPasswordReveals();
   document.addEventListener('touchstart', lock, {once: true, passive: true});
 })();
 </script>
+<style id="upright-style">
+/* Phone held sideways (Nov 16): the app can't be locked on every phone, so sideways it is covered */
+#uprightCover{display:none;position:fixed;inset:0;z-index:2147483647;background:#114B4F;color:#fff;align-items:center;justify-content:center;flex-direction:column;gap:10px;text-align:center;font:600 20px/1.3 -apple-system,system-ui,sans-serif;padding:20px;}
+#uprightCover span{font-size:44px;line-height:1;}
+@media (orientation: landscape) and (max-height: 520px) and (pointer: coarse){ #uprightCover{display:flex;} }
+</style>
+<div id="uprightCover" aria-hidden="true"><span>&#128241;</span>Turn your phone upright</div>
 </body>
 </html>
