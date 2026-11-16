@@ -846,5 +846,17 @@ function addPasswordReveals(){
 document.addEventListener('DOMContentLoaded', addPasswordReveals);
 addPasswordReveals();
 </script>
+<script>
+// Portrait only (Nov 15). The manifest locks the installed app; this holds it wherever the
+// browser allows a lock, and tries again when the app comes back to the front or is first touched
+(function(){
+  const lock = ()=>{ try{ if(screen.orientation && screen.orientation.lock) screen.orientation.lock('portrait').catch(()=>{}); }catch(e){} };
+  lock();
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) lock(); });
+  window.addEventListener('pageshow', lock);
+  window.addEventListener('orientationchange', lock);
+  document.addEventListener('touchstart', lock, {once: true, passive: true});
+})();
+</script>
 </body>
 </html>

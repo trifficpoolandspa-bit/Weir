@@ -3111,7 +3111,16 @@ window.addEventListener('resize', measureBottomBar);
 window.addEventListener('orientationchange', ()=> setTimeout(measureBottomBar, 200));
 // Portrait only: the installed app is locked by its manifest, and this holds it
 // where the browser allows a lock (it refuses outside an installed or full screen app)
-try{ if(screen.orientation && screen.orientation.lock) screen.orientation.lock('portrait').catch(()=>{}); }catch(e){}
+// Portrait only (Nov 15). The manifest locks the installed app; this holds it wherever the
+// browser allows a lock, and tries again when the app comes back to the front or is first touched
+(function(){
+  const lock = ()=>{ try{ if(screen.orientation && screen.orientation.lock) screen.orientation.lock('portrait').catch(()=>{}); }catch(e){} };
+  lock();
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) lock(); });
+  window.addEventListener('pageshow', lock);
+  window.addEventListener('orientationchange', lock);
+  document.addEventListener('touchstart', lock, {once: true, passive: true});
+})();
 document.addEventListener('DOMContentLoaded', ()=> setTimeout(measureBottomBar, 0));
 
 function showToast(msg){
@@ -12090,6 +12099,8 @@ function jobWasSkipped(j){
 // doneExtraWork (the field the office already takes from the phones) and the
 // website shows them under their own heading.
 var DRAIN_CHECKS = ['Autofill valve turned off', 'Pump turned off'];
+// A filter clean can't be submitted until this is ticked (Nov 16)
+var FILTER_CHECKS = ['Air valve closed and drain plug in place'];
 function jobTickTile(line, cb){
   line.style.cssText = 'display:flex;align-items:center;gap:12px;padding:13px 14px;margin:0 0 8px;cursor:pointer;'
     + 'border:1.5px solid #BFDCD8;border-radius:12px;background:#fff;font-size:15.5px;font-weight:700;color:var(--ink);'
@@ -12209,6 +12220,7 @@ function openJobPage(customer, job){
   // customer name or address (Oct 3)
   const lineChecks = [];       // a work order's line items, all ticked before Submit
   const drainChecks = [];      // a pool drain's Before draining ticks (Nov 1)
+  const filterChecks = [];     // a filter clean's air valve and drain plug tick (Nov 16)
   if(job.kind === 'work order' || job.kind === 'task'){
     where.style.display = 'none';
     who.style.color = 'var(--ink)';
@@ -12250,6 +12262,29 @@ function openJobPage(customer, job){
       cb.dataset.drainCheck = t;
       jobTickTile(line, cb);
       drainChecks.push(cb);
+      const span = document.createElement('span');
+      span.textContent = t;
+      line.appendChild(cb); line.appendChild(span);
+      wrap.appendChild(line);
+    });
+    card.appendChild(wrap);
+  }
+  // Filter clean (Nov 16): the air valve closed and the drain plug in place, ticked
+  // before Submit, first on the screen
+  if(job.kind === 'filter clean'){
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'margin:2px 0 14px;';
+    const hd = document.createElement('div');
+    hd.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--teal-mid);text-transform:uppercase;letter-spacing:0.07em;margin:4px 0 6px;";
+    hd.textContent = 'Before you finish';
+    wrap.appendChild(hd);
+    FILTER_CHECKS.forEach(t=>{
+      const line = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.dataset.filterCheck = t;
+      jobTickTile(line, cb);
+      filterChecks.push(cb);
       const span = document.createElement('span');
       span.textContent = t;
       line.appendChild(cb); line.appendChild(span);
@@ -12533,6 +12568,12 @@ function openJobPage(customer, job){
       showToast('Tick ' + notOff.map(t => '\u201c' + t + '\u201d').join(' and ') + ' first');
       return;
     }
+    // A filter clean can't go until the air valve and drain plug are ticked (Nov 16)
+    const notDone = filterChecks.filter(cb => !cb.checked).map(cb => cb.dataset.filterCheck);
+    if(notDone.length){
+      showToast('Tick \u201c' + notDone[0] + '\u201d first');
+      return;
+    }
     // A Clean & refill can't go until autofill is turned on (Nov 3)
     if(refillChecks.some(cb => !cb.checked)){
       showToast('Tick \u201cTurn on autofill\u201d first');
@@ -12623,7 +12664,8 @@ function openJobPage(customer, job){
         if(videoMore.length) fc.doneVideoMore = videoMore;
         if(replacements.length) fc.doneReplacements = replacements.slice();
         // Every extra work item was ticked to get here (Oct 13)
-        if(Array.isArray(fc.lineItems) && fc.lineItems.length) fc.doneExtraWork = fc.lineItems.map(li => String((li && li.description) || '').trim()).filter(Boolean);
+        // With the air valve and drain plug tick first (Nov 16)
+        fc.doneExtraWork = FILTER_CHECKS.concat(Array.isArray(fc.lineItems) ? fc.lineItems.map(li => String((li && li.description) || '').trim()).filter(Boolean) : []);
         lsSet('scheduledFilterCleans', cleans);
         try{ refreshNcLastDone(); }catch(e){}
         // Unless the office unticked Email customer on its group (Oct 11)
@@ -13849,6 +13891,46 @@ function servicedJobsOn(iso, techId){
   }
   return out;
 }
+// Corrections on a finished job (Nov 15): change what was written on it. It stays
+// done, nothing is sent again, and the change goes to the office like any other.
+function correctDoneJob(job){
+  const LISTS = {'work order': ['scheduledWorkOrders', 'work_order'], 'filter clean': ['scheduledFilterCleans', 'filter_clean'],
+    'pool drain': ['scheduledPoolDrains', 'pool_drain'], 'task': ['tasks', 'task']};
+  const where = LISTS[job.kind];
+  if(!where) return;
+  const rec = (lsGet(where[0]) || []).find(x => x && String(x.id) === String(job.id));
+  if(!rec){ showToast('That job is no longer here'); return; }
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-box" id="cdjBox" style="max-width:440px;">'
+    + '<h3 style="font-size:16px;margin:0 0 4px;">Corrections</h3>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;"></p>'
+    + '<div class="field"><label>Technician’s notes</label><textarea id="cdjNotes" rows="6" style="width:100%;"></textarea></div>'
+    + '<div class="btn-row" style="flex-wrap:nowrap;"><button type="button" class="btn btn-primary" id="cdjSave" style="flex:1 1 0;">Save</button>'
+    + '<button type="button" class="btn btn-ghost" id="cdjCancel" style="flex:1 1 0;">Cancel</button></div></div>';
+  overlay.querySelector('p').textContent = (job.title || jobKindLabel(job.kind)) + ' stays done. Nothing is sent again.';
+  document.body.appendChild(overlay);
+  const ta = overlay.querySelector('#cdjNotes');
+  ta.value = rec.doneNotes || '';
+  const close = ()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+  overlay.querySelector('#cdjCancel').addEventListener('click', close);
+  overlay.addEventListener('click', e=>{ if(e.target === overlay) close(); });
+  overlay.querySelector('#cdjSave').addEventListener('click', ()=>{
+    const all = lsGet(where[0]) || [];
+    const r = all.find(x => x && String(x.id) === String(job.id));
+    if(!r){ close(); showToast('That job is no longer here'); return; }
+    const text = ta.value.trim();
+    if(text === String(r.doneNotes || '').trim()){ close(); return; }
+    r.doneNotes = text;
+    r.editedAt = new Date().toISOString();
+    if(!lsSet(where[0], all)){ showToast('Could not save — the phone is full'); return; }
+    queueOfficeWork(where[1], r.id, false);
+    try{ if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange(); }catch(e){}
+    close();
+    try{ renderServicedList(); }catch(e){}
+    showToast('Corrections saved');
+  });
+}
 // A finished job's row on Serviced: its colour and icon, when it was done;
 // pressing it opens its report
 function servicedJobRow(job){
@@ -13908,10 +13990,15 @@ function servicedJobRow(job){
   resched.style.cssText = 'width:84px;flex:0 0 84px;padding:7px 0;font-size:12px;';
   resched.textContent = 'Reservice';
   resched.addEventListener('click', e=>{ e.stopPropagation(); rescheduleDoneJob(job); });
-  // Where Corrections sits on a customer's row, so Reservice lines up down the list
-  const corrGap = document.createElement('div');
-  corrGap.style.cssText = 'flex:0 0 110px;width:110px;';
-  row.appendChild(corrGap);
+  // Corrections (Nov 15): the technician's notes on a finished job can be changed
+  // without submitting it again. Same size and place as the customer rows' button.
+  const corr = document.createElement('button');
+  corr.type = 'button';
+  corr.className = 'btn btn-secondary';
+  corr.style.cssText = 'width:104px;flex:0 0 104px;padding:7px 0;font-size:12px;margin-right:6px;';
+  corr.textContent = 'Corrections';
+  corr.addEventListener('click', e=>{ e.stopPropagation(); correctDoneJob(job); });
+  row.appendChild(corr);
   row.appendChild(resched);
   return row;
 }
@@ -25299,7 +25386,7 @@ function buildJobEmailHtml(customer, job, techName){
   } else {
     rows = '<tr><td style="' + cell + '">' + esc(what) + '</td><td style="' + cell + '"></td></tr>';
     // A drain: the autofill valve and pump checks (Nov 1)
-    if(job.kind === 'pool drain') (job.doneExtraWork || []).filter(t => DRAIN_CHECKS.indexOf(t) !== -1).forEach(t=>{
+    if(job.kind === 'pool drain' || job.kind === 'filter clean') (job.doneExtraWork || []).filter(t => DRAIN_CHECKS.indexOf(t) !== -1 || FILTER_CHECKS.indexOf(t) !== -1).forEach(t=>{
       rows += '<tr><td style="' + cell + '">' + esc(t) + '</td><td style="' + cell + 'text-align:right;color:#2E8B57;font-weight:700;">\u2713</td></tr>';
     });
   }
