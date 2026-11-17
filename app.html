@@ -11587,14 +11587,18 @@ function markJobPlace(row, job, customerId){
 function placeChosenJobs(container){
   if(!container) return;
   const isStop = el => el && el.classList.contains('cust-row') && el.dataset.reorderKey && String(el.dataset.reorderKey).indexOf('job:') !== 0;
-  Array.from(container.querySelectorAll('[data-place-after]')).forEach(row=>{
+  // Twice, so a job placed after another placed job lands after it moves (Nov 17)
+  [1, 2].forEach(() => Array.from(container.querySelectorAll('[data-place-after]')).forEach(row=>{
     const after = row.dataset.placeAfter;
     if(after === ''){
       const first = Array.from(container.children).find(el => el !== row && (isStop(el) || el.dataset.reorderKey));
       if(first) container.insertBefore(row, first);
       return;
     }
-    const target = Array.from(container.children).find(el => isStop(el) && String(el.dataset.reorderKey) === String(after));
+    const afterJob = String(after).indexOf('job:') === 0;
+    const target = Array.from(container.children).find(el => afterJob
+      ? (el !== row && String(el.dataset.reorderKey) === String(after))
+      : (isStop(el) && String(el.dataset.reorderKey) === String(after)));
     if(!target) return;
     // Past its drop-down and every job that customer already has there, whether
     // that job sits under them by default or was placed there on purpose, so a
@@ -11604,7 +11608,7 @@ function placeChosenJobs(container){
     while(next() && next() !== row && (/route-brief|route-job-brief/.test(next().className)
       || next().dataset.jobCust === String(after))) anchor = next();
     if(anchor !== row) anchor.after(row);
-  });
+  }));
 }
 
 // A job that was dragged sits where it was left; one that wasn't stays under
@@ -12025,7 +12029,7 @@ function askJobSkipReason(customer, job){
     box.innerHTML = '<h3 style="font-size:15px;margin:0 0 4px;"></h3>'
       + '<p style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">This goes to the office with the job so they know what happened.</p>'
       + '<div class="field"><label>Reason' + (optional ? ' (optional)' : '') + '</label><textarea rows="4" placeholder="Gate was locked, part not in yet, customer asked to move it..." style="min-height:96px;"></textarea></div>'
-      + (true ? '<div class="field"><label>Photo' + (needPhoto ? ' (required)' : ' (optional)') + '</label><button type="button" class="btn btn-ghost" data-k="photo" style="width:auto;">Take photo</button>'
+      + (true ? '<div class="field"><label>Photo' + (needPhoto ? ' (required)' : ' (optional)') + '</label><button type="button" class="btn btn-secondary" data-k="photo" style="width:auto;padding:16px 40px;font-size:17px;background:#B8492E;color:#fff;border:1.5px solid #B8492E;display:block;margin:0 auto;">Take photo</button>'
         + '<input type="file" accept="image/*" capture="environment" data-k="file" style="display:none;">'
         + '<div data-k="wrap" style="display:none;margin-top:10px;"><img data-k="img" style="max-width:50%;border-radius:10px;border:1px solid var(--line);display:block;" alt="Skip photo"></div></div>' : '')
       + '<div class="btn-row"><button class="btn btn-primary" data-k="ok" style="flex:1;">Skip job</button><button class="btn btn-ghost" data-k="no" style="width:auto;">Cancel</button></div>';
@@ -12189,6 +12193,8 @@ function openJobPage(customer, job){
   if(job.correcting) back.style.cssText = 'width:auto;flex-shrink:0;padding:6px 12px;font-size:12.5px;background:#FFF8E8;border:1px solid #E8CF9A;color:#7A5A12;';
   head.appendChild(h); head.appendChild(back);
   card.appendChild(head);
+  // The phone's own Back button in a correction presses this (Nov 16)
+  if(job.correcting){ page.dataset.correcting = '1'; page._cancelBtn = back; }
 
   // The time on this job, from when it was first opened, as a visit's (Oct 10).
   // Kept on this phone until it's submitted, so leaving and coming back carries on.
@@ -14041,11 +14047,21 @@ function servicedJobRow(job){
   row.style.background = jobKindColours(shownJobKind(job))[0];
   cbMarkRow(row, shownJobKind(job));
   const left = document.createElement('div');
-  left.style.cssText = 'min-width:0;';
+  left.style.cssText = 'min-width:0;flex:1 1 auto;';
   const name = document.createElement('div');
   name.className = 'cust-name';
-  name.style.cssText = 'color:' + jobKindColours(shownJobKind(job))[1] + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-  setJobNameLine(name, shownJobKind(job), (customer ? customer.name + ' \u2013 ' : '') + job.title);
+  name.style.cssText = 'color:' + jobKindColours(shownJobKind(job))[1] + ';display:flex;align-items:center;min-width:0;';
+  // The time badge, as on a service report row (Nov 16): at the end of the name line
+  const nameText = document.createElement('span');
+  nameText.style.cssText = 'flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;';
+  setJobNameLine(nameText, shownJobKind(job), (customer ? customer.name + ' \u2013 ' : '') + job.title);
+  name.appendChild(nameText);
+  if(job.durationMs){
+    const badge = document.createElement('span');
+    badge.style.cssText = 'flex:0 0 auto;';
+    badge.innerHTML = '<span class="mono" style="background:var(--teal-pale);color:var(--teal-deep);font-weight:700;font-size:11px;padding:3px 8px;border-radius:20px;margin-left:8px;white-space:nowrap;display:inline-block;">' + formatDuration(job.durationMs) + '</span>';
+    name.appendChild(badge);
+  }
   const meta = document.createElement('div');
   meta.className = 'cust-meta';
   meta.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
@@ -14618,7 +14634,7 @@ function openSkipReasonModal(customer, forcePhoto, optional){
         </div>
         <div class="field">
           <label>Photo${photoNeeded ? ' (required)' : ' (optional)'}</label>
-          <button type="button" class="btn btn-ghost" id="skipPhotoBtn" style="width:auto;">${photoNeeded ? 'Take photo (required)' : 'Take photo'}</button>
+          <button type="button" class="btn btn-secondary" id="skipPhotoBtn" style="width:auto;padding:16px 40px;font-size:17px;background:#B8492E;color:#fff;border:1.5px solid #B8492E;display:block;margin:0 auto;">${photoNeeded ? 'Take photo (required)' : 'Take photo'}</button>
           <input type="file" accept="image/*" capture="environment" id="skipPhotoInput" style="display:none;">
           <div id="skipPhotoWrap" style="display:none;margin-top:10px;">
             <img id="skipPhotoPreview" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="Skip photo">
@@ -19389,7 +19405,7 @@ function makeRoutePlace(o){
     const dayText = new Date(c.iso + 'T12:00:00').toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
     host.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px;">'
       + '<label style="margin:0;">Where in ' + esc2(o.techName(c.techId)) + '’s route</label>'
-      + '<span style="font-size:12px;color:var(--muted);white-space:nowrap;">' + esc2(dayText) + ' · ' + c.stops.length + (c.stops.length === 1 ? ' stop' : ' stops') + '</span></div>'
+      + '<span style="font-size:12px;color:var(--muted);white-space:nowrap;">' + esc2(dayText) + ' · ' + c.stops.filter(x => !x.isJob).length + (c.stops.filter(x => !x.isJob).length === 1 ? ' stop' : ' stops') + '</span></div>'
       + '<div class="rp-box"></div><div class="rp-foot"></div>';
     const box = host.querySelector('.rp-box');
     const jobRow = ()=>{
@@ -19413,12 +19429,19 @@ function makeRoutePlace(o){
       return g;
     };
     if(shown === '') box.appendChild(jobRow()); else box.appendChild(gap(''));
+    let stopNo = 0;
     c.stops.forEach((s, i)=>{
       const r = document.createElement('div');
       r.className = 'rp-stop';
-      r.innerHTML = '<span class="rp-num">' + (i + 1) + '</span><div style="min-width:0;"><div>' + esc2(o.nameOf(s)) + '</div><div class="rp-addr">'
-        + esc2(s.address || 'No address on file') + '</div></div>'
-        + (String(s.id) === String(c.own) ? '<span class="rp-own">its customer</span>' : '');
+      if(s.isJob){
+        // Another job that day: a line of its own to put this one after
+        r.innerHTML = '<span class="rp-num" style="visibility:hidden;">0</span><div style="min-width:0;font-size:13px;color:var(--gold);font-weight:700;">' + esc2(s.name) + '</div>';
+      } else {
+        stopNo++;
+        r.innerHTML = '<span class="rp-num">' + stopNo + '</span><div style="min-width:0;"><div>' + esc2(o.nameOf(s)) + '</div><div class="rp-addr">'
+          + esc2(s.address || 'No address on file') + '</div></div>'
+          + (String(s.id) === String(c.own) ? '<span class="rp-own">its customer</span>' : '');
+      }
       box.appendChild(r);
       if(shown === String(s.id)) box.appendChild(jobRow()); else box.appendChild(gap(String(s.id)));
     });
@@ -19448,7 +19471,7 @@ function makeRoutePlace(o){
 }
 
 // A technician's stops on a date, in the order Today shows them
-function appRouteStopsFor(techId, iso){
+function appRouteStopsFor(techId, iso, skipIds){
   const day = DAYS_OF_WEEK[new Date(iso + 'T12:00:00').getDay()];
   const moves = lsGet('rescheduledVisits') || [];
   const movedAway = new Set(moves.filter(r => r && r.fromDate === iso).map(r => r.customerId));
@@ -19458,7 +19481,22 @@ function appRouteStopsFor(techId, iso){
   const movedIn = (customers || []).filter(c => c && movedHereFor(movedWho, c, techId) && c.active !== false && !base.some(b => b.id === c.id));
   const all = base.concat(movedIn);
   const order = adminRouteOrderIds(day, iso, all.map(c => c.id), techId);
-  return order.map(id => all.find(c => c.id === id)).filter(Boolean);
+  const stops = order.map(id => all.find(c => c.id === id)).filter(Boolean);
+  // The day's other jobs show in the list too (Nov 17), each under its customer as
+  // on Today, so a job can be put after one. The job being edited is left out.
+  const skip = Array.isArray(skipIds) ? skipIds.map(String) : [];
+  const jobEntry = (j, cust) => ({id: 'job:' + j.key, isJob: true,
+    name: jobKindIcon(j.kind) + ' ' + (cust ? cust.name + ' \u2013 ' : '') + (j.title || jobKindLabel(j.kind)), address: ''});
+  const withJobs = [];
+  const seen = new Set();
+  const jobsOf = cust => routeJobsFor(cust.id, iso, techId).filter(j => skip.indexOf(String(j.id)) === -1).forEach(j => {
+    if(seen.has(j.key)) return; seen.add(j.key); withJobs.push(jobEntry(j, cust)); });
+  stops.forEach(c => { withJobs.push(c); jobsOf(c); });
+  Array.from(routeJobCustomerIds(iso, techId)).map(id => (customers || []).find(c => c && c.id === id))
+    .filter(c => c && !c.deleted && c.active !== false && !stops.some(x => x.id === c.id)).forEach(jobsOf);
+  routeLooseTasks(iso, techId).filter(j => skip.indexOf(String(j.id)) === -1).forEach(j => {
+    if(seen.has(j.key)) return; seen.add(j.key); withJobs.push(jobEntry(j, null)); });
+  return withJobs;
 }
 var awcRpWo = null, awcRpTask = null;
 function awcRoutePlaceRefresh(){
@@ -19470,14 +19508,14 @@ function awcRoutePlaceRefresh(){
       techIds: ()=> awcWoTechs.slice(), customerIds: ()=> awcWoCustomers.slice(),
       label: ()=> '\ud83d\udee0 ' + ((awcLineItems || []).map(i => i && i.description).filter(Boolean).join(', ') || 'Work order')
         + (awcWoCustomers.length === 1 ? ' \u00b7 ' + custName(awcWoCustomers[0]) : ''),
-      stopsFor: appRouteStopsFor, techName: id => awcTechNames([id]), nameOf: c => c.name || ''});
+      stopsFor: (t, i) => appRouteStopsFor(t, i, awcEdit && awcEdit.ids), techName: id => awcTechNames([id]), nameOf: c => c.name || ''});
     if(!awcRpTask) awcRpTask = makeRoutePlace({host: 'awcTaskRoutePlace',
       active: ()=> awcKind === 'Task' && awcView === 'main',
       date: ()=> document.getElementById('awcTaskDate').value,
       techIds: ()=> awcTaskTechs.slice(), customerIds: ()=> awcTaskCustomers.slice(),
       label: ()=> '\ud83d\udccb ' + (document.getElementById('awcTaskTitle').value.trim() || 'Task')
         + (awcTaskCustomers.length === 1 ? ' \u00b7 ' + custName(awcTaskCustomers[0]) : ''),
-      stopsFor: appRouteStopsFor, techName: id => awcTechNames([id]), nameOf: c => c.name || ''});
+      stopsFor: (t, i) => appRouteStopsFor(t, i, awcEdit && awcEdit.ids), techName: id => awcTechNames([id]), nameOf: c => c.name || ''});
     awcRpWo.refresh(); awcRpTask.refresh();
   }catch(e){}
 }
@@ -23194,6 +23232,23 @@ window.addEventListener('popstate', async ()=>{
   // Picking several customers on Today: Back puts the list back to normal (Nov 6)
   if(typeof window.mselBack === 'function' && window.mselBack()) return;
 
+  // The phone's Back in a correction is Cancel correction (Nov 16): the same
+  // question as the on-screen button, on a job's page or a service report
+  {
+    const jp = openJobPage.open;
+    if(jp && jp.isConnected && jp.style.display !== 'none' && jp.dataset.correcting === '1' && jp._cancelBtn){
+      jp._cancelBtn.click();
+      return;
+    }
+    if(currentViewName === 'visit' && correctionJob && correctionJob.customerId === currentVisitCustomerId){
+      if(backPromptOpen) return;
+      backPromptOpen = true;
+      try{ await correctionAskCancel(); } finally { backPromptOpen = false; }
+      armBackButton();
+      return;
+    }
+  }
+
   if(currentViewName === 'visit'){
     if(currentVisitStep > 1){
       goToVisitStep(currentVisitStep - 1);
@@ -23696,7 +23751,7 @@ function askSkipProof(label, required, o){
           : (o.intro || 'Add a photo of why it is being skipped, and a short note, if you like \u2014 neither is needed.')}</p>
 
         <div class="field">
-          <button class="btn btn-ghost" type="button" id="skipProofPhotoBtn" style="width:100%;">Take photo</button>
+          <button class="btn btn-secondary" type="button" id="skipProofPhotoBtn" style="width:auto;padding:16px 40px;font-size:17px;background:#B8492E;color:#fff;border:1.5px solid #B8492E;display:block;margin:0 auto;">Take photo</button>
           <input type="file" accept="image/*" capture="environment" id="skipProofFile" style="display:none;">
           <div id="skipProofPreview" style="display:none;margin-top:10px;text-align:center;">
             <img id="skipProofImg" style="width:25%;min-width:96px;border-radius:8px;display:inline-block;cursor:zoom-in;" alt="Reason photo" title="Tap to see it full size">
