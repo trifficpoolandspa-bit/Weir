@@ -13146,7 +13146,7 @@ function openWorkCalendar(startDay, stayHere){
       day(j.date).wo.push(j);
     });
     (tasks || []).forEach(t=>{
-      if(!t || t.reopened || !t.date) return;
+      if(!t || t.reopened || !t.date || jobCustomerGone(t)) return;
       if(viewTech && String(t.technicianId || '') !== String(viewTech)) return;
       day(t.date).tk.push(t);
     });
@@ -14086,7 +14086,7 @@ function openWorkCalendar(startDay, stayHere){
       const copy = {};
       ['workOrderId', 'workOrderNumber', 'customerId', 'technicianId', 'technicianIds', 'date', 'title', 'lineItems', 'notes',
        'photoRequired', 'videoRequired', 'emailCustomer', 'emailPrices'].forEach(k => { if(j[k] !== undefined) copy[k] = JSON.parse(JSON.stringify(j[k])); });
-      copy.id = freshId('woJob_'); copy.status = 'scheduled';
+      copy.id = freshId('woJob_'); copy.status = 'scheduled'; copy.reservice = true;
       list.push(copy);
       j = copy;
     }
@@ -20839,7 +20839,7 @@ function bundleTechRows(kind, key){
   const tname = id => technicianNameById(id) || 'No technician';
   const custNameOf = id => { const c = customers.find(x => String(x.id) === String(id)); return c ? displayName(c.name) : 'A customer no longer on file'; };
   const items = kind === 'Task'
-    ? tasks.filter(t => t && !t.done && t.taskGroupId === key)
+    ? tasks.filter(t => t && !t.done && t.taskGroupId === key && !jobCustomerGone(t))
     : (lsGet('scheduledWorkOrders') || []).filter(j => j && j.status === 'scheduled' && j.workOrderId === key);
   const byTech = {};
   items.forEach(x=>{ (byTech[String(x.technicianId || '')] = byTech[String(x.technicianId || '')] || []).push(x); });
@@ -21334,7 +21334,7 @@ function renderCurrentList(kind){
   } else if(kind === 'Task'){
     heading.textContent = 'Scheduled tasks';
     note.textContent = 'Every task not yet done, soonest first. Take off any that no longer need doing.';
-    const open = tasks.filter(t => t && !t.done);
+    const open = tasks.filter(t => t && !t.done && !jobCustomerGone(t));
     rows = open.filter(t => !tech || String(t.technicianId) === tech).map(t => {
       const names = (t.customerIds || []).map(custName);
       return {id: t.id, date: t.date, what: t.title || 'Task', look: custLook(t.customerIds || []),
@@ -29511,7 +29511,8 @@ function twRouteFor(techId, iso){
     : (dayOrder && typeof dayOrder === 'object' ? dayOrder[techId] : null));
   timeOffTail(iso, ids, order);
   ids.forEach(id => { if(!order.includes(id)) order.push(id); });
-  return {list: order.map(id => all.find(c => c.id === id)).filter(Boolean), movedIn: new Set(movedIn.map(c => c.id))};
+  const reserviced = new Set(moves.filter(r => r && r.toDate === iso && r.reservice).map(r => r.customerId));
+  return {list: order.map(id => all.find(c => c.id === id)).filter(Boolean), movedIn: new Set(movedIn.map(c => c.id)), reserviced: reserviced};
 }
 // Moved to another technician just for that date (not only to another day)
 function twJustToday(c, iso){
@@ -29524,23 +29525,23 @@ function twJobsFor(techId, iso){
   const mine = x => String(x.technicianId || '') === String(techId)
     || (Array.isArray(x.technicianIds) && x.technicianIds.map(String).indexOf(String(techId)) !== -1);
   const out = [];
-  (lsGet('scheduledWorkOrders') || []).filter(j => j && j.date === iso && mine(j)).forEach(j=>{
+  (lsGet('scheduledWorkOrders') || []).filter(j => j && j.date === iso && mine(j) && !jobCustomerGone(j)).forEach(j=>{
     out.push({key: 'wo:' + j.id, label: '\ud83d\udee0 Work order', kind: 'work order', title: j.title || '', customerId: j.customerId,
-      done: j.status === 'done', doneAt: j.doneAt, placeAfter: j.placeAfter});
+      done: j.status === 'done', doneAt: j.doneAt, placeAfter: j.placeAfter, reservice: !!j.reservice});
   });
-  (lsGet('scheduledFilterCleans') || []).filter(f => f && f.date === iso && mine(f)).forEach(f=>{
+  (lsGet('scheduledFilterCleans') || []).filter(f => f && f.date === iso && mine(f) && !jobCustomerGone(f)).forEach(f=>{
     out.push({key: 'fc:' + f.id, label: '\ud83d\udebf Filter clean', kind: 'filter clean', title: '', customerId: f.customerId,
-      done: f.status === 'done', doneAt: f.doneAt, placeAfter: f.placeAfter});
+      done: f.status === 'done', doneAt: f.doneAt, placeAfter: f.placeAfter, reservice: !!f.reservice});
   });
-  (lsGet('scheduledPoolDrains') || []).filter(f => f && f.date === iso && mine(f)).forEach(f=>{
+  (lsGet('scheduledPoolDrains') || []).filter(f => f && f.date === iso && mine(f) && !jobCustomerGone(f)).forEach(f=>{
     out.push({key: 'pd:' + f.id, label: f.bodyName ? f.bodyName + ' drain' : ({spa: 'Spa drain', fountain: 'Fountain drain', extra: 'Extra body drain'}[f.bodyKind] || 'Pool drain'), drainIcon: true, kind: 'pool drain', title: '', customerId: f.customerId,
-      done: f.status === 'done', doneAt: f.doneAt, placeAfter: f.placeAfter});
+      done: f.status === 'done', doneAt: f.doneAt, placeAfter: f.placeAfter, reservice: !!f.reservice});
   });
-  (tasks || []).filter(t => t && t.date === iso && mine(t)).forEach(t=>{
-    const ids = (t.customerIds || []).length ? t.customerIds : [''];
+  (tasks || []).filter(t => t && t.date === iso && mine(t) && !jobCustomerGone(t)).forEach(t=>{
+    const ids = (t.customerIds || []).length ? t.customerIds.filter(id => customers.some(c => c && String(c.id) === String(id))) : [''];
     ids.forEach(cid=>{
       out.push({key: 'tk:' + t.id, label: '\ud83d\udccb Task', kind: 'task', title: t.title || '', customerId: cid,
-        done: !!t.done, doneAt: t.doneAt, placeAfter: t.placeAfter});
+        done: !!t.done, doneAt: t.doneAt, placeAfter: t.placeAfter, reservice: !!t.reservice});
     });
   });
   return out;
@@ -29659,6 +29660,12 @@ function twJobRow(job, withCustomer){
     tag.insertBefore(ico, tag.firstChild);
   }
   name.appendChild(tag);
+  if(job.reservice){
+    const rs = document.createElement('span');
+    rs.style.cssText = 'display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;margin-left:6px;vertical-align:1px;background:#B8492E;color:#fff;';
+    rs.textContent = 'Reservice';
+    name.appendChild(rs);
+  }
   row.appendChild(name);
   const addr = document.createElement('span');
   addr.className = 'tw-addr';
@@ -29675,12 +29682,13 @@ function twJobRow(job, withCustomer){
   // A job already done stays where it was done.
   const rcell = document.createElement('span');
   rcell.style.cssText = 'justify-self:end;';
-  if(!job.done){
+  {
+    // A job already done is reserviced, as a stop is; the rest rescheduled
     const rb = document.createElement('button');
     rb.className = 'btn btn-ghost'; rb.type = 'button';
     rb.style.cssText = 'width:auto;padding:4px 10px;font-size:12px;';
-    rb.textContent = 'Reschedule';
-    rb.addEventListener('click', ev=>{ ev.stopPropagation(); twJobReschedule(job, c); });
+    rb.textContent = job.done ? 'Reservice' : 'Reschedule';
+    rb.addEventListener('click', ev=>{ ev.stopPropagation(); if(job.done) twOpenJobReservice(job, c); else twJobReschedule(job, c); });
     rcell.appendChild(rb);
   }
   row.appendChild(rcell);
@@ -29740,7 +29748,7 @@ function renderTechRouteWeb(){
   document.getElementById('twDayLabel').textContent = (rel ? rel + ', ' : '')
     + d.toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric'});
   document.getElementById('twDateInput').value = twDateISO;
-  const {list, movedIn} = twRouteFor(techId, twDateISO);
+  const {list, movedIn, reserviced} = twRouteFor(techId, twDateISO);
   twShown = list.map(c => c.id);
   const done = list.filter(c => twServicedOn(c, twDateISO)).length;
   document.getElementById('twCounts').textContent = list.length
@@ -29785,7 +29793,8 @@ function renderTechRouteWeb(){
       try{ when = ' ' + new Date(c.lastServicedAt).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'}); }catch(e){}
     }
     status.innerHTML = (served ? '<span class="tw-pill done">Done' + esc(when) + '</span>' : '<span class="tw-pill todo">To do</span>')
-      + (movedIn.has(c.id) ? '<span class="tw-pill moved" title="Put them back on their usual day" style="cursor:pointer;">Just today</span>' : '');
+      + (reserviced.has(c.id) ? '<span class="tw-pill moved" title="Reserviced: taken off Done and put back on today. Click to remove" style="cursor:pointer;background:#B8492E;color:#fff;">Reservice</span>'
+        : movedIn.has(c.id) ? '<span class="tw-pill moved" title="Put them back on their usual day" style="cursor:pointer;">Just today</span>' : '');
     row.appendChild(status);
     // The Just today badge: put them back on their usual day and technician
     const justToday = status.querySelector('.tw-pill.moved');
@@ -29817,7 +29826,39 @@ function renderTechRouteWeb(){
     jobs.filter(j => under(j) === String(c.id) && String(j.customerId) !== String(c.id)).forEach(j => box.appendChild(twJobRow(j, !onRoute.has(String(j.customerId)))));
   });
   // Jobs at customers who aren't on the route that day, and tasks with no customer
-  jobs.filter(j => under(j) === null).forEach(j => box.appendChild(twJobRow(j, true)));
+  // A finished one goes where its submission time puts it among the other
+  // finished stops, not at the bottom (Nov 17); the rest stay at the bottom
+  const tail = jobs.filter(j => under(j) === null);
+  const stamp = ms => { const n = Date.parse(ms); return isNaN(n) ? null : n; };
+  const rowTime = r => {
+    if(r.dataset.doneAt) return stamp(r.dataset.doneAt);
+    if(r.dataset.reorderKey){
+      const c = customers.find(x => x && String(x.id) === String(r.dataset.reorderKey));
+      if(c && twServicedOn(c, twDateISO) && c.lastServicedAt) return stamp(c.lastServicedAt);
+    }
+    return null;
+  };
+  tail.filter(j => j.done && stamp(j.doneAt) !== null).sort((a, b) => stamp(a.doneAt) - stamp(b.doneAt)).forEach(j=>{
+    const row = twJobRow(j, true);
+    row.dataset.doneAt = j.doneAt;
+    const t = stamp(j.doneAt);
+    const rows = Array.from(box.children);
+    // Straight after the last finished row that was submitted before it, past
+    // that stop's own jobs; before the first later one when there is none
+    let after = null, firstLater = null;
+    rows.forEach(r=>{
+      const rt = rowTime(r);
+      if(rt === null) return;
+      if(rt <= t) after = r; else if(!firstLater) firstLater = r;
+    });
+    if(after){
+      let anchor = after;
+      while(anchor.nextElementSibling && !anchor.nextElementSibling.dataset.reorderKey && rowTime(anchor.nextElementSibling) === null) anchor = anchor.nextElementSibling;
+      anchor.after(row);
+    } else if(firstLater) box.insertBefore(row, firstLater);
+    else box.appendChild(row);
+  });
+  tail.filter(j => !(j.done && stamp(j.doneAt) !== null)).forEach(j => box.appendChild(twJobRow(j, true)));
 }
 
 // Takes away a one-off move onto this day, so they're back on their usual
@@ -29858,9 +29899,66 @@ function twOpenReservice(c){
   if(Array.from(sel.options).some(o => o.value === routeTech)) sel.value = routeTech;
   document.getElementById('twReserviceOverlay').style.display = 'flex';
 }
-function twCloseReservice(){ document.getElementById('twReserviceOverlay').style.display = 'none'; twReservicing = null; }
+function twCloseReservice(){ document.getElementById('twReserviceOverlay').style.display = 'none'; twReservicing = null; twReservicingJob = null; }
+// Reservice a finished job (Nov 17), as a stop is: what was done stays as it
+// is, and a fresh copy goes on the chosen technician's Today list, just for today
+let twReservicingJob = null;
+function twOpenJobReservice(job, c){
+  twReservicingJob = {job: job, c: c};
+  const what = job.kind === 'task' ? 'Task' + (job.title ? ': ' + job.title : '')
+    : job.kind === 'work order' ? 'Work order' + (job.title ? ': ' + job.title : '')
+    : String(job.label || job.kind).replace(/^[^A-Za-z]+/, '');
+  document.getElementById('twReserviceHeading').textContent = 'Reservice ' + what;
+  document.getElementById('twReserviceIntro').textContent = (c ? displayName(c.name) + '\u2019s ' : 'The ') + 'finished job stays as it is. Whose Today list should it go on, just for today?';
+  const sel = document.getElementById('twReserviceTech');
+  sel.innerHTML = '';
+  const id = String(job.key || '').split(':').slice(1).join(':');
+  const src = job.kind === 'work order' ? lsGet('scheduledWorkOrders') : job.kind === 'filter clean' ? lsGet('scheduledFilterCleans')
+    : job.kind === 'pool drain' ? lsGet('scheduledPoolDrains') : tasks;
+  const rec = (src || []).find(x => x && String(x.id) === id);
+  const own = String((rec && rec.technicianId) || (c && c.technicianId) || '');
+  technicians.forEach(t=>{
+    if(!t || !t.id) return;
+    const o = document.createElement('option');
+    o.value = String(t.id);
+    o.textContent = (t.name || 'Technician') + (String(t.id) === own ? ' (assigned)' : '');
+    sel.appendChild(o);
+  });
+  const routeTech = String(twTechId || own);
+  if(Array.from(sel.options).some(o => o.value === routeTech)) sel.value = routeTech;
+  document.getElementById('twReserviceOverlay').style.display = 'flex';
+}
+function twDoJobReservice(tech){
+  const job = twReservicingJob.job;
+  const id = String(job.key || '').split(':').slice(1).join(':');
+  const where = {'work order': ['scheduledWorkOrders', 'job_'], 'filter clean': ['scheduledFilterCleans', 'fc_'], 'pool drain': ['scheduledPoolDrains', 'pd_'], 'task': [null, 'task_']}[job.kind];
+  if(!where) return false;
+  const list = where[0] ? (lsGet(where[0]) || []) : tasks;
+  const done = list.find(x => x && String(x.id) === id);
+  if(!done){ showToast('That job is no longer here'); return false; }
+  const copy = JSON.parse(JSON.stringify(done));
+  // Nothing of the finished visit comes along, and nothing ties it to a group
+  Object.keys(copy).forEach(k=>{ if(/^done/.test(k) || ['replacedItems', 'groupId', 'groupName', 'order', 'reopened', 'held', 'startedAt', 'placeAfter', 'seriesId'].indexOf(k) !== -1) delete copy[k]; });
+  copy.id = where[1] + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  copy.date = twLocalISO(new Date());
+  copy.technicianId = tech;
+  if(Array.isArray(copy.technicianIds)) copy.technicianIds = [tech];
+  if(job.kind === 'task') copy.done = false; else copy.status = 'scheduled';
+  copy.reservice = true;
+  copy.createdAt = new Date().toISOString();
+  if(where[0]){ list.push(copy); lsSet(where[0], list); } else { tasks.push(copy); saveTasks(); }
+  try{ if(typeof syncNoteLocalChange === 'function') syncNoteLocalChange(); }catch(e){}
+  return true;
+}
 document.getElementById('twReserviceCancel').addEventListener('click', twCloseReservice);
 document.getElementById('twReserviceGo').addEventListener('click', ()=>{
+  if(twReservicingJob){
+    const tech = document.getElementById('twReserviceTech').value; if(!tech) return;
+    const ok = twDoJobReservice(tech);
+    twCloseReservice();
+    if(ok){ renderTechRouteWeb(); showToast('Job back on ' + twTechName(tech) + '\u2019s Today list, just for today'); }
+    return;
+  }
   const c = twReservicing; if(!c) return;
   const tech = document.getElementById('twReserviceTech').value;
   const live = customers.find(x => x && x.id === c.id);
@@ -31520,7 +31618,7 @@ function repairsEmailRow(items){
     + items.map(x =>
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFFFF;border:1px solid #EFD6CD;border-radius:8px;margin-top:10px;"><tr>'
         + '<td style="padding:10px 12px;font-size:14.5px;font-weight:600;color:#16302E;">' + esc(x.name) + '</td>'
-        + (x.cid ? '<td style="padding:8px;width:124px;" align="right"><img src="cid:' + x.cid + '" width="116" alt="' + esc(x.name) + '" style="width:116px;max-width:100%;height:auto;border-radius:6px;display:block;"></td>' : '')
+        // No picture here (Nov 17): the photo is in the report's photos at the bottom
         + '</tr></table>').join('')
     + '</div></td></tr>';
 }
@@ -36602,10 +36700,50 @@ document.getElementById('btnDeleteProfileCustomer').addEventListener('click', as
   }
 });
 
+// A job that belonged to someone who's been deleted (Nov 17). A task with no
+// customers at all is a real task; one whose customers are all gone is not.
+function jobCustomerGone(j){
+  if(!j) return false;
+  const ids = (Array.isArray(j.customerIds) && j.customerIds.length) ? j.customerIds : (j.customerId ? [j.customerId] : []);
+  if(!ids.length) return false;
+  return !ids.some(id => customers.some(c => c && String(c.id) === String(id)));
+}
+
+// Deleting a customer takes their unfinished jobs, group places and moves with
+// them, so nothing of theirs is left on a route, calendar or list (Nov 17).
+// Finished work stays as the record of what was done.
+function removeCustomerTraces(id){
+  const mine = x => x && String(x.customerId) === String(id);
+  const drop = (key, keep) => { const all = lsGet(key) || []; const kept = all.filter(keep); if(kept.length !== all.length) lsSet(key, kept); };
+  drop('scheduledWorkOrders', x => !(mine(x) && x.status !== 'done'));
+  drop('scheduledFilterCleans', x => !(mine(x) && x.status !== 'done'));
+  drop('scheduledPoolDrains', x => !(mine(x) && x.status !== 'done'));
+  drop('rescheduledVisits', x => !mine(x));
+  let tChanged = false;
+  tasks = tasks.filter(t=>{
+    if(!t) return true;
+    const had = Array.isArray(t.customerIds) && t.customerIds.some(v => String(v) === String(id));
+    if(!had && !mine(t)) return true;
+    if(had) t.customerIds = t.customerIds.filter(v => String(v) !== String(id));
+    tChanged = true;
+    const left = (t.customerIds || []).length || (t.customerId && String(t.customerId) !== String(id));
+    return !!left || !!t.done;
+  });
+  if(tChanged) saveTasks();
+  let gChanged = false;
+  filterGroups.forEach(g=>{
+    if(g && Array.isArray(g.customerIds) && g.customerIds.some(v => String(v) === String(id))){
+      g.customerIds = g.customerIds.filter(v => String(v) !== String(id)); gChanged = true;
+    }
+  });
+  if(gChanged){ try{ saveFilterGroups(); }catch(e){} }
+}
+
 async function deleteCustomer(c){
-  const confirmed = await confirmDialog(`Delete ${c.name}? This won't delete their past readings, but they'll disappear from customer lists.`);
+  const confirmed = await confirmDialog(`Delete ${c.name}? This won't delete their past readings, but they'll disappear from customer lists, routes and the calendar, with their unfinished jobs.`);
   if(!confirmed) return false;
   customers = customers.filter(x => x.id !== c.id);
+  try{ removeCustomerTraces(c.id); }catch(e){ console.error(e); }
   saveCustomers();
   renderList();
   showToast('Customer deleted');

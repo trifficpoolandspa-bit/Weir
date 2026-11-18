@@ -9889,7 +9889,7 @@ function renderTechRoute(){
     left.innerHTML = '<div class="cust-name"'
       + (done ? ' style="color:var(--muted);"' : '') + '>' + cst.name
       + (done ? tag('var(--green)', 'DONE \u203a') : '')
-      + (moved ? tag('var(--gold)', 'JUST TODAY') : '')
+      + (moved ? (reservicedOn(cst, iso) ? tag('#B8492E', 'RESERVICE') : tag('var(--gold)', 'JUST TODAY')) : '')
       + '</div><div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
       + (done && cst.lastServicedAt
           ? 'Completed ' + new Date(cst.lastServicedAt).toLocaleTimeString(undefined,
@@ -10004,6 +10004,7 @@ function techRouteJobRow(job, iso, onReorder){
   name.style.cssText = "font-family:'Space Grotesk',sans-serif;font-weight:700;color:" + jobKindColours(shownJobKind(job))[1] + ';'
     + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
   setJobNameLine(name, shownJobKind(job), (customer ? customer.name + ' \u2013 ' : '') + job.title);
+  if(jobIsReservice(job)) name.appendChild(reserviceTagEl());
   if(job.done){
     const tag = document.createElement('span');
     tag.style.cssText = 'background:var(--green);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:5px;vertical-align:middle;margin-left:6px;';
@@ -10564,6 +10565,25 @@ function movedOntoDate(reschedules, iso){
     if(r && r.toDate === iso) who.set(r.customerId, r.technicianId || null);
   });
   return who;
+}
+// Put back on Today by Reservice, not just moved (Nov 17): its row says so
+function reservicedOn(customer, iso){
+  return loadReschedules().some(r => r && r.customerId === customer.id && r.toDate === iso && r.reservice);
+}
+// A job sent out again by Reservice carries reservice:true; found from its key
+function jobIsReservice(job){
+  try{
+    const k = String((job && job.key) || ''); const i = k.indexOf(':'); if(i < 0) return false;
+    const kind = k.slice(0, i), id = k.slice(i + 1).split(':')[0];
+    const src = {'work order': 'scheduledWorkOrders', 'filter clean': 'scheduledFilterCleans', 'pool drain': 'scheduledPoolDrains', 'task': 'tasks'}[kind];
+    return !!src && (lsGet(src) || []).some(x => x && String(x.id) === id && x.reservice);
+  }catch(e){ return false; }
+}
+function reserviceTagEl(){
+  const t = document.createElement('span');
+  t.style.cssText = 'background:#B8492E;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:5px;vertical-align:middle;margin-left:6px;';
+  t.textContent = 'RESERVICE';
+  return t;
 }
 // Moved to another technician just for that date (not only to another day)
 function movedJustTodayTo(customer, iso){
@@ -11675,6 +11695,7 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
     nameLine.className = 'cust-name';
     nameLine.style.cssText = 'color:' + jobKindColours(shownJobKind(job))[1] + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
     setJobNameLine(nameLine, shownJobKind(job), customer ? customer.name + ' \u2013 ' + job.title : job.title);
+    if(jobIsReservice(job)) nameLine.appendChild(reserviceTagEl());
     const metaLine = document.createElement('div');
     metaLine.className = 'cust-meta';
     metaLine.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
@@ -11737,7 +11758,10 @@ function adminVersion_appendRouteJobRows(container, customer, jobs, dayISO, canR
       if(customer && customer.gateCode) line('\ud83d\udd11 Yard gate', customer.gateCode);
       const dogNames = ((customer && customer.dogs) || []).map(d => d.name).filter(Boolean);
       if(dogNames.length) line(dogNames.length === 1 ? '\ud83d\udc15 Dog' : '\ud83d\udc15 Dogs', dogNames.join(', '));
-      line((jobKindIcon(job.kind) ? jobKindIcon(job.kind) + ' ' : '') + jobKindLabel(job.kind), job.title);
+      // A Clean & refill is its own kind, never called a task (Nov 17); its title would only repeat the name
+      if(isRefillJob(job)){
+        if(job.title && !/^clean\s*&\s*refill$/i.test(String(job.title).trim())) line(jobKindIcon(job.kind) + ' Clean & refill', job.title);
+      } else line((jobKindIcon(job.kind) ? jobKindIcon(job.kind) + ' ' : '') + jobKindLabel(job.kind), job.title);
       if(job.details) line('Details', job.details);
       // The filter's style, set on the customer's equipment (Nov 9)
       if(job.kind === 'filter clean'){
@@ -11846,6 +11870,7 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
     nameLine.className = 'cust-name';
     nameLine.style.cssText = 'color:' + jobKindColours(shownJobKind(job))[1] + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
     setJobNameLine(nameLine, shownJobKind(job), customer ? customer.name + ' \u2013 ' + job.title : job.title);
+    if(jobIsReservice(job)) nameLine.appendChild(reserviceTagEl());
     const metaLine = document.createElement('div');
     metaLine.className = 'cust-meta';
     metaLine.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
@@ -11908,7 +11933,10 @@ function techVersion_appendRouteJobRows(container, customer, jobs, dayISO, canRe
       if(customer && customer.gateCode) line('\ud83d\udd11 Yard gate', customer.gateCode);
       const dogNames = ((customer && customer.dogs) || []).map(d => d.name).filter(Boolean);
       if(dogNames.length) line(dogNames.length === 1 ? '\ud83d\udc15 Dog' : '\ud83d\udc15 Dogs', dogNames.join(', '));
-      line((jobKindIcon(job.kind) ? jobKindIcon(job.kind) + ' ' : '') + jobKindLabel(job.kind), job.title);
+      // A Clean & refill is its own kind, never called a task (Nov 17); its title would only repeat the name
+      if(isRefillJob(job)){
+        if(job.title && !/^clean\s*&\s*refill$/i.test(String(job.title).trim())) line(jobKindIcon(job.kind) + ' Clean & refill', job.title);
+      } else line((jobKindIcon(job.kind) ? jobKindIcon(job.kind) + ' ' : '') + jobKindLabel(job.kind), job.title);
       if(job.details) line('Details', job.details);
       // The filter's style, set on the customer's equipment (Nov 9)
       if(job.kind === 'filter clean'){
@@ -13226,7 +13254,7 @@ function adminVersion_renderHomeList(){
     row.dataset.customerRow = c.id;
     row.style.flexWrap = 'nowrap';
     row.innerHTML = `<div style="display:flex;align-items:center;min-width:0;flex:1 1 auto;">
-        <div style="min-width:0;flex:1 1 auto;">${custNameLineHtml(c, movedJustTodayTo(c, selectedDayISO))}<div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.address || 'No address on file'}</div></div>
+        <div style="min-width:0;flex:1 1 auto;">${custNameLineHtml(c, movedJustTodayTo(c, selectedDayISO), reservicedOn(c, selectedDayISO))}<div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.address || 'No address on file'}</div></div>
       </div>`;
 
     if(canReorder){
@@ -13603,7 +13631,7 @@ function techVersion_renderHomeList(){
     row.dataset.customerRow = c.id;
     row.style.flexWrap = 'nowrap';
     row.innerHTML = `<div style="display:flex;align-items:center;min-width:0;flex:1 1 auto;">
-        <div style="min-width:0;flex:1 1 auto;">${custNameLineHtml(c, movedJustTodayTo(c, selectedDayISO))}<div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.address || 'No address on file'}</div></div>
+        <div style="min-width:0;flex:1 1 auto;">${custNameLineHtml(c, movedJustTodayTo(c, selectedDayISO), reservicedOn(c, selectedDayISO))}<div class="cust-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.address || 'No address on file'}</div></div>
       </div>`;
 
     if(canReorder){
@@ -14154,6 +14182,7 @@ function rescheduleDoneJob(job, move){
     if(Array.isArray(copy.technicianIds)) copy.technicianIds = [sel.value];
     if(where[1] === 'task'){ copy.done = false; delete copy.seriesId; } else copy.status = 'scheduled';
     copy.createdAt = new Date().toISOString();
+    copy.reservice = true;
     now.push(copy);
     if(!lsSet(where[0], now)){ showToast('Could not save \u2014 the phone is full'); return; }
     // Remembered on this phone only, so Serviced shows one row however many times it is rescheduled and done
@@ -14634,7 +14663,7 @@ function openSkipReasonModal(customer, forcePhoto, optional){
         </div>
         <div class="field">
           <label>Photo${photoNeeded ? ' (required)' : ' (optional)'}</label>
-          <button type="button" class="btn btn-secondary" id="skipPhotoBtn" style="width:auto;padding:16px 40px;font-size:17px;background:#B8492E;color:#fff;border:1.5px solid #B8492E;display:block;margin:0 auto;">${photoNeeded ? 'Take photo (required)' : 'Take photo'}</button>
+          <button type="button" class="btn btn-secondary" id="skipPhotoBtn" style="width:auto;padding:16px 40px;font-size:17px;background:#B8492E;color:#fff;border:1.5px solid #B8492E;display:block;margin:14px auto 20px;">${photoNeeded ? 'Take photo (required)' : 'Take photo'}</button>
           <input type="file" accept="image/*" capture="environment" id="skipPhotoInput" style="display:none;">
           <div id="skipPhotoWrap" style="display:none;margin-top:10px;">
             <img id="skipPhotoPreview" style="max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;" alt="Skip photo">
@@ -14654,7 +14683,7 @@ function openSkipReasonModal(customer, forcePhoto, optional){
     const wrap = overlay.querySelector('#skipPhotoWrap');
     const preview = overlay.querySelector('#skipPhotoPreview');
 
-    setTimeout(()=> textEl.focus(), 60);
+    // Not focused on opening (Nov 17): the keyboard stays down until the note is tapped
 
     overlay.querySelector('#skipPhotoBtn').addEventListener('click', ()=> openCameraFor(input));
     input.addEventListener('change', async (e)=>{
@@ -18401,6 +18430,7 @@ function awcWireSearch(inputId, boxId, picked, onPick, allowNew){
         input.value = '';
         box.style.display = 'none';
         box.innerHTML = '';
+        input.blur();   // the box lets go once someone is picked (Nov 17)
       }, '', true);
       if(r) box.appendChild(r);
     };
@@ -18418,6 +18448,7 @@ function awcWireSearch(inputId, boxId, picked, onPick, allowNew){
         onPick(c.id);
         input.value = '';
         box.style.display = 'none';
+        input.blur();   // the box lets go once someone is picked (Nov 17)
         box.innerHTML = '';
       });
       box.appendChild(row);
@@ -21137,7 +21168,7 @@ function acalAddFcPd(kind, iso){
     const list = (customers || []).filter(c => c && !c.deleted && !c.oneTime && c.active !== false && picked.indexOf(c.id) === -1
       && [c.name, c.address, c.phone].some(v => String(v || '').toLowerCase().indexOf(term) !== -1)).slice(0, 12);
     const addRow = ()=>{
-      const r = jobNameOnlyRow(search.value, (name, keep)=>{ const c = addNameOnlyCustomer(name, keep); picked.push(c.id); search.value = ''; drawSug(); drawChips(); });
+      const r = jobNameOnlyRow(search.value, (name, keep)=>{ const c = addNameOnlyCustomer(name, keep); picked.push(c.id); search.value = ''; drawSug(); drawChips(); search.blur(); });
       if(r) sug.appendChild(r);
     };
     if(!list.length){ sug.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:10px 12px;">Nobody matches.</div>'; addRow(); sug.style.display = 'block'; return; }
@@ -21148,7 +21179,7 @@ function acalAddFcPd(kind, iso){
       row.innerHTML = '<div style="font-weight:600;"></div><div style="font-size:12px;color:var(--muted);"></div>';
       row.children[0].textContent = nameOf(c);
       row.children[1].textContent = (c.address || 'No address on file') + ' \u00b7 ' + acalTechName(c.technicianId);
-      const pick = e=>{ e.preventDefault(); picked.push(c.id); search.value = ''; drawSug(); drawChips(); };
+      const pick = e=>{ e.preventDefault(); picked.push(c.id); search.value = ''; drawSug(); drawChips(); search.blur(); };   // lets go once picked (Nov 17)
       row.addEventListener('mousedown', pick);
       row.addEventListener('touchstart', pick, {passive: false});
       sug.appendChild(row);
@@ -25390,7 +25421,7 @@ function repairsEmailRow(items){
     + items.map(x =>
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFFFF;border:1px solid #EFD6CD;border-radius:8px;margin-top:10px;"><tr>'
         + '<td style="padding:10px 12px;font-size:14.5px;font-weight:600;color:#16302E;">' + esc(x.name) + '</td>'
-        + (x.cid ? '<td style="padding:8px;width:124px;" align="right"><img src="cid:' + x.cid + '" width="116" alt="' + esc(x.name) + '" style="width:116px;max-width:100%;height:auto;border-radius:6px;display:block;"></td>' : '')
+        // No picture here (Nov 17): the photo is in the report's photos at the bottom, labelled with this name
         + '</tr></table>').join('')
     + '</div></td></tr>';
 }
@@ -27795,13 +27826,13 @@ function placeVisitNotes(){
 // and slides to show the rest when it's too long; JUST TODAY sits at the far
 // right of the line, beside On my way, so the name never shifts and the tag is
 // never cut off. (The old FILTER CLEAN tag is gone: a filter clean is its own row.)
-function custNameLineHtml(c, justToday){
+function custNameLineHtml(c, justToday, reservice){
   const name = String(c.name || '').replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
   // Started once the row is on screen, so the name can be measured
   setTimeout(()=>{ document.querySelectorAll('.cust-name-text:not([data-mq])').forEach(el=>{ el.dataset.mq = '1'; try{ marqueeIfCut(el); }catch(e){} }); }, 0);
   return '<div class="cust-name" style="display:flex;align-items:center;gap:8px;min-width:0;">'
     + '<span class="cust-name-text" style="flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap;">' + name + '</span>'
-    + (justToday ? '<span style="flex:0 0 auto;background:var(--gold);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;white-space:nowrap;">JUST TODAY</span>' : '')
+    + (justToday ? '<span style="flex:0 0 auto;background:' + (reservice ? '#B8492E' : 'var(--gold)') + ';color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;white-space:nowrap;">' + (reservice ? 'RESERVICE' : 'JUST TODAY') + '</span>' : '')
     + '</div>';
 }
 // Nov 1: anywhere in the app, a line cut off with dots slides the same way:
